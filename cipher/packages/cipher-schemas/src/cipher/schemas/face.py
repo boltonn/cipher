@@ -1,6 +1,6 @@
 from datetime import datetime
 from enum import StrEnum
-from typing import Annotated, TypedDict
+from typing import Annotated, NotRequired, TypedDict
 
 import numpy as np
 from pydantic import Field, field_serializer
@@ -41,10 +41,15 @@ class FaceBoundingBox(BaseModel):
 
 
 class FaceLandmark(BaseModel):
-    """A single facial keypoint, normalized to image width/height."""
+    """A single facial keypoint, normalized to image width/height.
 
-    x: float = Field(ge=0, le=1)
-    y: float = Field(ge=0, le=1)
+    Unlike the bounding box, landmarks are not clamped to [0, 1] by the
+    detector: an occluded or near-edge keypoint is still estimated, and
+    that estimate can fall slightly outside the frame.
+    """
+
+    x: float
+    y: float
     label: str | None = Field(default=None, description="Keypoint name, e.g. 'left_eye', 'nose_tip'")
 
 
@@ -244,20 +249,20 @@ class FaceLandmarks5(BaseModel):
     rightmouth_y: float
 
 
-class FaceAttributes(TypedDict):
-    age: float
-    sex: Sex
-    pose: dict[str, float]
-
-
 class FaceAnnotation(TypedDict):
-    """Raw output of a face detection/embedding model for a single face."""
+    """Raw output of a face detection/embedding model for a single face.
+
+    `pose`/`age`/`sex` are only present when the producing model was
+    constructed with the corresponding `get_pose`/`get_age_and_sex` flag.
+    """
 
     bbox: dict[str, float]
     confidence: float
     landmarks: dict[str, float]
     embedding: list[float] | None
-    attributes: FaceAttributes
+    pose: NotRequired[dict[str, float]]
+    age: NotRequired[float]
+    sex: NotRequired[Sex]
 
 
 def face_annotation_to_face_create(
@@ -266,9 +271,14 @@ def face_annotation_to_face_create(
     detector_model: str | None = None,
     embedding_model: str | None = None,
 ) -> FaceCreate:
-    """Convert a raw model annotation into the schema used for persistence."""
+    """Convert a raw model annotation into the schema used for persistence.
+
+    `age`/`sex`, if present on the annotation, aren't persisted: `FaceCreate`
+    has no field for them today.
+    """
     bbox = BoundingBox(**annotation["bbox"])
     landmarks = FaceLandmarks5(**annotation["landmarks"])
+    pose = annotation.get("pose")
 
     return FaceCreate(
         image_id=image_id,
@@ -287,7 +297,7 @@ def face_annotation_to_face_create(
         ],
         detector_model=detector_model,
         detection_confidence=annotation["confidence"],
-        pose=FacePose(**annotation["attributes"]["pose"]),
+        pose=FacePose(**pose) if pose else None,
         embedding=annotation["embedding"],
         embedding_model=embedding_model,
     )

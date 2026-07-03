@@ -20,7 +20,7 @@ from cipher.orchestration.detect_faces import (
     get_face_detection_stats,
 )
 from cipher.orchestration.embed_images import embed_images_workflow, get_embedding_stats
-from cipher.orchestration.ingest import load_files_workflow
+from cipher.orchestration.ingest import create_dataset, load_files
 from cipher.orchestration.schema import create_tables
 from cipher.orchestration.session import get_session_context
 from cipher.schemas.common import ModelDevice
@@ -51,26 +51,43 @@ def create_tables_cmd():
     asyncio.run(_run())
 
 
-@app.command("load-images")
-def load_images(
-    path: Annotated[Path, typer.Argument(help="Local directory of images to load")],
-    dataset_name: Annotated[str, typer.Option(help="Dataset to create or reuse")],
+@app.command("create-dataset")
+def create_dataset_cmd(
+    name: Annotated[str, typer.Option(help="Dataset name")],
+    description: Annotated[str | None, typer.Option(help="Dataset description")] = None,
+):
+    """Create a new, empty dataset."""
+
+    async def _run():
+        async with get_session_context() as session:
+            dataset = await create_dataset(session=session, name=name, description=description)
+            typer.echo(dataset.id)
+
+    asyncio.run(_run())
+
+
+@app.command("load-files")
+def load_files_cmd(
+    path: Annotated[Path, typer.Argument(help="Local directory of files to load")],
+    dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
+    dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
     limit: Annotated[int | None, typer.Option(help="Max number of files to load")] = None,
 ):
-    """Ingest a directory of files into a dataset (File rows only; no analysis)."""
+    """Stage a directory of files into a dataset via file typing (File rows only; no analysis)."""
     from filetyper.models.main import FileTyper
 
     async def _run():
         file_typer = FileTyper()
         async with get_session_context() as session:
-            dataset_id = await load_files_workflow(
+            resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
+            count = await load_files(
                 session=session,
                 path=path,
+                dataset_id=resolved_id,
                 file_analyzer=file_typer.generate_from_local_path,
-                dataset_name=dataset_name,
                 limit=limit,
             )
-            logger.success(f"Dataset ready: {dataset_id}")
+            logger.success(f"Loaded {count} files into dataset {resolved_id}")
 
     asyncio.run(_run())
 

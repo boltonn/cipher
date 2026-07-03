@@ -12,7 +12,7 @@ dependencies = [
 
 [project.optional-dependencies]
 analytics-cpu = [ "clir", "face", "filetyper", "pyparse[all]", "setfitcv" ]
-analytics-cuda = [ "clir[cuda,tables]", "face", "filetyper", "pyparse[all]", "setfitcv[cuda]" ]
+analytics-cuda = [ "clir[cuda,tables]", "face[cuda]", "filetyper", "pyparse[all]", "setfitcv[cuda]" ]
 elasticsearch = [ "cipher-datastores[elasticsearch]" ]
 postgres = [ "cipher-datastores[postgres]" ]
 backend = [ "cipher-backend" ]

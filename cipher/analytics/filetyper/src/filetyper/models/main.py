@@ -5,11 +5,11 @@ from typing import BinaryIO
 from loguru import logger
 from tqdm import tqdm
 
+from cipher.schemas.file import FileCreate
+from cipher.utils.io import HashType, compute_hash, convert_st_time_to_datetime
 from filetyper.models.aiml import MagikaFileTyper
 from filetyper.models.magic import MagicNumberFilterTyper
 from filetyper.schemas import FileTypeInfo, FilteTyperStrategy
-from cipher.schemas.file import FileCreate
-from cipher.utils.io import convert_st_time_to_datetime
 
 
 class FileTyper:
@@ -21,9 +21,7 @@ class FileTyper:
         """Map a MIME type to FileTypeInfo using the custom registry."""
         return self.custom.map_mime_type_to_filetype_info(mime_type)
 
-    def infer_path(
-        self, path: Path, strategy: FilteTyperStrategy = FilteTyperStrategy.DEFAULT
-    ) -> FileTypeInfo:
+    def infer_path(self, path: Path, strategy: FilteTyperStrategy = FilteTyperStrategy.DEFAULT) -> FileTypeInfo:
         """A smart, multi-strategy inference entry point."""
         # 1. Custom Strategy
         if strategy in (
@@ -39,9 +37,7 @@ class FileTyper:
         # 3. Last Resort
         return self.custom.map_mime_type_to_filetype_info("unknown")
 
-    def infer_bytes(
-        self, data: bytes, strategy: FilteTyperStrategy = FilteTyperStrategy.DEFAULT
-    ) -> FileTypeInfo:
+    def infer_bytes(self, data: bytes, strategy: FilteTyperStrategy = FilteTyperStrategy.DEFAULT) -> FileTypeInfo:
         """Best for streams and small blobs."""
         if strategy in (
             FilteTyperStrategy.MAGIC_NUMBER,
@@ -86,6 +82,20 @@ class FileTyper:
         else:
             raise ValueError(f"Unsupported file input type: {type(file)}")
 
+    def get_file_info(
+        self,
+        path: Path,
+        strategy: FilteTyperStrategy = FilteTyperStrategy.DEFAULT,
+    ) -> dict:
+        """Infer file type and compute content hashes/size for a local file."""
+        type_info = self.infer_path(path, strategy=strategy)
+        return {
+            **type_info,
+            "md5": compute_hash(path, HashType.MD5),
+            "sha256": compute_hash(path, HashType.SHA256),
+            "size": path.stat().st_size,
+        }
+
     def generate_from_local_path(
         self,
         path: Path,
@@ -118,7 +128,7 @@ class FileTyper:
             file_paths = file_paths[:limit]
 
         for file_path in tqdm(file_paths, desc="Processing files"):
-            file_info = self.get_file_info(file_path, strategy=strategy)
+            file_info = self.get_file_info(path=file_path, strategy=strategy)
             stat = file_path.stat()
 
             yield FileCreate(
@@ -186,15 +196,10 @@ class FileTyper:
         """
         match source:
             case Path() if source.exists():
-                yield from self.generate_from_local_path(
-                    source, dataset_id, limit, strategy
-                )
+                yield from self.generate_from_local_path(source, dataset_id, limit, strategy)
             case str() if source.startswith("s3://"):
-                yield from self.generate_from_s3_uri(
-                    source, dataset_id, limit=limit, strategy=strategy
-                )
+                yield from self.generate_from_s3_uri(source, dataset_id, limit=limit, strategy=strategy)
             case _:
                 raise ValueError(
-                    f"Unsupported source type: {type(source)}. "
-                    "Use Path for local files or 's3://' URI for S3."
+                    f"Unsupported source type: {type(source)}. Use Path for local files or 's3://' URI for S3."
                 )

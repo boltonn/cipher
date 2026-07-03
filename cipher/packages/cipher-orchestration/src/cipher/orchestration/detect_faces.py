@@ -6,17 +6,24 @@ ingested), not on the CLIP image-embedding pipeline having run. A bare
 whichever file is processed first; `IMAGE_EMBEDDING` fills in the embedding
 independently, whenever it runs.
 
-Deliberately simple: one pending batch at a time, sequential inference. No
-producer/consumer pipeline — face detection here is CPU/GPU-bound per image
-rather than something that benefits from tensor batching the way CLIP does.
+Uses the same producer/consumer split as `embed_images`: a thread pool
+fetches and decodes images concurrently (I/O-bound) while the consumer runs
+inference on whatever batch is ready (CPU/GPU-bound), so fetch latency for
+the next batch overlaps with inference on the current one. Unlike CLIP,
+InsightFace has no tensor-batched inference API, so the consumer still runs
+one image at a time -- only the fetch stage is batched/concurrent.
 """
 
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 from time import perf_counter
 from typing import TYPE_CHECKING
 
 from loguru import logger
 from PIL import Image as PILImage
+from sqlalchemy.ext.asyncio import AsyncSession
+from tqdm import tqdm
 
 from cipher.datastores.postgres.repositories import (
     PostgresEnrichmentRepository,
@@ -31,7 +38,8 @@ from cipher.utils.io import fetch_bytes_from_uri
 
 if TYPE_CHECKING:
     from face.api.deps import AsyncInsightFaceModel
-    from sqlalchemy.ext.asyncio import AsyncSession
+
+_EXECUTOR = ThreadPoolExecutor(max_workers=10)
 
 
 async def queue_face_detection_enrichments(
@@ -61,19 +69,19 @@ async def _get_or_create_image(image_repo: PostgresImageRepository, file_id: str
     return await image_repo.upsert_image(ImageCreate(file_id=file_id, width=img.width, height=img.height))
 
 
-async def detect_faces(
-    session: "AsyncSession",
-    model: "AsyncInsightFaceModel",
-    dataset_id: str | None = None,
-    batch_size: int = 25,
-) -> int:
-    """Run face detection over pending files, returning the number processed."""
-    enrichment_repo = PostgresEnrichmentRepository(session=session)
-    image_repo = PostgresImageRepository(session=session)
-    face_repo = PostgresFaceRepository(session=session)
+def _sync_load_image(uri: str) -> PILImage.Image:
+    """CPU worker: fetch and decode an image."""
+    return PILImage.open(BytesIO(fetch_bytes_from_uri(uri))).convert("RGB")
 
-    total = 0
-    start_time = perf_counter()
+
+async def _producer(
+    queue: asyncio.Queue,
+    session: "AsyncSession",
+    batch_size: int,
+    dataset_id: str | None,
+):
+    """Producer: fetch pending batches and decode images concurrently."""
+    enrichment_repo = PostgresEnrichmentRepository(session=session)
 
     while True:
         batch = await enrichment_repo.get_pending_batch(
@@ -84,16 +92,53 @@ async def detect_faces(
             filetype_group_filter="image",
         )
         if not batch:
+            await queue.put(None)
             break
 
         await enrichment_repo.mark_processing([item.enrichment.id for item in batch])
         await session.commit()
 
-        completed, failed, new_faces = [], [], []
-        for item in batch:
-            file_id, uri = item.resource["id"], item.resource["uri"]
+        loop = asyncio.get_event_loop()
+        tasks = [loop.run_in_executor(_EXECUTOR, _sync_load_image, item.resource["uri"]) for item in batch]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        images, items, fetch_failed = [], [], []
+        for item, res in zip(batch, results, strict=True):
+            if isinstance(res, Exception):
+                logger.warning(f"Failed to fetch image for file {item.resource['id']}: {res}")
+                fetch_failed.append(item.enrichment.id)
+                continue
+            images.append(res)
+            items.append(item)
+
+        await queue.put((images, items, fetch_failed))
+
+
+async def _consumer(
+    queue: asyncio.Queue,
+    session: "AsyncSession",
+    model: "AsyncInsightFaceModel",
+    progress: tqdm,
+) -> int:
+    """Consumer: run inference one image at a time (InsightFace has no batch API) and commit results."""
+    image_repo = PostgresImageRepository(session=session)
+    enrichment_repo = PostgresEnrichmentRepository(session=session)
+    face_repo = PostgresFaceRepository(session=session)
+
+    total = 0
+    while True:
+        batch_data = await queue.get()
+        if batch_data is None:
+            queue.task_done()
+            break
+
+        images, items, failed = batch_data
+        progress.update(len(failed))
+
+        completed, new_faces = [], []
+        for item, img in zip(items, images, strict=True):
+            file_id = item.resource["id"]
             try:
-                img = PILImage.open(BytesIO(fetch_bytes_from_uri(uri))).convert("RGB")
                 image = await _get_or_create_image(image_repo, file_id, img)
                 annotations = await model.infer_async(img)
                 new_faces.extend(
@@ -108,6 +153,7 @@ async def detect_faces(
             except Exception:
                 logger.exception(f"Face detection failed for file {file_id}")
                 failed.append(item.enrichment.id)
+            progress.update(1)
 
         if new_faces:
             await face_repo.add_faces_batch(new_faces)
@@ -117,7 +163,39 @@ async def detect_faces(
         await session.commit()
 
         total += len(completed)
-        logger.info(f"Detected faces in {len(completed)} files (total: {total})")
+        queue.task_done()
+
+    return total
+
+
+async def detect_faces(
+    session: "AsyncSession",
+    model: "AsyncInsightFaceModel",
+    dataset_id: str | None = None,
+    batch_size: int = 25,
+) -> int:
+    """Run face detection over pending files, returning the number processed."""
+    enrichment_repo = PostgresEnrichmentRepository(session=session)
+    pending_count = await enrichment_repo.count_pending(
+        enrichment_type=EnrichmentType.FACE_DETECTION,
+        enrichable_type=EnrichableType.FILE,
+        dataset_id=dataset_id,
+    )
+
+    start_time = perf_counter()
+    queue = asyncio.Queue(maxsize=4)
+
+    # _producer and _consumer run concurrently via gather, so each needs its
+    # own AsyncSession -- a single session isn't safe for concurrent use and
+    # will corrupt its transaction state under interleaved commits/queries.
+    engine = session.bind
+    async with AsyncSession(engine, expire_on_commit=False) as producer_session:
+        async with AsyncSession(engine, expire_on_commit=False) as consumer_session:
+            with tqdm(total=pending_count, desc="Detecting faces") as progress:
+                _, total = await asyncio.gather(
+                    _producer(queue, producer_session, batch_size, dataset_id),
+                    _consumer(queue, consumer_session, model, progress),
+                )
 
     total_time = int((perf_counter() - start_time) * 1000)
     logger.success(f"Face detection complete: {total} files in {total_time}ms")
@@ -214,9 +292,16 @@ async def dedupe_pending_face_detections(
             await face_repo.add_faces_batch(new_faces)
         if resolved:
             await enrichment_repo.mark_completed_batch(resolved)
-            await session.commit()
             total += len(resolved)
             logger.info(f"Deduped face detection for {len(resolved)} files from existing content")
+
+        # Always commit, even with nothing resolved: get_pending_batch's FOR
+        # UPDATE SKIP LOCKED holds a lock on the whole batch until commit/
+        # rollback, so skipping this when resolved is empty would leave
+        # unresolved rows locked for the rest of the session's lifetime --
+        # invisible to any other session's SKIP LOCKED scan, including
+        # detect_faces's own producer/consumer sessions right after this.
+        await session.commit()
 
         if len(resolved) < len(batch):
             # Remaining pending items are genuinely new content; stop here

@@ -18,7 +18,7 @@ messages = ["clir", "numpy", "pandas", "polars"]
 cli = ["filetyper", "face", "setfitcv"]
 
 [project.scripts]
-cipher-orchestrate = "cipher.orchestration.cli:app"
+cipher = "cipher.orchestration.cli:app"
 
 [tool.uv.sources]
 cipher-schemas = { workspace = true }

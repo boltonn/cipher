@@ -8,6 +8,7 @@ from time import perf_counter
 from typing import TYPE_CHECKING
 
 from loguru import logger
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from cipher.datastores.postgres.repositories import (
     PostgresEnrichmentRepository,
@@ -20,7 +21,6 @@ from cipher.utils.io import fetch_bytes_from_uri
 
 if TYPE_CHECKING:
     from setfitcv.model import CLIP
-    from sqlalchemy.ext.asyncio import AsyncSession
 
 _EXECUTOR = ThreadPoolExecutor(max_workers=10)
 
@@ -169,10 +169,16 @@ async def embed_images(
     start_time = perf_counter()
     queue = asyncio.Queue(maxsize=4)
 
-    await asyncio.gather(
-        _producer(queue, session, batch_size, dataset_id, model.img_preprocessor),
-        _consumer(queue, session, model, commit_batch_size, stats),
-    )
+    # _producer and _consumer run concurrently via gather, so each needs its
+    # own AsyncSession -- a single session isn't safe for concurrent use and
+    # will corrupt its transaction state under interleaved commits/queries.
+    engine = session.bind
+    async with AsyncSession(engine, expire_on_commit=False) as producer_session:
+        async with AsyncSession(engine, expire_on_commit=False) as consumer_session:
+            await asyncio.gather(
+                _producer(queue, producer_session, batch_size, dataset_id, model.img_preprocessor),
+                _consumer(queue, consumer_session, model, commit_batch_size, stats),
+            )
 
     total_time = int((perf_counter() - start_time) * 1000)
     logger.success(f"Processed {stats['count']} images in {total_time}ms")
@@ -281,9 +287,16 @@ async def dedupe_pending_embeddings(
 
         if resolved:
             await enrichment_repo.mark_completed_batch(resolved)
-            await session.commit()
             total += len(resolved)
             logger.info(f"Deduped {len(resolved)} image embeddings from existing content")
+
+        # Always commit, even with nothing resolved: get_pending_batch's FOR
+        # UPDATE SKIP LOCKED holds a lock on the whole batch until commit/
+        # rollback, so skipping this when resolved is empty would leave
+        # unresolved rows locked for the rest of the session's lifetime --
+        # invisible to any other session's SKIP LOCKED scan, including
+        # embed_images's own producer/consumer sessions right after this.
+        await session.commit()
 
         if len(resolved) < len(batch):
             # Remaining pending items are genuinely new content; stop here
