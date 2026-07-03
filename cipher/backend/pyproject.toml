@@ -1,0 +1,27 @@
+[project]
+name = "cipher-backend"
+version = "0.0.1"
+description = "Main API service for Cipher"
+requires-python = ">=3.12"
+
+dependencies = [
+    "cipher-datastores[postgres]",
+    "cipher-schemas",
+    "cipher-utils[fastapi]",
+    "pydantic-ai",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv.sources]
+cipher-datastores = { workspace = true }
+cipher-schemas = { workspace = true }
+cipher-utils = { workspace = true }
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cipher"]
+
+[project.scripts]
+cipher-serve = "cipher.api.main:main"

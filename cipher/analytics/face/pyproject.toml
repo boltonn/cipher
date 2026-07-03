@@ -1,0 +1,60 @@
+[project]
+name = "face"
+description = "A repository for face detection and embedding leveraging InsightFace."
+keywords = [ 
+    "feature-extraction", 
+    "face-detection", 
+    "face-embedding",
+    "face-identification", 
+    "face-recognition",
+    "face-verification",
+]
+
+version = "0.0.1"
+requires-python = ">=3.12"
+dependencies = [
+  "insightface",
+  "loguru",
+  "numpy<2", 
+  "opencv-python-headless",
+  "pillow",
+  "pillow-heif", 
+]
+
+[tool.uv.sources]
+cipher-utils = { workspace = true }
+
+[build-system]
+requires = [ "hatchling" ]
+build-backend = "hatchling.build"
+
+[project.optional-dependencies]
+fastapi = [ "cipher-utils[fastapi]" ]
+cpu = [ "onnxruntime" ]
+cuda = [ 
+    "nvidia-cublas-cu11",
+    "nvidia-cuda-cupti-cu11",
+    "nvidia-cuda-nvrtc-cu11",
+    "nvidia-cuda-runtime-cu11",
+    "nvidia-cudnn-cu11==8.9.2.26",
+    "nvidia-cufft-cu11",
+    "nvidia-curand-cu11",
+    "nvidia-cusolver-cu11",
+    "nvidia-cusparse-cu11",
+    "nvidia-nccl-cu11",
+    "nvidia-nvtx-cu11",
+    "nvidia-cuda-runtime-cu11",
+    "nvidia-cudnn-cu11",
+    "onnxruntime-gpu<=1.17.0"
+]
+
+[tool.uv]
+conflicts = [
+  [
+    { extra = "cpu" },
+    { extra = "cuda" },
+  ],
+]
+
+[project.scripts]
+face-api = "face.api.main:main"

@@ -1,0 +1,37 @@
+[project]
+name = "cipher-orchestration"
+version = "0.0.1"
+description = "Workflow orchestration for cipher."
+requires-python = ">=3.12"
+
+dependencies = [
+    "cipher-schemas",
+    "cipher-datastores[postgres]",
+    "cipher-utils",
+    "loguru",
+    "tqdm",
+    "typer",
+]
+
+[project.optional-dependencies]
+messages = ["clir", "numpy", "pandas", "polars"]
+cli = ["filetyper", "face", "setfitcv"]
+
+[project.scripts]
+cipher-orchestrate = "cipher.orchestration.cli:app"
+
+[tool.uv.sources]
+cipher-schemas = { workspace = true }
+cipher-datastores = { workspace = true }
+cipher-utils = { workspace = true }
+clir = { workspace = true }
+filetyper = { workspace = true }
+face = { workspace = true }
+setfitcv = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cipher"]

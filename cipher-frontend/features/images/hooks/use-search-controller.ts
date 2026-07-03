@@ -1,0 +1,188 @@
+"use client";
+import { imagesService } from "@/features/images/api";
+import type {
+  ImageSimilaritySearchParameters,
+  PaginatedImagesResponse,
+} from "@/features/images/types";
+import { PaginationModeType } from "@/types/common";
+import {
+  useInfiniteQuery,
+  useQuery,
+  type InfiniteData,
+} from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+
+export type ImageFilters = Omit<ImageSimilaritySearchParameters, "page">;
+
+type ImageSearchKey = [
+  string,
+  string,
+  {
+    file: string | undefined;
+    id: string | null;
+    text: string | null;
+  } & ImageFilters,
+];
+
+type ImageSearchKeyPaginated = [
+  string,
+  string,
+  "paginated",
+  number,
+  {
+    file: string | undefined;
+    id: string | null;
+    text: string | null;
+  } & ImageFilters,
+];
+
+export const useSearchController = (mode: PaginationModeType = "infinite") => {
+  const [file, setFile] = useState<File | null>(null);
+  const [id, setId] = useState<string | null>(null);
+  const [text, setText] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+
+  const [filters, setFilters] = useState<ImageFilters>({
+    sortOrder: "desc",
+    minSimilarity: 0,
+    limit: 20,
+  });
+
+  // Infinite query for infinite scroll mode
+  const {
+    data: infiniteData,
+    isPending: infiniteIsPending,
+    isLoading: infiniteIsLoading,
+    isFetching: infiniteIsFetching,
+    fetchNextPage,
+    fetchPreviousPage,
+    hasNextPage,
+    hasPreviousPage,
+    isFetchingNextPage,
+    isFetchingPreviousPage,
+    error: infiniteError,
+  } = useInfiniteQuery<
+    PaginatedImagesResponse,
+    Error,
+    InfiniteData<PaginatedImagesResponse>,
+    ImageSearchKey,
+    number
+  >({
+    queryKey: ["images", "search", { file: file?.name, id, text, ...filters }],
+    queryFn: ({ pageParam = 1 }) => {
+      const currentParams: ImageSimilaritySearchParameters = {
+        ...filters,
+        page: pageParam,
+      };
+
+      if (file) return imagesService.searchByUpload(file, currentParams);
+      if (id) return imagesService.searchById(id, currentParams);
+      if (text)
+        return imagesService.searchByText({ query: text, ...currentParams });
+      return imagesService.searchGeneral(currentParams);
+    },
+    initialPageParam: 1,
+    getNextPageParam: (lastPage: PaginatedImagesResponse) => {
+      if (lastPage.hasMore) {
+        return lastPage.page + 1;
+      }
+      return undefined;
+    },
+    getPreviousPageParam: (firstPage: PaginatedImagesResponse) => {
+      return firstPage.page > 1 ? firstPage.page - 1 : undefined;
+    },
+    enabled: mode === "infinite",
+  });
+
+  // Regular query for paginated mode
+  const {
+    data: paginatedData,
+    isPending: paginatedIsPending,
+    isLoading: paginatedIsLoading,
+    isFetching: paginatedIsFetching,
+    error: paginatedError,
+  } = useQuery<PaginatedImagesResponse, Error>({
+    queryKey: [
+      "images",
+      "search",
+      "paginated",
+      page,
+      { file: file?.name, id, text, ...filters },
+    ] as ImageSearchKeyPaginated,
+    queryFn: () => {
+      const currentParams: ImageSimilaritySearchParameters = {
+        ...filters,
+        page,
+      };
+
+      if (file) return imagesService.searchByUpload(file, currentParams);
+      if (id) return imagesService.searchById(id, currentParams);
+      if (text)
+        return imagesService.searchByText({ query: text, ...currentParams });
+      return imagesService.searchGeneral(currentParams);
+    },
+    enabled: mode === "normal",
+  });
+
+  const currentPage = useMemo(() => {
+    if (mode === "infinite") {
+      if (!infiniteData) return 1;
+      return infiniteData.pageParams[infiniteData.pageParams.length - 1] as number;
+    }
+    return page;
+  }, [mode, infiniteData, page]);
+
+  const actions = {
+    handleUpload: (newFile: File) => {
+      setFile(newFile);
+      setId(null);
+      setText(null);
+      setPage(1);
+    },
+    handleText: (query: string) => {
+      setText(query);
+      setFile(null);
+      setId(null);
+      setPage(1);
+    },
+    handleSimilar: (imageId: string) => {
+      setId(imageId);
+      setFile(null);
+      setText(null);
+      setPage(1);
+    },
+    handlePageChange: (newPage: number) => {
+      setPage(newPage);
+    },
+  };
+
+  // Return unified interface
+  return {
+    // Data
+    data: mode === "infinite" ? infiniteData : undefined,
+    paginatedData: mode === "normal" ? paginatedData : undefined,
+
+    // Loading states
+    isPending: mode === "infinite" ? infiniteIsPending : paginatedIsPending,
+    isLoading: mode === "infinite" ? infiniteIsLoading : paginatedIsLoading,
+    isFetching: mode === "infinite" ? infiniteIsFetching : paginatedIsFetching,
+
+    // Infinite query specific
+    fetchNextPage,
+    fetchPreviousPage,
+    hasNextPage,
+    hasPreviousPage,
+    isFetchingNextPage,
+    isFetchingPreviousPage,
+
+    // Error
+    error: mode === "infinite" ? infiniteError : paginatedError,
+
+    // Common
+    actions,
+    currentPage,
+    filters,
+    setFilters,
+    mode,
+  };
+};

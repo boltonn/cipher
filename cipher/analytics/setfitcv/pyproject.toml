@@ -1,0 +1,46 @@
+[project]
+name = "setfitcv"
+description = "A repository for image embedding via CLIP."
+keywords = ["computer-vision", "image-embedding", "image-search", "multimodal", "transformers"]
+version = "0.0.1"
+readme = "README.md"
+requires-python = ">=3.12"
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python"
+]
+dependencies = [
+  "chardet",
+  "torch",
+  "torchvision",
+  "transformers",
+  "loguru",
+  "pillow",
+  "pillow-heif",
+]
+
+[tool.uv.sources]
+cipher-utils = { workspace = true }
+
+[build-system]
+requires = [ "hatchling" ]
+build-backend = "hatchling.build"
+
+[project.optional-dependencies]
+fastapi = [ "cipher-utils[fastapi]" ]
+cuda = [
+  "nvidia-cudnn-cu12",
+  "nvidia-cublas-cu12",
+  "nvidia-cuda-runtime-cu12",
+]
+
+[tool.uv]
+conflicts = [
+  [
+    { extra = "cpu" },
+    { extra = "cuda" },
+  ],
+]
+
+[project.scripts]
+setfitcv-api = "setfitcv.api.main:main"

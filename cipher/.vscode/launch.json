@@ -1,0 +1,32 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Cipher API (cipher-api)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "cipher.api.main",
+            "cwd": "${workspaceFolder}/services/api",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/services/api/src"
+            },
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "Python: Image Embeddings (process)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/services/cli/src/cipher/cli/setfitcv.py",
+            "args": [
+                "process",
+                "/home/boltonn/models/transformers/clip-vit-base-patch16",
+                "--batch-size", "2",
+                "--path", "/home/boltonn/mobile/backend/data/images",
+                "--dataset-name", "my_mobile"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        }
+    ]
+}

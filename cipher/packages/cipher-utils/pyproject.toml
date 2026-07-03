@@ -1,0 +1,23 @@
+[project]
+name = "cipher-utils"
+description = "Common space for utilities for Cipher."
+version = "0.0.1"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.optional-dependencies]
+fastapi = [
+    "aiohttp",
+    "fastapi",
+    "fastapi-offline",
+    "python-multipart",
+    "uvicorn[standard]",
+    "uvloop",
+]
+
+[build-system]
+requires = [ "hatchling" ]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cipher"]

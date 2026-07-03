@@ -1,0 +1,22 @@
+[project]
+name = "pykreuzberg"
+description = "A repository for Kreuzberg rust-based python text extraction."
+keywords = ["chunking", "ocr", "text-embedding", "text-extraction"]
+version = "0.0.1"
+readme = "README.md"
+requires-python = ">=3.12"
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python"
+]
+dependencies = [
+  "kreuzberg[easyocr]",
+  "loguru",
+]
+
+[build-system]
+requires = [ "hatchling" ]
+build-backend = "hatchling.build"
+
+[project.optional-dependencies]
+fastapi = [ "cipher-utils[fastapi]" ]

@@ -1,0 +1,32 @@
+[project]
+name = "filetyper"
+description = "A repository for filetyping using Google's AIML-based approach Magika and custom heuristics."
+keywords = ["filetyping", "magika", "heuristics", "cipher"]
+version = "0.0.1"
+readme = "README.md"
+requires-python = ">=3.12"
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python"
+]
+dependencies = [
+  "magika",
+  "loguru",
+  "filetype",
+  "cipher-schemas",
+  "tqdm",
+]
+
+[tool.uv.sources]
+cipher-schemas = { workspace = true }
+cipher-utils = { workspace = true }
+
+[build-system]
+requires = [ "hatchling" ]
+build-backend = "hatchling.build"
+
+[project.optional-dependencies]
+fastapi = [ "cipher-utils[fastapi]" ]
+
+[project.scripts]
+filetyper-api = "filetyper.api.main:main"

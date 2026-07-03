@@ -1,0 +1,113 @@
+[project]
+name = "cipher"
+version = "0.0.1"
+description = "A monorepo for all things cipher."
+readme = "README.md"
+requires-python = ">=3.12"
+
+dependencies = [
+    "cipher-schemas",
+    "cipher-utils",
+]
+
+[project.optional-dependencies]
+analytics-cpu = [ "clir", "face", "filetyper", "pyparse[all]", "setfitcv" ]
+analytics-cuda = [ "clir[cuda,tables]", "face", "filetyper", "pyparse[all]", "setfitcv[cuda]" ]
+elasticsearch = [ "cipher-datastores[elasticsearch]" ]
+postgres = [ "cipher-datastores[postgres]" ]
+backend = [ "cipher-backend" ]
+orchestration = [ "cipher-orchestration[cli]" ]
+all-cuda = [
+    "cipher[analytics-cuda]",
+    "cipher[backend]",
+    "cipher[elasticsearch]",
+    "cipher[postgres]",
+    "cipher[orchestration]"
+]
+
+[tool.uv.sources]
+cipher-datastores = { workspace = true }
+cipher-schemas = { workspace = true }
+cipher-utils = { workspace = true }
+cipher-backend = { workspace = true }
+cipher-orchestration = { workspace = true }
+face = { workspace = true }
+filetyper = { workspace = true }
+setfitcv = { workspace = true }
+pyparse = { workspace = true }
+pykreuzberg = { workspace = true }
+clir = { workspace = true }
+
+[tool.uv.workspace]
+members = [
+    "packages/cipher-datastores",
+    "packages/cipher-schemas",
+    "packages/cipher-utils",
+    "packages/cipher-orchestration",
+    "backend",
+    "analytics/clir",
+    "analytics/face",
+    "analytics/filetyper",
+    "analytics/setfitcv",
+    "analytics/pyparse",
+    "analytics/pykreuzberg",
+]
+
+[tool.uv]
+environments = [
+    "sys_platform == 'linux' and python_version == '3.12'",
+]
+no-build-isolation-package = ["flash-attn"]
+
+[tool.uv.extra-build-dependencies]
+flash-attn = ["torch", "setuptools", "wheel", "ninja"]
+
+[dependency-groups]
+dev = [
+    "debugpy",
+    "faker",
+    "httpx",
+    "psutil",
+    "pytest",
+    "pytest-asyncio",
+    "pytest-loguru",
+    "ruff",
+    "setuptools",
+    "wheel",
+    "ninja",
+]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "D"]
+
+ignore = [
+  "E501",
+  "D100",
+  "D101",
+  "D104",
+  "D107",
+  "D203",
+  "D213",
+  "D401",
+]
+
+fixable = ["ALL"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+force-single-line = false
+known-first-party = ["cipher"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+
+[tool.isort]
+py_version=311
