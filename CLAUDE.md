@@ -39,6 +39,8 @@ packages/
 * python 3.12 syntax to lowercase list, use | instead of Optional, etc.
 * each feature should be able to used as a stand-alone (ie. fastapi analytic services)
 * orchestration can be standalone scripts that are easy to use until an orchestation architecture is designed from the ground up
+* consistent terminology between schemas, tables, etc. with the frontend where appropriate besides casing
+* if you need to test a new feature with fake data always create a new dataset and name appropriately
 * keep code brief
 
 ## Frontend (cipher-frontend)
@@ -88,3 +90,5 @@ types/      # common schemas
 * use react doctor to make code performant
 * keep most data out of the URL unless its an ID specific page
 * Annotation for AI/ML should be a first-class citizen but should be denoted with a specific color
+* consistent terminology with the backend where appropriate with the exception of casing per above
+* support both paginated and infinite scroll for most things

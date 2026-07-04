@@ -40,6 +40,13 @@ export interface ImagePublic {
   dateTaken?: string;
   gpsAltitude?: number;
   tags: string[];
+  embeddingModel?: string | null;
 }
 
 export type PaginatedImagesResponse = PaginatedResponse<ImagePublic>;
+
+export interface ImageSimilarityResult extends ImagePublic {
+  similarityScore: number;
+}
+
+export type PaginatedImageSimilarityResponse = PaginatedResponse<ImageSimilarityResult>;

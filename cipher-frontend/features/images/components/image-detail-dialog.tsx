@@ -14,6 +14,7 @@ import Image from "next/image";
 import { useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { CopyableId } from "@/components/copyable-id";
 import {
   Dialog,
   DialogContent,
@@ -28,10 +29,10 @@ import type { File, FileMetadata } from "@/features/files/types";
 import { cn } from "@/lib/utils";
 import { imagesService } from "../api";
 import { MOCK_FILES, MOCK_INSTANCES } from "../constants";
-import { ImagePublic } from "../types";
+import { ImagePublic, ImageSimilarityResult } from "../types";
 
 interface ImageDetailDialogProps {
-  image: ImagePublic;
+  image: ImagePublic | ImageSimilarityResult;
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   onNext: () => void;
@@ -145,9 +146,7 @@ export function ImageDetailDialog({
                 {image.width} × {image.height}
               </span>
             </div>
-            <p className="text-[10px] text-slate-500 font-mono truncate">
-              UID: {image.id}
-            </p>
+            <CopyableId id={image.id} />
           </DialogHeader>
 
           <Separator className="bg-white/5" />

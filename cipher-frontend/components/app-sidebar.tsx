@@ -17,21 +17,18 @@ import { getInitials } from "@/features/users/utils";
 import type { IconComponent } from "@/types/common";
 import {
   BookOpen,
-  Calendar,
   Database,
-  FileText,
   HelpCircle,
   Home,
   Image as ImageIcon,
-  Mail,
   MapPin,
   MessageSquare,
   MessagesSquare,
   Search,
   Settings,
   Smile,
+  User,
   Users,
-  Video,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -48,7 +45,13 @@ function isItemActive(pathname: string, itemUrl: string) {
   return pathname.startsWith(itemUrl);
 }
 
-function MenuItem({ item, pathname }: { item: NavigationItem; pathname: string }) {
+function MenuItem({
+  item,
+  pathname,
+}: {
+  item: NavigationItem;
+  pathname: string;
+}) {
   const isActive = isItemActive(pathname, item.url);
 
   return (
@@ -95,14 +98,15 @@ const data = {
   ],
   media: [
     { title: "Images", url: "/images", icon: ImageIcon },
-    { title: "Documents", url: "/documents", icon: FileText },
+    // { title: "Documents", url: "/documents", icon: FileText },
     { title: "Messages", url: "/messages", icon: MessagesSquare },
     { title: "Contacts", url: "/contacts", icon: Users },
-    { title: "Calendar", url: "/calendar", icon: Calendar },
+    // { title: "Calendar", url: "/calendar", icon: Calendar },
     { title: "Locations", url: "/locations", icon: MapPin },
-    { title: "Video", url: "/video", icon: Video },
-    { title: "Email", url: "/email", icon: Mail },
+    // { title: "Video", url: "/video", icon: Video },
+    // { title: "Email", url: "/email", icon: Mail },
     { title: "Faces", url: "/faces", icon: Smile },
+    { title: "Persons", url: "/persons", icon: User },
   ],
   settings: [
     { title: "Settings", url: "/settings", icon: Settings },

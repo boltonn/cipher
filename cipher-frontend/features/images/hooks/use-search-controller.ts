@@ -3,6 +3,7 @@ import { imagesService } from "@/features/images/api";
 import type {
   ImageSimilaritySearchParameters,
   PaginatedImagesResponse,
+  PaginatedImageSimilarityResponse,
 } from "@/features/images/types";
 import { PaginationModeType } from "@/types/common";
 import {
@@ -13,6 +14,8 @@ import {
 import { useMemo, useState } from "react";
 
 export type ImageFilters = Omit<ImageSimilaritySearchParameters, "page">;
+
+type ImageQueryResponse = PaginatedImagesResponse | PaginatedImageSimilarityResponse;
 
 type ImageSearchKey = [
   string,
@@ -62,9 +65,9 @@ export const useSearchController = (mode: PaginationModeType = "infinite") => {
     isFetchingPreviousPage,
     error: infiniteError,
   } = useInfiniteQuery<
-    PaginatedImagesResponse,
+    ImageQueryResponse,
     Error,
-    InfiniteData<PaginatedImagesResponse>,
+    InfiniteData<ImageQueryResponse>,
     ImageSearchKey,
     number
   >({
@@ -82,13 +85,13 @@ export const useSearchController = (mode: PaginationModeType = "infinite") => {
       return imagesService.searchGeneral(currentParams);
     },
     initialPageParam: 1,
-    getNextPageParam: (lastPage: PaginatedImagesResponse) => {
+    getNextPageParam: (lastPage: ImageQueryResponse) => {
       if (lastPage.hasMore) {
         return lastPage.page + 1;
       }
       return undefined;
     },
-    getPreviousPageParam: (firstPage: PaginatedImagesResponse) => {
+    getPreviousPageParam: (firstPage: ImageQueryResponse) => {
       return firstPage.page > 1 ? firstPage.page - 1 : undefined;
     },
     enabled: mode === "infinite",
@@ -101,7 +104,7 @@ export const useSearchController = (mode: PaginationModeType = "infinite") => {
     isLoading: paginatedIsLoading,
     isFetching: paginatedIsFetching,
     error: paginatedError,
-  } = useQuery<PaginatedImagesResponse, Error>({
+  } = useQuery<ImageQueryResponse, Error>({
     queryKey: [
       "images",
       "search",
@@ -123,6 +126,8 @@ export const useSearchController = (mode: PaginationModeType = "infinite") => {
     },
     enabled: mode === "normal",
   });
+
+  const isSimilarityMode = !!(file || id || text);
 
   const currentPage = useMemo(() => {
     if (mode === "infinite") {
@@ -184,5 +189,6 @@ export const useSearchController = (mode: PaginationModeType = "infinite") => {
     filters,
     setFilters,
     mode,
+    isSimilarityMode,
   };
 };

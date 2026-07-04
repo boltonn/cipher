@@ -1,29 +1,3 @@
-import { Dataset } from "../datasets/types";
-
-export const DATASETS: Dataset[] = [
-  {
-    id: "adf5c3e2-1c4b-4e2b-9f3e-2b1c4b5e6f7a",
-    name: "Nature Photos",
-    description: "A collection of beautiful nature photographs.",
-    dateCreated: "2023-01-15T10:00:00Z",
-    dateLastUpdated: "2023-06-20T12:30:00Z",
-  },
-  {
-    id: "b2e6f7a8-3c4d-5e6f-7a8b-9c0d1e2f3a4b",
-    name: "Cityscapes",
-    description: "Images capturing urban environments and city life.",
-    dateCreated: "2022-11-05T14:20:00Z",
-    dateLastUpdated: "2023-05-18T09:15:00Z",
-  },
-  {
-    id: "c3d4e5f6-7a8b-9c0d-1e2f-3a4b5c6d7e8f",
-    name: "Wildlife",
-    description: "Photos of animals in their natural habitats.",
-    dateCreated: "2023-03-22T08:45:00Z",
-    dateLastUpdated: "2023-07-10T11:50:00Z",
-  },
-];
-
 import { FileInstance, FileMetadata } from "@/features/files/types";
 
 /**
@@ -87,24 +61,4 @@ export const MOCK_INSTANCES: FileInstance[][] = [
       uri: "file://C:/Users/Admin/Photos/portrait_study_04.jpg",
     },
   ],
-];
-export const FILE_TYPES = [
-  "jpeg",
-  "png",
-  "webp",
-  "heic",
-  "tiff",
-  "bmp",
-  "gif",
-  "svg",
-];
-export const AVAILABLE_TAGS = [
-  "Nature",
-  "City",
-  "Technology",
-  "Person",
-  "Animal",
-  "Abstract",
-  "Minimalist",
-  "Vibrant",
 ];

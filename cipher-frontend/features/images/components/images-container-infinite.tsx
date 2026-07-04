@@ -6,12 +6,17 @@ import { cn } from "@/lib/utils";
 import type { InfiniteData } from "@tanstack/react-query";
 import { Loader2, SlidersHorizontal } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ImagePublic, PaginatedImagesResponse } from "../types";
+import type {
+  ImagePublic,
+  ImageSimilarityResult,
+  PaginatedImagesResponse,
+  PaginatedImageSimilarityResponse,
+} from "../types";
 import { ImageCard } from "./image-card";
 import { ImageDetailDialog } from "./image-detail-dialog";
 
 interface ImagesContainerInfiniteProps {
-  data: InfiniteData<PaginatedImagesResponse> | undefined;
+  data: InfiniteData<PaginatedImagesResponse | PaginatedImageSimilarityResponse> | undefined;
   onSimilar: (id: string) => void;
   fetchNextPage: () => void;
   hasNextPage: boolean;
@@ -33,7 +38,7 @@ export function ImagesContainerInfinite({
 
   const images = useMemo(() => {
     if (!data) return [];
-    return data.pages.flatMap((page: PaginatedImagesResponse) => page.data);
+    return data.pages.flatMap((page) => page.data) as (ImagePublic | ImageSimilarityResult)[];
   }, [data]);
 
   const handleNext = useCallback(() => {
@@ -107,7 +112,7 @@ export function ImagesContainerInfinite({
             : "grid-cols-1 sm:grid-cols-2 xl:grid-cols-3"
         )}
       >
-        {images.map((image: ImagePublic, index: number) => (
+        {images.map((image, index) => (
           <ImageCard
             key={`${image.id}-${index}`}
             image={image}

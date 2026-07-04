@@ -6,12 +6,12 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { SlidersHorizontal } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import type { ImagePublic, PaginatedImagesResponse } from "../types";
+import type { PaginatedImagesResponse, PaginatedImageSimilarityResponse } from "../types";
 import { ImageCard } from "./image-card";
 import { ImageDetailDialog } from "./image-detail-dialog";
 
 interface ImagesContainerPaginatedProps {
-  data: PaginatedImagesResponse | undefined;
+  data: PaginatedImagesResponse | PaginatedImageSimilarityResponse | undefined;
   onSimilar: (id: string) => void;
   currentPage: number;
   onPageChange: (page: number) => void;
@@ -88,7 +88,7 @@ export function ImagesContainerPaginated({
             : "grid-cols-1 sm:grid-cols-2 xl:grid-cols-3"
         )}
       >
-        {images.map((image: ImagePublic, index: number) => (
+        {images.map((image, index) => (
           <ImageCard
             key={`${image.id}-${index}`}
             image={image}

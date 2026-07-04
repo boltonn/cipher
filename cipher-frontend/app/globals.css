@@ -39,6 +39,8 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  --color-annotation: var(--annotation);
+  --color-annotation-foreground: var(--annotation-foreground);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -55,6 +57,12 @@
 :root {
   --glow-indigo-primary: rgba(79, 70, 229, 0.15);
   --glow-indigo-secondary: rgba(67, 56, 202, 0.1);
+  /* AI/ML-generated annotations (auto detections, model output, automatic
+     assignments) are always denoted with this color, kept distinct from
+     --primary (indigo, user-driven UI) so machine-authored data reads as
+     visually different from analyst-authored data at a glance. */
+  --annotation: oklch(0.769 0.188 70.08);
+  --annotation-foreground: oklch(0.2 0.02 70);
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);

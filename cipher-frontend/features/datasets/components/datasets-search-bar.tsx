@@ -1,27 +1,24 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import type { DatasetRequest } from "@/features/datasets/types";
 import { cn } from "@/lib/utils";
 import { Loader2, Search, X } from "lucide-react";
 import React, { useState } from "react";
 
 interface DatasetsSearchBarProps {
-  filters: DatasetRequest;
+  query?: string;
   onSearch: (query: string) => void;
-  onFiltersChange: (updates: Partial<DatasetRequest>) => void;
   onClearFilters: () => void;
   isSearching?: boolean;
 }
 
 export function DatasetsSearchBar({
-  filters,
+  query,
   onSearch,
-  onFiltersChange,
   onClearFilters,
   isSearching,
 }: DatasetsSearchBarProps) {
-  const [localInput, setLocalInput] = useState(filters.query || "");
+  const [localInput, setLocalInput] = useState(query || "");
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

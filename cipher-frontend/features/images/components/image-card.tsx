@@ -1,36 +1,39 @@
 "use client";
 
+import { TagsInput } from "@/components/tags-input";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import { Calendar, Check, Copy, Maximize2, Search, Tag } from "lucide-react";
 import Image from "next/image";
 import { useState } from "react";
-import { imagesService } from "../api";
-import { ImagePublic } from "../types";
+import { imagesService, useUpdateImageTags } from "../api";
+import { ImagePublic, ImageSimilarityResult } from "../types";
 
 interface ImageCardProps {
-  image: ImagePublic;
+  image: ImagePublic | ImageSimilarityResult;
   onFindSimilar?: (id: string) => void;
-  onTag?: (id: string, tag: string) => void;
   onExpand?: (image: ImagePublic) => void;
 }
 
 export const ImageCard: React.FC<ImageCardProps> = ({
   image,
   onFindSimilar,
-  onTag,
   onExpand,
 }) => {
   const [copied, setCopied] = useState(false);
   const imageUrl = imagesService.getImageUrl(image.id);
   const visibleTags = image.tags.slice(0, 3);
   const remainingCount = image.tags.length - visibleTags.length;
+  const isEmbedded = !!image.embeddingModel;
+  const similarityScore = "similarityScore" in image ? image.similarityScore : undefined;
 
   const handleCopyId = (e?: React.MouseEvent<HTMLButtonElement>) => {
     e?.stopPropagation();
@@ -43,10 +46,17 @@ export const ImageCard: React.FC<ImageCardProps> = ({
     <TooltipProvider>
       <Card className="group relative rounded-xl overflow-hidden bg-[#0a0c10] border-white/5 transition-all duration-300 hover:border-indigo-500/40">
         {/* Flush Image Container */}
-        <button
-          type="button"
+        <div
+          role="button"
+          tabIndex={0}
           className="aspect-4/5 relative w-full bg-slate-950 cursor-pointer"
           onClick={() => onExpand?.(image)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onExpand?.(image);
+            }
+          }}
         >
           <Image
             src={imageUrl}
@@ -67,13 +77,11 @@ export const ImageCard: React.FC<ImageCardProps> = ({
               <NavAction
                 icon={<Search size={18} />}
                 label="Find Similar"
+                disabled={!isEmbedded}
+                disabledLabel="Image hasn't been embedded yet"
                 onClick={() => onFindSimilar?.(image.id)}
               />
-              <NavAction
-                icon={<Tag size={18} />}
-                label="Add Tag"
-                onClick={() => onTag?.(image.id, "new-tag")}
-              />
+              <TagPopoverAction image={image} />
               <NavAction
                 icon={<Maximize2 size={18} />}
                 label="Expand"
@@ -92,7 +100,13 @@ export const ImageCard: React.FC<ImageCardProps> = ({
               />
             </div>
           </div>
-        </button>
+
+          {similarityScore != null && (
+            <span className="absolute top-2 left-2 text-[9px] font-mono font-bold text-indigo-400 bg-indigo-500/10 border border-indigo-500/30 px-1.5 py-0.5 rounded backdrop-blur-sm">
+              {(similarityScore * 100).toFixed(0)}% match
+            </span>
+          )}
+        </div>
 
         {/* Footer */}
         <div className="p-3 bg-[#0f1115] border-t border-white/5 space-y-2">
@@ -131,17 +145,30 @@ const NavAction = ({
   icon,
   label,
   onClick,
+  disabled,
+  disabledLabel,
 }: {
   icon: React.ReactNode;
   label: string;
   onClick?: (e?: React.MouseEvent<HTMLButtonElement>) => void;
+  disabled?: boolean;
+  disabledLabel?: string;
 }) => (
   <Tooltip delayDuration={0}>
     <TooltipTrigger asChild>
       <button
         type="button"
-        onClick={(e) => onClick?.(e)}
-        className="cursor-pointer text-slate-400 hover:text-indigo-400 transition-all duration-200 hover:drop-shadow-[0_0_8px_rgba(99,102,241,0.8)] outline-none"
+        disabled={disabled}
+        onClick={(e) => {
+          if (disabled) return;
+          onClick?.(e);
+        }}
+        className={cn(
+          "transition-all duration-200 outline-none",
+          disabled
+            ? "cursor-not-allowed text-slate-700"
+            : "cursor-pointer text-slate-400 hover:text-indigo-400 hover:drop-shadow-[0_0_8px_rgba(99,102,241,0.8)]"
+        )}
       >
         {icon}
       </button>
@@ -151,7 +178,46 @@ const NavAction = ({
       sideOffset={12}
       className="bg-[#161920] border-white/10 text-[9px] font-bold uppercase tracking-widest text-indigo-400 px-2 py-1 rounded-md shadow-2xl border [&_svg]:hidden!"
     >
-      {label}
+      {disabled ? disabledLabel : label}
     </TooltipContent>
   </Tooltip>
 );
+
+const TagPopoverAction = ({ image }: { image: ImagePublic }) => {
+  const [open, setOpen] = useState(false);
+  const updateTags = useUpdateImageTags();
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <Tooltip delayDuration={0}>
+        <TooltipTrigger asChild>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              onClick={(e) => e.stopPropagation()}
+              className="cursor-pointer text-slate-400 hover:text-indigo-400 transition-all duration-200 hover:drop-shadow-[0_0_8px_rgba(99,102,241,0.8)] outline-none"
+            >
+              <Tag size={18} />
+            </button>
+          </PopoverTrigger>
+        </TooltipTrigger>
+        <TooltipContent
+          sideOffset={12}
+          className="bg-[#161920] border-white/10 text-[9px] font-bold uppercase tracking-widest text-indigo-400 px-2 py-1 rounded-md shadow-2xl border [&_svg]:hidden!"
+        >
+          Tags
+        </TooltipContent>
+      </Tooltip>
+      <PopoverContent
+        className="w-64 p-3 bg-[#161920] border-white/10"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <TagsInput
+          value={image.tags}
+          onChange={(tags) => updateTags.mutate({ id: image.id, tags })}
+          placeholder="Add a tag..."
+        />
+      </PopoverContent>
+    </Popover>
+  );
+};
