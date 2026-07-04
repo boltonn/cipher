@@ -1,3 +1,4 @@
+from cipher.datastores.postgres.repositories.comment import PostgresCommentRepository
 from cipher.datastores.postgres.repositories.contact import PostgresContactRepository
 from cipher.datastores.postgres.repositories.dataset import PostgresDatasetRepository
 from cipher.datastores.postgres.repositories.enrichment import (
@@ -13,6 +14,7 @@ from cipher.datastores.postgres.repositories.person import PostgresPersonReposit
 from cipher.datastores.postgres.repositories.user import PostgresUserRepository
 
 __all__ = [
+    "PostgresCommentRepository",
     "PostgresContactRepository",
     "PostgresDatasetRepository",
     "PostgresEnrichmentRepository",

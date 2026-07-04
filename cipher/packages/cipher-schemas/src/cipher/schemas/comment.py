@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 
-from pydantic import Field
+from pydantic import Field, computed_field
 
 from cipher.schemas.base import BaseModel
 
@@ -9,6 +9,7 @@ from cipher.schemas.base import BaseModel
 class CommentableType(StrEnum):
     DATASET = "dataset"
     IMAGE = "image"
+    PERSON = "person"
 
 
 class CommentBase(BaseModel):
@@ -31,6 +32,12 @@ class CommentUpdate(BaseModel):
     """Comment update schema."""
 
     content: str | None = Field(None, max_length=5000)
+
+    @computed_field
+    @property
+    def date_updated(self) -> datetime:
+        """Automatically set the last updated date to now."""
+        return datetime.now(UTC)
 
 
 class Comment(CommentBase):
@@ -55,3 +62,9 @@ class Comment(CommentBase):
             }
         },
     }
+
+
+class CommentPublic(Comment):
+    """Comment model with the author's display name denormalized in."""
+
+    user_name: str = Field(description="Display name of the comment's author")

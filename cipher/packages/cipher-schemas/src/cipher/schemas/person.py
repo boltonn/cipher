@@ -134,7 +134,7 @@ class PersonSimilaritySearchRequest(BaseModel):
     """
 
     embedding: FaceEmbedding = Field(description="Face embedding to search")
-    min_similarity: float | None = Field(default=None, ge=-1, le=1)
+    min_similarity: float | None = Field(default=None, ge=0, le=1)
     limit: int = Field(default=10, ge=1, le=100)
 
 
@@ -145,7 +145,7 @@ class PersonSimilarityResult(Person):
     person's representative faces was closest to the query embedding.
     """
 
-    similarity_score: float = Field(ge=-1, le=1, description="Similarity of the best-matching representative face")
+    similarity_score: float = Field(ge=0, le=1, description="Similarity of the best-matching representative face")
     matched_face_id: str = Field(description="ID of the representative face that produced this match")
 
 

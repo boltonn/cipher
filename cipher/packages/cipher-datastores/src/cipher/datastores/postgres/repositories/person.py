@@ -1,4 +1,4 @@
-from sqlalchemy import asc, delete, desc, func, or_, select, update
+from sqlalchemy import asc, delete, desc, exists, func, literal, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cipher.datastores.postgres.tables.face import FaceTable
@@ -52,12 +52,26 @@ class PostgresPersonRepository:
         update_dict = data.model_dump(exclude_unset=True, by_alias=False)
         stmt = update(PersonTable).where(PersonTable.id == person_id).values(**update_dict).returning(PersonTable)
         result = await self.session.execute(stmt)
-        await self.session.commit()
         person_table = result.scalar_one_or_none()
-        return Person.model_validate(person_table) if person_table else None
+        # Validate to the Pydantic model before commit() expires
+        # person_table's attributes -- reading them afterward would trigger
+        # a lazy load, which fails outside an awaited context (MissingGreenlet).
+        person = Person.model_validate(person_table) if person_table else None
+        await self.session.commit()
+        return person
 
     async def delete_person(self, person_id: str) -> bool:
-        """Delete a person by ID."""
+        """Delete a person by ID.
+
+        Assigned faces are kept (just unlinked via the FK) rather than
+        deleted, but their representative/primary flags must be cleared
+        first -- the DB forbids a representative face with no person.
+        """
+        await self.session.execute(
+            update(FaceTable)
+            .where(FaceTable.person_id == person_id)
+            .values(is_representative=False, is_primary=False)
+        )
         result = await self.session.execute(delete(PersonTable).where(PersonTable.id == person_id))
         await self.session.commit()
         return bool(result.rowcount)
@@ -66,10 +80,12 @@ class PostgresPersonRepository:
         """Query persons with filtering, pagination, and sorting."""
         where_clause = []
         if request.query:
+            pattern = f"%{request.query}%"
+            tag_matches = func.jsonb_array_elements_text(PersonTable.tags).table_valued("value")
             where_clause.append(
                 or_(
-                    PersonTable.name.ilike(f"%{request.query}%"),
-                    PersonTable.notes.ilike(f"%{request.query}%"),
+                    PersonTable.name.ilike(pattern),
+                    exists(select(literal(1)).select_from(tag_matches).where(tag_matches.c.value.ilike(pattern))),
                 )
             )
         if request.tags:
@@ -146,7 +162,10 @@ class PostgresPersonRepository:
         persons = [
             PersonSimilarityResult(
                 **Person.model_validate(person).model_dump(),
-                similarity_score=similarity_score,
+                # Similarity is surfaced as a 0-1 "match strength", not a raw
+                # signed cosine value: floor negative cosine similarity to 0,
+                # and cap float32 rounding overshoot (e.g. 1.0000001192...) to 1.
+                similarity_score=max(0.0, min(1.0, similarity_score)),
                 matched_face_id=face_id,
             )
             for person, face_id, similarity_score in rows

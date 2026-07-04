@@ -72,7 +72,7 @@ async def model_lifespan(app: FastAPI):
     model = AsyncTextEmbeddingModel(
         model_dir=settings.model_dir, device=settings.model_device
     )
-    app.state.model = model
+    app.state.text_embedding_model = model
     logger.info("✅ Transformer model loaded.")
     yield
     # Cleanup if needed
@@ -80,8 +80,15 @@ async def model_lifespan(app: FastAPI):
 
 
 def get_text_embedding_model(request: Request) -> AsyncTextEmbeddingModel:
-    """Get the model from the app state."""
-    return request.app.state.model
+    """Get the model from the app state.
+
+    Stored under a name distinct from other packages' model dependencies
+    (e.g. setfitcv's `app.state.image_model`, face's `app.state.face_model`)
+    -- multiple routers can be mounted on the same app, and a shared generic
+    `app.state.model` attribute would let whichever lifespan runs last
+    silently overwrite the others' model references.
+    """
+    return request.app.state.text_embedding_model
 
 
 TextEmbeddingModelDep = Annotated[

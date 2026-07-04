@@ -8,6 +8,8 @@ from cipher.schemas.dataset import (
     Dataset,
     DatasetCreate,
     DatasetsRequest,
+    DatasetStatsRequest,
+    DatasetStatsResponse,
     DatasetUpdate,
     PaginatedDatasetsResponse,
 )
@@ -57,6 +59,23 @@ async def get_datasets(
 ):
     """Get all datasets, optionally filtered by a search query, with pagination."""
     return await datastore.get_datasets(request=params)
+
+
+@router.get(
+    "/{id}/stats",
+    summary="Get aggregate file stats for a dataset",
+    response_model=DatasetStatsResponse,
+    response_model_by_alias=True,
+)
+async def get_dataset_stats(
+    id: str,
+    params: Annotated[DatasetStatsRequest, Depends()],
+    datastore: DatasetDatastoreDep,
+):
+    """Get a dataset's file stats: totals, filetype breakdowns, and a load-time histogram."""
+    if await datastore.get_dataset_by_id(dataset_id=id) is None:
+        raise HTTPException(status_code=404, detail=f"Dataset not found: {id}")
+    return await datastore.get_dataset_stats(dataset_id=id, request=params)
 
 
 @router.delete(

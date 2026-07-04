@@ -16,6 +16,11 @@ FaceEmbedding = Annotated[
     Field(min_length=FACE_EMBEDDING_DIMENSION, max_length=FACE_EMBEDDING_DIMENSION),
 ]
 
+DEFAULT_FACE_MATCH_SIMILARITY = 0.61
+"""Datastore-wide default for 'this counts as a match': the floor used
+whenever similarity search runs without an analyst-chosen threshold (e.g.
+the background matching pipeline), and the UI's default slider position."""
+
 
 class FaceAssignmentMethod(StrEnum):
     """How a face came to be linked to a person."""
@@ -29,6 +34,23 @@ class FaceSortField(StrEnum):
     QUALITY = "quality_score"
     DETECTION_CONFIDENCE = "detection_confidence"
     SIMILARITY = "similarity"
+
+
+class FaceStatus(StrEnum):
+    """At-a-glance triage status for a face.
+
+    Combines assignment, pending candidate matches, and the assigned
+    person's verification state.
+
+    UNMATCHED: no person assigned, no pending candidates either.
+    MATCHED: either assigned to a person who isn't yet verified, or not
+        assigned but has one or more pending `FaceMatch` candidates.
+    VERIFIED: assigned to a person who has been verified.
+    """
+
+    UNMATCHED = "unmatched"
+    MATCHED = "matched"
+    VERIFIED = "verified"
 
 
 class FaceBoundingBox(BaseModel):
@@ -164,7 +186,9 @@ class FacePublic(FaceBase):
 
     Carries the underlying file's `uri` denormalized in, so a frontend
     rendering a page of face thumbnails doesn't need a follow-up request
-    per face just to find the image to crop from.
+    per face just to find the image to crop from. Also carries a computed
+    `status` (and, when relevant, the top pending-match candidate) so a grid
+    of face cards doesn't need a per-card follow-up request either.
     """
 
     id: str
@@ -174,6 +198,11 @@ class FacePublic(FaceBase):
     assignment_method: FaceAssignmentMethod | None = Field(default=None)
     is_representative: bool = Field(default=False)
     is_primary: bool = Field(default=False)
+    status: FaceStatus = Field(default=FaceStatus.UNMATCHED)
+    candidate_person_id: str | None = Field(
+        default=None, description="Top pending-match candidate's person id, when not yet assigned"
+    )
+    candidate_person_name: str | None = Field(default=None)
 
     model_config = {"from_attributes": True}
 
@@ -186,6 +215,15 @@ class BaseFaceSearchParameters(BaseModel):
     unassigned_only: bool = Field(default=False, description="Only return faces with no person assigned")
     representative_only: bool = Field(default=False, description="Only return representative faces")
     min_quality: float | None = Field(default=None, ge=0, le=1)
+    min_size: int | None = Field(
+        default=None,
+        ge=0,
+        description="Minimum face crop size in pixels (shorter of width/height, using the source image's resolution)",
+    )
+    person_ids: list[str] | None = Field(
+        default=None,
+        description="Filter to faces assigned to, or with a pending match for, any of these persons",
+    )
     limit: int = Field(default=10, ge=1, le=100)
     page: int = Field(default=1, ge=1)
     sort_by: FaceSortField = Field(default=FaceSortField.DATE_CREATED)
@@ -196,7 +234,7 @@ class FaceSimilaritySearchParameters(BaseFaceSearchParameters):
     """Parameters for similarity-based face search."""
 
     sort_by: FaceSortField = Field(default=FaceSortField.SIMILARITY)
-    min_similarity: float | None = Field(default=None, ge=0, le=1)
+    min_similarity: float | None = Field(default=DEFAULT_FACE_MATCH_SIMILARITY, ge=0, le=1)
 
 
 class FaceSimilaritySearchRequest(FaceSimilaritySearchParameters):
@@ -220,7 +258,7 @@ class PaginatedFacesResponse(PaginatedResponse):
 class FaceSimilarityResult(FacePublic):
     """A face returned from a KNN search, carrying its similarity to the query."""
 
-    similarity_score: float = Field(ge=-1, le=1, description="Similarity to the query embedding")
+    similarity_score: float = Field(ge=0, le=1, description="Similarity to the query embedding")
 
 
 class PaginatedFaceSimilarityResponse(PaginatedResponse):

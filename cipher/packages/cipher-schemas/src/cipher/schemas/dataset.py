@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Literal
 from uuid import uuid4
 
 from pydantic import Field, computed_field, model_validator
@@ -8,11 +9,16 @@ from pydantic.alias_generators import to_snake
 from cipher.schemas.base import BaseModel
 from cipher.schemas.common import PaginatedResponse, SortOrder
 
+HistogramGranularity = Literal["day", "week", "month"]
+
 
 class DatasetSortField(StrEnum):
     NAME = "name"
     DATE_CREATED = "date_created"
     DATE_LAST_UPDATED = "date_last_updated"
+    FILE_COUNT = "file_count"
+    TOTAL_SIZE_BYTES = "total_size_bytes"
+    FILETYPE_COUNT = "filetype_count"
 
 
 class DatasetBase(BaseModel):
@@ -69,9 +75,25 @@ class Dataset(DatasetBase):
     }
 
 
+class DatasetSummary(Dataset):
+    """A dataset enriched with aggregate stats over its files."""
+
+    file_count: int = Field(0, description="Number of files loaded into this dataset")
+    total_size_bytes: int = Field(0, description="Total size in bytes of all files in this dataset")
+    filetype_count: int = Field(0, description="Number of distinct file types in this dataset")
+
+
 class DatasetsRequest(BaseModel):
     query: str | None = Field(
         None, description="Optional search query to filter datasets"
+    )
+    date_created_from: datetime | None = Field(None, description="Filter datasets created after this date")
+    date_created_to: datetime | None = Field(None, description="Filter datasets created before this date")
+    date_last_updated_from: datetime | None = Field(
+        None, description="Filter datasets last updated after this date"
+    )
+    date_last_updated_to: datetime | None = Field(
+        None, description="Filter datasets last updated before this date"
     )
     limit: int = Field(10, description="Number of datasets to return", ge=1, le=100)
     page: int = Field(1, description="Page number for pagination", ge=1)
@@ -95,4 +117,40 @@ class DatasetsRequest(BaseModel):
 
 
 class PaginatedDatasetsResponse(PaginatedResponse):
-    data: list[Dataset] = Field(description="List of datasets on the current page")
+    data: list[DatasetSummary] = Field(description="List of datasets on the current page")
+
+
+class FiletypeBreakdownItem(BaseModel):
+    """File count for a single filetype or filetype group."""
+
+    filetype: str
+    count: int
+
+
+class LoadHistogramBucket(BaseModel):
+    """File count for a single time bucket, e.g. one day/week/month."""
+
+    date_bucket: datetime
+    count: int
+
+
+class DatasetStatsRequest(BaseModel):
+    """Date range and bucket granularity for a dataset's stats breakdown."""
+
+    date_from: datetime | None = Field(None, description="Only include files loaded on/after this date")
+    date_to: datetime | None = Field(None, description="Only include files loaded on/before this date")
+    granularity: HistogramGranularity = Field("day", description="Time bucket size for the load histogram")
+
+
+class DatasetStatsResponse(BaseModel):
+    """Aggregate stats for a dataset's files, scoped to the requested date range."""
+
+    total_files: int = Field(description="Total files matching the date range")
+    total_size_bytes: int = Field(description="Total size in bytes of files matching the date range")
+    by_filetype: list[FiletypeBreakdownItem] = Field(description="File count broken down by filetype")
+    by_filetype_group: list[FiletypeBreakdownItem] = Field(
+        description="File count broken down by filetype group"
+    )
+    loaded_over_time: list[LoadHistogramBucket] = Field(
+        description="File count per time bucket, ordered chronologically"
+    )

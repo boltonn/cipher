@@ -1,4 +1,5 @@
 from enum import StrEnum
+from pathlib import Path
 
 from pydantic import Field
 from pydantic_settings import SettingsConfigDict
@@ -23,5 +24,10 @@ class Settings(BaseServiceSettings):
         None, description="Postgres configuration object"
     )
     mode: DevelopmentMode = Field(DevelopmentMode.DEV, description="Development mode")
+    person_reference_dir: Path = Field(
+        ...,
+        description="Local directory where uploaded person reference photos are stored",
+        alias="PERSON_REFERENCE_DIR",
+    )
 
     model_config = SettingsConfigDict(env_file=".env", extra="allow")

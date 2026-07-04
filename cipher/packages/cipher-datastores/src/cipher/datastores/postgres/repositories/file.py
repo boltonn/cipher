@@ -48,6 +48,7 @@ class PostgresFileRepository:
 
         result = await self.session.execute(stmt)
         file_id = result.scalar_one_or_none()
+        await self.session.commit()
 
         if file_id:
             # New file was inserted

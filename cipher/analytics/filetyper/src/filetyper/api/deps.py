@@ -36,7 +36,7 @@ class AsyncFileTyper(FileTyper):
 async def model_lifespan(app: FastAPI):
     """Fastapi lifespan context manager to load and cleanup the model."""
     model = AsyncFileTyper()
-    app.state.model = model
+    app.state.filetyper_model = model
     logger.info("✅ Magika loaded.")
     yield
     # Cleanup if needed
@@ -45,8 +45,14 @@ async def model_lifespan(app: FastAPI):
 
 # Dependency to access the model
 def get_filetyper_model(request: Request) -> AsyncFileTyper:
-    """Dependency to get the model from the app state."""
-    return request.app.state.model
+    """Dependency to get the model from the app state.
+
+    Stored under a name distinct from other packages' model dependencies
+    -- multiple routers can be mounted on the same app, and a shared
+    generic `app.state.model` attribute would let whichever lifespan runs
+    last silently overwrite the others' model references.
+    """
+    return request.app.state.filetyper_model
 
 
 FileTyperDep = Annotated[AsyncFileTyper, Depends(get_filetyper_model)]

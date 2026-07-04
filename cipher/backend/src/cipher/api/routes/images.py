@@ -15,8 +15,11 @@ from cipher.schemas.common import SortOrder
 from cipher.schemas.image import (
     BaseImageSearchParameters,
     Image,
+    ImagePublic,
     ImageSimilaritySearchParameters,
     ImageSimilaritySearchRequest,
+    ImageUpdate,
+    PaginatedImageSimilarityResponse,
     PaginatedImagesResponse,
     TextImageKnnSearchRequest,
 )
@@ -27,6 +30,16 @@ router = APIRouter(
     responses={418: {"description": "I'm a teapot"}},
     lifespan=model_lifespan,
 )
+
+
+@router.get(
+    "/filetypes",
+    summary="Get the distinct file types present among images",
+    response_model=list[str],
+)
+async def get_image_filetypes(datastore: ImageDatastoreDep):
+    """Get the distinct set of file types actually present among images."""
+    return await datastore.get_filetypes()
 
 
 @router.get("/{id}", summary="Get image by ID", response_model=Image)
@@ -51,7 +64,7 @@ async def download_image_by_id(id: str, datastore: ImageDatastoreDep):
 @router.get(
     "/search/{id}",
     summary="Perform image similarity search by image ID",
-    response_model=PaginatedImagesResponse,
+    response_model=PaginatedImageSimilarityResponse,
     response_model_by_alias=True,
 )
 async def similarity_search_images_by_id(
@@ -62,7 +75,9 @@ async def similarity_search_images_by_id(
     """Get all images, optionally filtered by a search query, with pagination."""
     embedding = await datastore.get_embedding_by_image_id(image_id=id)
     if embedding is None:
-        raise HTTPException(status_code=404, detail=f"Image not found: {id}")
+        if await datastore.get_image_by_id(image_id=id) is None:
+            raise HTTPException(status_code=404, detail=f"Image not found: {id}")
+        raise HTTPException(status_code=422, detail=f"Image has not been embedded yet: {id}")
 
     # dont need to validate again
     search_request = ImageSimilaritySearchRequest.model_validate(
@@ -74,7 +89,7 @@ async def similarity_search_images_by_id(
 @router.post(
     "/search/text",
     summary="Perform image similarity search by image ID",
-    response_model=PaginatedImagesResponse,
+    response_model=PaginatedImageSimilarityResponse,
     response_model_by_alias=True,
 )
 async def similarity_search_images_by_text(
@@ -110,7 +125,7 @@ async def get_images(
 @router.post(
     "/search/image",
     summary="Perform image similarity search by uploading an image",
-    response_model=PaginatedImagesResponse,
+    response_model=PaginatedImageSimilarityResponse,
     response_model_by_alias=True,
 )
 async def similarity_search_images_by_upload(
@@ -130,6 +145,20 @@ async def similarity_search_images_by_upload(
         {**params.model_dump(exclude_none=True), "embedding": embedding}
     )
     return await datastore.search_similar_images(request=search_request)
+
+
+@router.patch(
+    "/{id}",
+    summary="Update an image (e.g. tags)",
+    response_model=ImagePublic,
+    response_model_by_alias=True,
+)
+async def update_image(id: str, data: ImageUpdate, datastore: ImageDatastoreDep):
+    """Partially update an image (e.g. tags)."""
+    image = await datastore.update_image(image_id=id, data=data)
+    if image is None:
+        raise HTTPException(status_code=404, detail=f"Image not found: {id}")
+    return image
 
 
 @router.delete("/{id}", summary="Delete image by ID")

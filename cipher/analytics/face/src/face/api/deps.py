@@ -27,7 +27,7 @@ async def model_lifespan(app: FastAPI):
         model_dir=settings.model_dir,
         device=settings.model_device or ModelDevice.CPU,
     )
-    app.state.model = model
+    app.state.face_model = model
     logger.info("✅ InsightFace model loaded.")
     yield
     # Cleanup if needed
@@ -36,8 +36,14 @@ async def model_lifespan(app: FastAPI):
 
 # Dependency to access the model
 def get_face_model(request: Request) -> AsyncInsightFaceModel:
-    """Dependency to get the model from the app state."""
-    return request.app.state.model
+    """Dependency to get the model from the app state.
+
+    Stored under a name distinct from setfitcv's `app.state.image_model` --
+    both routers can be mounted on the same app, and a shared generic
+    `app.state.model` attribute would let whichever lifespan runs last
+    silently overwrite the other's model reference.
+    """
+    return request.app.state.face_model
 
 
 FaceModelDep = Annotated[AsyncInsightFaceModel, Depends(get_face_model)]

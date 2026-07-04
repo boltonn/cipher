@@ -1,5 +1,5 @@
 import numpy as np
-from sqlalchemy import asc, delete, desc, func, select, text
+from sqlalchemy import asc, delete, desc, exists, func, literal, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,10 +11,24 @@ from cipher.schemas.image import (
     Image,
     ImageCreate,
     ImagePublic,
+    ImageSimilarityResult,
     ImageSimilaritySearchRequest,
     ImageSortField,
+    ImageUpdate,
+    PaginatedImageSimilarityResponse,
     PaginatedImagesResponse,
 )
+
+
+def _tags_overlap_expr(tags: list[str]):
+    """Build a "some element of ImageTable.tags is in `tags`" filter.
+
+    ImageTable.tags is JSONB (not a native Postgres array), so the array
+    comparator's `.overlap()` isn't available -- unnest it with
+    jsonb_array_elements_text and check membership instead.
+    """
+    tag_elements = func.jsonb_array_elements_text(ImageTable.tags).table_valued("value")
+    return exists(select(literal(1)).select_from(tag_elements).where(tag_elements.c.value.in_(tags)))
 
 
 class PostgresImageRepository:
@@ -44,6 +58,16 @@ class PostgresImageRepository:
         """Get total count of images."""
         result = await self.session.execute(select(func.count(ImageTable.id)))
         return result.scalar_one()
+
+    async def get_filetypes(self) -> list[str]:
+        """Get the distinct set of file types actually present among images."""
+        result = await self.session.execute(
+            select(FileTable.filetype)
+            .join(ImageTable, ImageTable.file_id == FileTable.id)
+            .distinct()
+            .order_by(FileTable.filetype)
+        )
+        return list(result.scalars().all())
 
     async def delete_image(self, image_id: str) -> bool:
         """Delete an image by ID."""
@@ -76,6 +100,22 @@ class PostgresImageRepository:
         )
         image_table = result.scalar_one_or_none()
         return Image.model_validate(image_table) if image_table else None
+
+    async def update_image(self, image_id: str, data: ImageUpdate) -> Image | None:
+        """Partially update an image (e.g. tags)."""
+        result = await self.session.execute(
+            select(ImageTable).where(ImageTable.id == image_id)
+        )
+        image_table = result.scalar_one_or_none()
+        if image_table is None:
+            return None
+
+        for field, value in data.model_dump(exclude_unset=True).items():
+            setattr(image_table, field, value)
+
+        await self.session.commit()
+        await self.session.refresh(image_table)
+        return Image.model_validate(image_table)
 
     async def get_image_uri(self, image_id: str) -> UriResponse | None:
         """Retrieve image URI by ID."""
@@ -184,6 +224,9 @@ class PostgresImageRepository:
             FileTable, ImageTable.file_id == FileTable.id
         )
 
+        if request.datasets:
+            base_query = base_query.where(FileTable.dataset_id.in_(request.datasets))
+
         if request.filetypes:
             base_query = base_query.where(FileTable.filetype.in_(request.filetypes))
 
@@ -194,7 +237,7 @@ class PostgresImageRepository:
             base_query = base_query.where(ImageTable.date_taken <= request.date_to)
 
         if request.tags:
-            base_query = base_query.where(ImageTable.tags.overlap(request.tags))
+            base_query = base_query.where(_tags_overlap_expr(request.tags))
 
         count_query = select(func.count()).select_from(base_query.subquery())
         count_result = await self.session.execute(count_query)
@@ -224,11 +267,20 @@ class PostgresImageRepository:
 
     async def search_similar_images(
         self, request: ImageSimilaritySearchRequest
-    ) -> PaginatedImagesResponse:
-        """Retrieve images by knn similarity search using inner product."""
+    ) -> PaginatedImageSimilarityResponse:
+        """Retrieve images by knn similarity search using inner product.
+
+        `max_inner_product` (pgvector's `<#>`) is a *distance*: it returns the
+        negative inner product, so smaller means more similar. Similarity
+        sort therefore always orders ascending on it regardless of
+        `sort_order` -- that toggle only applies to the date-sort branch --
+        mirroring `PostgresFaceRepository.search_similar_faces`.
+        """
         distance_expr = ImageTable.embedding.max_inner_product(request.embedding)
 
         filters = []
+        if request.datasets:
+            filters.append(FileTable.dataset_id.in_(request.datasets))
         if request.filetypes:
             filters.append(FileTable.filetype.in_(request.filetypes))
         if request.date_from:
@@ -236,7 +288,7 @@ class PostgresImageRepository:
         if request.date_to:
             filters.append(ImageTable.date_taken <= request.date_to)
         if request.tags:
-            filters.append(ImageTable.tags.overlap(request.tags))
+            filters.append(_tags_overlap_expr(request.tags))
         if request.min_similarity is not None:
             filters.append(distance_expr <= -request.min_similarity)
 
@@ -249,16 +301,13 @@ class PostgresImageRepository:
         total_count = count_result.scalar_one()
 
         base_query = (
-            select(ImageTable, distance_expr.label("neg_ip"))
+            select(ImageTable, (-distance_expr).label("similarity_score"))
             .join(FileTable, ImageTable.file_id == FileTable.id)
             .where(*filters)
         )
 
         if request.sort_by == ImageSortField.SIMILARITY:
-            if request.sort_order == SortOrder.DESC:
-                base_query = base_query.order_by(desc(distance_expr))
-            else:
-                base_query = base_query.order_by(asc(distance_expr))
+            base_query = base_query.order_by(asc(distance_expr))
         else:
             sort_col = ImageTable.date_taken
             if request.sort_order == SortOrder.DESC:
@@ -272,11 +321,17 @@ class PostgresImageRepository:
         result = await self.session.execute(paginated_query)
         rows = list(result.all())
 
-        images = [ImagePublic.model_validate(image) for image, neg_ip in rows]
+        images = [
+            ImageSimilarityResult.model_validate({
+                **ImagePublic.model_validate(image).model_dump(),
+                "similarity_score": max(0.0, min(1.0, similarity_score)),
+            })
+            for image, similarity_score in rows
+        ]
 
         total_pages = (total_count + request.limit - 1) // request.limit
 
-        return PaginatedImagesResponse(
+        return PaginatedImageSimilarityResponse(
             total=total_count,
             page=request.page,
             limit=request.limit,

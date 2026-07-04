@@ -27,7 +27,7 @@ class InsightFaceModel:
         self,
         model_dir: Path,
         device: ModelDevice,
-        det_thresh: float = 0.5,
+        det_thresh: float = 0.3,
         det_size: tuple[int] = (640, 640),
         get_pose: bool = False,
         get_age_and_sex: bool = False,

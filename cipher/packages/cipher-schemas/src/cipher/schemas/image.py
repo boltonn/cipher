@@ -210,3 +210,15 @@ class PaginatedImagesResponse(PaginatedResponse):
     """Paginated response for images."""
 
     data: list[ImagePublic] = Field(..., description="List of images")
+
+
+class ImageSimilarityResult(ImagePublic):
+    """An image returned from a KNN search, carrying its similarity to the query."""
+
+    similarity_score: float = Field(ge=0, le=1, description="Similarity to the query embedding")
+
+
+class PaginatedImageSimilarityResponse(PaginatedResponse):
+    """Paginated response for image similarity search."""
+
+    data: list[ImageSimilarityResult] = Field(description="List of images with similarity scores")

@@ -1,0 +1,2836 @@
+[
+    {
+        "name": "3ds",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": [
+            "3ds"
+        ]
+    },
+    {
+        "name": "3dsm",
+        "group": "image",
+        "mime_type": "application/x-3ds",
+        "extensions": [
+            "3ds"
+        ]
+    },
+    {
+        "name": "3dsx",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": [
+            "3dsx"
+        ]
+    },
+    {
+        "name": "3gp",
+        "group": "video",
+        "mime_type": "video/3gpp",
+        "extensions": [
+            "3gp"
+        ]
+    },
+    {
+        "name": "3mf",
+        "group": "image",
+        "mime_type": "application/vnd.ms-package.3dmanufacturing-3dmodel+xml",
+        "extensions": [
+            "3mf"
+        ]
+    },
+    {
+        "name": "abnf",
+        "group": "unknown",
+        "mime_type": "text/plain",
+        "extensions": [
+            "abnf"
+        ]
+    },
+    {
+        "name": "ace",
+        "group": "archive",
+        "mime_type": "application/x-ace-compressed",
+        "extensions": [
+            "ace"
+        ]
+    },
+    {
+        "name": "ada",
+        "group": "code",
+        "mime_type": "text/x-ada",
+        "extensions": []
+    },
+    {
+        "name": "aff",
+        "group": "unknown",
+        "mime_type": "text/plain",
+        "extensions": [
+            "aff"
+        ]
+    },
+    {
+        "name": "ai",
+        "group": "document",
+        "mime_type": "application/pdf",
+        "extensions": [
+            "ai"
+        ]
+    },
+    {
+        "name": "aidl",
+        "group": "unknown",
+        "mime_type": "text/plain",
+        "extensions": [
+            "aidl"
+        ]
+    },
+    {
+        "name": "algol68",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": [
+            "a68"
+        ]
+    },
+    {
+        "name": "ani",
+        "group": "unknown",
+        "mime_type": "application/x-navi-animation",
+        "extensions": [
+            "ani"
+        ]
+    },
+    {
+        "name": "apk",
+        "group": "executable",
+        "mime_type": "application/vnd.android.package-archive",
+        "extensions": [
+            "apk"
+        ]
+    },
+    {
+        "name": "applebplist",
+        "group": "application",
+        "mime_type": "application/x-bplist",
+        "extensions": [
+            "bplist",
+            "plist"
+        ]
+    },
+    {
+        "name": "appledouble",
+        "group": "unknown",
+        "mime_type": "multipart/appledouble",
+        "extensions": []
+    },
+    {
+        "name": "appleplist",
+        "group": "application",
+        "mime_type": "application/x-plist",
+        "extensions": [
+            "plist"
+        ]
+    },
+    {
+        "name": "applesingle",
+        "group": "unknown",
+        "mime_type": "application/applefile",
+        "extensions": []
+    },
+    {
+        "name": "ar",
+        "group": "archive",
+        "mime_type": "application/x-archive",
+        "extensions": []
+    },
+    {
+        "name": "arc",
+        "group": "archive",
+        "mime_type": "application/x-arc",
+        "extensions": [
+            "arc"
+        ]
+    },
+    {
+        "name": "arj",
+        "group": "archive",
+        "mime_type": "application/arj",
+        "extensions": []
+    },
+    {
+        "name": "arrow",
+        "group": "unknown",
+        "mime_type": "vnd.apache.arrow.file",
+        "extensions": []
+    },
+    {
+        "name": "asc",
+        "group": "text",
+        "mime_type": "application/pgp-signature",
+        "extensions": [
+            "asc"
+        ]
+    },
+    {
+        "name": "asd",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": []
+    },
+    {
+        "name": "asf",
+        "group": "application",
+        "mime_type": "video/x-ms-wma",
+        "extensions": [
+            "asf"
+        ]
+    },
+    {
+        "name": "asm",
+        "group": "code",
+        "mime_type": "text/x-asm",
+        "extensions": [
+            "s",
+            "S",
+            "asm"
+        ]
+    },
+    {
+        "name": "asp",
+        "group": "code",
+        "mime_type": "text/html",
+        "extensions": [
+            "aspx",
+            "asp"
+        ]
+    },
+    {
+        "name": "au",
+        "group": "audio",
+        "mime_type": "audio/basic",
+        "extensions": [
+            "au"
+        ]
+    },
+    {
+        "name": "autohotkey",
+        "group": "code",
+        "mime_type": "text/plain",
+        "extensions": []
+    },
+    {
+        "name": "autoit",
+        "group": "code",
+        "mime_type": "text/plain",
+        "extensions": [
+            "au3"
+        ]
+    },
+    {
+        "name": "avi",
+        "group": "video",
+        "mime_type": "video/x-msvideo",
+        "extensions": [
+            "avi"
+        ]
+    },
+    {
+        "name": "avif",
+        "group": "video",
+        "mime_type": "image/avif",
+        "extensions": [
+            "avif",
+            "avifs"
+        ]
+    },
+    {
+        "name": "avro",
+        "group": "unknown",
+        "mime_type": "application/x-avro-binary",
+        "extensions": [
+            "avro"
+        ]
+    },
+    {
+        "name": "awk",
+        "group": "code",
+        "mime_type": "text/plain",
+        "extensions": [
+            "awk"
+        ]
+    },
+    {
+        "name": "ax",
+        "group": "executable",
+        "mime_type": "application/x-dosexec",
+        "extensions": [
+            "ax"
+        ]
+    },
+    {
+        "name": "batch",
+        "group": "code",
+        "mime_type": "text/x-msdos-batch",
+        "extensions": [
+            "bat"
+        ]
+    },
+    {
+        "name": "bazel",
+        "group": "code",
+        "mime_type": "text/plain",
+        "extensions": [
+            "bzl"
+        ]
+    },
+    {
+        "name": "bcad",
+        "group": "document",
+        "mime_type": "application/octet-stream",
+        "extensions": [
+            "bdf"
+        ]
+    },
+    {
+        "name": "bib",
+        "group": "text",
+        "mime_type": "text/x-bibtex",
+        "extensions": [
+            "bib"
+        ]
+    },
+    {
+        "name": "bmp",
+        "group": "image",
+        "mime_type": "image/bmp",
+        "extensions": [
+            "bmp"
+        ]
+    },
+    {
+        "name": "bpg",
+        "group": "image",
+        "mime_type": "image/bpg",
+        "extensions": [
+            "bpg"
+        ]
+    },
+    {
+        "name": "bpl",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": [
+            "bpl"
+        ]
+    },
+    {
+        "name": "brainfuck",
+        "group": "code",
+        "mime_type": "text/x-brainfuck",
+        "extensions": [
+            "b",
+            "bf"
+        ]
+    },
+    {
+        "name": "brf",
+        "group": "text",
+        "mime_type": "text/plain",
+        "extensions": [
+            "brf",
+            "bfm"
+        ]
+    },
+    {
+        "name": "bzip",
+        "group": "archive",
+        "mime_type": "application/x-bzip2",
+        "extensions": [
+            "bz2",
+            "tbz2",
+            "tar.bz2"
+        ]
+    },
+    {
+        "name": "bzip3",
+        "group": "archive",
+        "mime_type": "application/x-bzip3",
+        "extensions": [
+            "bz3"
+        ]
+    },
+    {
+        "name": "c",
+        "group": "code",
+        "mime_type": "text/x-c",
+        "extensions": [
+            "c"
+        ]
+    },
+    {
+        "name": "cab",
+        "group": "archive",
+        "mime_type": "application/vnd.ms-cab-compressed",
+        "extensions": [
+            "cab"
+        ]
+    },
+    {
+        "name": "cad",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": []
+    },
+    {
+        "name": "cat",
+        "group": "application",
+        "mime_type": "application/octet-stream",
+        "extensions": [
+            "cat"
+        ]
+    },
+    {
+        "name": "cdf",
+        "group": "archive",
+        "mime_type": "application/octet-stream",
+        "extensions": []
+    },
+    {
+        "name": "chm",
+        "group": "application",
+        "mime_type": "application/chm",
+        "extensions": [
+            "chm"
+        ]
+    },
+    {
+        "name": "clojure",
+        "group": "code",
+        "mime_type": "text/x-clojure",
+        "extensions": [
+            "clj",
+            "cljs",
+            "cljc",
+            "cljr"
+        ]
+    },
+    {
+        "name": "cmake",
+        "group": "code",
+        "mime_type": "text/x-cmake",
+        "extensions": [
+            "cmake"
+        ]
+    },
+    {
+        "name": "cobol",
+        "group": "code",
+        "mime_type": "text/x-cobol",
+        "extensions": [
+            "cbl",
+            "cob",
+            "cpy",
+            "CBL",
+            "COB",
+            "CPY"
+        ]
+    },
+    {
+        "name": "coff",
+        "group": "executable",
+        "mime_type": "application/x-coff",
+        "extensions": [
+            "obj",
+            "o"
+        ]
+    },
+    {
+        "name": "coffeescript",
+        "group": "code",
+        "mime_type": "text/coffeescript",
+        "extensions": [
+            "coffee"
+        ]
+    },
+    {
+        "name": "com",
+        "group": "executable",
+        "mime_type": "application/x-dosexec",
+        "extensions": []
+    },
+    {
+        "name": "cpl",
+        "group": "executable",
+        "mime_type": "application/x-dosexec",
+        "extensions": [
+            "cpl"
+        ]
+    },
+    {
+        "name": "cpp",
+        "group": "code",
+        "mime_type": "text/x-c",
+        "extensions": [
+            "cc",
+            "cpp",
+            "cxx",
+            "c++",
+            "cppm",
+            "ixx"
+        ]
+    },
+    {
+        "name": "crt",
+        "group": "text",
+        "mime_type": "application/x-x509-ca-cert",
+        "extensions": [
+            "der",
+            "cer",
+            "crt"
+        ]
+    },
+    {
+        "name": "crx",
+        "group": "executable",
+        "mime_type": "application/x-chrome-extension",
+        "extensions": [
+            "crx"
+        ]
+    },
+    {
+        "name": "cs",
+        "group": "code",
+        "mime_type": "text/plain",
+        "extensions": [
+            "cs",
+            "csx"
+        ]
+    },
+    {
+        "name": "csproj",
+        "group": "code",
+        "mime_type": "text/plain",
+        "extensions": [
+            "csproj"
+        ]
+    },
+    {
+        "name": "css",
+        "group": "code",
+        "mime_type": "text/css",
+        "extensions": [
+            "css"
+        ]
+    },
+    {
+        "name": "csv",
+        "group": "code",
+        "mime_type": "text/csv",
+        "extensions": [
+            "csv"
+        ]
+    },
+    {
+        "name": "ctl",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": []
+    },
+    {
+        "name": "dart",
+        "group": "code",
+        "mime_type": "text/plain",
+        "extensions": [
+            "dart"
+        ]
+    },
+    {
+        "name": "deb",
+        "group": "archive",
+        "mime_type": "application/vnd.debian.binary-package",
+        "extensions": [
+            "deb"
+        ]
+    },
+    {
+        "name": "dex",
+        "group": "executable",
+        "mime_type": "application/x-android-dex",
+        "extensions": [
+            "dex"
+        ]
+    },
+    {
+        "name": "dey",
+        "group": "executable",
+        "mime_type": "application/x-android-dey",
+        "extensions": []
+    },
+    {
+        "name": "dicom",
+        "group": "image",
+        "mime_type": "application/dicom",
+        "extensions": [
+            "dcm"
+        ]
+    },
+    {
+        "name": "diff",
+        "group": "text",
+        "mime_type": "text/plain",
+        "extensions": [
+            "diff",
+            "patch"
+        ]
+    },
+    {
+        "name": "directory",
+        "group": "inode",
+        "mime_type": "inode/directory",
+        "extensions": []
+    },
+    {
+        "name": "django",
+        "group": "code",
+        "mime_type": "text/x-django",
+        "extensions": []
+    },
+    {
+        "name": "dll",
+        "group": "executable",
+        "mime_type": "application/x-dosexec",
+        "extensions": [
+            "dll"
+        ]
+    },
+    {
+        "name": "dm",
+        "group": "code",
+        "mime_type": "text/plain",
+        "extensions": [
+            "dm"
+        ]
+    },
+    {
+        "name": "dmg",
+        "group": "archive",
+        "mime_type": "application/x-apple-diskimage",
+        "extensions": [
+            "dmg"
+        ]
+    },
+    {
+        "name": "dmigd",
+        "group": "text",
+        "mime_type": "text/plain",
+        "extensions": [
+            "dm"
+        ]
+    },
+    {
+        "name": "dmscript",
+        "group": "code",
+        "mime_type": "text/plain",
+        "extensions": [
+            "s"
+        ]
+    },
+    {
+        "name": "doc",
+        "group": "document",
+        "mime_type": "application/msword",
+        "extensions": [
+            "doc"
+        ]
+    },
+    {
+        "name": "dockerfile",
+        "group": "code",
+        "mime_type": "text/x-dockerfile",
+        "extensions": []
+    },
+    {
+        "name": "docx",
+        "group": "document",
+        "mime_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "extensions": [
+            "docx",
+            "docm"
+        ]
+    },
+    {
+        "name": "dosmbr",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": []
+    },
+    {
+        "name": "dotx",
+        "group": "document",
+        "mime_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.template",
+        "extensions": [
+            "dotx"
+        ]
+    },
+    {
+        "name": "dsstore",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": []
+    },
+    {
+        "name": "dwg",
+        "group": "image",
+        "mime_type": "image/x-dwg",
+        "extensions": [
+            "dwg"
+        ]
+    },
+    {
+        "name": "dxf",
+        "group": "image",
+        "mime_type": "image/vnd.dxf",
+        "extensions": [
+            "dxf"
+        ]
+    },
+    {
+        "name": "dylib",
+        "group": "executable",
+        "mime_type": "application/x-mach-o",
+        "extensions": [
+            "dylib"
+        ]
+    },
+    {
+        "name": "ebml",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": []
+    },
+    {
+        "name": "elf",
+        "group": "executable",
+        "mime_type": "application/x-executable-elf",
+        "extensions": [
+            "elf"
+        ]
+    },
+    {
+        "name": "elixir",
+        "group": "code",
+        "mime_type": "text/plain",
+        "extensions": [
+            "exs"
+        ]
+    },
+    {
+        "name": "emf",
+        "group": "application",
+        "mime_type": "application/octet-stream",
+        "extensions": [
+            "emf"
+        ]
+    },
+    {
+        "name": "eml",
+        "group": "text",
+        "mime_type": "message/rfc822",
+        "extensions": [
+            "eml"
+        ]
+    },
+    {
+        "name": "empty",
+        "group": "inode",
+        "mime_type": "inode/x-empty",
+        "extensions": []
+    },
+    {
+        "name": "epub",
+        "group": "document",
+        "mime_type": "application/epub+zip",
+        "extensions": [
+            "epub"
+        ]
+    },
+    {
+        "name": "erb",
+        "group": "code",
+        "mime_type": "text/x-ruby",
+        "extensions": [
+            "erb"
+        ]
+    },
+    {
+        "name": "erlang",
+        "group": "code",
+        "mime_type": "text/x-erlang",
+        "extensions": [
+            "erl",
+            "hrl"
+        ]
+    },
+    {
+        "name": "ese",
+        "group": "unknown",
+        "mime_type": "application/x-ms-ese",
+        "extensions": [
+            "dat"
+        ]
+    },
+    {
+        "name": "exe",
+        "group": "executable",
+        "mime_type": "application/x-dosexec",
+        "extensions": [
+            "exe"
+        ]
+    },
+    {
+        "name": "exp",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": []
+    },
+    {
+        "name": "flac",
+        "group": "audio",
+        "mime_type": "audio/flac",
+        "extensions": [
+            "flac"
+        ]
+    },
+    {
+        "name": "flutter",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": []
+    },
+    {
+        "name": "flv",
+        "group": "video",
+        "mime_type": "video/x-flv",
+        "extensions": [
+            "flv"
+        ]
+    },
+    {
+        "name": "fortran",
+        "group": "document",
+        "mime_type": "text/x-fortran",
+        "extensions": [
+            "f90",
+            "f95",
+            "f03",
+            "F90"
+        ]
+    },
+    {
+        "name": "fpx",
+        "group": "image",
+        "mime_type": "application/octet-stream",
+        "extensions": [
+            "fpx"
+        ]
+    },
+    {
+        "name": "gemfile",
+        "group": "code",
+        "mime_type": "text/plain",
+        "extensions": []
+    },
+    {
+        "name": "gemspec",
+        "group": "code",
+        "mime_type": "text/plain",
+        "extensions": [
+            "gemspec"
+        ]
+    },
+    {
+        "name": "gif",
+        "group": "image",
+        "mime_type": "image/gif",
+        "extensions": [
+            "gif"
+        ],
+        "magic": "GIF",
+        "offset": 0
+    },
+    {
+        "name": "gitattributes",
+        "group": "code",
+        "mime_type": "text/plain",
+        "extensions": []
+    },
+    {
+        "name": "gitmodules",
+        "group": "code",
+        "mime_type": "text/plain",
+        "extensions": []
+    },
+    {
+        "name": "gleam",
+        "group": "code",
+        "mime_type": "text/plain",
+        "extensions": [
+            "gleam"
+        ]
+    },
+    {
+        "name": "go",
+        "group": "code",
+        "mime_type": "text/x-golang",
+        "extensions": [
+            "go"
+        ]
+    },
+    {
+        "name": "gpx",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": [
+            "gpx"
+        ]
+    },
+    {
+        "name": "gradle",
+        "group": "code",
+        "mime_type": "text/x-groovy",
+        "extensions": [
+            "gradle"
+        ]
+    },
+    {
+        "name": "groovy",
+        "group": "code",
+        "mime_type": "text/x-groovy",
+        "extensions": [
+            "groovy"
+        ]
+    },
+    {
+        "name": "gzip",
+        "group": "archive",
+        "mime_type": "application/gzip",
+        "extensions": [
+            "gz",
+            "gzip",
+            "tgz",
+            "tar.gz"
+        ]
+    },
+    {
+        "name": "h",
+        "group": "code",
+        "mime_type": "text/x-c",
+        "extensions": [
+            "h"
+        ]
+    },
+    {
+        "name": "h5",
+        "group": "archive",
+        "mime_type": "application/x-hdf5",
+        "extensions": [
+            "h5",
+            "hdf5"
+        ]
+    },
+    {
+        "name": "handlebars",
+        "group": "code",
+        "mime_type": "text/x-handlebars-template",
+        "extensions": [
+            "hbs",
+            "handlebars"
+        ]
+    },
+    {
+        "name": "haskell",
+        "group": "code",
+        "mime_type": "text/plain",
+        "extensions": [
+            "hs",
+            "lhs"
+        ]
+    },
+    {
+        "name": "hcl",
+        "group": "code",
+        "mime_type": "text/x-hcl",
+        "extensions": [
+            "hcl"
+        ]
+    },
+    {
+        "name": "heif",
+        "group": "image",
+        "mime_type": "image/heic",
+        "extensions": [
+            "heif",
+            "heifs",
+            "heic",
+            "heics"
+        ]
+    },
+    {
+        "name": "hfs",
+        "group": "unknown",
+        "mime_type": "application/x-hfs",
+        "extensions": [
+            "hfs"
+        ]
+    },
+    {
+        "name": "hlp",
+        "group": "application",
+        "mime_type": "application/winhlp",
+        "extensions": [
+            "hlp"
+        ]
+    },
+    {
+        "name": "hpp",
+        "group": "code",
+        "mime_type": "text/x-h",
+        "extensions": [
+            "hh",
+            "hpp",
+            "hxx",
+            "h++"
+        ]
+    },
+    {
+        "name": "hta",
+        "group": "code",
+        "mime_type": "application/hta",
+        "extensions": [
+            "hta"
+        ]
+    },
+    {
+        "name": "htaccess",
+        "group": "code",
+        "mime_type": "text/x-apache-conf",
+        "extensions": []
+    },
+    {
+        "name": "html",
+        "group": "code",
+        "mime_type": "text/html",
+        "extensions": [
+            "html",
+            "htm",
+            "xhtml",
+            "xht"
+        ]
+    },
+    {
+        "name": "hve",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": []
+    },
+    {
+        "name": "hwp",
+        "group": "document",
+        "mime_type": "application/x-hwp",
+        "extensions": [
+            "hwp"
+        ]
+    },
+    {
+        "name": "icc",
+        "group": "unknown",
+        "mime_type": "application/vnd.iccprofile",
+        "extensions": [
+            "icc"
+        ]
+    },
+    {
+        "name": "icns",
+        "group": "image",
+        "mime_type": "image/x-icns",
+        "extensions": [
+            "icns"
+        ]
+    },
+    {
+        "name": "ico",
+        "group": "image",
+        "mime_type": "image/vnd.microsoft.icon",
+        "extensions": [
+            "ico"
+        ]
+    },
+    {
+        "name": "ics",
+        "group": "application",
+        "mime_type": "text/calendar",
+        "extensions": [
+            "ics"
+        ]
+    },
+    {
+        "name": "ignorefile",
+        "group": "code",
+        "mime_type": "text/plain",
+        "extensions": []
+    },
+    {
+        "name": "img",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": [
+            "img"
+        ]
+    },
+    {
+        "name": "ini",
+        "group": "text",
+        "mime_type": "text/plain",
+        "extensions": [
+            "ini"
+        ]
+    },
+    {
+        "name": "internetshortcut",
+        "group": "application",
+        "mime_type": "application/x-mswinurl",
+        "extensions": [
+            "url"
+        ]
+    },
+    {
+        "name": "iosapp",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": []
+    },
+    {
+        "name": "ipynb",
+        "group": "code",
+        "mime_type": "application/json",
+        "extensions": [
+            "ipynb"
+        ]
+    },
+    {
+        "name": "iso",
+        "group": "archive",
+        "mime_type": "application/x-iso9660-image",
+        "extensions": [
+            "iso"
+        ]
+    },
+    {
+        "name": "jar",
+        "group": "archive",
+        "mime_type": "application/java-archive",
+        "extensions": [
+            "jar",
+            "klib"
+        ]
+    },
+    {
+        "name": "java",
+        "group": "code",
+        "mime_type": "text/x-java",
+        "extensions": [
+            "java"
+        ]
+    },
+    {
+        "name": "javabytecode",
+        "group": "executable",
+        "mime_type": "application/x-java-applet",
+        "extensions": [
+            "class"
+        ]
+    },
+    {
+        "name": "javascript",
+        "group": "code",
+        "mime_type": "application/javascript",
+        "extensions": [
+            "js",
+            "mjs",
+            "cjs"
+        ]
+    },
+    {
+        "name": "jinja",
+        "group": "code",
+        "mime_type": "text/x-jinja2-template",
+        "extensions": [
+            "jinja",
+            "jinja2",
+            "j2"
+        ]
+    },
+    {
+        "name": "jng",
+        "group": "image",
+        "mime_type": "image/jng",
+        "extensions": [
+            "jng"
+        ]
+    },
+    {
+        "name": "jnlp",
+        "group": "code",
+        "mime_type": "application/x-java-jnlp-file",
+        "extensions": [
+            "jnlp"
+        ]
+    },
+    {
+        "name": "jp2",
+        "group": "image",
+        "mime_type": "image/jpeg2000",
+        "extensions": [
+            "jp2"
+        ]
+    },
+    {
+        "name": "jpeg",
+        "group": "image",
+        "mime_type": "image/jpeg",
+        "extensions": [
+            "jpg",
+            "jpeg"
+        ],
+        "magic": [255, 216, 255],
+        "offset": 0
+    },
+    {
+        "name": "json",
+        "group": "code",
+        "mime_type": "application/json",
+        "extensions": [
+            "json"
+        ]
+    },
+    {
+        "name": "jsonc",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": []
+    },
+    {
+        "name": "jsonl",
+        "group": "code",
+        "mime_type": "application/json",
+        "extensions": [
+            "jsonl",
+            "jsonld"
+        ]
+    },
+    {
+        "name": "jsx",
+        "group": "code",
+        "mime_type": "application/javascript",
+        "extensions": [
+            "jsx",
+            "mjsx",
+            "cjsx"
+        ]
+    },
+    {
+        "name": "julia",
+        "group": "code",
+        "mime_type": "text/x-julia",
+        "extensions": [
+            "jl"
+        ]
+    },
+    {
+        "name": "jxl",
+        "group": "image",
+        "mime_type": "image/jxl",
+        "extensions": [
+            "jxl"
+        ]
+    },
+    {
+        "name": "ko",
+        "group": "executable",
+        "mime_type": "application/x-executable-elf",
+        "extensions": [
+            "ko"
+        ]
+    },
+    {
+        "name": "kotlin",
+        "group": "code",
+        "mime_type": "text/plain",
+        "extensions": [
+            "kt",
+            "kts"
+        ]
+    },
+    {
+        "name": "ks",
+        "group": "unknown",
+        "mime_type": "text/plain",
+        "extensions": [
+            "ks"
+        ]
+    },
+    {
+        "name": "latex",
+        "group": "text",
+        "mime_type": "text/x-tex",
+        "extensions": [
+            "tex",
+            "sty"
+        ]
+    },
+    {
+        "name": "latexaux",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": [
+            "aux"
+        ]
+    },
+    {
+        "name": "less",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": []
+    },
+    {
+        "name": "lha",
+        "group": "archive",
+        "mime_type": "application/x-lha",
+        "extensions": [
+            "lha",
+            "lzh"
+        ]
+    },
+    {
+        "name": "license",
+        "group": "text",
+        "mime_type": "text/plain",
+        "extensions": []
+    },
+    {
+        "name": "lisp",
+        "group": "code",
+        "mime_type": "text/x-lisp",
+        "extensions": [
+            "lisp",
+            "lsp",
+            "l",
+            "cl"
+        ]
+    },
+    {
+        "name": "litcs",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": [
+            "litcoffee"
+        ]
+    },
+    {
+        "name": "lnk",
+        "group": "application",
+        "mime_type": "application/x-ms-shortcut",
+        "extensions": [
+            "lnk"
+        ]
+    },
+    {
+        "name": "lock",
+        "group": "application",
+        "mime_type": "text/plain",
+        "extensions": [
+            "lock"
+        ]
+    },
+    {
+        "name": "lrz",
+        "group": "unknown",
+        "mime_type": "application/x-lrzip",
+        "extensions": [
+            "lrz"
+        ]
+    },
+    {
+        "name": "lua",
+        "group": "code",
+        "mime_type": "text/plain",
+        "extensions": [
+            "lua"
+        ]
+    },
+    {
+        "name": "lz",
+        "group": "archive",
+        "mime_type": "application/x-lzip",
+        "extensions": [
+            "lz"
+        ]
+    },
+    {
+        "name": "lz4",
+        "group": "archive",
+        "mime_type": "application/x-lz4",
+        "extensions": [
+            "lz4"
+        ]
+    },
+    {
+        "name": "lzx",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": []
+    },
+    {
+        "name": "m3u",
+        "group": "application",
+        "mime_type": "text/plain",
+        "extensions": [
+            "m3u8",
+            "m3u"
+        ]
+    },
+    {
+        "name": "m4",
+        "group": "code",
+        "mime_type": "text/plain",
+        "extensions": [
+            "m4"
+        ]
+    },
+    {
+        "name": "macho",
+        "group": "executable",
+        "mime_type": "application/x-mach-o",
+        "extensions": []
+    },
+    {
+        "name": "maff",
+        "group": "unknown",
+        "mime_type": "application/x-maff",
+        "extensions": [
+            "maff"
+        ]
+    },
+    {
+        "name": "makefile",
+        "group": "code",
+        "mime_type": "text/x-makefile",
+        "extensions": []
+    },
+    {
+        "name": "markdown",
+        "group": "text",
+        "mime_type": "text/markdown",
+        "extensions": [
+            "md",
+            "markdown"
+        ]
+    },
+    {
+        "name": "matlab",
+        "group": "code",
+        "mime_type": "text/x-matlab",
+        "extensions": [
+            "m",
+            "matlab"
+        ]
+    },
+    {
+        "name": "mbox",
+        "group": "text",
+        "mime_type": "application/mbox",
+        "extensions": [
+            "mbox"
+        ]
+    },
+    {
+        "name": "mht",
+        "group": "code",
+        "mime_type": "application/x-mimearchive",
+        "extensions": [
+            "mht"
+        ]
+    },
+    {
+        "name": "midi",
+        "group": "audio",
+        "mime_type": "audio/midi",
+        "extensions": [
+            "mid"
+        ]
+    },
+    {
+        "name": "mkv",
+        "group": "video",
+        "mime_type": "video/x-matroska",
+        "extensions": [
+            "mkv"
+        ]
+    },
+    {
+        "name": "mp2",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": [
+            "mp2"
+        ]
+    },
+    {
+        "name": "mp3",
+        "group": "audio",
+        "mime_type": "audio/mpeg",
+        "extensions": [
+            "mp3"
+        ]
+    },
+    {
+        "name": "mp4",
+        "group": "video",
+        "mime_type": "video/mp4",
+        "extensions": [
+            "mp4"
+        ]
+    },
+    {
+        "name": "mpegts",
+        "group": "video",
+        "mime_type": "video/MP2T",
+        "extensions": [
+            "ts",
+            "tsv",
+            "tsa",
+            "m2t"
+        ]
+    },
+    {
+        "name": "mscompress",
+        "group": "archive",
+        "mime_type": "application/x-ms-compress-szdd",
+        "extensions": []
+    },
+    {
+        "name": "msi",
+        "group": "archive",
+        "mime_type": "application/x-msi",
+        "extensions": [
+            "msi"
+        ]
+    },
+    {
+        "name": "msix",
+        "group": "application",
+        "mime_type": "application/msix",
+        "extensions": [
+            "msix"
+        ]
+    },
+    {
+        "name": "mst",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": [
+            "mst"
+        ]
+    },
+    {
+        "name": "mui",
+        "group": "application",
+        "mime_type": "application/x-dosexec",
+        "extensions": [
+            "mui"
+        ]
+    },
+    {
+        "name": "mum",
+        "group": "application",
+        "mime_type": "text/xml",
+        "extensions": [
+            "mum"
+        ]
+    },
+    {
+        "name": "mun",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": [
+            "mun"
+        ]
+    },
+    {
+        "name": "nim",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": []
+    },
+    {
+        "name": "npy",
+        "group": "archive",
+        "mime_type": "application/octet-stream",
+        "extensions": [
+            "npy"
+        ]
+    },
+    {
+        "name": "npz",
+        "group": "archive",
+        "mime_type": "application/octet-stream",
+        "extensions": [
+            "npz"
+        ]
+    },
+    {
+        "name": "null",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": [
+            "null"
+        ]
+    },
+    {
+        "name": "nupkg",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": [
+            "nupkg"
+        ]
+    },
+    {
+        "name": "object",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": [
+            "o"
+        ]
+    },
+    {
+        "name": "objectivec",
+        "group": "code",
+        "mime_type": "text/x-objcsrc",
+        "extensions": [
+            "m",
+            "mm"
+        ]
+    },
+    {
+        "name": "ocaml",
+        "group": "code",
+        "mime_type": "text-ocaml",
+        "extensions": [
+            "ml",
+            "mli"
+        ]
+    },
+    {
+        "name": "ocx",
+        "group": "executable",
+        "mime_type": "application/x-dosexec",
+        "extensions": [
+            "ocx"
+        ]
+    },
+    {
+        "name": "odex",
+        "group": "executable",
+        "mime_type": "application/x-executable-elf",
+        "extensions": [
+            "odex"
+        ]
+    },
+    {
+        "name": "odin",
+        "group": "code",
+        "mime_type": "text/plain",
+        "extensions": [
+            "odin"
+        ]
+    },
+    {
+        "name": "odp",
+        "group": "document",
+        "mime_type": "application/vnd.oasis.opendocument.presentation",
+        "extensions": [
+            "odp"
+        ]
+    },
+    {
+        "name": "ods",
+        "group": "document",
+        "mime_type": "application/vnd.oasis.opendocument.spreadsheet",
+        "extensions": [
+            "ods"
+        ]
+    },
+    {
+        "name": "odt",
+        "group": "document",
+        "mime_type": "application/vnd.oasis.opendocument.text",
+        "extensions": [
+            "odt"
+        ]
+    },
+    {
+        "name": "ogg",
+        "group": "audio",
+        "mime_type": "audio/ogg",
+        "extensions": [
+            "ogg"
+        ]
+    },
+    {
+        "name": "ole",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": []
+    },
+    {
+        "name": "one",
+        "group": "document",
+        "mime_type": "application/msonenote",
+        "extensions": [
+            "one"
+        ]
+    },
+    {
+        "name": "onnx",
+        "group": "archive",
+        "mime_type": "application/octet-stream",
+        "extensions": [
+            "onnx"
+        ]
+    },
+    {
+        "name": "ooxml",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": []
+    },
+    {
+        "name": "otf",
+        "group": "font",
+        "mime_type": "font/otf",
+        "extensions": [
+            "otf"
+        ]
+    },
+    {
+        "name": "outlook",
+        "group": "application",
+        "mime_type": "application/vnd.ms-outlook",
+        "extensions": []
+    },
+    {
+        "name": "palmos",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": []
+    },
+    {
+        "name": "parquet",
+        "group": "unknown",
+        "mime_type": "application/vnd.apache.parquet",
+        "extensions": [
+            "pqt",
+            "parquet"
+        ]
+    },
+    {
+        "name": "pascal",
+        "group": "code",
+        "mime_type": "text/x-pascal",
+        "extensions": [
+            "pas",
+            "pp"
+        ]
+    },
+    {
+        "name": "pbm",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": []
+    },
+    {
+        "name": "pcap",
+        "group": "application",
+        "mime_type": "application/vnd.tcpdump.pcap",
+        "extensions": [
+            "pcap",
+            "pcapng"
+        ]
+    },
+    {
+        "name": "pdb",
+        "group": "application",
+        "mime_type": "application/octet-stream",
+        "extensions": [
+            "pdb"
+        ]
+    },
+    {
+        "name": "pdf",
+        "group": "document",
+        "mime_type": "application/pdf",
+        "extensions": [
+            "pdf"
+        ],
+        "magic": "%PDF-",
+        "offset": 0
+    },
+    {
+        "name": "pebin",
+        "group": "executable",
+        "mime_type": "application/x-dosexec",
+        "extensions": [
+            "exe",
+            "dll"
+        ]
+    },
+    {
+        "name": "pem",
+        "group": "application",
+        "mime_type": "application/x-pem-file",
+        "extensions": [
+            "pem",
+            "pub",
+            "gpg"
+        ]
+    },
+    {
+        "name": "perl",
+        "group": "code",
+        "mime_type": "text/x-perl",
+        "extensions": [
+            "pl"
+        ]
+    },
+    {
+        "name": "pgp",
+        "group": "unknown",
+        "mime_type": "application/pgp-keys",
+        "extensions": [
+            "gpg",
+            "pgp"
+        ]
+    },
+    {
+        "name": "php",
+        "group": "code",
+        "mime_type": "text/x-php",
+        "extensions": [
+            "php"
+        ]
+    },
+    {
+        "name": "pickle",
+        "group": "application",
+        "mime_type": "application/octet-stream",
+        "extensions": [
+            "pickle",
+            "pkl"
+        ]
+    },
+    {
+        "name": "png",
+        "group": "image",
+        "mime_type": "image/png",
+        "extensions": [
+            "png"
+        ],
+        "magic": [137, 80, 78, 71, 13, 10, 26, 10],
+        "offset": 0
+    },
+    {
+        "name": "po",
+        "group": "application",
+        "mime_type": "text/gettext-translation",
+        "extensions": [
+            "po"
+        ]
+    },
+    {
+        "name": "postscript",
+        "group": "document",
+        "mime_type": "application/postscript",
+        "extensions": [
+            "ps"
+        ]
+    },
+    {
+        "name": "powershell",
+        "group": "code",
+        "mime_type": "application/x-powershell",
+        "extensions": [
+            "ps1"
+        ]
+    },
+    {
+        "name": "ppt",
+        "group": "document",
+        "mime_type": "application/vnd.ms-powerpoint",
+        "extensions": [
+            "ppt"
+        ]
+    },
+    {
+        "name": "pptx",
+        "group": "document",
+        "mime_type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "extensions": [
+            "pptx",
+            "pptm"
+        ]
+    },
+    {
+        "name": "printfox",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": []
+    },
+    {
+        "name": "prolog",
+        "group": "code",
+        "mime_type": "text/x-prolog",
+        "extensions": [
+            "pl",
+            "pro",
+            "P"
+        ]
+    },
+    {
+        "name": "proteindb",
+        "group": "application",
+        "mime_type": "application/octet-stream",
+        "extensions": [
+            "pdb"
+        ]
+    },
+    {
+        "name": "proto",
+        "group": "code",
+        "mime_type": "text/x-proto",
+        "extensions": [
+            "proto"
+        ]
+    },
+    {
+        "name": "protobuf",
+        "group": "unknown",
+        "mime_type": "application/protobuf",
+        "extensions": [
+            "protobuf",
+            "pb"
+        ]
+    },
+    {
+        "name": "psd",
+        "group": "image",
+        "mime_type": "image/vnd.adobe.photoshop",
+        "extensions": [
+            "psd"
+        ]
+    },
+    {
+        "name": "pub",
+        "group": "unknown",
+        "mime_type": "application/x-mspublisher",
+        "extensions": [
+            "pub"
+        ]
+    },
+    {
+        "name": "python",
+        "group": "code",
+        "mime_type": "text/x-python",
+        "extensions": [
+            "py",
+            "pyi"
+        ]
+    },
+    {
+        "name": "pythonbytecode",
+        "group": "executable",
+        "mime_type": "application/x-bytecode.python",
+        "extensions": [
+            "pyc",
+            "pyo"
+        ]
+    },
+    {
+        "name": "pythonpar",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": [
+            "par"
+        ]
+    },
+    {
+        "name": "pytorch",
+        "group": "application",
+        "mime_type": "application/octet-stream",
+        "extensions": [
+            "pt",
+            "pth"
+        ]
+    },
+    {
+        "name": "qoi",
+        "group": "image",
+        "mime_type": "image/x-qoi",
+        "extensions": [
+            "qoi"
+        ]
+    },
+    {
+        "name": "qt",
+        "group": "video",
+        "mime_type": "video/quicktime",
+        "extensions": [
+            "mov"
+        ]
+    },
+    {
+        "name": "r",
+        "group": "code",
+        "mime_type": "text/x-R",
+        "extensions": [
+            "R"
+        ]
+    },
+    {
+        "name": "randomascii",
+        "group": "text",
+        "mime_type": "text/plain",
+        "extensions": []
+    },
+    {
+        "name": "randombytes",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": []
+    },
+    {
+        "name": "randomtxt",
+        "group": "text",
+        "mime_type": "text/plain",
+        "extensions": []
+    },
+    {
+        "name": "rar",
+        "group": "archive",
+        "mime_type": "application/x-rar",
+        "extensions": [
+            "rar"
+        ]
+    },
+    {
+        "name": "rdf",
+        "group": "text",
+        "mime_type": "application/rdf+xml",
+        "extensions": [
+            "rdf"
+        ]
+    },
+    {
+        "name": "rdp",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": []
+    },
+    {
+        "name": "riff",
+        "group": "unknown",
+        "mime_type": "application/x-riff",
+        "extensions": []
+    },
+    {
+        "name": "rlib",
+        "group": "archive",
+        "mime_type": "application/x-archive",
+        "extensions": [
+            "rlib"
+        ]
+    },
+    {
+        "name": "rll",
+        "group": "executable",
+        "mime_type": "application/octet-stream",
+        "extensions": [
+            "rll"
+        ]
+    },
+    {
+        "name": "rpm",
+        "group": "archive",
+        "mime_type": "application/x-rpm",
+        "extensions": [
+            "rpm"
+        ]
+    },
+    {
+        "name": "rst",
+        "group": "text",
+        "mime_type": "text/x-rst",
+        "extensions": [
+            "rst"
+        ]
+    },
+    {
+        "name": "rtf",
+        "group": "text",
+        "mime_type": "text/rtf",
+        "extensions": [
+            "rtf"
+        ]
+    },
+    {
+        "name": "ruby",
+        "group": "code",
+        "mime_type": "application/x-ruby",
+        "extensions": [
+            "rb"
+        ]
+    },
+    {
+        "name": "rust",
+        "group": "code",
+        "mime_type": "application/x-rust",
+        "extensions": [
+            "rs"
+        ]
+    },
+    {
+        "name": "rzip",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": [
+            "rz"
+        ]
+    },
+    {
+        "name": "scala",
+        "group": "code",
+        "mime_type": "application/x-scala",
+        "extensions": [
+            "scala"
+        ]
+    },
+    {
+        "name": "scheme",
+        "group": "code",
+        "mime_type": "text/x-scheme",
+        "extensions": [
+            "scm",
+            "ss"
+        ]
+    },
+    {
+        "name": "scr",
+        "group": "executable",
+        "mime_type": "application/x-dosexec",
+        "extensions": [
+            "scr"
+        ]
+    },
+    {
+        "name": "scriptwsf",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": []
+    },
+    {
+        "name": "scss",
+        "group": "code",
+        "mime_type": "text/x-scss",
+        "extensions": [
+            "scss"
+        ]
+    },
+    {
+        "name": "sevenzip",
+        "group": "archive",
+        "mime_type": "application/x-7z-compressed",
+        "extensions": [
+            "7z"
+        ]
+    },
+    {
+        "name": "sgml",
+        "group": "text",
+        "mime_type": "application/sgml",
+        "extensions": [
+            "sgml"
+        ]
+    },
+    {
+        "name": "sh3d",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": [
+            "sh3d"
+        ]
+    },
+    {
+        "name": "shell",
+        "group": "code",
+        "mime_type": "text/x-shellscript",
+        "extensions": [
+            "sh"
+        ]
+    },
+    {
+        "name": "smali",
+        "group": "code",
+        "mime_type": "application/x-smali",
+        "extensions": [
+            "smali"
+        ]
+    },
+    {
+        "name": "snap",
+        "group": "archive",
+        "mime_type": "application/octet-stream",
+        "extensions": [
+            "snap"
+        ]
+    },
+    {
+        "name": "so",
+        "group": "executable",
+        "mime_type": "application/x-executable-elf",
+        "extensions": [
+            "so"
+        ]
+    },
+    {
+        "name": "solidity",
+        "group": "code",
+        "mime_type": "text/plain",
+        "extensions": [
+            "sol"
+        ]
+    },
+    {
+        "name": "sql",
+        "group": "code",
+        "mime_type": "application/x-sql",
+        "extensions": [
+            "sql"
+        ]
+    },
+    {
+        "name": "sqlite",
+        "group": "application",
+        "mime_type": "application/octet-stream",
+        "extensions": [
+            "sqlite",
+            "sqlite3"
+        ],
+        "magic": "SQLite format 3",
+        "offset": 0
+    },
+    {
+        "name": "squashfs",
+        "group": "archive",
+        "mime_type": "application/octet-stream",
+        "extensions": []
+    },
+    {
+        "name": "srt",
+        "group": "application",
+        "mime_type": "text/srt",
+        "extensions": [
+            "srt"
+        ]
+    },
+    {
+        "name": "stlbinary",
+        "group": "image",
+        "mime_type": "application/sla",
+        "extensions": [
+            "stl"
+        ]
+    },
+    {
+        "name": "stltext",
+        "group": "image",
+        "mime_type": "application/sla",
+        "extensions": [
+            "stl"
+        ]
+    },
+    {
+        "name": "sum",
+        "group": "application",
+        "mime_type": "text/plain",
+        "extensions": [
+            "sum"
+        ]
+    },
+    {
+        "name": "svd",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": []
+    },
+    {
+        "name": "svg",
+        "group": "image",
+        "mime_type": "image/svg+xml",
+        "extensions": [
+            "svg"
+        ]
+    },
+    {
+        "name": "swf",
+        "group": "executable",
+        "mime_type": "application/x-shockwave-flash",
+        "extensions": [
+            "swf"
+        ]
+    },
+    {
+        "name": "swift",
+        "group": "code",
+        "mime_type": "text/x-swift",
+        "extensions": [
+            "swift"
+        ]
+    },
+    {
+        "name": "symlink",
+        "group": "inode",
+        "mime_type": "inode/symlink",
+        "extensions": []
+    },
+    {
+        "name": "symlinktext",
+        "group": "application",
+        "mime_type": "text/plain",
+        "extensions": []
+    },
+    {
+        "name": "sys",
+        "group": "executable",
+        "mime_type": "application/x-windows-driver",
+        "extensions": [
+            "sys"
+        ]
+    },
+    {
+        "name": "tar",
+        "group": "archive",
+        "mime_type": "application/x-tar",
+        "extensions": [
+            "tar"
+        ]
+    },
+    {
+        "name": "tcl",
+        "group": "code",
+        "mime_type": "application/x-tcl",
+        "extensions": [
+            "tcl"
+        ]
+    },
+    {
+        "name": "textproto",
+        "group": "code",
+        "mime_type": "text/plain",
+        "extensions": [
+            "textproto",
+            "textpb",
+            "pbtxt"
+        ]
+    },
+    {
+        "name": "tga",
+        "group": "image",
+        "mime_type": "image/x-tga",
+        "extensions": [
+            "tga"
+        ]
+    },
+    {
+        "name": "thumbsdb",
+        "group": "application",
+        "mime_type": "image/vnd.ms-thumb",
+        "extensions": []
+    },
+    {
+        "name": "tiff",
+        "group": "image",
+        "mime_type": "image/tiff",
+        "extensions": [
+            "tiff",
+            "tif"
+        ]
+    },
+    {
+        "name": "tmdx",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": [
+            "tmdx",
+            "tmvx"
+        ]
+    },
+    {
+        "name": "toml",
+        "group": "text",
+        "mime_type": "application/toml",
+        "extensions": [
+            "toml"
+        ]
+    },
+    {
+        "name": "torrent",
+        "group": "application",
+        "mime_type": "application/x-bittorrent",
+        "extensions": [
+            "torrent"
+        ]
+    },
+    {
+        "name": "troff",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": []
+    },
+    {
+        "name": "tsv",
+        "group": "code",
+        "mime_type": "text/tsv",
+        "extensions": [
+            "tsv"
+        ]
+    },
+    {
+        "name": "tsx",
+        "group": "code",
+        "mime_type": "text/x-typescript",
+        "extensions": [
+            "tsx",
+            "mtsx",
+            "ctsx"
+        ]
+    },
+    {
+        "name": "ttf",
+        "group": "font",
+        "mime_type": "font/sfnt",
+        "extensions": [
+            "ttf",
+            "ttc"
+        ]
+    },
+    {
+        "name": "twig",
+        "group": "code",
+        "mime_type": "text/x-twig",
+        "extensions": [
+            "twig"
+        ]
+    },
+    {
+        "name": "txt",
+        "group": "text",
+        "mime_type": "text/plain",
+        "extensions": [
+            "txt"
+        ]
+    },
+    {
+        "name": "txtascii",
+        "group": "text",
+        "mime_type": "text/plain",
+        "extensions": [
+            "txt"
+        ]
+    },
+    {
+        "name": "txtutf16",
+        "group": "text",
+        "mime_type": "text/plain",
+        "extensions": [
+            "txt"
+        ]
+    },
+    {
+        "name": "txtutf8",
+        "group": "text",
+        "mime_type": "text/plain",
+        "extensions": [
+            "txt"
+        ]
+    },
+    {
+        "name": "typescript",
+        "group": "code",
+        "mime_type": "application/typescript",
+        "extensions": [
+            "ts",
+            "mts",
+            "cts"
+        ]
+    },
+    {
+        "name": "udf",
+        "group": "unknown",
+        "mime_type": "application/x-udf-image",
+        "extensions": []
+    },
+    {
+        "name": "undefined",
+        "group": "undefined",
+        "mime_type": "application/undefined",
+        "extensions": []
+    },
+    {
+        "name": "unixcompress",
+        "group": "unknown",
+        "mime_type": "application/x-compress",
+        "extensions": [
+            "z"
+        ]
+    },
+    {
+        "name": "unknown",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": []
+    },
+    {
+        "name": "vba",
+        "group": "code",
+        "mime_type": "text/vbscript",
+        "extensions": [
+            "vbs",
+            "vba",
+            "vb"
+        ]
+    },
+    {
+        "name": "vbe",
+        "group": "code",
+        "mime_type": "application/octet-stream",
+        "extensions": [
+            "vbe"
+        ]
+    },
+    {
+        "name": "vcard",
+        "group": "contact",
+        "mime_type": "text/vcard",
+        "extensions": [
+            "vcard",
+            "vcf"
+        ],
+        "magic": "BEGIN:VCARD",
+        "offset": 0
+    },
+    {
+        "name": "vcs",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": []
+    },
+    {
+        "name": "vcxproj",
+        "group": "code",
+        "mime_type": "application/xml",
+        "extensions": [
+            "vcxproj"
+        ]
+    },
+    {
+        "name": "verilog",
+        "group": "code",
+        "mime_type": "text/x-verilog",
+        "extensions": [
+            "v",
+            "verilog",
+            "vlg",
+            "vh"
+        ]
+    },
+    {
+        "name": "vhd",
+        "group": "unknown",
+        "mime_type": "application/x-vhd",
+        "extensions": []
+    },
+    {
+        "name": "vhdl",
+        "group": "code",
+        "mime_type": "text/x-vhdl",
+        "extensions": [
+            "vhd"
+        ]
+    },
+    {
+        "name": "visio",
+        "group": "document",
+        "mime_type": "application/vnd.ms-visio.drawing.main+xml",
+        "extensions": [
+            "vsd",
+            "vsdm",
+            "vsdx",
+            "vdw"
+        ]
+    },
+    {
+        "name": "vtt",
+        "group": "text",
+        "mime_type": "text/vtt",
+        "extensions": [
+            "vtt",
+            "webvtt"
+        ]
+    },
+    {
+        "name": "vue",
+        "group": "code",
+        "mime_type": "application/javascript",
+        "extensions": [
+            "vue"
+        ]
+    },
+    {
+        "name": "wad",
+        "group": "archive",
+        "mime_type": "application/wad",
+        "extensions": [
+            "wad"
+        ]
+    },
+    {
+        "name": "wasm",
+        "group": "executable",
+        "mime_type": "application/wasm",
+        "extensions": [
+            "wasm"
+        ]
+    },
+    {
+        "name": "wav",
+        "group": "audio",
+        "mime_type": "audio/x-wav",
+        "extensions": [
+            "wav"
+        ]
+    },
+    {
+        "name": "webm",
+        "group": "video",
+        "mime_type": "video/webm",
+        "extensions": [
+            "webm"
+        ]
+    },
+    {
+        "name": "webp",
+        "group": "image",
+        "mime_type": "image/webp",
+        "extensions": [
+            "webp"
+        ]
+    },
+    {
+        "name": "webtemplate",
+        "group": "code",
+        "mime_type": "text/plain",
+        "extensions": []
+    },
+    {
+        "name": "wim",
+        "group": "unknown",
+        "mime_type": "application/x-ms-wim",
+        "extensions": [
+            "wim",
+            "swm",
+            "esd"
+        ]
+    },
+    {
+        "name": "winregistry",
+        "group": "application",
+        "mime_type": "text/x-ms-regedit",
+        "extensions": [
+            "reg"
+        ]
+    },
+    {
+        "name": "wma",
+        "group": "audio",
+        "mime_type": "audio/x-ms-wma",
+        "extensions": [
+            "wma"
+        ]
+    },
+    {
+        "name": "wmf",
+        "group": "image",
+        "mime_type": "image/wmf",
+        "extensions": [
+            "wmf"
+        ]
+    },
+    {
+        "name": "wmv",
+        "group": "video",
+        "mime_type": "video/x-ms-wmv",
+        "extensions": [
+            "wmv"
+        ]
+    },
+    {
+        "name": "woff",
+        "group": "font",
+        "mime_type": "font/woff",
+        "extensions": [
+            "woff"
+        ]
+    },
+    {
+        "name": "woff2",
+        "group": "font",
+        "mime_type": "font/woff2",
+        "extensions": [
+            "woff2"
+        ]
+    },
+    {
+        "name": "xar",
+        "group": "archive",
+        "mime_type": "application/x-xar",
+        "extensions": [
+            "pkg",
+            "xar"
+        ]
+    },
+    {
+        "name": "xcf",
+        "group": "image",
+        "mime_type": "image/x-xcf",
+        "extensions": [
+            "xcf"
+        ]
+    },
+    {
+        "name": "xls",
+        "group": "document",
+        "mime_type": "application/vnd.ms-excel",
+        "extensions": [
+            "xls"
+        ]
+    },
+    {
+        "name": "xlsb",
+        "group": "document",
+        "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "extensions": [
+            "xlsb"
+        ]
+    },
+    {
+        "name": "xlsx",
+        "group": "document",
+        "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "extensions": [
+            "xlsx",
+            "xlsm"
+        ]
+    },
+    {
+        "name": "xml",
+        "group": "code",
+        "mime_type": "text/xml",
+        "extensions": [
+            "xml"
+        ]
+    },
+    {
+        "name": "xpi",
+        "group": "archive",
+        "mime_type": "application/zip",
+        "extensions": [
+            "xpi"
+        ]
+    },
+    {
+        "name": "xsd",
+        "group": "unknown",
+        "mime_type": "application/octet-stream",
+        "extensions": [
+            "xsd"
+        ]
+    },
+    {
+        "name": "xz",
+        "group": "archive",
+        "mime_type": "application/x-xz",
+        "extensions": [
+            "xz"
+        ]
+    },
+    {
+        "name": "yaml",
+        "group": "code",
+        "mime_type": "application/x-yaml",
+        "extensions": [
+            "yml",
+            "yaml"
+        ]
+    },
+    {
+        "name": "yara",
+        "group": "code",
+        "mime_type": "text/x-yara",
+        "extensions": [
+            "yar",
+            "yara"
+        ]
+    },
+    {
+        "name": "zig",
+        "group": "code",
+        "mime_type": "text/zig",
+        "extensions": [
+            "zig"
+        ]
+    },
+    {
+        "name": "zip",
+        "group": "archive",
+        "mime_type": "application/zip",
+        "extensions": [
+            "zip"
+        ],
+        "magic": [80, 75, 3, 4],
+        "offset": 0
+    },
+    {
+        "name": "zlibstream",
+        "group": "application",
+        "mime_type": "application/zlib",
+        "extensions": []
+    },
+    {
+        "name": "zst",
+        "group": "archive",
+        "mime_type": "application/zstd",
+        "extensions": [
+            "zst"
+        ]
+    }
+]

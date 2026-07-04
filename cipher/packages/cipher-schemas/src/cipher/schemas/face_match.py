@@ -34,7 +34,7 @@ class FaceMatchBase(BaseModel):
     face_id: str
     person_id: str
     similarity_score: float = Field(
-        ge=-1,
+        ge=0,
         le=1,
         description="Similarity between the face embedding and the person's representative embedding",
     )
@@ -90,7 +90,7 @@ class FaceMatchSearchParameters(BaseModel):
     face_id: str | None = None
     person_id: str | None = None
     status: FaceMatchStatus | None = Field(FaceMatchStatus.PENDING, description="Filter by review status")
-    min_similarity: float | None = Field(default=None, ge=-1, le=1)
+    min_similarity: float | None = Field(default=None, ge=0, le=1)
     limit: int = Field(10, ge=1, le=100)
     page: int = Field(1, ge=1)
     sort_by: FaceMatchSortField = Field(FaceMatchSortField.SIMILARITY_SCORE)
