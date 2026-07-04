@@ -2,7 +2,6 @@
 
 import { TagsInput } from "@/components/tags-input";
 import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Tooltip,
@@ -44,12 +43,12 @@ export const ImageCard: React.FC<ImageCardProps> = ({
 
   return (
     <TooltipProvider>
-      <Card className="group relative rounded-xl overflow-hidden bg-[#0a0c10] border-white/5 transition-all duration-300 hover:border-indigo-500/40">
+      <div className="group relative rounded-xl overflow-hidden bg-slate-900/40 border border-white/5 transition-all duration-300 hover:border-indigo-500/40 hover:bg-slate-900/60">
         {/* Flush Image Container */}
         <div
           role="button"
           tabIndex={0}
-          className="aspect-4/5 relative w-full bg-slate-950 cursor-pointer"
+          className="aspect-4/5 relative w-full bg-background cursor-pointer"
           onClick={() => onExpand?.(image)}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
@@ -71,7 +70,7 @@ export const ImageCard: React.FC<ImageCardProps> = ({
           {/* Action Bar */}
           <div className="absolute inset-x-0 bottom-4 flex justify-center opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all duration-300 z-10">
             <div
-              className="flex items-center gap-4 bg-[#161920]/95 border border-white/10 px-4 py-2 rounded-full shadow-2xl"
+              className="flex items-center gap-4 bg-popover/95 border border-white/10 px-4 py-2 rounded-full shadow-2xl"
               onClick={(e) => e.stopPropagation()} // Prevent card click when clicking bar
             >
               <NavAction
@@ -109,7 +108,7 @@ export const ImageCard: React.FC<ImageCardProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="p-3 bg-[#0f1115] border-t border-white/5 space-y-2">
+        <div className="p-3 border-t border-white/5 space-y-2">
           <div className="flex justify-between items-center h-4">
             {image.dateTaken && (
               <div className="flex items-center gap-1.5 text-slate-500">
@@ -136,7 +135,7 @@ export const ImageCard: React.FC<ImageCardProps> = ({
             )}
           </div>
         </div>
-      </Card>
+      </div>
     </TooltipProvider>
   );
 };
@@ -176,7 +175,7 @@ const NavAction = ({
     {/* Explicitly no TooltipArrow component used here to keep it clean */}
     <TooltipContent
       sideOffset={12}
-      className="bg-[#161920] border-white/10 text-[9px] font-bold uppercase tracking-widest text-indigo-400 px-2 py-1 rounded-md shadow-2xl border [&_svg]:hidden!"
+      className="bg-popover border-white/10 text-[9px] font-bold uppercase tracking-widest text-indigo-400 px-2 py-1 rounded-md shadow-2xl border [&_svg]:hidden!"
     >
       {disabled ? disabledLabel : label}
     </TooltipContent>
@@ -203,13 +202,13 @@ const TagPopoverAction = ({ image }: { image: ImagePublic }) => {
         </TooltipTrigger>
         <TooltipContent
           sideOffset={12}
-          className="bg-[#161920] border-white/10 text-[9px] font-bold uppercase tracking-widest text-indigo-400 px-2 py-1 rounded-md shadow-2xl border [&_svg]:hidden!"
+          className="bg-popover border-white/10 text-[9px] font-bold uppercase tracking-widest text-indigo-400 px-2 py-1 rounded-md shadow-2xl border [&_svg]:hidden!"
         >
           Tags
         </TooltipContent>
       </Tooltip>
       <PopoverContent
-        className="w-64 p-3 bg-[#161920] border-white/10"
+        className="w-64 p-3 bg-popover border-white/10"
         onClick={(e) => e.stopPropagation()}
       >
         <TagsInput

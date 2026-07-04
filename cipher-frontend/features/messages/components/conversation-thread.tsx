@@ -198,13 +198,13 @@ const ThreadContent = ({
 
   if (isLoadingSeed)
     return (
-      <div className="flex-1 flex items-center justify-center bg-[#0d1117]">
+      <div className="flex-1 flex items-center justify-center bg-card">
         <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
 
   return (
-    <div className="flex-1 flex flex-col bg-[#0d1117] overflow-hidden relative">
+    <div className="flex-1 flex flex-col bg-card overflow-hidden relative">
       {showJumpButton && (
         <button
           type="button"
@@ -227,7 +227,7 @@ const ThreadContent = ({
       <div
         ref={scrollRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto bg-[#0f1117] custom-scrollbar"
+        className="flex-1 overflow-y-auto bg-card custom-scrollbar"
         style={scrollStyle}
       >
         <div className="px-6 space-y-12 flex flex-col items-center">

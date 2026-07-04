@@ -1,5 +1,6 @@
 "use client";
 
+import { SearchBarShell } from "@/components/search-bar-shell";
 import { Button } from "@/components/ui/button";
 import { facesService } from "@/features/faces/api";
 import {
@@ -10,7 +11,7 @@ import { FacePickerDialog } from "@/features/faces/components/face-picker";
 import { FaceFilters } from "@/features/faces/hooks/use-search-controller";
 import { DetectedFace } from "@/features/faces/types";
 import { cn } from "@/lib/utils";
-import { Filter, Loader2, ScanFace, Upload as UploadIcon } from "lucide-react";
+import { Filter, ScanFace, Upload as UploadIcon } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -59,13 +60,10 @@ export const FaceUploadSearchBar: React.FC<FaceUploadSearchBarProps> = ({
 
   return (
     <div className="w-full transition-all duration-500">
-      <div
-        className={cn(
-          "relative flex items-center w-full rounded-2xl border transition-all duration-500 px-4",
-          isSearching || isDetecting || isDragging
-            ? "bg-annotation/5 border-annotation/50 shadow-[0_0_25px_rgba(245,158,11,0.2)] ring-1 ring-annotation/20"
-            : "bg-slate-900/40 border-white/10 hover:border-white/20 shadow-xl"
-        )}
+      <SearchBarShell
+        isActive={isSearching || isDetecting || isDragging}
+        accent="annotation"
+        icon={<ScanFace size={18} strokeWidth={1.5} />}
         onDragOver={(e) => {
           e.preventDefault();
           setIsDragging(true);
@@ -77,14 +75,6 @@ export const FaceUploadSearchBar: React.FC<FaceUploadSearchBarProps> = ({
           handleFile(e.dataTransfer.files?.[0]);
         }}
       >
-        <div className="flex items-center justify-center text-slate-500 pl-1">
-          {isSearching || isDetecting ? (
-            <Loader2 className="h-4 w-4 animate-spin text-annotation" />
-          ) : (
-            <ScanFace size={18} strokeWidth={1.5} />
-          )}
-        </div>
-
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
@@ -139,7 +129,7 @@ export const FaceUploadSearchBar: React.FC<FaceUploadSearchBarProps> = ({
             Upload
           </Button>
         </div>
-      </div>
+      </SearchBarShell>
 
       <div
         className={cn(

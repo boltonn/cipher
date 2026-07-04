@@ -136,7 +136,7 @@ export function CreatePersonDialog({ isOpen, onOpenChange, sourceFace }: CreateP
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => (open ? onOpenChange(open) : handleClose())}>
-      <DialogContent className="bg-[#0f1115] border-white/10 sm:max-w-lg max-h-[85vh] overflow-y-auto">
+      <DialogContent className="bg-card border-white/10 sm:max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-white tracking-[0.1em] uppercase text-xs font-black">
             Create Person

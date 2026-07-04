@@ -100,7 +100,7 @@ export function DataTable<T>({
               <Settings2 size={12} /> Columns
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="bg-[#161920] border-white/10">
+          <DropdownMenuContent align="end" className="bg-popover border-white/10">
             {columns.map((column) => (
               <DropdownMenuCheckboxItem
                 key={column.key}

@@ -60,7 +60,7 @@ export function DatasetMultiSelectCombobox({
             <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 text-slate-600" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-72 p-0 bg-[#161920] border-white/10">
+        <PopoverContent className="w-72 p-0 bg-popover border-white/10">
           <Command shouldFilter={false}>
             <CommandInput
               placeholder="Search datasets..."

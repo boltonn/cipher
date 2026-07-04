@@ -79,7 +79,7 @@ export function DatePicker({ value, onChange, placeholder = "Pick a date", class
             <CalendarIcon size={14} />
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-auto p-0 bg-slate-950 border-white/10" align="end">
+        <PopoverContent className="w-auto p-0 bg-popover border-white/10" align="end">
           <Calendar
             mode="single"
             captionLayout="dropdown"

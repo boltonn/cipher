@@ -30,7 +30,7 @@ export default function RootLayout({
     <html lang="en" className={inter.variable} suppressHydrationWarning>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased
-        bg-[#050507] text-slate-300 overflow-hidden h-screen w-screen flex`}
+        bg-background text-slate-300 overflow-hidden h-screen w-screen flex`}
       >
         {/* Background Indigo Glows */}
         <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">

@@ -1,7 +1,7 @@
 "use client";
 
+import { PageHeader } from "@/components/page-header";
 import { PaginationModeToggle } from "@/components/pagination-mode-toggle";
-import { SidebarTrigger } from "@/components/ui/sidebar";
 import { FaceUploadSearchBar } from "@/features/faces/components/face-upload-search-bar";
 import { FacesContainerInfinite } from "@/features/faces/components/faces-container-infinite";
 import { FacesContainerPaginated } from "@/features/faces/components/faces-container-paginated";
@@ -48,21 +48,13 @@ function FacesPageInner() {
 
   return (
     <div className="max-w-400 mx-auto px-6 relative pb-20">
-      {/* Utility Header */}
-      <div className="sticky top-0 z-30 flex items-center justify-between pt-6 pb-2 bg-[#050507]/90">
-        <div className="flex items-center gap-4">
-          <SidebarTrigger className="h-9 w-9 text-slate-400 hover:text-annotation" />
-
-          <div className="flex flex-col">
-            <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">
-              Faces
-            </span>
-            <span className="text-xs font-mono text-annotation/80">
-              {totalFaces.toLocaleString()} Results
-            </span>
-          </div>
-
-          {isSimilarityMode && (
+      <PageHeader
+        eyebrow="Faces"
+        value={`${totalFaces.toLocaleString()} Results`}
+        accentClassName="text-annotation/80"
+        sidebarAccentClassName="hover:text-annotation"
+        extra={
+          isSimilarityMode && (
             <button
               type="button"
               onClick={actions.clearSimilar}
@@ -72,15 +64,16 @@ function FacesPageInner() {
               {queryLabel || "Similar to face"}
               <X size={10} />
             </button>
-          )}
-        </div>
-
-        <PaginationModeToggle
-          mode={paginationMode}
-          onToggle={() => setPaginationMode((p) => (p === "infinite" ? "normal" : "infinite"))}
-          accentClassName="hover:text-annotation"
-        />
-      </div>
+          )
+        }
+        actions={
+          <PaginationModeToggle
+            mode={paginationMode}
+            onToggle={() => setPaginationMode((p) => (p === "infinite" ? "normal" : "infinite"))}
+            accentClassName="hover:text-annotation"
+          />
+        }
+      />
 
       {/* Upload search bar, with filters tucked behind its filter icon */}
       <div className="mt-4">

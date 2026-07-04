@@ -121,7 +121,7 @@ export function AppSidebar() {
   return (
     <Sidebar className="border-r-0">
       {/* Header */}
-      <SidebarHeader className="border-b border-slate-800 px-4 py-4 bg-[#050507]">
+      <SidebarHeader className="border-b border-slate-800 px-4 py-4 bg-sidebar/85">
         <Link
           href="/"
           className="flex items-center gap-3 group transition-opacity hover:opacity-80"
@@ -152,7 +152,7 @@ export function AppSidebar() {
         </Link>
       </SidebarHeader>
 
-      <SidebarContent className="gap-0 py-2 bg-[#050507] border-slate-800">
+      <SidebarContent className="gap-0 py-2 bg-sidebar/85 border-slate-800">
         {/* Group 1: Home (Isolated for emphasis) */}
         <SidebarGroup>
           <SidebarMenu>

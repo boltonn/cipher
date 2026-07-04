@@ -1,7 +1,7 @@
 "use client";
 
 import { DateRangePicker } from "@/components/date-range-picker";
-import { SidebarTrigger } from "@/components/ui/sidebar";
+import { PageHeader } from "@/components/page-header";
 import {
   Select,
   SelectContent,
@@ -9,6 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useDataset, useDatasetStats } from "@/features/datasets/api";
 import { FiletypeBreakdownList } from "@/features/datasets/components/filetype-breakdown-list";
 import { LoadHistogramChart } from "@/features/datasets/components/load-histogram-chart";
@@ -18,11 +19,16 @@ import { BarChart3, Database, Files, HardDrive, PieChart } from "lucide-react";
 import Link from "next/link";
 import { use, useState } from "react";
 
-export default function DatasetDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default function DatasetDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
   const { id } = use(params);
 
   const [range, setRange] = useState<{ from?: string; to?: string }>({});
-  const [granularity, setGranularity] = useState<HistogramGranularityType>("day");
+  const [granularity, setGranularity] =
+    useState<HistogramGranularityType>("day");
 
   const { data: dataset, isPending: datasetPending } = useDataset(id);
   const { data: stats, isPending: statsPending } = useDatasetStats(id, {
@@ -41,8 +47,7 @@ export default function DatasetDetailPage({ params }: { params: Promise<{ id: st
 
   return (
     <div className="max-w-350 mx-auto px-6 relative pb-20">
-      {/* Header */}
-      <div className="sticky top-0 z-30 flex items-center justify-between pt-6 pb-2 bg-[#050507]/90">
+      <PageHeader>
         <div className="flex items-center gap-4">
           <SidebarTrigger className="h-9 w-9 text-slate-400 hover:text-indigo-400" />
           <div className="flex flex-col">
@@ -52,10 +57,12 @@ export default function DatasetDetailPage({ params }: { params: Promise<{ id: st
             >
               Registry
             </Link>
-            <span className="text-xs font-mono text-indigo-400/80">{dataset.name}</span>
+            <span className="text-xs font-mono text-indigo-400/80">
+              {dataset.name}
+            </span>
           </div>
         </div>
-      </div>
+      </PageHeader>
 
       {/* Identity header */}
       <div className="mt-4 rounded-2xl bg-slate-950/40 backdrop-blur-2xl border border-white/10 p-6 flex flex-col gap-2">
@@ -63,19 +70,26 @@ export default function DatasetDetailPage({ params }: { params: Promise<{ id: st
           <Database size={16} className="text-indigo-400" />
           <h1 className="text-xl font-bold text-white">{dataset.name}</h1>
         </div>
-        <p className="text-sm text-slate-400">{dataset.description || "No description"}</p>
+        <p className="text-sm text-slate-400">
+          {dataset.description || "No description"}
+        </p>
       </div>
 
       {/* Date range + granularity filter */}
       <div className="mt-6 flex items-center justify-between gap-4">
         <div className="flex items-center gap-2 text-slate-400">
           <BarChart3 size={14} className="text-indigo-400" />
-          <h2 className="text-[10px] font-black uppercase tracking-[0.2em]">Files Loaded Over Time</h2>
+          <h2 className="text-[10px] font-black uppercase tracking-[0.2em]">
+            Files Loaded Over Time
+          </h2>
         </div>
         <div className="flex items-center gap-2">
           <DateRangePicker value={range} onChange={setRange} className="w-64" />
-          <Select value={granularity} onValueChange={(v) => setGranularity(v as HistogramGranularityType)}>
-            <SelectTrigger className="w-28 h-9 text-xs bg-slate-900/40 border-white/10">
+          <Select
+            value={granularity}
+            onValueChange={(v) => setGranularity(v as HistogramGranularityType)}
+          >
+            <SelectTrigger className="w-28 data-[size=default]:h-9 text-xs bg-slate-900/40 border-white/10">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -93,7 +107,9 @@ export default function DatasetDetailPage({ params }: { params: Promise<{ id: st
           <StatCard
             icon={<Files size={14} />}
             label="Files in Range"
-            value={statsPending ? "—" : formatCompactNumber(stats?.totalFiles ?? 0)}
+            value={
+              statsPending ? "—" : formatCompactNumber(stats?.totalFiles ?? 0)
+            }
           />
           <StatCard
             icon={<HardDrive size={14} />}
@@ -103,9 +119,14 @@ export default function DatasetDetailPage({ params }: { params: Promise<{ id: st
         </div>
         <div className="lg:col-span-3 rounded-2xl bg-slate-950/40 backdrop-blur-2xl border border-white/10 p-6">
           {statsPending ? (
-            <div className="h-48 flex items-center justify-center text-xs text-slate-600">Loading...</div>
+            <div className="h-48 flex items-center justify-center text-xs text-slate-600">
+              Loading...
+            </div>
           ) : (
-            <LoadHistogramChart buckets={stats?.loadedOverTime ?? []} granularity={granularity} />
+            <LoadHistogramChart
+              buckets={stats?.loadedOverTime ?? []}
+              granularity={granularity}
+            />
           )}
         </div>
       </div>
@@ -115,10 +136,14 @@ export default function DatasetDetailPage({ params }: { params: Promise<{ id: st
         <div className="rounded-2xl bg-slate-950/40 backdrop-blur-2xl border border-white/10 p-6">
           <div className="flex items-center gap-2 text-slate-400 mb-4">
             <PieChart size={14} className="text-indigo-400" />
-            <h2 className="text-[10px] font-black uppercase tracking-[0.2em]">By Filetype</h2>
+            <h2 className="text-[10px] font-black uppercase tracking-[0.2em]">
+              By Filetype
+            </h2>
           </div>
           {statsPending ? (
-            <div className="h-24 flex items-center justify-center text-xs text-slate-600">Loading...</div>
+            <div className="h-24 flex items-center justify-center text-xs text-slate-600">
+              Loading...
+            </div>
           ) : (
             <FiletypeBreakdownList items={stats?.byFiletype ?? []} />
           )}
@@ -126,10 +151,14 @@ export default function DatasetDetailPage({ params }: { params: Promise<{ id: st
         <div className="rounded-2xl bg-slate-950/40 backdrop-blur-2xl border border-white/10 p-6">
           <div className="flex items-center gap-2 text-slate-400 mb-4">
             <PieChart size={14} className="text-indigo-400" />
-            <h2 className="text-[10px] font-black uppercase tracking-[0.2em]">By Filetype Group</h2>
+            <h2 className="text-[10px] font-black uppercase tracking-[0.2em]">
+              By Filetype Group
+            </h2>
           </div>
           {statsPending ? (
-            <div className="h-24 flex items-center justify-center text-xs text-slate-600">Loading...</div>
+            <div className="h-24 flex items-center justify-center text-xs text-slate-600">
+              Loading...
+            </div>
           ) : (
             <FiletypeBreakdownList items={stats?.byFiletypeGroup ?? []} />
           )}
@@ -139,11 +168,21 @@ export default function DatasetDetailPage({ params }: { params: Promise<{ id: st
   );
 }
 
-const StatCard = ({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) => (
+const StatCard = ({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+}) => (
   <div className="rounded-2xl bg-slate-950/40 backdrop-blur-2xl border border-white/10 p-4 flex flex-col gap-1.5">
     <div className="flex items-center gap-1.5 text-slate-500">
       {icon}
-      <span className="text-[9px] font-bold uppercase tracking-widest">{label}</span>
+      <span className="text-[9px] font-bold uppercase tracking-widest">
+        {label}
+      </span>
     </div>
     <span className="text-lg font-mono text-slate-200">{value}</span>
   </div>

@@ -69,7 +69,7 @@ export function DateRangePicker({
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-auto p-0 bg-slate-950 border-white/10" align="start">
+      <PopoverContent className="w-auto p-0 bg-popover border-white/10" align="start">
         <Calendar
           mode="range"
           captionLayout="dropdown"

@@ -1,7 +1,6 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
 import {
   Tooltip,
   TooltipContent,
@@ -33,11 +32,11 @@ export const FaceCard: React.FC<FaceCardProps> = ({ face, onFindSimilar, onExpan
 
   return (
     <TooltipProvider>
-      <Card className="group relative rounded-xl overflow-hidden bg-[#0a0c10] border-white/5 transition-all duration-300 hover:border-indigo-500/40 py-0 gap-0">
+      <div className="group relative rounded-xl overflow-hidden bg-slate-900/40 border border-white/5 transition-all duration-300 hover:border-indigo-500/40 hover:bg-slate-900/60">
         <div
           role="button"
           tabIndex={0}
-          className="aspect-square relative w-full bg-slate-950 cursor-pointer"
+          className="aspect-square relative w-full bg-background cursor-pointer"
           style={cropStyle}
           onClick={() => onExpand?.(face)}
           onKeyDown={(e) => {
@@ -49,7 +48,7 @@ export const FaceCard: React.FC<FaceCardProps> = ({ face, onFindSimilar, onExpan
         >
           <div className="absolute inset-x-0 bottom-3 flex justify-center opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all duration-300 z-10">
             <div
-              className="flex items-center gap-4 bg-[#161920]/95 border border-white/10 px-4 py-2 rounded-full shadow-2xl"
+              className="flex items-center gap-4 bg-popover/95 border border-white/10 px-4 py-2 rounded-full shadow-2xl"
               onClick={(e) => e.stopPropagation()}
             >
               <NavAction
@@ -77,7 +76,7 @@ export const FaceCard: React.FC<FaceCardProps> = ({ face, onFindSimilar, onExpan
           )}
         </div>
 
-        <div className="p-2.5 bg-[#0f1115] border-t border-white/5 space-y-1">
+        <div className="p-2.5 border-t border-white/5 space-y-1">
           {face.status === "verified" ? (
             <Badge className="text-[9px] font-bold uppercase tracking-tight border-none px-1.5 py-0.5 gap-1 w-full justify-start bg-indigo-500/10 text-indigo-400">
               <BadgeCheck size={10} className="shrink-0" />
@@ -110,7 +109,7 @@ export const FaceCard: React.FC<FaceCardProps> = ({ face, onFindSimilar, onExpan
             </p>
           )}
         </div>
-      </Card>
+      </div>
     </TooltipProvider>
   );
 };
@@ -136,7 +135,7 @@ const NavAction = ({
     </TooltipTrigger>
     <TooltipContent
       sideOffset={12}
-      className="bg-[#161920] border-white/10 text-[9px] font-bold uppercase tracking-widest text-annotation px-2 py-1 rounded-md shadow-2xl border [&_svg]:hidden!"
+      className="bg-popover border-white/10 text-[9px] font-bold uppercase tracking-widest text-annotation px-2 py-1 rounded-md shadow-2xl border [&_svg]:hidden!"
     >
       {label}
     </TooltipContent>

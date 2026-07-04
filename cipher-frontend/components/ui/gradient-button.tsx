@@ -1,14 +1,8 @@
 "use client";
 
+import { GlowLine } from "@/components/ui/glow-line";
 import { cn } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
-
-const BottomGradient = () => (
-  <>
-    <span className="absolute inset-x-0 -bottom-px block h-px w-full bg-linear-to-r from-transparent via-indigo-500 to-transparent opacity-0 transition duration-500 group-hover/btn:opacity-100" />
-    <span className="absolute inset-x-10 -bottom-px mx-auto block h-px w-1/2 bg-linear-to-r from-transparent via-indigo-500 to-transparent opacity-0 blur-sm transition duration-500 group-hover/btn:opacity-100" />
-  </>
-);
 
 interface GradientButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   isLoading?: boolean;
@@ -40,7 +34,7 @@ export function GradientButton({
       ) : (
         children
       )}
-      <BottomGradient />
+      <GlowLine groupName="btn" />
     </button>
   );
 }

@@ -1,8 +1,8 @@
 "use client";
 
+import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { SidebarTrigger } from "@/components/ui/sidebar";
 import { CommentSection } from "@/features/comments/components/comment-section";
 import { FaceCard } from "@/features/faces/components/face-card";
 import { FaceDetailDialog } from "@/features/faces/components/face-detail-dialog";
@@ -54,17 +54,7 @@ export default function PersonDetailPage({ params }: { params: Promise<{ id: str
 
   return (
     <div className="max-w-400 mx-auto px-6 relative pb-20">
-      <div className="sticky top-0 z-30 flex items-center justify-between pt-6 pb-2 bg-[#050507]/90">
-        <div className="flex items-center gap-4">
-          <SidebarTrigger className="h-9 w-9 text-slate-400 hover:text-indigo-400" />
-          <div className="flex flex-col">
-            <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">
-              Person
-            </span>
-            <span className="text-xs font-mono text-indigo-400/80">{recentFaces.length} faces</span>
-          </div>
-        </div>
-      </div>
+      <PageHeader eyebrow="Person" value={`${recentFaces.length} faces`} />
 
       {/* Identity header */}
       <div className="mt-4 rounded-2xl bg-slate-950/40 backdrop-blur-2xl border border-white/10 p-6 flex flex-col gap-4">

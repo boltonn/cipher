@@ -66,7 +66,7 @@ export function FaceDetailDialog({
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent
         className="max-w-[95vw] md:max-w-[90vw] lg:max-w-[85vw] w-full h-[92vh]
-        p-0 bg-[#0f1115] border-white/10 overflow-hidden flex flex-col md:flex-row shadow-2xl
+        p-0 bg-card border-white/10 overflow-hidden flex flex-col md:flex-row shadow-2xl
         ring-1 ring-white/5 gap-0"
         aria-describedby={undefined}
       >
@@ -107,7 +107,7 @@ export function FaceDetailDialog({
         </div>
 
         {/* Right: Data sidebar */}
-        <aside className="w-full md:w-100 border-l border-white/5 flex flex-col bg-[#161920]">
+        <aside className="w-full md:w-100 border-l border-white/5 flex flex-col bg-popover">
           <DialogHeader className="p-8 pb-4">
             <div className="flex items-center justify-between mb-1">
               <DialogTitle className="text-white tracking-[0.2em] uppercase text-[10px] font-black">

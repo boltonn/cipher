@@ -1,9 +1,9 @@
 "use client";
 
 import { Pagination } from "@/components/pagination";
+import { PageHeader } from "@/components/page-header";
+import { SearchBarShell } from "@/components/search-bar-shell";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Switch } from "@/components/ui/switch";
 import { CreatePersonDialog } from "@/features/persons/components/create-person-dialog";
 import { PersonCard } from "@/features/persons/components/person-card";
@@ -34,58 +34,49 @@ export default function PersonsPage() {
 
   return (
     <div className="max-w-400 mx-auto px-6 relative pb-20">
-      <div className="sticky top-0 z-30 flex items-center justify-between pt-6 pb-2 bg-[#050507]/90">
-        <div className="flex items-center gap-4">
-          <SidebarTrigger className="h-9 w-9 text-slate-400 hover:text-indigo-400" />
-          <div className="flex flex-col">
-            <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">
-              Persons
-            </span>
-            <span className="text-xs font-mono text-indigo-400/80">
-              {total.toLocaleString()} Results
-            </span>
-          </div>
-        </div>
+      <PageHeader
+        eyebrow="Persons"
+        value={`${total.toLocaleString()} Results`}
+        actions={
+          <Button
+            onClick={() => setIsCreateOpen(true)}
+            className="bg-indigo-600 hover:bg-indigo-500 gap-2 h-9 text-[10px] font-bold uppercase tracking-widest"
+          >
+            <Plus size={14} />
+            New Person
+          </Button>
+        }
+      />
 
-        <Button
-          onClick={() => setIsCreateOpen(true)}
-          className="bg-indigo-600 hover:bg-indigo-500 gap-2 h-9 text-[10px] font-bold uppercase tracking-widest"
-        >
-          <Plus size={14} />
-          New Person
-        </Button>
-      </div>
-
-      <div className="mt-4 flex items-center gap-4">
-        <div className="relative flex-1">
-          <Search
-            size={14}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"
-          />
-          <Input
+      <div className="mt-4">
+        <SearchBarShell isActive={isFetching} icon={<Search size={18} strokeWidth={1.5} />}>
+          <input
+            aria-label="Search persons"
+            type="text"
+            autoComplete="off"
+            placeholder="Search by name..."
+            className="w-full bg-transparent py-4 px-4 text-slate-100 placeholder:text-slate-600 focus:outline-none text-sm tracking-wide"
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
               setPage(1);
             }}
-            placeholder="Search by name..."
-            className="pl-9 bg-slate-900/40 border-white/10 text-sm h-10"
           />
-        </div>
 
-        <div className="flex items-center gap-2 shrink-0">
-          <BadgeCheck size={14} className="text-indigo-400" />
-          <span className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">
-            Verified only
-          </span>
-          <Switch
-            checked={verifiedOnly}
-            onCheckedChange={(checked) => {
-              setVerifiedOnly(checked);
-              setPage(1);
-            }}
-          />
-        </div>
+          <div className="flex items-center gap-2 shrink-0 pr-1">
+            <BadgeCheck size={14} className="text-indigo-400" />
+            <span className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">
+              Verified only
+            </span>
+            <Switch
+              checked={verifiedOnly}
+              onCheckedChange={(checked) => {
+                setVerifiedOnly(checked);
+                setPage(1);
+              }}
+            />
+          </div>
+        </SearchBarShell>
       </div>
 
       <main className="mt-6">

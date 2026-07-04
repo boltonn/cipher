@@ -183,7 +183,7 @@ export default function App() {
       ? "bg-amber-950/40 border-amber-500/20 border-l-2 border-l-amber-500/70"
       : annotationMode === "relevance"
         ? "bg-indigo-950/50 border-indigo-500/20 border-l-2 border-l-indigo-500/70"
-        : "bg-[#0f1117] border-slate-800/60";
+        : "bg-card border-slate-800/60";
 
   const annotateLabel =
     annotationMode === "tag"
@@ -199,7 +199,7 @@ export default function App() {
     );
 
   return (
-    <div className="flex flex-col h-screen bg-[#0f1117] text-slate-200 font-sans overflow-hidden">
+    <div className="flex flex-col h-screen bg-card text-slate-200 font-sans overflow-hidden">
       {/* ── Header — search only ── */}
       <header className="h-14 border-b border-slate-800 bg-[#161b22] px-6 flex items-center gap-4 z-20 shadow-lg shrink-0">
         <span className="font-bold text-lg tracking-tight hidden md:block shrink-0">
@@ -212,6 +212,7 @@ export default function App() {
             <input
               type="text"
               aria-label="Search messages"
+              autoComplete="off"
               value={inputValue}
               placeholder="Search messages…"
               className="w-full pl-10 pr-36 py-2 bg-slate-900/50 border border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 outline-none transition-all placeholder:text-slate-600"
@@ -430,7 +431,7 @@ export default function App() {
 
       {/* ── Main content ── */}
       <div className="flex flex-1 overflow-hidden">
-        <aside className="w-96 flex flex-col border-r border-slate-800 bg-[#0d1117]">
+        <aside className="w-96 flex flex-col border-r border-slate-800 bg-card">
           <div
             ref={sidebarRef}
             className="flex-1 overflow-y-auto custom-scrollbar"

@@ -68,7 +68,7 @@ export function DataTableColumnHeader<T>({
               )}
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="bg-[#161920] border-white/10">
+          <DropdownMenuContent align="start" className="bg-popover border-white/10">
             <DropdownMenuItem onClick={() => onSort?.(column.key, "asc")} className="text-xs gap-2">
               <ArrowUp size={12} /> Ascending
             </DropdownMenuItem>
@@ -100,7 +100,7 @@ export function DataTableColumnHeader<T>({
               )}
             </button>
           </PopoverTrigger>
-          <PopoverContent className="w-64 p-3 bg-[#161920] border-white/10" align="start">
+          <PopoverContent className="w-64 p-3 bg-popover border-white/10" align="start">
             <ColumnFilterControl
               column={column}
               value={filterValue}

@@ -98,11 +98,15 @@
 }
 
 .dark {
-  --background: oklch(0.07 0 0);
+  /* Named surface scale (replaces ad-hoc hex literals scattered across
+     components) -- darkest to lightest: background < card < popover.
+     Values are the exact hex tones already in use, just centralized here
+     so every surface reads from one source of truth. */
+  --background: #050507;
   --foreground: oklch(0.92 0 0);
-  --card: oklch(0.11 0 0);
+  --card: #0f1115;
   --card-foreground: oklch(0.92 0 0);
-  --popover: oklch(0.11 0 0);
+  --popover: #161920;
   --popover-foreground: oklch(0.92 0 0);
   --primary: oklch(0.59 0.20 277);
   --primary-foreground: oklch(0.96 0.02 272);
@@ -110,8 +114,8 @@
   --secondary-foreground: oklch(0.92 0 0);
   --muted: oklch(0.16 0 0);
   --muted-foreground: oklch(0.60 0 0);
-  --accent: oklch(0.22 0 0);
-  --accent-foreground: oklch(0.92 0 0);
+  --accent: oklch(0.3 0.06 277);
+  --accent-foreground: oklch(0.75 0.14 277);
   --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(1 0 0 / 8%);
   --input: oklch(1 0 0 / 12%);
@@ -121,7 +125,7 @@
   --chart-3: oklch(0.59 0.20 277);
   --chart-4: oklch(0.51 0.23 277);
   --chart-5: oklch(0.46 0.21 277);
-  --sidebar: oklch(0.07 0 0);
+  --sidebar: #050507;
   --sidebar-foreground: oklch(0.92 0 0);
   --sidebar-primary: oklch(0.68 0.16 277);
   --sidebar-primary-foreground: oklch(0.96 0.02 272);

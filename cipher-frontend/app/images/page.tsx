@@ -1,7 +1,7 @@
 "use client";
 
+import { PageHeader } from "@/components/page-header";
 import { PaginationModeToggle } from "@/components/pagination-mode-toggle";
-import { SidebarTrigger } from "@/components/ui/sidebar";
 import { ImageSearchBar } from "@/features/images/components/image-search-bar";
 import { ImagesContainerInfinite } from "@/features/images/components/images-container-infinite";
 import { ImagesContainerPaginated } from "@/features/images/components/images-container-paginated";
@@ -48,27 +48,17 @@ function ImageSearchPageInner() {
 
   return (
     <div className="max-w-400 mx-auto px-6 relative pb-20">
-      {/* Utility Header */}
-      <div className="sticky top-0 z-30 flex items-center justify-between pt-6 pb-2 bg-[#050507]/90">
-        <div className="flex items-center gap-4">
-          <SidebarTrigger className="h-9 w-9 text-slate-400 hover:text-indigo-400" />
-
-          <div className="flex flex-col">
-            <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">
-              Images
-            </span>
-            <span className="text-xs font-mono text-indigo-400/80">
-              {totalAssets.toLocaleString()} Results
-            </span>
-          </div>
-        </div>
-
-        <PaginationModeToggle
-          mode={paginationMode}
-          onToggle={() => setPaginationMode((p) => (p === "infinite" ? "normal" : "infinite"))}
-          accentClassName="hover:text-indigo-400"
-        />
-      </div>
+      <PageHeader
+        eyebrow="Images"
+        value={`${totalAssets.toLocaleString()} Results`}
+        actions={
+          <PaginationModeToggle
+            mode={paginationMode}
+            onToggle={() => setPaginationMode((p) => (p === "infinite" ? "normal" : "infinite"))}
+            accentClassName="hover:text-indigo-400"
+          />
+        }
+      />
 
       {/* Search bar, with filters tucked below its filter icon */}
       <div className="mt-4">

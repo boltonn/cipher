@@ -74,7 +74,7 @@ export function FacePickerDialog({ isOpen, onOpenChange, file, faces, onConfirm 
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-[#0f1115] border-white/10 sm:max-w-lg">
+      <DialogContent className="bg-card border-white/10 sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="text-white tracking-[0.1em] uppercase text-xs font-black">
             Select a Face

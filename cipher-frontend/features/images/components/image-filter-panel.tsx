@@ -1,17 +1,14 @@
 "use client";
 
+import { DatePicker } from "@/components/date-picker";
 import { TagsInput } from "@/components/tags-input";
-import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
 import { Label } from "@/components/ui/label";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
 import { DatasetMultiSelectCombobox } from "@/features/datasets/components/dataset-multi-select-combobox";
 import { useImageFiletypes } from "@/features/images/api";
 import { ImageFilters } from "@/features/images/hooks/use-search-controller";
 import { cn } from "@/lib/utils";
-import { format } from "date-fns";
-import { CalendarIcon, Filter, X } from "lucide-react";
+import { Filter, X } from "lucide-react";
 import React, { useState } from "react";
 
 export function hasActiveImageFilters(params: ImageFilters): boolean {
@@ -24,32 +21,6 @@ export function hasActiveImageFilters(params: ImageFilters): boolean {
     (params.minSimilarity ?? 0) > 0
   );
 }
-
-interface DatePickerProps {
-  label: string;
-  value: string | undefined;
-  onChange: (date: Date | undefined) => void;
-}
-
-const DatePicker = ({ label, value, onChange }: DatePickerProps) => (
-  <Popover>
-    <PopoverTrigger asChild>
-      <Button
-        variant="outline"
-        className={cn(
-          "w-full justify-start text-left font-normal text-xs h-9 bg-slate-900/40 border-white/10 hover:bg-slate-900/60",
-          !value && "text-slate-500"
-        )}
-      >
-        <CalendarIcon className="mr-2 h-3 w-3" />
-        {value ? format(new Date(value), "PPP") : <span>{label}</span>}
-      </Button>
-    </PopoverTrigger>
-    <PopoverContent className="w-auto p-0 bg-slate-950 border-white/10" align="start">
-      <Calendar mode="single" selected={value ? new Date(value) : undefined} onSelect={onChange} className="rounded-md border-none" />
-    </PopoverContent>
-  </Popover>
-);
 
 interface ImageFilterPanelProps {
   params: ImageFilters;
@@ -119,14 +90,14 @@ export const ImageFilterPanel: React.FC<ImageFilterPanelProps> = ({
           </span>
           <div className="grid grid-cols-2 gap-3">
             <DatePicker
-              label="From"
+              placeholder="From"
               value={params.dateFrom}
-              onChange={(d) => updateParam("dateFrom", d?.toISOString())}
+              onChange={(iso) => updateParam("dateFrom", iso)}
             />
             <DatePicker
-              label="To"
+              placeholder="To"
               value={params.dateTo}
-              onChange={(d) => updateParam("dateTo", d?.toISOString())}
+              onChange={(iso) => updateParam("dateTo", iso)}
             />
           </div>
         </div>

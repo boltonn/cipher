@@ -1,6 +1,7 @@
 "use client";
 
 import type { DataTableFilters, DataTableSortOrder } from "@/components/data-table/types";
+import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -8,7 +9,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useDatasetsList } from "@/features/datasets/api";
 import { DatasetRequestForm } from "@/features/datasets/components/dataset-create-form";
 import {
@@ -78,74 +78,61 @@ export default function DatasetSearchPage() {
 
   return (
     <div className="max-w-350 mx-auto px-6 relative pb-20">
-      {/* 1. Header Row */}
-      <div className="relative z-50 flex items-center justify-between pt-6 pb-2 bg-transparent">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center p-1 rounded-lg bg-slate-900/50 border border-white/5 gap-1 shadow-lg">
-            <SidebarTrigger className="h-8 w-8 text-slate-400 hover:text-indigo-400 transition-colors" />
-          </div>
-          <div className="flex flex-col">
-            <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">
-              Registry
-            </span>
-            <div className="flex items-center gap-2">
-              <Database size={10} className="text-indigo-400/50" />
-              <span className="text-xs font-mono text-indigo-400/80">
-                {total.toLocaleString()} {total === 1 ? "Dataset" : "Datasets"}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <div className="flex items-center p-1 rounded-lg bg-slate-900/50 border border-white/5 gap-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setViewMode("card")}
-              aria-label="Card view"
-              className={cn(
-                "h-7 w-7",
-                viewMode === "card" ? "text-indigo-400 bg-indigo-500/10" : "text-slate-500 hover:text-slate-300"
-              )}
-            >
-              <LayoutGrid size={14} />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setViewMode("table")}
-              aria-label="Table view"
-              className={cn(
-                "h-7 w-7",
-                viewMode === "table" ? "text-indigo-400 bg-indigo-500/10" : "text-slate-500 hover:text-slate-300"
-              )}
-            >
-              <Table2 size={14} />
-            </Button>
-          </div>
-
-          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-            <DialogTrigger asChild>
+      <PageHeader
+        eyebrow="Registry"
+        icon={<Database size={10} className="text-indigo-400/50" />}
+        value={`${total.toLocaleString()} ${total === 1 ? "Dataset" : "Datasets"}`}
+        actions={
+          <>
+            <div className="flex items-center p-1 rounded-lg bg-slate-900/50 border border-white/5 gap-1">
               <Button
-                variant="outline"
-                size="sm"
-                className="hover:border-indigo-500/40 hover:bg-indigo-500/10 hover:text-indigo-300"
+                variant="ghost"
+                size="icon"
+                onClick={() => setViewMode("card")}
+                aria-label="Card view"
+                className={cn(
+                  "h-7 w-7",
+                  viewMode === "card" ? "text-indigo-400 bg-indigo-500/10" : "text-slate-500 hover:text-slate-300"
+                )}
               >
-                <Plus size={14} className="mr-1.5" />
-                Create Dataset
+                <LayoutGrid size={14} />
               </Button>
-            </DialogTrigger>
-            <DialogContent className="p-0 border-white/10 bg-transparent w-fit ring-0">
-              <DialogTitle className="sr-only">Request Dataset</DialogTitle>
-              <DatasetRequestForm onSuccess={() => setCreateOpen(false)} />
-            </DialogContent>
-          </Dialog>
-        </div>
-      </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setViewMode("table")}
+                aria-label="Table view"
+                className={cn(
+                  "h-7 w-7",
+                  viewMode === "table" ? "text-indigo-400 bg-indigo-500/10" : "text-slate-500 hover:text-slate-300"
+                )}
+              >
+                <Table2 size={14} />
+              </Button>
+            </div>
 
-      {/* 2. Sticky Action Bar */}
-      <div className="sticky top-0 z-40 py-4 bg-[#050507]/50 backdrop-blur-md">
+            <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+              <DialogTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 bg-slate-900/40 border-white/10 text-slate-400 hover:border-indigo-500/40 hover:bg-indigo-500/10 hover:text-indigo-300"
+                >
+                  <Plus size={14} className="mr-1.5" />
+                  Create Dataset
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="p-0 border-white/10 bg-transparent w-fit ring-0">
+                <DialogTitle className="sr-only">Request Dataset</DialogTitle>
+                <DatasetRequestForm onSuccess={() => setCreateOpen(false)} />
+              </DialogContent>
+            </Dialog>
+          </>
+        }
+      />
+
+      {/* 2. Search bar */}
+      <div className="mt-4">
         <DatasetsSearchBar
           query={filters.name as string | undefined}
           onSearch={handleSearch}

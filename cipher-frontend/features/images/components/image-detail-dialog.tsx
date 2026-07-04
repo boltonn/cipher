@@ -82,7 +82,7 @@ export function ImageDetailDialog({
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent
         className="max-w-[95vw] md:max-w-[90vw] lg:max-w-[85vw] w-full h-[92vh] 
-        p-0 bg-[#0f1115] border-white/10 overflow-hidden flex flex-col md:flex-row shadow-2xl 
+        p-0 bg-card border-white/10 overflow-hidden flex flex-col md:flex-row shadow-2xl 
         ring-1 ring-white/5 gap-0"
         aria-describedby={undefined}
       >
@@ -126,10 +126,10 @@ export function ImageDetailDialog({
         </div>
 
         {/* Right: Data Sidebar */}
-        <aside className="w-full md:w-100 border-l border-white/5 flex flex-col bg-[#161920] relative">
+        <aside className="w-full md:w-100 border-l border-white/5 flex flex-col bg-popover relative">
           {/* Loading Overlay for Sidebar */}
           {isLoading && (
-            <div className="absolute inset-0 z-50 bg-[#161920]/80 backdrop-blur-sm flex flex-col items-center justify-center space-y-4">
+            <div className="absolute inset-0 z-50 bg-popover/80 backdrop-blur-sm flex flex-col items-center justify-center space-y-4">
               <Loader2 className="h-8 w-8 animate-spin text-indigo-500" />
               <span className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-400/70">
                 Parsing Metadata...
@@ -296,7 +296,7 @@ export function ImageDetailDialog({
             <input
               aria-label="Comment"
               placeholder="Make a comment..."
-              className="w-full bg-[#0f1115] border border-white/10 rounded-md p-2.5 text-xs text-white focus:outline-none focus:border-indigo-500 transition-all placeholder:text-slate-700"
+              className="w-full bg-card border border-white/10 rounded-md p-2.5 text-xs text-white focus:outline-none focus:border-indigo-500 transition-all placeholder:text-slate-700"
             />
           </div>
         </aside>
