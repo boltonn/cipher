@@ -35,6 +35,13 @@ export const DatasetCreateSchema = z.object({
 
 export type DatasetCreate = z.infer<typeof DatasetCreateSchema>;
 
+export const DatasetUpdateSchema = z.object({
+  name: z.string().min(1, "Name is required").optional(),
+  description: z.string().optional(),
+});
+
+export type DatasetUpdate = z.infer<typeof DatasetUpdateSchema>;
+
 export interface DatasetRequest {
   query?: string;
   dateCreatedFrom?: string;
@@ -63,6 +70,8 @@ export interface DatasetStatsRequest {
   dateFrom?: string;
   dateTo?: string;
   granularity?: HistogramGranularityType;
+  filetype?: string;
+  filetypeGroup?: string;
 }
 
 export interface DatasetStatsResponse {

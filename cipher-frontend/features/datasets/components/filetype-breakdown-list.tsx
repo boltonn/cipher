@@ -1,13 +1,19 @@
 "use client";
 
+import { cn } from "@/lib/utils";
 import type { FiletypeBreakdownItem } from "@/features/datasets/types";
+import { motion } from "motion/react";
 
 interface FiletypeBreakdownListProps {
   items: FiletypeBreakdownItem[];
+  /** Currently active drill-down value, if any. */
+  selected?: string;
+  /** Click a row to filter the rest of the page by it; clicking the active row again clears it. */
+  onSelect?: (filetype: string | undefined) => void;
 }
 
 /** Horizontal bar list: each row's fill width is proportional to its share of the total. */
-export function FiletypeBreakdownList({ items }: FiletypeBreakdownListProps) {
+export function FiletypeBreakdownList({ items, selected, onSelect }: FiletypeBreakdownListProps) {
   if (items.length === 0) {
     return <div className="flex items-center justify-center h-24 text-xs text-slate-600">No files in this range</div>;
   }
@@ -18,18 +24,36 @@ export function FiletypeBreakdownList({ items }: FiletypeBreakdownListProps) {
     <div className="flex flex-col gap-3">
       {items.map((item) => {
         const pct = total > 0 ? (item.count / total) * 100 : 0;
+        const isActive = selected === item.filetype;
         return (
-          <div key={item.filetype} className="flex flex-col gap-1">
+          <motion.button
+            key={item.filetype}
+            layout
+            type="button"
+            onClick={() => onSelect?.(isActive ? undefined : item.filetype)}
+            transition={{ duration: 0.2 }}
+            className={cn(
+              "flex flex-col gap-1 text-left rounded-lg -mx-1 px-1 py-0.5 transition-opacity",
+              onSelect && "cursor-pointer hover:opacity-100",
+              selected && !isActive && "opacity-40"
+            )}
+          >
             <div className="flex items-center justify-between text-xs">
-              <span className="font-mono text-slate-300 uppercase">{item.filetype}</span>
+              <span className={cn("font-mono uppercase", isActive ? "text-indigo-300" : "text-slate-300")}>
+                {item.filetype}
+              </span>
               <span className="text-slate-500">
                 {item.count.toLocaleString()} <span className="text-slate-600">({pct.toFixed(0)}%)</span>
               </span>
             </div>
             <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
-              <div className="h-full rounded-full bg-indigo-500/50" style={{ width: `${pct}%` }} />
+              <motion.div
+                className={cn("h-full rounded-full", isActive ? "bg-indigo-400" : "bg-indigo-500/50")}
+                animate={{ width: `${pct}%` }}
+                transition={{ duration: 0.3, ease: "easeOut" }}
+              />
             </div>
-          </div>
+          </motion.button>
         );
       })}
     </div>

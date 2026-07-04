@@ -205,6 +205,10 @@ class PostgresDatasetRepository:
             where_clause.append(FileTable.date_loaded >= request.date_from)
         if request.date_to:
             where_clause.append(FileTable.date_loaded <= request.date_to)
+        if request.filetype:
+            where_clause.append(FileTable.filetype == request.filetype)
+        if request.filetype_group:
+            where_clause.append(FileTable.filetype_group == request.filetype_group)
 
         total_files, total_size_bytes = (
             await self.session.execute(

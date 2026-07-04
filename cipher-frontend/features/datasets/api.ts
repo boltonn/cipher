@@ -4,10 +4,11 @@ import type {
   DatasetStatsRequest,
   DatasetStatsResponse,
   DatasetSummary,
+  DatasetUpdate,
 } from "@/features/datasets/types";
 import { apiClient } from "@/lib/api-client";
 import type { PaginatedResponse } from "@/types/common";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 const queryKeys = {
   datasets: (filters?: DatasetRequest) => ["datasets", filters] as const,
@@ -39,6 +40,10 @@ const datasetService = {
   },
   getStats: async (id: string, params?: DatasetStatsRequest): Promise<DatasetStatsResponse> => {
     const { data } = await apiClient.get<DatasetStatsResponse>(`/datasets/${id}/stats`, { params });
+    return data;
+  },
+  update: async (id: string, payload: DatasetUpdate): Promise<Dataset> => {
+    const { data } = await apiClient.put<Dataset>(`/datasets/${id}`, payload);
     return data;
   },
 };
@@ -82,5 +87,17 @@ export function useDatasetStats(id: string | undefined, params: DatasetStatsRequ
     queryFn: () => datasetService.getStats(id as string, params),
     enabled: !!id,
     staleTime: 10_000,
+  });
+}
+
+export function useUpdateDataset(id: string, onSuccess?: () => void) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: DatasetUpdate) => datasetService.update(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["datasets"] });
+      onSuccess?.();
+    },
   });
 }

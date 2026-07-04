@@ -1,11 +1,17 @@
 "use client";
 
 import type { HistogramGranularityType, LoadHistogramBucket } from "@/features/datasets/types";
+import { cn } from "@/lib/utils";
+import { motion } from "motion/react";
 import { useState } from "react";
 
 interface LoadHistogramChartProps {
   buckets: LoadHistogramBucket[];
   granularity: HistogramGranularityType;
+  /** dateBucket of the currently active drill-down, if any. */
+  selectedBucket?: string;
+  /** Click a bar to filter the rest of the page to that bucket's window; clicking it again clears it. */
+  onSelectBucket?: (bucket: LoadHistogramBucket) => void;
 }
 
 const formatBucketLabel = (dateString: string, granularity: HistogramGranularityType) => {
@@ -14,8 +20,8 @@ const formatBucketLabel = (dateString: string, granularity: HistogramGranularity
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 };
 
-/** Hand-rolled bar chart: hover a bar to see its exact date and count. */
-export function LoadHistogramChart({ buckets, granularity }: LoadHistogramChartProps) {
+/** Hand-rolled bar chart: hover a bar to see its exact date and count, click to drill in. */
+export function LoadHistogramChart({ buckets, granularity, selectedBucket, onSelectBucket }: LoadHistogramChartProps) {
   const [hovered, setHovered] = useState<number | null>(null);
 
   if (buckets.length === 0) {
@@ -34,18 +40,29 @@ export function LoadHistogramChart({ buckets, granularity }: LoadHistogramChartP
       <div className="flex items-end justify-between h-48 gap-px">
         {buckets.map((bucket, index) => {
           const heightPct = maxCount > 0 ? (bucket.count / maxCount) * 100 : 0;
+          const isActive = selectedBucket === bucket.dateBucket;
           return (
-            <div
+            <button
               key={bucket.dateBucket}
-              className="flex-1 h-full flex items-end group relative"
+              type="button"
+              onClick={() => onSelectBucket?.(bucket)}
+              className={cn(
+                "flex-1 h-full flex items-end group relative",
+                onSelectBucket && "cursor-pointer",
+                selectedBucket && !isActive && "opacity-40"
+              )}
               onMouseEnter={() => setHovered(index)}
               onMouseLeave={() => setHovered(null)}
             >
-              <div
-                className="w-full rounded-t bg-indigo-500/30 group-hover:bg-indigo-500/60 transition-colors min-h-[2px]"
-                style={{ height: `${heightPct}%` }}
+              <motion.div
+                className={cn(
+                  "w-full rounded-t transition-colors min-h-[2px]",
+                  isActive ? "bg-indigo-400" : "bg-indigo-500/30 group-hover:bg-indigo-500/60"
+                )}
+                animate={{ height: `${heightPct}%` }}
+                transition={{ duration: 0.3, ease: "easeOut" }}
               />
-            </div>
+            </button>
           );
         })}
       </div>

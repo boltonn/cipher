@@ -41,47 +41,51 @@ export function DateRangePicker({
     : placeholder;
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
+    <div className={cn("relative", className)}>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            className={cn(
+              "w-full justify-start text-left font-normal text-xs h-9 bg-slate-900/40 border-white/10 hover:bg-slate-900/60",
+              selected?.from && "pr-8",
+              !selected?.from && "text-slate-500"
+            )}
+          >
+            <CalendarIcon className="mr-2 h-3 w-3 shrink-0" />
+            <span className="truncate">{label}</span>
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0 bg-popover border-white/10" align="start">
+          <Calendar
+            mode="range"
+            captionLayout="dropdown"
+            numberOfMonths={2}
+            selected={selected}
+            onSelect={(range) => {
+              onChange({ from: range?.from?.toISOString(), to: range?.to?.toISOString() });
+              if (range?.from && range?.to) setOpen(false);
+            }}
+            className="rounded-md border-none"
+          />
+        </PopoverContent>
+      </Popover>
+      {selected?.from && (
+        // Rendered as a sibling, not a child of the trigger Button, since a <button>
+        // cannot nest inside another <button> without breaking HTML validity/hydration.
+        <button
           type="button"
-          variant="outline"
-          className={cn(
-            "w-full justify-start text-left font-normal text-xs h-9 bg-slate-900/40 border-white/10 hover:bg-slate-900/60",
-            !selected?.from && "text-slate-500",
-            className
-          )}
-        >
-          <CalendarIcon className="mr-2 h-3 w-3 shrink-0" />
-          <span className="truncate">{label}</span>
-          {selected?.from && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onChange({ from: undefined, to: undefined });
-              }}
-              className="ml-auto text-slate-500 hover:text-white"
-              aria-label="Clear date range"
-            >
-              <X size={12} />
-            </button>
-          )}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-auto p-0 bg-popover border-white/10" align="start">
-        <Calendar
-          mode="range"
-          captionLayout="dropdown"
-          numberOfMonths={2}
-          selected={selected}
-          onSelect={(range) => {
-            onChange({ from: range?.from?.toISOString(), to: range?.to?.toISOString() });
-            if (range?.from && range?.to) setOpen(false);
+          onClick={(e) => {
+            e.stopPropagation();
+            onChange({ from: undefined, to: undefined });
           }}
-          className="rounded-md border-none"
-        />
-      </PopoverContent>
-    </Popover>
+          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"
+          aria-label="Clear date range"
+        >
+          <X size={12} />
+        </button>
+      )}
+    </div>
   );
 }

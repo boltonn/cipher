@@ -135,11 +135,13 @@ class LoadHistogramBucket(BaseModel):
 
 
 class DatasetStatsRequest(BaseModel):
-    """Date range and bucket granularity for a dataset's stats breakdown."""
+    """Date range, bucket granularity, and drill-down filters for a dataset's stats breakdown."""
 
     date_from: datetime | None = Field(None, description="Only include files loaded on/after this date")
     date_to: datetime | None = Field(None, description="Only include files loaded on/before this date")
     granularity: HistogramGranularity = Field("day", description="Time bucket size for the load histogram")
+    filetype: str | None = Field(None, description="Only include files of this filetype")
+    filetype_group: str | None = Field(None, description="Only include files in this filetype group")
 
 
 class DatasetStatsResponse(BaseModel):

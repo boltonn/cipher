@@ -2,6 +2,7 @@
 
 import { DateRangePicker } from "@/components/date-range-picker";
 import { PageHeader } from "@/components/page-header";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -11,13 +12,26 @@ import {
 } from "@/components/ui/select";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useDataset, useDatasetStats } from "@/features/datasets/api";
+import { EditDatasetDialog } from "@/features/datasets/components/edit-dataset-dialog";
 import { FiletypeBreakdownList } from "@/features/datasets/components/filetype-breakdown-list";
 import { LoadHistogramChart } from "@/features/datasets/components/load-histogram-chart";
-import type { HistogramGranularityType } from "@/features/datasets/types";
+import type { HistogramGranularityType, LoadHistogramBucket } from "@/features/datasets/types";
 import { formatBytes, formatCompactNumber } from "@/lib/utils";
-import { BarChart3, Database, Files, HardDrive, PieChart } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
+import { BarChart3, Database, Files, HardDrive, PieChart, Pencil, X } from "lucide-react";
 import Link from "next/link";
 import { use, useState } from "react";
+
+/** End-exclusive window covering the bucket's full day/week/month, for use as a date-range filter. */
+function bucketToRange(dateBucket: string, granularity: HistogramGranularityType) {
+  const start = new Date(dateBucket);
+  const end = new Date(start);
+  if (granularity === "day") end.setDate(end.getDate() + 1);
+  else if (granularity === "week") end.setDate(end.getDate() + 7);
+  else end.setMonth(end.getMonth() + 1);
+  end.setMilliseconds(end.getMilliseconds() - 1);
+  return { from: start.toISOString(), to: end.toISOString() };
+}
 
 export default function DatasetDetailPage({
   params,
@@ -26,16 +40,51 @@ export default function DatasetDetailPage({
 }) {
   const { id } = use(params);
 
+  const [isEditOpen, setIsEditOpen] = useState(false);
   const [range, setRange] = useState<{ from?: string; to?: string }>({});
   const [granularity, setGranularity] =
     useState<HistogramGranularityType>("day");
+  const [selectedBucket, setSelectedBucket] = useState<string | undefined>();
+  const [filetype, setFiletype] = useState<string | undefined>();
+  const [filetypeGroup, setFiletypeGroup] = useState<string | undefined>();
 
   const { data: dataset, isPending: datasetPending } = useDataset(id);
   const { data: stats, isPending: statsPending } = useDatasetStats(id, {
     dateFrom: range.from,
     dateTo: range.to,
     granularity,
+    filetype,
+    filetypeGroup,
   });
+
+  const hasCrossFilters = !!filetype || !!filetypeGroup || !!selectedBucket;
+
+  const handleSelectBucket = (bucket: LoadHistogramBucket) => {
+    if (selectedBucket === bucket.dateBucket) {
+      setSelectedBucket(undefined);
+      setRange({});
+      return;
+    }
+    setSelectedBucket(bucket.dateBucket);
+    setRange(bucketToRange(bucket.dateBucket, granularity));
+  };
+
+  const handleSelectFiletype = (value: string | undefined) => {
+    setFiletype(value);
+    setFiletypeGroup(undefined);
+  };
+
+  const handleSelectFiletypeGroup = (value: string | undefined) => {
+    setFiletypeGroup(value);
+    setFiletype(undefined);
+  };
+
+  const clearCrossFilters = () => {
+    setFiletype(undefined);
+    setFiletypeGroup(undefined);
+    setSelectedBucket(undefined);
+    setRange({});
+  };
 
   if (datasetPending || !dataset) {
     return (
@@ -65,15 +114,28 @@ export default function DatasetDetailPage({
       </PageHeader>
 
       {/* Identity header */}
-      <div className="mt-4 rounded-2xl bg-slate-950/40 backdrop-blur-2xl border border-white/10 p-6 flex flex-col gap-2">
-        <div className="flex items-center gap-2.5">
-          <Database size={16} className="text-indigo-400" />
-          <h1 className="text-xl font-bold text-white">{dataset.name}</h1>
+      <div className="mt-4 rounded-2xl bg-slate-950/40 backdrop-blur-2xl border border-white/10 p-6 flex items-start justify-between gap-4">
+        <div className="flex flex-col gap-2 min-w-0">
+          <div className="flex items-center gap-2.5">
+            <Database size={16} className="text-indigo-400" />
+            <h1 className="text-xl font-bold text-white">{dataset.name}</h1>
+          </div>
+          <p className="text-sm text-slate-400">
+            {dataset.description || "No description"}
+          </p>
         </div>
-        <p className="text-sm text-slate-400">
-          {dataset.description || "No description"}
-        </p>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setIsEditOpen(true)}
+          className="h-9 shrink-0 bg-slate-900/40 border-white/10 text-slate-400 hover:text-indigo-400 uppercase text-[10px] font-bold tracking-widest gap-2"
+        >
+          <Pencil size={14} />
+          Edit
+        </Button>
       </div>
+
+      <EditDatasetDialog dataset={dataset} isOpen={isEditOpen} onOpenChange={setIsEditOpen} />
 
       {/* Date range + granularity filter */}
       <div className="mt-6 flex items-center justify-between gap-4">
@@ -82,9 +144,32 @@ export default function DatasetDetailPage({
           <h2 className="text-[10px] font-black uppercase tracking-[0.2em]">
             Files Loaded Over Time
           </h2>
+          <AnimatePresence>
+            {hasCrossFilters && (
+              <motion.button
+                type="button"
+                onClick={clearCrossFilters}
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                transition={{ duration: 0.15 }}
+                className="flex items-center gap-1.5 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-indigo-300 hover:bg-indigo-500/20 hover:text-indigo-200"
+              >
+                <X size={11} />
+                Clear filters
+              </motion.button>
+            )}
+          </AnimatePresence>
         </div>
         <div className="flex items-center gap-2">
-          <DateRangePicker value={range} onChange={setRange} className="w-64" />
+          <DateRangePicker
+            value={range}
+            onChange={(value) => {
+              setRange(value);
+              setSelectedBucket(undefined);
+            }}
+            className="w-64"
+          />
           <Select
             value={granularity}
             onValueChange={(v) => setGranularity(v as HistogramGranularityType)}
@@ -126,6 +211,8 @@ export default function DatasetDetailPage({
             <LoadHistogramChart
               buckets={stats?.loadedOverTime ?? []}
               granularity={granularity}
+              selectedBucket={selectedBucket}
+              onSelectBucket={handleSelectBucket}
             />
           )}
         </div>
@@ -145,7 +232,11 @@ export default function DatasetDetailPage({
               Loading...
             </div>
           ) : (
-            <FiletypeBreakdownList items={stats?.byFiletype ?? []} />
+            <FiletypeBreakdownList
+              items={stats?.byFiletype ?? []}
+              selected={filetype}
+              onSelect={handleSelectFiletype}
+            />
           )}
         </div>
         <div className="rounded-2xl bg-slate-950/40 backdrop-blur-2xl border border-white/10 p-6">
@@ -160,7 +251,11 @@ export default function DatasetDetailPage({
               Loading...
             </div>
           ) : (
-            <FiletypeBreakdownList items={stats?.byFiletypeGroup ?? []} />
+            <FiletypeBreakdownList
+              items={stats?.byFiletypeGroup ?? []}
+              selected={filetypeGroup}
+              onSelect={handleSelectFiletypeGroup}
+            />
           )}
         </div>
       </div>
@@ -177,13 +272,24 @@ const StatCard = ({
   label: string;
   value: string;
 }) => (
-  <div className="rounded-2xl bg-slate-950/40 backdrop-blur-2xl border border-white/10 p-4 flex flex-col gap-1.5">
+  <div className="rounded-2xl bg-slate-950/40 backdrop-blur-2xl border border-white/10 p-4 flex flex-col gap-1.5 overflow-hidden">
     <div className="flex items-center gap-1.5 text-slate-500">
       {icon}
       <span className="text-[9px] font-bold uppercase tracking-widest">
         {label}
       </span>
     </div>
-    <span className="text-lg font-mono text-slate-200">{value}</span>
+    <AnimatePresence mode="wait">
+      <motion.span
+        key={value}
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -6 }}
+        transition={{ duration: 0.15 }}
+        className="text-lg font-mono text-slate-200"
+      >
+        {value}
+      </motion.span>
+    </AnimatePresence>
   </div>
 );
