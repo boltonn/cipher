@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
 
-from cipher.api.deps.postgres import DatasetDatastoreDep
+from cipher.api.deps.postgres import DatasetDatastoreDep, FileDatastoreDep
 from cipher.schemas.dataset import (
     Dataset,
     DatasetCreate,
@@ -13,6 +13,7 @@ from cipher.schemas.dataset import (
     DatasetUpdate,
     PaginatedDatasetsResponse,
 )
+from cipher.schemas.file import FileBrowserRequest, FileBrowserResponse
 
 router = APIRouter(
     prefix="/datasets",
@@ -76,6 +77,24 @@ async def get_dataset_stats(
     if await datastore.get_dataset_by_id(dataset_id=id) is None:
         raise HTTPException(status_code=404, detail=f"Dataset not found: {id}")
     return await datastore.get_dataset_stats(dataset_id=id, request=params)
+
+
+@router.get(
+    "/{id}/browse",
+    summary="Browse a dataset's files and folders",
+    response_model=FileBrowserResponse,
+    response_model_by_alias=True,
+)
+async def browse_dataset_files(
+    id: str,
+    params: Annotated[FileBrowserRequest, Depends()],
+    dataset_datastore: DatasetDatastoreDep,
+    file_datastore: FileDatastoreDep,
+):
+    """Browse a dataset's files, optionally scoped to a folder path, paginated (max 100 entries per page)."""
+    if await dataset_datastore.get_dataset_by_id(dataset_id=id) is None:
+        raise HTTPException(status_code=404, detail=f"Dataset not found: {id}")
+    return await file_datastore.browse_directory(dataset_id=id, req=params)
 
 
 @router.delete(

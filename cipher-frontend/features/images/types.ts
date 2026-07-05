@@ -29,7 +29,7 @@ export interface TextImageKnnSearchRequest extends ImageSimilaritySearchParamete
 
 export interface ImagePublic {
   id: string;
-  file_id: string;
+  fileId: string;
   width: number;
   height: number;
   cameraMake?: string;

@@ -29,6 +29,7 @@ class FileBase(BaseModel):
     mime_type: str = Field(description="MIME type of the file")
     path: str | None = Field(default=None, description="Fully normalized absolute path")
     uri: str | None = Field(default=None, description="URI of the file")
+    device: str | None = Field(default=None, description="Storage device/bucket/mount the file lives on")
     size: int = Field(description="Size of the file in bytes")
 
     date_created: datetime | None = Field(

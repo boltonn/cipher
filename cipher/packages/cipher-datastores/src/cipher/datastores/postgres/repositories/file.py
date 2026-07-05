@@ -1,4 +1,4 @@
-from sqlalchemy import asc, desc, func, select
+from sqlalchemy import asc, desc, distinct, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -139,7 +139,7 @@ class PostgresFileRepository:
             )
 
             # Only direct children (no slash in relative path)
-            is_direct_child = func.position("/", relative) == 0
+            is_direct_child = func.strpos(relative, "/") == 0
 
             stmt = stmt.where(FileTable.path.startswith(prefix))
             stmt = stmt.where(is_direct_child)
@@ -181,7 +181,7 @@ class PostgresFileRepository:
         if path is not None:
             prefix = "/" if path == "/" else path.rstrip("/") + "/"
             relative = func.substring(FileTable.path, func.length(prefix) + 1)
-            is_direct_child = func.position("/", relative) == 0
+            is_direct_child = func.strpos(relative, "/") == 0
 
             stmt = stmt.where(FileTable.path.startswith(prefix))
             stmt = stmt.where(is_direct_child)
@@ -211,10 +211,10 @@ class PostgresFileRepository:
         folder_name = func.split_part(relative, "/", 1)
 
         stmt = (
-            select(func.count(func.distinct(folder_name)))
+            select(func.count(distinct(folder_name)))
             .where(FileTable.dataset_id == dataset_id)
             .where(FileTable.path.startswith(prefix))
-            .where(func.position("/", relative) > 0)  # Only paths with subfolders
+            .where(func.strpos(relative, "/") > 0)  # Only paths with subfolders
         )
 
         result = await self.session.execute(stmt)
@@ -244,7 +244,7 @@ class PostgresFileRepository:
             select(folder_name)
             .where(FileTable.dataset_id == dataset_id)
             .where(FileTable.path.startswith(prefix))
-            .where(func.position("/", relative) > 0)  # Only paths with subfolders
+            .where(func.strpos(relative, "/") > 0)  # Only paths with subfolders
             .distinct()
             .order_by(folder_name)
             .offset(offset)
@@ -278,7 +278,7 @@ class PostgresFileRepository:
             )
 
             stmt = stmt.where(FileTable.path.startswith(prefix))
-            stmt = stmt.where(func.position("/", relative) == 0)  # No subdirectories
+            stmt = stmt.where(func.strpos(relative, "/") == 0)  # No subdirectories
 
         # Search
         if query:

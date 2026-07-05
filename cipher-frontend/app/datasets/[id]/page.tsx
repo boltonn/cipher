@@ -12,13 +12,14 @@ import {
 } from "@/components/ui/select";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useDataset, useDatasetStats } from "@/features/datasets/api";
+import { DatasetFileBrowser } from "@/features/datasets/components/dataset-file-browser";
 import { EditDatasetDialog } from "@/features/datasets/components/edit-dataset-dialog";
 import { FiletypeBreakdownList } from "@/features/datasets/components/filetype-breakdown-list";
 import { LoadHistogramChart } from "@/features/datasets/components/load-histogram-chart";
 import type { HistogramGranularityType, LoadHistogramBucket } from "@/features/datasets/types";
 import { formatBytes, formatCompactNumber } from "@/lib/utils";
 import { AnimatePresence, motion } from "motion/react";
-import { BarChart3, Database, Files, HardDrive, PieChart, Pencil, X } from "lucide-react";
+import { BarChart3, Database, Files, FolderOpen, HardDrive, PieChart, Pencil, X } from "lucide-react";
 import Link from "next/link";
 import { use, useState } from "react";
 
@@ -258,6 +259,17 @@ export default function DatasetDetailPage({
             />
           )}
         </div>
+      </div>
+
+      {/* File browser */}
+      <div className="mt-6 rounded-2xl bg-slate-950/40 backdrop-blur-2xl border border-white/10 p-6">
+        <div className="flex items-center gap-2 text-slate-400 mb-4">
+          <FolderOpen size={14} className="text-indigo-400" />
+          <h2 className="text-[10px] font-black uppercase tracking-[0.2em]">
+            Files
+          </h2>
+        </div>
+        <DatasetFileBrowser datasetId={id} />
       </div>
     </div>
   );

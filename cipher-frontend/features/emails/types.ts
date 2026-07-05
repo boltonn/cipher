@@ -1,4 +1,4 @@
-import { File } from "@/features/files/types";
+import { FileRecord } from "@/features/files/types";
 
 export interface EmailAddress {
   name?: string | null;
@@ -26,6 +26,6 @@ export interface EmailBase {
   text?: string | null;
   html?: string | null;
   metadata: EmailMetadata;
-  attachments: File[];
+  attachments: FileRecord[];
   meaningfulHash?: string | null;
 }
