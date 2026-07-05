@@ -3,6 +3,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cipher.datastores.postgres.tables.extracted_text import ExtractedTextTable
+from cipher.datastores.postgres.utils import strip_null_bytes
 from cipher.schemas.extraction import ExtractedText, ExtractedTextCreate
 
 
@@ -38,7 +39,7 @@ class PostgresExtractedTextRepository:
 
     async def upsert(self, extracted: ExtractedTextCreate) -> ExtractedText:
         """Upsert extracted text -- insert or overwrite if file_id already has a row."""
-        data = extracted.model_dump(mode="json")
+        data = strip_null_bytes(extracted.model_dump(mode="json"))
         data["metadata_"] = data.pop("metadata")  # ORM attribute name; see `_to_schema`
 
         stmt = pg_insert(ExtractedTextTable).values(**data)

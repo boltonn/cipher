@@ -290,6 +290,7 @@ async def extract_documents_workflow(
                     completed.append(item.enrichment.id)
                 except Exception as e:
                     logger.error(f"Extraction failed for file {item.resource['id']}: {e}")
+                    await session.rollback()
                     failed.append(item.enrichment.id)
 
             # Any resolvable items the batch call itself didn't return a result for

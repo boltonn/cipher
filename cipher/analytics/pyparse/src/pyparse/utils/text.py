@@ -64,6 +64,11 @@ def clean_url_entropy(text: str, max_param_len: int = 32) -> str:
     return URL_RE.sub(shrink_params, text)
 
 
+def strip_null_bytes(text: str) -> str:
+    """Removes NUL (0x00) bytes -- Postgres and other consumers reject them outright."""
+    return text.replace("\x00", "")
+
+
 def clean_non_ascii_chars(text: str) -> str:
     """Cleans non-ascii characters from unicode string."""
     return text.encode("ascii", "ignore").decode()
@@ -183,7 +188,8 @@ def clean_text(
     if text is None:
         return ""
 
-    cleaned_text = text.lower() if lowercase else text
+    cleaned_text = strip_null_bytes(text)
+    cleaned_text = cleaned_text.lower() if lowercase else cleaned_text
 
     # 1. Structural URL cleaning (Entropy reduction)
     if normalize_urls:

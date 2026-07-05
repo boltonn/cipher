@@ -62,11 +62,9 @@ class AsyncImageEmbeddingModel:
 @asynccontextmanager
 async def model_lifespan(app: FastAPI):
     """Fastapi lifespan context manager to load and cleanup the model."""
-    model = AsyncImageEmbeddingModel(
-        model_dir=settings.model_dir, device=settings.device
-    )
+    model = AsyncImageEmbeddingModel(model_dir=settings.model_dir, device=settings.device)
     app.state.image_model = model
-    logger.info("✅ Transformer model loaded.")
+    logger.info("✅ Image embedding model loaded.")
     yield
     # Cleanup if needed
     logger.info("🛑 App shutdown. Cleaning up model.")
@@ -84,6 +82,4 @@ def get_image_embedding_model(request: Request) -> AsyncImageEmbeddingModel:
     return request.app.state.image_model
 
 
-ImageEmbeddingModelDep = Annotated[
-    AsyncImageEmbeddingModel, Depends(get_image_embedding_model)
-]
+ImageEmbeddingModelDep = Annotated[AsyncImageEmbeddingModel, Depends(get_image_embedding_model)]

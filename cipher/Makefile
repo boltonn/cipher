@@ -16,7 +16,7 @@ install-cuda:
 	uv sync --group dev --extra all-cuda --extra backend
 
 start:
-	JE_ARROW_MALLOC_CONF=background_thread:false uv run --no-sync cipher-serve
+	uv run --no-sync cipher-serve
 	
 test:
 	uvx pytest

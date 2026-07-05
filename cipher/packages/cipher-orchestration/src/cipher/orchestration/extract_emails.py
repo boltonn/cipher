@@ -48,9 +48,7 @@ async def _persist_attachment(
         return
 
     file_repo = PostgresFileRepository(session=session)
-    file_create = FileCreate(
-        **attachment.model_dump(exclude={"parent_id"}), dataset_id=dataset_id, parent_id=parent_id
-    )
+    file_create = FileCreate(**attachment.model_dump(exclude={"parent_id"}), dataset_id=dataset_id, parent_id=parent_id)
     file = await file_repo.upsert_file(file_create)
 
     if file.filetype_group in eligible_attachment_groups:
@@ -72,7 +70,7 @@ async def _extract_email(
 
     from pyparse.parsers.email import parse_email
 
-    logger.debug(f"Parsing email {file_resource['id']} ({file_resource['filename']!r})")
+    # logger.debug(f"Parsing email {file_resource['id']} ({file_resource['filename']!r})")
     data = await anyio.to_thread.run_sync(fetch_bytes_from_uri, file_resource["uri"])
 
     out_dir = Path(file_resource["path"]).parent / f"{Path(file_resource['path']).stem}_attachments"
@@ -148,6 +146,7 @@ async def extract_emails_workflow(
                 completed.append(item.enrichment.id)
             except Exception as e:
                 logger.error(f"Email extraction failed for file {item.resource['id']}: {e}")
+                await session.rollback()
                 failed.append(item.enrichment.id)
 
         if completed:

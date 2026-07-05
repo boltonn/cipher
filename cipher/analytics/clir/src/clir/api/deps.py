@@ -7,11 +7,11 @@ from fastapi import Depends, FastAPI, Request
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from loguru import logger
 
+from cipher.utils.fastapi.batch import batch
 from clir.models.pytorch import TextEmbeddingPytorchModel
 from clir.settings import Settings
 from clir.utils.chunk import get_chunker
 from clir.utils.embedding import normalize, pool_np
-from cipher.utils.fastapi.batch import batch
 
 settings = Settings()
 
@@ -69,11 +69,9 @@ class AsyncTextEmbeddingModel:
 @asynccontextmanager
 async def model_lifespan(app: FastAPI):
     """Load the model on startup and store it in the app state."""
-    model = AsyncTextEmbeddingModel(
-        model_dir=settings.model_dir, device=settings.model_device
-    )
+    model = AsyncTextEmbeddingModel(model_dir=settings.model_dir, device=settings.model_device)
     app.state.text_embedding_model = model
-    logger.info("✅ Transformer model loaded.")
+    logger.info("✅ Text embedding model loaded.")
     yield
     # Cleanup if needed
     logger.info("🛑 App shutdown. Cleaning up model.")
@@ -91,6 +89,4 @@ def get_text_embedding_model(request: Request) -> AsyncTextEmbeddingModel:
     return request.app.state.text_embedding_model
 
 
-TextEmbeddingModelDep = Annotated[
-    AsyncTextEmbeddingModel, Depends(get_text_embedding_model)
-]
+TextEmbeddingModelDep = Annotated[AsyncTextEmbeddingModel, Depends(get_text_embedding_model)]
