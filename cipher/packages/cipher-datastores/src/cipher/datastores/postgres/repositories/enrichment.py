@@ -56,6 +56,7 @@ class PostgresEnrichmentRepository:
                     status=ProcessingStatus.PENDING,
                 )
                 self.session.add(enrichment)
+                await self.session.flush()
                 enrichments.append(Enrichment.model_validate(enrichment))
             else:
                 enrichments.append(Enrichment.model_validate(existing))
@@ -266,6 +267,22 @@ class PostgresEnrichmentRepository:
     async def delete_enrichments(self, enrichment_ids: list[str]) -> int:
         """Delete enrichments."""
         statement = delete(EnrichmentTable).where(EnrichmentTable.id.in_(enrichment_ids))
+        result = await self.session.execute(statement)
+        await self.session.commit()
+        return result.rowcount or 0
+
+    async def delete_by_dataset_files(self, dataset_id: str) -> int:
+        """Delete FILE-type enrichments for every file in a dataset.
+
+        `enrichable_id` is polymorphic (no real FK), so these rows don't
+        cascade-delete when a dataset's files do -- called before deleting a
+        dataset to avoid leaving orphaned enrichment rows behind.
+        """
+        file_ids = select(FileTable.id).where(FileTable.dataset_id == dataset_id)
+        statement = delete(EnrichmentTable).where(
+            EnrichmentTable.enrichable_type == EnrichableType.FILE,
+            EnrichmentTable.enrichable_id.in_(file_ids),
+        )
         result = await self.session.execute(statement)
         await self.session.commit()
         return result.rowcount or 0

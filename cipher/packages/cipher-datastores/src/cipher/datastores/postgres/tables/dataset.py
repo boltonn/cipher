@@ -3,7 +3,6 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from sqlalchemy import DateTime, String
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from cipher.datastores.postgres.tables.base import Base
@@ -19,7 +18,7 @@ class DatasetTable(Base):
     __tablename__ = "dataset"
 
     id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+        String, primary_key=True, default=lambda: str(uuid4())
     )
     name: Mapped[str] = mapped_column(
         String(255), nullable=False, unique=True, index=True

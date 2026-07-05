@@ -8,6 +8,7 @@ from cipher.datastores.postgres.tables.file import FileTable
 from cipher.datastores.postgres.tables.dataset import DatasetTable
 from cipher.datastores.postgres.tables.enrichment import EnrichmentTable
 from cipher.datastores.postgres.tables.image import ImageTable
+from cipher.datastores.postgres.tables.extracted_text import ExtractedTextTable
 from cipher.datastores.postgres.tables.device import DeviceTable
 from cipher.datastores.postgres.tables.message import MessageTable
 from cipher.datastores.postgres.tables.contact import ContactTable
@@ -21,6 +22,7 @@ __all__ = [
     "DatasetTable",
     "EnrichmentTable",
     "ImageTable",
+    "ExtractedTextTable",
     "DeviceTable",
     "MessageTable",
     "ContactTable",

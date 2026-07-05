@@ -1,8 +1,7 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from sqlalchemy import DateTime, Enum, Index, Integer, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import DateTime, Enum, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import text
 
@@ -16,14 +15,14 @@ class EnrichmentTable(Base):
     __tablename__ = "enrichment"
 
     id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+        String, primary_key=True, default=lambda: str(uuid4())
     )
 
     enrichable_type: Mapped[EnrichableType] = mapped_column(
         Enum(EnrichableType, native_enum=False), nullable=False, index=True
     )
     enrichable_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), nullable=False, index=True
+        String, nullable=False, index=True
     )
 
     enrichment_type: Mapped[EnrichmentType] = mapped_column(

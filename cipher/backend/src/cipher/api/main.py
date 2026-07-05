@@ -1,6 +1,9 @@
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import uvicorn
+from clir.api.deps import model_lifespan
+from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -8,10 +11,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi_offline import FastAPIOffline
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from cipher.api.deps.elasticsearch import elasticsearch_lifespan
 from cipher.api.deps.postgres import postgres_lifespan
-
-# from cipher.api.deps.elasticsearch import elasticsearch_lifespan
-from cipher.api.routes import chat, comments, datasets, emails, faces, files, images, persons, users
+from cipher.api.routes import chat, comments, datasets, documents, emails, faces, files, images, persons, users
 from cipher.api.settings import Settings
 from cipher.schemas.exceptions import EntityAlreadyExistsError, EntityNotFoundError
 from cipher.utils.fastapi.health import ServiceHealthStatus, service_health
@@ -27,12 +29,26 @@ from cipher.utils.fastapi.middleware import (
 settings = Settings()
 service_info = get_package_info(name="cipher-backend")
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Combined startup: Postgres, then Elasticsearch, then the shared text-embedding model.
+
+    documents.router and emails.router both need the same embedding model
+    for query-time semantic/hybrid search -- loading it once here (rather
+    than per-router) means two routers sharing one model, not two copies of
+    it loaded into memory.
+    """
+    async with postgres_lifespan(app), elasticsearch_lifespan(app), model_lifespan(app):
+        yield
+
+
 app = FastAPIOffline(
     title="Cipher Backend API",
     version=service_info.version,
     description=service_info.description,
     root_path="/api",
-    lifespan=postgres_lifespan,
+    lifespan=lifespan,
 )
 app.add_middleware(BaseHTTPMiddleware, dispatch=log_middleware)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
@@ -48,6 +64,7 @@ app.add_middleware(
 )
 
 app.include_router(chat.router)
+app.include_router(documents.router)
 app.include_router(emails.router)
 app.include_router(datasets.router)
 # app.include_router(enrichments.router)

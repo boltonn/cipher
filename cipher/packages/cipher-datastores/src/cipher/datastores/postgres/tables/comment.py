@@ -3,7 +3,6 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from sqlalchemy import DateTime, Enum, ForeignKey, String
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from cipher.datastores.postgres.tables.base import Base
@@ -19,7 +18,7 @@ class CommentTable(Base):
     __tablename__ = "comment"
 
     id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+        String, primary_key=True, default=lambda: str(uuid4())
     )
 
     content: Mapped[str] = mapped_column(String(5000), nullable=False)
@@ -28,11 +27,11 @@ class CommentTable(Base):
         Enum(CommentableType, native_enum=False), nullable=False, index=True
     )
     commentable_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), nullable=False, index=True
+        String, nullable=False, index=True
     )
 
     user_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("user.id", ondelete="CASCADE"), nullable=False
+        String, ForeignKey("user.id", ondelete="CASCADE"), nullable=False
     )
 
     date_created: Mapped[datetime] = mapped_column(

@@ -5,8 +5,9 @@ description = "Workflow orchestration for cipher."
 requires-python = ">=3.12"
 
 dependencies = [
+    "anyio",
     "cipher-schemas",
-    "cipher-datastores[postgres]",
+    "cipher-datastores[postgres,elasticsearch]",
     "cipher-utils",
     "loguru",
     "tqdm",
@@ -14,8 +15,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-messages = ["clir", "numpy", "pandas", "polars"]
-cli = ["filetyper", "face", "setfitcv"]
+messages = ["clir", "numpy", "pandas"]
+cli = ["filetyper", "face", "setfitcv", "pyxberg", "pyparse[email]", "clir"]
 
 [project.scripts]
 cipher = "cipher.orchestration.cli:app"
@@ -28,6 +29,8 @@ clir = { workspace = true }
 filetyper = { workspace = true }
 face = { workspace = true }
 setfitcv = { workspace = true }
+pyxberg = { workspace = true }
+pyparse = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

@@ -8,7 +8,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-cli = ["fastparquet", "pandas", "pyarrow", "typer"]
+cli = ["fastparquet", "pandas", "typer"]
 html = ["beautifulsoup4", "cssutils", "lxml"]
 text = ["pyparse[html]"]
 docx = ["pyparse[html]", "python-dateutil", "python-docx"]

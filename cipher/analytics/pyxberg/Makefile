@@ -1,5 +1,5 @@
 SHELL=/bin/bash
-NAME = pykreuzberg
+NAME = pyxberg
 USERNAME ?= nazgul44
 VERSION ?= $(shell grep -E '^version = ' pyproject.toml | sed -E 's/version = "(.*)"/\1/')
 WORKING_DIR = $(shell pwd)

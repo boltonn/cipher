@@ -2,8 +2,9 @@ from contextlib import asynccontextmanager
 
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
-from cipher.orchestration.settings import Settings
+from cipher.datastores.elasticsearch.client import get_async_client
 from cipher.datastores.postgres.session import get_async_engine
+from cipher.orchestration.settings import Settings
 
 settings = Settings()
 
@@ -25,3 +26,10 @@ async def get_session_context():
         raise
     finally:
         await session.close()
+
+
+def get_elasticsearch_client_context():
+    """Async context manager yielding a connected Elasticsearch client from settings."""
+    if settings.elasticsearch is None:
+        raise RuntimeError("Elasticsearch is not configured -- set ELASTICSEARCH__* in .env")
+    return get_async_client(config=settings.elasticsearch)

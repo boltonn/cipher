@@ -32,7 +32,7 @@ eval = [ "mteb" ]
 cpu = ["torch"]
 cuda = ["torch"]
 flash = ["flash-attn"]
-tables = [ "fastparquet", "pandas", "polars", "pyarrow", "typer" ]
+tables = [ "fastparquet", "pandas", "typer" ]
 
 [tool.uv]
 conflicts = [

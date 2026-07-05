@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from sqlalchemy import Boolean, DateTime, Enum, Index, String
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from cipher.datastores.postgres.tables.base import Base
@@ -27,7 +27,7 @@ class PersonTable(Base):
 
     __tablename__ = "person"
 
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
 
     name: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     aliases: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)

@@ -13,7 +13,7 @@ from sqlalchemy import (
     Index,
     String,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import text
 
@@ -31,16 +31,16 @@ class FaceTable(Base):
 
     __tablename__ = "face"
 
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
 
     image_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False),
+        String,
         ForeignKey("image.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     person_id: Mapped[str | None] = mapped_column(
-        UUID(as_uuid=False),
+        String,
         ForeignKey("person.id", ondelete="SET NULL"),
         nullable=True,
         index=True,

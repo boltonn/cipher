@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from sqlalchemy import DateTime, ForeignKey, String
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from cipher.datastores.postgres.tables.base import Base
@@ -19,7 +19,7 @@ class ContactTable(Base):
     __tablename__ = "contact"
 
     id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+        String, primary_key=True, default=lambda: str(uuid4())
     )
 
     address: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -37,13 +37,13 @@ class ContactTable(Base):
     )
 
     file_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False),
+        String,
         ForeignKey("file.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
     device_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False),
+        String,
         ForeignKey("device.id", ondelete="SET NULL"),
         nullable=True,
         index=True,

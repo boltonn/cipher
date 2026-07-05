@@ -4,7 +4,7 @@ from uuid import uuid4
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import DateTime, ForeignKey, Index, String
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from cipher.datastores.postgres.tables.base import Base
@@ -21,10 +21,10 @@ class ImageTable(Base):
 
     __tablename__ = "image"
 
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
 
     file_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False),
+        String,
         ForeignKey("file.id", ondelete="CASCADE"),
         unique=True,
         index=True,

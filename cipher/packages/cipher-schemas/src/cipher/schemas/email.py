@@ -3,10 +3,10 @@ from __future__ import annotations
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Self, TypedDict
+from typing import Literal, Self, TypedDict
+from uuid import uuid4
 
 from pydantic import Field
-from uuid_utils import uuid4
 
 from cipher.schemas.base import BaseModel
 from cipher.schemas.file import FileBase
@@ -43,34 +43,48 @@ class EmailState(StrEnum):
         return next((v for k, v in _mapping.items() if k in lower), None)
 
 
-class EmailAddressDict(TypedDict, total=False):
-    name: str | None
-    address: str
+class ParticipantType(StrEnum):
+    """What kind of contact string a `Participant.value` holds."""
+
+    EMAIL = "email"
+    PHONE = "phone"
 
 
-class EmailAddress(BaseModel):
+class Participant(BaseModel):
+    """A named party identified by a single, typed contact string.
+
+    Shared shape for "who" fields across content sources -- an email's
+    sender/recipient (`type=email`) or, eventually, a message's
+    sender/recipient (`type=phone`) -- self-describing rather than implied
+    by which field it's sitting in, since participants from different
+    sources can end up merged in one search result.
+    """
+
+    name: str | None = None
+    type: ParticipantType
+    value: str
+
+
+class ParticipantDict(TypedDict, total=False):
     name: str | None
-    address: str
+    type: ParticipantType
+    value: str
 
 
 class EmailMetadata(BaseModel):
-    sender: EmailAddress | None = Field(
-        default=None, description="Sender if email is sent on behalf of someone else."
-    )
-    sent_from: EmailAddress = Field(alias="from")
-    sent_to: list[EmailAddress] = Field(default_factory=list, alias="to")
-    cc: list[EmailAddress] = Field(default_factory=list)
-    bcc: list[EmailAddress] = Field(default_factory=list)
-    subject: str | None = Field(
-        default=None, serialization_alias="title"
-    )  # for search indexing
+    """Email-specific metadata, denormalized onto every chunk of that email."""
+
+    title: str | None = Field(default=None, description="Subject line")
+    sender: Participant | None = Field(default=None, description="Sender if email is sent on behalf of someone else.")
+    sent_from: Participant = Field(alias="from")
+    sent_to: list[Participant] = Field(default_factory=list, alias="to")
+    cc: list[Participant] = Field(default_factory=list)
+    bcc: list[Participant] = Field(default_factory=list)
     date_sent: datetime | None = None
     conversation_id: str | None = None
     state: EmailState | None = None
     message_id: str | None = None
-    labels: list[str] = Field(
-        default_factory=list, description="Labels or folders associated with the email"
-    )
+    labels: list[str] = Field(default_factory=list, description="Labels or folders associated with the email")
 
     model_config = {"populate_by_name": True}
 
@@ -93,6 +107,16 @@ class EmailBase(BaseModel):
 
 
 class EmailTextChunk(EmailMetadata, TextChunk):
-    """Searchable chunk of an email, inheriting metadata for filtering."""
+    """Searchable chunk of an email, inheriting metadata for filtering.
 
-    pass
+    `content_type` discriminates document vs. email chunks living side by
+    side in the same unified `text_chunks` index/search surface.
+    """
+
+    content_type: Literal["email"] = "email"
+
+
+class ScoredEmailTextChunk(EmailTextChunk):
+    """An `EmailTextChunk` decorated with its Elasticsearch retrieval score."""
+
+    score: float = Field(..., description="Retrieval score from Elasticsearch")

@@ -32,7 +32,7 @@ from typing import Any
 import chardet
 from filetyper import FileTyper
 
-from cipher.schemas.email import EmailAddressDict, EmailBase, EmailState
+from cipher.schemas.email import EmailBase, EmailState, ParticipantDict, ParticipantType
 from cipher.schemas.file import FileBase
 from pyparse.parsers.text.html import HtmlParser
 from pyparse.utils.io import get_encoding_families, map_unsupported_encoding, safe_open
@@ -135,16 +135,18 @@ class EmlParser:
             for key, value in dict(msg.items()).items()
         }
 
-    def _get_addresses(self, msg: Message, header_field: str) -> list[EmailAddressDict]:
+    def _get_addresses(self, msg: Message, header_field: str) -> list[ParticipantDict]:
         raw = msg.get_all(header_field, [])
-        results: list[EmailAddressDict] = []
+        results: list[ParticipantDict] = []
         for name, addr in getaddresses(raw):
             try:
                 decoded_name = self._decode_header_value(name) or None
             except Exception:
                 decoded_name = None
             results.append(
-                EmailAddressDict(name=decoded_name, address=re.sub(r"\s+", "", addr))
+                ParticipantDict(
+                    name=decoded_name, type=ParticipantType.EMAIL, value=re.sub(r"\s+", "", addr)
+                )
             )
         return results
 
@@ -243,6 +245,7 @@ class EmlParser:
             sha256=sha256,
             mime_type=filetype_info["mime_type"],
             size=len(payload),
+            **({"path": str(out_path), "uri": out_path.as_uri()} if extract_children else {}),
         )
         if raw_mod := disposition_params.get("modification-date"):
             attachment.date_last_updated = self._parse_date(raw_mod)
@@ -285,24 +288,38 @@ class EmlParser:
         for part in msg.walk():
             content_type = part.get_content_type()
             raw_disposition = part.get("Content-Disposition")
+            kind = raw_disposition.split(";")[0].strip().lower() if raw_disposition else None
 
             if content_type.startswith("multipart"):
                 continue
 
-            if raw_disposition:
-                kind = raw_disposition.split(";")[0].strip().lower()
-                if kind == "attachment":
-                    params = self._parse_header_params(raw_disposition)
-                    item = self._build_attachment(
-                        part,
-                        content_type,
-                        params,
-                        extract_children=extract_children,
-                        out_dir=out_dir,
-                    )
-                    if item is not None:
-                        attachments.append(item)
-                    continue
+            # "attachment" is the unambiguous case. But inline images
+            # referenced via cid: in the HTML body (kind == "inline") and
+            # parts some senders send with no Content-Disposition header at
+            # all (kind is None, identified only by Content-Type's `name=`
+            # param) are just as much real files -- every one of them needs
+            # its own File row, even though none of them get text-extracted
+            # by default. text/plain and text/html are excluded since those
+            # are the body itself, never a distinct file, even on the rare
+            # occasion one of them carries a filename param.
+            is_attachment = kind == "attachment" or (
+                kind in (None, "inline")
+                and content_type not in ("text/plain", "text/html")
+                and self._resolve_filename(part, content_type) is not None
+            )
+
+            if is_attachment:
+                params = self._parse_header_params(raw_disposition) if raw_disposition else {}
+                item = self._build_attachment(
+                    part,
+                    content_type,
+                    params,
+                    extract_children=extract_children,
+                    out_dir=out_dir,
+                )
+                if item is not None:
+                    attachments.append(item)
+                continue
 
             if content_type == "text/plain":
                 plain_parts.append(self._decode_part(part))
@@ -329,7 +346,7 @@ class EmlParser:
         out: dict[str, Any] = {}
 
         if subject := headers.pop("subject", None):
-            out["subject"] = subject.strip()
+            out["title"] = subject.strip()
 
         from_addrs = self._get_addresses(msg, "from")
         out["from"] = from_addrs[0] if from_addrs else None

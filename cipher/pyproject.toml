@@ -11,8 +11,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-analytics-cpu = [ "clir", "face", "filetyper", "pyparse[all]", "setfitcv" ]
-analytics-cuda = [ "clir[cuda,tables]", "face[cuda]", "filetyper", "pyparse[all]", "setfitcv[cuda]" ]
+analytics-cpu = [ "clir", "face", "filetyper", "pyparse[all]", "pyxberg", "setfitcv" ]
+analytics-cuda = [ "clir[cuda,tables]", "face[cuda]", "filetyper", "pyparse[all]", "pyxberg", "setfitcv[cuda]" ]
 elasticsearch = [ "cipher-datastores[elasticsearch]" ]
 postgres = [ "cipher-datastores[postgres]" ]
 backend = [ "cipher-backend" ]
@@ -35,7 +35,7 @@ face = { workspace = true }
 filetyper = { workspace = true }
 setfitcv = { workspace = true }
 pyparse = { workspace = true }
-pykreuzberg = { workspace = true }
+pyxberg = { workspace = true }
 clir = { workspace = true }
 
 [tool.uv.workspace]
@@ -50,7 +50,7 @@ members = [
     "analytics/filetyper",
     "analytics/setfitcv",
     "analytics/pyparse",
-    "analytics/pykreuzberg",
+    "analytics/pyxberg",
 ]
 
 [tool.uv]

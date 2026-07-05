@@ -31,6 +31,9 @@ class FileBase(BaseModel):
     uri: str | None = Field(default=None, description="URI of the file")
     device: str | None = Field(default=None, description="Storage device/bucket/mount the file lives on")
     size: int = Field(description="Size of the file in bytes")
+    parent_id: str | None = Field(
+        default=None, description="Parent file this was extracted from, e.g. an email attachment's source email"
+    )
 
     date_created: datetime | None = Field(
         default=None, description="Date the file was created"

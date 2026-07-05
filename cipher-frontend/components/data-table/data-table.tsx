@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -8,11 +9,15 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Settings2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ListFilter, Settings2, X } from "lucide-react";
 import { useRef, useState } from "react";
-import { DataTableColumnHeader } from "./column-header";
+import { DataTableColumnHeader, isFilterActive } from "./column-header";
 import { DataTablePaginationFooter } from "./pagination-footer";
-import type { DataTableColumn, DataTableFilters, DataTableSortOrder } from "./types";
+import type {
+  DataTableColumn,
+  DataTableFilters,
+  DataTableSortOrder,
+} from "./types";
 
 interface DataTableProps<T> {
   columns: DataTableColumn<T>[];
@@ -23,6 +28,9 @@ interface DataTableProps<T> {
   limit: number;
   sortBy?: string;
   sortOrder?: DataTableSortOrder;
+  /** Sort state to restore when "Clear filters" also resets sort -- omit to leave sort alone when clearing. */
+  defaultSortBy?: string;
+  defaultSortOrder?: DataTableSortOrder;
   filters: DataTableFilters;
   isLoading?: boolean;
   onPageChange: (page: number) => void;
@@ -53,6 +61,8 @@ export function DataTable<T>({
   limit,
   sortBy,
   sortOrder,
+  defaultSortBy,
+  defaultSortOrder,
   filters,
   isLoading,
   onPageChange,
@@ -62,11 +72,26 @@ export function DataTable<T>({
   onRowClick,
   emptyMessage = "No results",
   rowHeight = 44,
-  maxBodyHeight = 560,
+  maxBodyHeight = 580,
   className,
 }: DataTableProps<T>) {
   const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set());
   const visibleColumns = columns.filter((c) => !hiddenColumns.has(c.key));
+
+  const activeFilterKeys = Object.entries(filters)
+    .filter(([, value]) => isFilterActive(value))
+    .map(([key]) => key);
+  const isSortedAwayFromDefault =
+    !!defaultSortBy &&
+    (sortBy !== defaultSortBy || sortOrder !== defaultSortOrder);
+  const hasActiveCustomization =
+    activeFilterKeys.length > 0 || isSortedAwayFromDefault;
+
+  const clearAll = () => {
+    for (const key of activeFilterKeys) onFilterChange(key, undefined);
+    if (defaultSortBy && defaultSortOrder)
+      onSortChange(defaultSortBy, defaultSortOrder);
+  };
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const rowVirtualizer = useVirtualizer({
@@ -85,12 +110,51 @@ export function DataTable<T>({
     });
   };
 
-  const gridTemplateColumns = visibleColumns.map((c) => c.width ?? "1fr").join(" ");
+  const gridTemplateColumns = visibleColumns
+    .map((c) => c.width ?? "1fr")
+    .join(" ");
 
   return (
-    <div className={cn("flex flex-col rounded-lg border border-white/5 overflow-hidden", className)}>
+    <div
+      className={cn(
+        "flex flex-col rounded-lg border border-white/5 overflow-hidden",
+        className
+      )}
+    >
       {/* Toolbar */}
-      <div className="flex items-center justify-end px-3 py-2 bg-slate-900/40 border-b border-white/5">
+      <div className="flex items-center justify-between px-3 py-2 bg-slate-900/40 border-b border-white/5">
+        <div className="flex items-center gap-3">
+          {hasActiveCustomization && (
+            <>
+              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-indigo-400">
+                <ListFilter size={12} />
+                {activeFilterKeys.length > 0
+                  ? `${activeFilterKeys.length} filter${activeFilterKeys.length > 1 ? "s" : ""} active`
+                  : "Sorted"}
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={clearAll}
+                className="h-6 gap-1 px-2 text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-rose-400"
+              >
+                <X size={11} />
+                Clear filters
+              </Button>
+            </>
+          )}
+          {sortBy && (
+            <div className="flex items-center gap-1 text-[10px] uppercase tracking-widest text-slate-600">
+              {sortOrder === "asc" ? (
+                <ArrowUp size={10} />
+              ) : (
+                <ArrowDown size={10} />
+              )}
+              Sorted by{" "}
+              {columns.find((c) => c.key === sortBy)?.header ?? sortBy}
+            </div>
+          )}
+        </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
@@ -100,7 +164,10 @@ export function DataTable<T>({
               <Settings2 size={12} /> Columns
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="bg-popover border-white/10">
+          <DropdownMenuContent
+            align="end"
+            className="bg-popover border border-white/10"
+          >
             {columns.map((column) => (
               <DropdownMenuCheckboxItem
                 key={column.key}
@@ -140,8 +207,17 @@ export function DataTable<T>({
           {emptyMessage}
         </div>
       ) : (
-        <div ref={scrollRef} className="overflow-y-auto" style={{ maxHeight: maxBodyHeight }}>
-          <div style={{ height: rowVirtualizer.getTotalSize(), position: "relative" }}>
+        <div
+          ref={scrollRef}
+          className="overflow-y-auto"
+          style={{ maxHeight: maxBodyHeight }}
+        >
+          <div
+            style={{
+              height: rowVirtualizer.getTotalSize(),
+              position: "relative",
+            }}
+          >
             {rowVirtualizer.getVirtualItems().map((virtualRow) => {
               const row = data[virtualRow.index];
               return (
@@ -174,7 +250,11 @@ export function DataTable<T>({
                         column.align === "right" && "text-right"
                       )}
                     >
-                      {column.render ? column.render(row) : String((row as Record<string, unknown>)[column.key] ?? "")}
+                      {column.render
+                        ? column.render(row)
+                        : String(
+                            (row as Record<string, unknown>)[column.key] ?? ""
+                          )}
                     </div>
                   ))}
                 </div>

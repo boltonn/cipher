@@ -1,5 +1,6 @@
 "use client";
 
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { DateRangePicker } from "@/components/date-range-picker";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -11,7 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { useDataset, useDatasetStats } from "@/features/datasets/api";
+import { useDataset, useDatasetStats, useDeleteDataset } from "@/features/datasets/api";
 import { DatasetFileBrowser } from "@/features/datasets/components/dataset-file-browser";
 import { EditDatasetDialog } from "@/features/datasets/components/edit-dataset-dialog";
 import { FiletypeBreakdownList } from "@/features/datasets/components/filetype-breakdown-list";
@@ -19,8 +20,9 @@ import { LoadHistogramChart } from "@/features/datasets/components/load-histogra
 import type { HistogramGranularityType, LoadHistogramBucket } from "@/features/datasets/types";
 import { formatBytes, formatCompactNumber } from "@/lib/utils";
 import { AnimatePresence, motion } from "motion/react";
-import { BarChart3, Database, Files, FolderOpen, HardDrive, PieChart, Pencil, X } from "lucide-react";
+import { BarChart3, Database, Files, FolderOpen, HardDrive, PieChart, Pencil, Trash2, X } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { use, useState } from "react";
 
 /** End-exclusive window covering the bucket's full day/week/month, for use as a date-range filter. */
@@ -40,6 +42,7 @@ export default function DatasetDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
+  const router = useRouter();
 
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [range, setRange] = useState<{ from?: string; to?: string }>({});
@@ -50,6 +53,7 @@ export default function DatasetDetailPage({
   const [filetypeGroup, setFiletypeGroup] = useState<string | undefined>();
 
   const { data: dataset, isPending: datasetPending } = useDataset(id);
+  const deleteDataset = useDeleteDataset(() => router.push("/datasets"));
   const { data: stats, isPending: statsPending } = useDatasetStats(id, {
     dateFrom: range.from,
     dateTo: range.to,
@@ -125,15 +129,40 @@ export default function DatasetDetailPage({
             {dataset.description || "No description"}
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setIsEditOpen(true)}
-          className="h-9 shrink-0 bg-slate-900/40 border-white/10 text-slate-400 hover:text-indigo-400 uppercase text-[10px] font-bold tracking-widest gap-2"
-        >
-          <Pencil size={14} />
-          Edit
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsEditOpen(true)}
+            className="h-9 bg-slate-900/40 border-white/10 text-slate-400 hover:text-indigo-400 uppercase text-[10px] font-bold tracking-widest gap-2"
+          >
+            <Pencil size={14} />
+            Edit
+          </Button>
+          <ConfirmDialog
+            trigger={
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 bg-slate-900/40 border-white/10 text-slate-400 hover:text-rose-400 hover:border-rose-500/30 uppercase text-[10px] font-bold tracking-widest gap-2"
+              >
+                <Trash2 size={14} />
+                Delete
+              </Button>
+            }
+            title="Delete this dataset?"
+            description={
+              <>
+                This permanently deletes <strong className="text-slate-300">{dataset.name}</strong> and every
+                file, extracted/embedded text, face, image, and comment scoped to it -- including its entries in
+                the search index. This can&apos;t be undone.
+              </>
+            }
+            confirmLabel="Delete Dataset"
+            isPending={deleteDataset.isPending}
+            onConfirm={() => deleteDataset.mutate(id)}
+          />
+        </div>
       </div>
 
       <EditDatasetDialog dataset={dataset} isOpen={isEditOpen} onOpenChange={setIsEditOpen} />

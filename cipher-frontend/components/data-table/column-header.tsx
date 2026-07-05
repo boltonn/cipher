@@ -11,8 +11,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useDebounce } from "@/hooks/use-debounce";
 import { cn } from "@/lib/utils";
 import { ArrowDown, ArrowUp, ChevronsUpDown, Filter } from "lucide-react";
+import { useEffect, useState } from "react";
 import type {
   DataTableColumn,
   DataTableFilterValue,
@@ -68,11 +70,17 @@ export function DataTableColumnHeader<T>({
               )}
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="bg-popover border-white/10">
-            <DropdownMenuItem onClick={() => onSort?.(column.key, "asc")} className="text-xs gap-2">
+          <DropdownMenuContent align="start" className="bg-popover border border-white/10">
+            <DropdownMenuItem
+              onClick={() => onSort?.(column.key, "asc")}
+              className="gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-400 focus:text-indigo-300"
+            >
               <ArrowUp size={12} /> Ascending
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onSort?.(column.key, "desc")} className="text-xs gap-2">
+            <DropdownMenuItem
+              onClick={() => onSort?.(column.key, "desc")}
+              className="gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-400 focus:text-indigo-300"
+            >
               <ArrowDown size={12} /> Descending
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -100,7 +108,7 @@ export function DataTableColumnHeader<T>({
               )}
             </button>
           </PopoverTrigger>
-          <PopoverContent className="w-64 p-3 bg-popover border-white/10" align="start">
+          <PopoverContent className="w-64 p-3 bg-popover border border-white/10" align="start">
             <ColumnFilterControl
               column={column}
               value={filterValue}
@@ -113,7 +121,44 @@ export function DataTableColumnHeader<T>({
   );
 }
 
-function isFilterActive(value: DataTableFilterValue): boolean {
+/** Local-state-buffered text filter: commits to the parent on debounce or Enter, never on every keystroke. */
+function TextFilterInput({
+  placeholder,
+  value,
+  onChange,
+}: {
+  placeholder: string;
+  value: string | undefined;
+  onChange: (value: string | undefined) => void;
+}) {
+  const [local, setLocal] = useState(value ?? "");
+  const debounced = useDebounce(local, 400);
+
+  useEffect(() => {
+    onChange(debounced || undefined);
+    // Only fire when the debounced value settles -- including onChange here
+    // would re-run on every parent re-render, not just on value changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debounced]);
+
+  return (
+    <Input
+      autoFocus
+      placeholder={placeholder}
+      value={local}
+      onChange={(e) => setLocal(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          onChange(local || undefined);
+        }
+      }}
+      className="h-9 text-xs bg-slate-900/40 border-white/10"
+    />
+  );
+}
+
+export function isFilterActive(value: DataTableFilterValue): boolean {
   if (value == null) return false;
   if (typeof value === "string") return value.length > 0;
   if (Array.isArray(value)) return value.length > 0;
@@ -133,12 +178,10 @@ function ColumnFilterControl<T>({
 }) {
   if (column.type === "text") {
     return (
-      <Input
-        autoFocus
+      <TextFilterInput
         placeholder={`Search ${column.header.toLowerCase()}...`}
-        value={(value as string) ?? ""}
-        onChange={(e) => onChange(e.target.value || undefined)}
-        className="h-9 text-xs bg-slate-900/40 border-white/10"
+        value={value as string | undefined}
+        onChange={onChange}
       />
     );
   }

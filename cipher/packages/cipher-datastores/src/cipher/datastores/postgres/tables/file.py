@@ -3,7 +3,6 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, String, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from cipher.datastores.postgres.tables.base import Base
@@ -11,6 +10,7 @@ from cipher.datastores.postgres.tables.base import Base
 if TYPE_CHECKING:
     from cipher.datastores.postgres.tables.contact import ContactTable
     from cipher.datastores.postgres.tables.dataset import DatasetTable
+    from cipher.datastores.postgres.tables.extracted_text import ExtractedTextTable
     from cipher.datastores.postgres.tables.image import ImageTable
 
 
@@ -19,12 +19,12 @@ class FileTable(Base):
 
     __tablename__ = "file"
 
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
     date_created: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     date_last_updated: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     date_loaded: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
     dataset_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("dataset.id", ondelete="CASCADE"), nullable=False, index=True
+        String, ForeignKey("dataset.id", ondelete="CASCADE"), nullable=False, index=True
     )
     device: Mapped[str | None] = mapped_column(String, nullable=True)
     filename: Mapped[str] = mapped_column(String, nullable=False, index=True)
@@ -37,6 +37,9 @@ class FileTable(Base):
     sha256: Mapped[str] = mapped_column(String, nullable=False, index=True)
     size: Mapped[int] = mapped_column(BigInteger, nullable=False)
     uri: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    parent_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("file.id", ondelete="CASCADE"), nullable=True, index=True
+    )
 
     # Relationships (only defined if dependencies are available)
     dataset: Mapped["DatasetTable"] = relationship(back_populates="files")
@@ -48,6 +51,12 @@ class FileTable(Base):
     )
     contacts: Mapped[list["ContactTable"]] = relationship(
         back_populates="file", cascade="all, delete-orphan", lazy="select"
+    )
+    extracted_text: Mapped["ExtractedTextTable | None"] = relationship(
+        back_populates="file",
+        uselist=False,
+        cascade="all, delete-orphan",
+        single_parent=True,
     )
 
     __table_args__ = (

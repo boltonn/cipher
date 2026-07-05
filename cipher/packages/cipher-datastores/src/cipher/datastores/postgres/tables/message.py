@@ -3,7 +3,6 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String, Text
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from cipher.datastores.postgres.tables.base import Base
@@ -21,13 +20,13 @@ class MessageTable(Base):
     __tablename__ = "message"
 
     id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+        String, primary_key=True, default=lambda: str(uuid4())
     )
 
     message_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
 
     file_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False),
+        String,
         ForeignKey("file.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
@@ -54,7 +53,7 @@ class MessageTable(Base):
     )
 
     device_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False),
+        String,
         ForeignKey("device.id", ondelete="CASCADE"),
         nullable=False,
         index=True,

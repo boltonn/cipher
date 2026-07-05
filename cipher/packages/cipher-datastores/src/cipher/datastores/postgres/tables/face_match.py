@@ -3,7 +3,6 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from sqlalchemy import DateTime, Enum, Float, ForeignKey, Index, String, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import text
 
@@ -21,16 +20,16 @@ class FaceMatchTable(Base):
 
     __tablename__ = "face_match"
 
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
 
     face_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False),
+        String,
         ForeignKey("face.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     person_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False),
+        String,
         ForeignKey("person.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
@@ -50,7 +49,7 @@ class FaceMatchTable(Base):
     )
 
     reviewed_by: Mapped[str | None] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("user.id", ondelete="SET NULL"), nullable=True
+        String, ForeignKey("user.id", ondelete="SET NULL"), nullable=True
     )
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     review_note: Mapped[str | None] = mapped_column(String, nullable=True)

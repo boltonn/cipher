@@ -12,6 +12,9 @@ from cipher.datastores.elasticsearch.client import get_async_client
 from cipher.datastores.elasticsearch.repositories.message import (
     ElasticsearchMessageRepository,
 )
+from cipher.datastores.elasticsearch.repositories.text_chunk import (
+    ElasticsearchTextChunkRepository,
+)
 from cipher.schemas.message import Message
 
 settings = Settings()
@@ -49,9 +52,30 @@ MessageDatastoreDep = Annotated[
 ]
 
 
+async def get_text_chunk_repository(
+    request: Request,
+) -> AsyncGenerator[ElasticsearchTextChunkRepository, None]:
+    """Dependency injector for ElasticsearchTextChunkRepository (unified document+email index)."""
+    try:
+        yield ElasticsearchTextChunkRepository(client=request.app.state.es_client)
+    except AttributeError as exc:
+        logger.exception(exc)
+        raise HTTPException(
+            status_code=503,
+            detail="Elasticsearch client not initialized — is the lifespan registered?",
+        ) from exc
+
+
+TextChunkDatastoreDep = Annotated[
+    ElasticsearchTextChunkRepository, Depends(get_text_chunk_repository)
+]
+
+
 __all__ = [
     "Message",
     "elasticsearch_lifespan",
     "get_message_repository",
     "MessageDatastoreDep",
+    "get_text_chunk_repository",
+    "TextChunkDatastoreDep",
 ]

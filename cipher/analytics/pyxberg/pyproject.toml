@@ -1,6 +1,6 @@
 [project]
-name = "pykreuzberg"
-description = "A repository for Kreuzberg rust-based python text extraction."
+name = "pyxberg"
+description = "A repository for Xberg (formerly Kreuzberg) rust-based python text extraction."
 keywords = ["chunking", "ocr", "text-embedding", "text-extraction"]
 version = "0.0.1"
 readme = "README.md"
@@ -10,8 +10,11 @@ classifiers = [
   "Programming Language :: Python"
 ]
 dependencies = [
+  "xberg",
   "kreuzberg[easyocr]",
   "loguru",
+  "pydantic",
+  "typer",
 ]
 
 [build-system]
@@ -20,3 +23,10 @@ build-backend = "hatchling.build"
 
 [project.optional-dependencies]
 fastapi = [ "cipher-utils[fastapi]" ]
+
+[project.scripts]
+pyxberg-api = "pyxberg.api.main:main"
+pyxberg = "pyxberg.cli:app"
+
+[tool.uv.sources]
+cipher-utils = { workspace = true }

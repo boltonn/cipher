@@ -8,6 +8,7 @@ embedded/detected once.
 """
 
 import asyncio
+import json
 from pathlib import Path
 from typing import Annotated
 
@@ -15,14 +16,23 @@ import typer
 from loguru import logger
 
 from cipher.datastores.postgres.repositories import PostgresDatasetRepository
+from cipher.orchestration.benchmark import benchmark_storage
 from cipher.orchestration.detect_faces import (
     detect_faces_workflow,
     get_face_detection_stats,
 )
 from cipher.orchestration.embed_images import embed_images_workflow, get_embedding_stats
+from cipher.orchestration.embed_text import embed_text_workflow, get_text_embedding_stats
+from cipher.orchestration.extract_documents import (
+    DEFAULT_CHUNK_SIZE,
+    Chunker,
+    extract_documents_workflow,
+    get_extraction_stats,
+)
+from cipher.orchestration.extract_emails import extract_emails_workflow
 from cipher.orchestration.ingest import create_dataset, load_files
 from cipher.orchestration.schema import create_tables
-from cipher.orchestration.session import get_session_context
+from cipher.orchestration.session import get_elasticsearch_client_context, get_session_context
 from cipher.schemas.common import ModelDevice
 
 app = typer.Typer(help="Test-drive ingestion, embedding, and face detection against a local dataset.")
@@ -142,6 +152,98 @@ def detect_faces_cmd(
     asyncio.run(_run())
 
 
+@app.command("extract-text")
+def extract_text_cmd(
+    dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
+    dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
+    chunker: Annotated[
+        Chunker, typer.Option(help="Chunker to use for documents (clir always chunks email text)")
+    ] = Chunker.CLIR,
+    chunk_size: Annotated[
+        int, typer.Option(help="Token budget per chunk when chunker=kreuzberg -- keep equal to embed-text's --chunk-size")
+    ] = DEFAULT_CHUNK_SIZE,
+    model_dir: Annotated[
+        Path | None,
+        typer.Option(help="Local tokenizer directory for chunker=kreuzberg with token-based sizing (same dir as the embedding model)"),
+    ] = None,
+):
+    """Extract text (and structure) from a dataset's eligible files.
+
+    Runs emails first (pyparse) -- which also persists any attachments as
+    their own files, linked via `parent_id` -- then documents (xberg,
+    batched), so attachments discovered this run are swept up in the same
+    pass. Requires the `pyxberg`/`pyparse[email]` packages: run this from an
+    environment where `uv sync --extra cli` (cipher-orchestration's `cli`
+    extra) has installed them.
+    """
+
+    async def _run():
+        async with get_session_context() as session:
+            resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
+            email_count = await extract_emails_workflow(session=session, dataset_id=resolved_id)
+            logger.success(f"Extracted text for {email_count} emails")
+            doc_count = await extract_documents_workflow(
+                session=session,
+                dataset_id=resolved_id,
+                chunker=chunker,
+                tokenizer_model_dir=model_dir,
+                chunk_size=chunk_size,
+            )
+            logger.success(f"Extracted text for {doc_count} document files")
+
+    asyncio.run(_run())
+
+
+@app.command("embed-text")
+def embed_text_cmd(
+    model_dir: Annotated[Path, typer.Option(help="Path to the text embedding model directory")],
+    dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
+    dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
+    device: Annotated[ModelDevice, typer.Option(help="Inference device")] = ModelDevice.CPU,
+    chunk_size: Annotated[
+        int, typer.Option(help="Token budget per chunk -- keep equal to extract-text's --chunk-size")
+    ] = DEFAULT_CHUNK_SIZE,
+    chunk_overlap: Annotated[int, typer.Option(help="Token overlap between consecutive CLIR chunks")] = 0,
+    min_chunk_tokens: Annotated[
+        int, typer.Option(help="Merge a final chunk below this many tokens into the previous one instead of embedding it alone")
+    ] = 0,
+):
+    """Chunk (if needed) and embed a dataset's extracted text into the unified `text_chunks` search index.
+
+    Run `extract-text` first -- this reads persisted `ExtractedText` rows,
+    it doesn't parse files itself. Requires the `cli` extra (for `clir`) and
+    Elasticsearch configured in `.env`.
+    """
+    from clir.models.pytorch import TextEmbeddingPytorchModel
+
+    from cipher.datastores.elasticsearch.repositories.text_chunk import ElasticsearchTextChunkRepository
+    from cipher.schemas.message import TEXT_EMBEDDING_DIMENSION
+
+    async def _run():
+        model = TextEmbeddingPytorchModel(model_dir=model_dir, device=device.value)
+        async with get_elasticsearch_client_context() as client:
+            es_repo = ElasticsearchTextChunkRepository(client=client)
+            # Same embedding dimension constant messages already index with --
+            # keeps the door open to one day merging into a single search
+            # surface without a dimension mismatch.
+            await es_repo.create_index(embedding_size=TEXT_EMBEDDING_DIMENSION)
+
+            async with get_session_context() as session:
+                resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
+                count = await embed_text_workflow(
+                    session=session,
+                    dataset_id=resolved_id,
+                    model=model,
+                    es_repo=es_repo,
+                    chunk_size=chunk_size,
+                    chunk_overlap=chunk_overlap,
+                    min_chunk_tokens=min_chunk_tokens,
+                )
+                logger.success(f"Embedded text for {count} files")
+
+    asyncio.run(_run())
+
+
 @app.command("stats")
 def stats(
     dataset_name: Annotated[str | None, typer.Option()] = None,
@@ -167,6 +269,43 @@ def stats(
             face_stats = await get_face_detection_stats(session=session, dataset_id=resolved_id)
             typer.echo("Face detection:")
             typer.echo(f"  {dict(face_stats.get(EnrichmentType.FACE_DETECTION, {}))}")
+
+            extraction_stats = await get_extraction_stats(session=session, dataset_id=resolved_id)
+            typer.echo("Text extraction:")
+            typer.echo(f"  {dict(extraction_stats.get(EnrichmentType.TEXT_EXTRACTION, {}))}")
+
+            text_embedding_stats = await get_text_embedding_stats(session=session, dataset_id=resolved_id)
+            typer.echo("Text embedding:")
+            typer.echo(f"  {dict(text_embedding_stats.get(EnrichmentType.TEXT_EMBEDDING, {}))}")
+
+    asyncio.run(_run())
+
+
+@app.command("benchmark-storage")
+def benchmark_storage_cmd(
+    n: Annotated[int, typer.Option(help="Number of synthetic rows to upsert/read")] = 100,
+    content_chars: Annotated[
+        int, typer.Option(help="Characters of extracted text per row (~35k approximates a 10-page OCR'd PDF)")
+    ] = 35_000,
+    tables_per_row: Annotated[int, typer.Option(help="Fake tables to attach per row")] = 2,
+    keep: Annotated[bool, typer.Option(help="Keep the benchmark dataset instead of deleting it after")] = False,
+):
+    """Benchmark Postgres upsert/read latency and on-disk size for cached extracted text.
+
+    Answers whether caching extraction output in Postgres (so nothing
+    downstream re-runs OCR/parsing) is itself a speed or storage concern.
+    Compare the write/read numbers here against `pyxberg benchmark`'s
+    per-file extraction time -- if extraction takes tens of milliseconds
+    and a Postgres upsert takes a fraction of that, the cache isn't what's
+    slow.
+    """
+
+    async def _run():
+        async with get_session_context() as session:
+            result = await benchmark_storage(
+                session=session, n=n, content_chars=content_chars, n_tables=tables_per_row, cleanup=not keep
+            )
+            typer.echo(json.dumps(result, indent=2))
 
     asyncio.run(_run())
 

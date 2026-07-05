@@ -11,6 +11,8 @@ class EnrichmentType(StrEnum):
     MESSAGE_TRANSLATION = "message_translation"
     FACE_DETECTION = "face_detection"
     FACE_MATCHING = "face_matching"
+    TEXT_EXTRACTION = "text_extraction"
+    TEXT_EMBEDDING = "text_embedding"
 
 
 class ProcessingStatus(StrEnum):

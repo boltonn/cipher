@@ -76,3 +76,18 @@ class PostgresCommentRepository:
         result = await self.session.execute(delete(CommentTable).where(CommentTable.id == comment_id))
         await self.session.commit()
         return bool(result.rowcount)
+
+    async def delete_by_commentable(self, commentable_type: CommentableType, commentable_id: str) -> int:
+        """Delete every comment on a resource.
+
+        `commentable_id` is polymorphic (no real FK), so these rows don't
+        cascade-delete when the resource itself is hard-deleted (e.g. a
+        dataset) -- call this first to avoid leaving orphaned comments behind.
+        """
+        stmt = delete(CommentTable).where(
+            CommentTable.commentable_type == commentable_type,
+            CommentTable.commentable_id == commentable_id,
+        )
+        result = await self.session.execute(stmt)
+        await self.session.commit()
+        return result.rowcount or 0

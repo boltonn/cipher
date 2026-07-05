@@ -46,6 +46,9 @@ const datasetService = {
     const { data } = await apiClient.put<Dataset>(`/datasets/${id}`, payload);
     return data;
   },
+  delete: async (id: string): Promise<void> => {
+    await apiClient.delete(`/datasets/${id}`);
+  },
 };
 
 /** Infinite-scroll variant, used by the dataset multi-select combobox. */
@@ -97,6 +100,29 @@ export function useUpdateDataset(id: string, onSuccess?: () => void) {
     mutationFn: (payload: DatasetUpdate) => datasetService.update(id, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["datasets"] });
+      onSuccess?.();
+    },
+  });
+}
+
+export function useDeleteDataset(onSuccess?: () => void) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => datasetService.delete(id),
+    onSuccess: (_data, id) => {
+      // The detail page (useDataset/useDatasetStats/the file browser, all
+      // keyed ["datasets", id, ...]) is still mounted for a beat before the
+      // redirect completes. Touching those keys at all here -- invalidating
+      // *or* removing -- makes React Query refetch them to satisfy their
+      // still-active observers, 404ing against a dataset that's already
+      // gone and popping the global error toast, once per query. Since
+      // we're navigating away and never need that data again, the fix is to
+      // leave the id-scoped subtree alone entirely and only invalidate the
+      // list queries (a structurally different key: an object, not this id).
+      queryClient.invalidateQueries({
+        predicate: (query) => query.queryKey[0] === "datasets" && query.queryKey[1] !== id,
+      });
       onSuccess?.();
     },
   });

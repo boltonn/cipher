@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from sqlalchemy import DateTime, ForeignKey, String
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from cipher.datastores.postgres.tables.base import Base
@@ -20,12 +19,12 @@ class UserDatasetAccessTable(Base):
     __tablename__ = "user_dataset_access"
 
     user_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False),
+        String,
         ForeignKey("user.id", ondelete="CASCADE"),
         primary_key=True,
     )
     dataset_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False),
+        String,
         ForeignKey("dataset.id", ondelete="CASCADE"),
         primary_key=True,
     )
@@ -37,7 +36,7 @@ class UserTable(Base):
     __tablename__ = "user"
 
     id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+        String, primary_key=True, default=lambda: str(uuid4())
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     email: Mapped[str] = mapped_column(

@@ -735,7 +735,7 @@
     },
     {
         "name": "eml",
-        "group": "text",
+        "group": "email",
         "mime_type": "message/rfc822",
         "extensions": [
             "eml"
@@ -1725,9 +1725,11 @@
     },
     {
         "name": "outlook",
-        "group": "application",
+        "group": "email",
         "mime_type": "application/vnd.ms-outlook",
-        "extensions": []
+        "extensions": [
+            "msg"
+        ]
     },
     {
         "name": "palmos",

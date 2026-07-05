@@ -4,6 +4,9 @@ from cipher.datastores.postgres.repositories.dataset import PostgresDatasetRepos
 from cipher.datastores.postgres.repositories.enrichment import (
     PostgresEnrichmentRepository,
 )
+from cipher.datastores.postgres.repositories.extracted_text import (
+    PostgresExtractedTextRepository,
+)
 from cipher.datastores.postgres.repositories.face import PostgresFaceRepository
 from cipher.datastores.postgres.repositories.face_match import (
     PostgresFaceMatchRepository,
@@ -18,6 +21,7 @@ __all__ = [
     "PostgresContactRepository",
     "PostgresDatasetRepository",
     "PostgresEnrichmentRepository",
+    "PostgresExtractedTextRepository",
     "PostgresFaceRepository",
     "PostgresFaceMatchRepository",
     "PostgresFileRepository",

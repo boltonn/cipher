@@ -3,7 +3,14 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
 
-from cipher.api.deps.postgres import DatasetDatastoreDep, FileDatastoreDep
+from cipher.api.deps.elasticsearch import TextChunkDatastoreDep
+from cipher.api.deps.postgres import (
+    CommentDatastoreDep,
+    DatasetDatastoreDep,
+    EnrichmentDatastoreDep,
+    FileDatastoreDep,
+)
+from cipher.schemas.comment import CommentableType
 from cipher.schemas.dataset import (
     Dataset,
     DatasetCreate,
@@ -103,8 +110,31 @@ async def browse_dataset_files(
     response_model=bool,
     response_model_by_alias=True,
 )
-async def delete_dataset(id: str, datastore: DatasetDatastoreDep) -> bool:
-    """Delete a dataset by its ID."""
+async def delete_dataset(
+    id: str,
+    datastore: DatasetDatastoreDep,
+    enrichment_datastore: EnrichmentDatastoreDep,
+    comment_datastore: CommentDatastoreDep,
+    text_chunk_datastore: TextChunkDatastoreDep,
+) -> bool:
+    """Delete a dataset and everything scoped to it.
+
+    Most child records (files, extracted text, images, faces) cascade via
+    FK when the dataset row goes. Enrichment and comment rows don't -- both
+    reference their parent polymorphically (no real FK, since either can
+    point at files, messages, faces, persons, etc.) -- and Elasticsearch
+    chunks live in a separate datastore entirely. All three are purged
+    explicitly here first so nothing is left orphaned.
+    """
+    deleted_enrichments = await enrichment_datastore.delete_by_dataset_files(dataset_id=id)
+    deleted_comments = await comment_datastore.delete_by_commentable(
+        commentable_type=CommentableType.DATASET, commentable_id=id
+    )
+    deleted_chunks = await text_chunk_datastore.delete_by_dataset_id(dataset_id=id)
+    logger.info(
+        f"Purged {deleted_enrichments} enrichments, {deleted_comments} comments, "
+        f"{deleted_chunks} search chunks for dataset {id} before delete"
+    )
     return await datastore.delete_dataset(dataset_id=id)
 
 

@@ -1,9 +1,13 @@
 "use client";
 
 import { DataTable } from "@/components/data-table/data-table";
-import type { DataTableColumn, DataTableFilters, DataTableSortOrder } from "@/components/data-table/types";
-import { formatBytes, formatCompactNumber } from "@/lib/utils";
+import type {
+  DataTableColumn,
+  DataTableFilters,
+  DataTableSortOrder,
+} from "@/components/data-table/types";
 import type { DatasetSummary } from "@/features/datasets/types";
+import { formatBytes, formatCompactNumber } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 
 const formatDate = (dateString: string) =>
@@ -14,7 +18,14 @@ const formatDate = (dateString: string) =>
   });
 
 const columns: DataTableColumn<DatasetSummary>[] = [
-  { key: "name", header: "Name", type: "text", sortable: true, filterable: true, width: "2fr" },
+  {
+    key: "name",
+    header: "Name",
+    type: "text",
+    sortable: true,
+    filterable: true,
+    width: "2fr",
+  },
   { key: "description", header: "Description", type: "text", width: "3fr" },
   {
     key: "fileCount",
@@ -104,6 +115,8 @@ export function DatasetsTable({
       limit={limit}
       sortBy={sortBy}
       sortOrder={sortOrder}
+      defaultSortBy="name"
+      defaultSortOrder="asc"
       filters={filters}
       isLoading={isLoading}
       onPageChange={onPageChange}

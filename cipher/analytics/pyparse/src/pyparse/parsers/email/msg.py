@@ -1,52 +1,68 @@
 import email
+import hashlib
 from pathlib import Path
 
 import compressed_rtf
+from filetyper import FileTyper
 from loguru import logger
 from msg_parser.msg_parser import Message
 from olefile import OleFileIO
 
-from pyparse.parsers.base import get_file_instance
 from pyparse.parsers.email.eml import EmlParser
 from pyparse.parsers.text import HtmlParser
 from pyparse.utils.text import clean_text
 
 
 class MsgParser:
+    """Parser for Outlook .msg files.
+
+    Takes the same `file_typer` dependency as `EmlParser` and for the same
+    reason: attachment typing shouldn't trust a possibly-missing/wrong
+    `AttachExtension` string from the OLE structure when a magic-byte-based
+    inference is available and just as cheap to reuse across attachments.
+    """
+
+    def __init__(self, file_typer: FileTyper | None = None) -> None:
+        self.file_typer = file_typer or FileTyper()
+
     @staticmethod
-    def load_from_filesystem(file_path: Path) -> dict:
+    def load_from_filesystem(file_path: Path) -> Message:
         """Load a msg file from the filesystem."""
         with OleFileIO(file_path) as ole:
             return MsgParser.create_msg(ole)
 
     @staticmethod
-    def load_from_bytes(file_bytes: bytes) -> dict:
+    def load_from_bytes(file_bytes: bytes) -> Message:
         """Load a msg file from bytes."""
         return MsgParser.create_msg(OleFileIO(file_bytes))
 
     @staticmethod
-    def create_msg(ole: OleFileIO) -> dict:
+    def create_msg(ole: OleFileIO) -> Message:
         """Create a msg file from an OleFileIO object."""
         return Message(ole.root.kids_dict)
 
-    @staticmethod
     def extract_attachments(
-        msg: Message, extract_children: bool = False, out_dir: Path = None, **kwargs
+        self, msg: Message, extract_children: bool = False, out_dir: Path = None, **kwargs
     ) -> dict:
         """Extract data from a msg file."""
         attachements = []
         for attachment in msg.attachments.values():
             attachment_bytes = attachment.get("AttachDataObj")
-            file_ext = attachment.get("AttachExtension")
             file_name = attachment.get("DisplayName")
+            filetype_info = self.file_typer.infer(attachment_bytes)
+            md5 = hashlib.md5(attachment_bytes).hexdigest()
+            sha256 = hashlib.sha256(attachment_bytes).hexdigest()
             meta = {
                 "file_name": file_name,
-                "file_extension": file_ext,
-                **get_file_instance(attachment_bytes),
+                "filetype": filetype_info.get("filetype"),
+                "filetype_group": filetype_info.get("filetype_group"),
+                "mime_type": filetype_info.get("mime_type"),
+                "md5": md5,
+                "sha256": sha256,
             }
             if extract_children:
-                out_file_ext = ".bin" if file_ext is None else file_ext
-                out_file_name = meta["hash"]["md5"] + out_file_ext
+                ext = (filetype_info.get("extensions") or [None])[0]
+                out_file_name = f"{md5}.{ext}" if ext else f"{md5}.bin"
                 out_file = out_dir / out_file_name
                 with open(out_file, "wb") as fb:
                     fb.write(attachment_bytes)
@@ -55,8 +71,8 @@ class MsgParser:
             attachements.append(meta)
         return attachements if attachements else None
 
-    @staticmethod
     def parse_properties(
+        self,
         msg: Message,
         return_raw_header: bool = True,
         body_delimiter: str = "\n\n",
@@ -74,8 +90,8 @@ class MsgParser:
         if date_sent is not None:
             out["date_sent"] = EmlParser.parse_date(date_sent)
 
-        subject = meta.get("subject")
-        out["subject"] = msg.properties.get("Subject") if subject is None else subject
+        subject = meta.get("title")
+        out["title"] = msg.properties.get("Subject") if subject is None else subject
 
         sender = meta.get("sender")
         out["sender"] = (
@@ -121,8 +137,8 @@ class MsgParser:
             out["text"]["source"] = text
         return out
 
-    @staticmethod
     def parse(
+        self,
         file: Path | bytes,
         return_raw_header: bool = True,
         extract_children: bool = False,
@@ -136,8 +152,8 @@ class MsgParser:
         else:
             raise TypeError(f"Expected Path or bytes, got {type(file)}")
 
-        out = MsgParser.parse_properties(msg, return_raw_header=return_raw_header)
-        out["children"] = MsgParser.extract_attachments(
+        out = self.parse_properties(msg, return_raw_header=return_raw_header)
+        out["children"] = self.extract_attachments(
             msg=msg, extract_children=extract_children, out_dir=out_dir
         )
         return out
