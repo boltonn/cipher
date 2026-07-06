@@ -1,6 +1,5 @@
 "use client";
 
-import { PromptInputButton } from "@/components/ai-elements/prompt-input";
 import {
   EnvironmentVariable,
   EnvironmentVariables,
@@ -9,8 +8,9 @@ import {
   EnvironmentVariablesTitle,
   EnvironmentVariablesToggle,
 } from "@/components/ai-elements/environment-variables";
-import { Combobox } from "@/components/ui/combobox";
+import { PromptInputButton } from "@/components/ai-elements/prompt-input";
 import { Button } from "@/components/ui/button";
+import { Combobox } from "@/components/ui/combobox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -18,8 +18,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-// Planned: replace Select with Combobox for searchable model picker
-const _modelCombobox = Combobox;
 import {
   Select,
   SelectContent,
@@ -30,6 +28,8 @@ import {
 import { Settings2Icon } from "lucide-react";
 import { useState } from "react";
 import { useChatStore } from "../hooks/use-chat-store";
+// Planned: replace Select with Combobox for searchable model picker
+const _modelCombobox = Combobox;
 
 const MODELS = [
   { id: "openai:gpt-4o-mini", label: "GPT-4o Mini", provider: "openai" },
@@ -111,7 +111,7 @@ export function ModelConfigPopover() {
         </PromptInputButton>
       </PopoverTrigger>
 
-      <PopoverContent className="w-80 p-4 space-y-4" align="start" side="top">
+      <PopoverContent className="w-140 p-4 space-y-4" align="start" side="top">
         <div className="space-y-1.5">
           <Label>Model</Label>
           <Select value={draftModel} onValueChange={setDraftModel}>
@@ -125,11 +125,13 @@ export function ModelConfigPopover() {
                     {PROVIDER_LABELS[provider]}
                   </p>
                   {MODELS.flatMap((m) =>
-                    m.provider === provider ? [
-                      <SelectItem key={m.id} value={m.id}>
-                        {m.label}
-                      </SelectItem>
-                    ] : []
+                    m.provider === provider
+                      ? [
+                          <SelectItem key={m.id} value={m.id}>
+                            {m.label}
+                          </SelectItem>,
+                        ]
+                      : []
                   )}
                 </div>
               ))}
@@ -160,13 +162,15 @@ export function ModelConfigPopover() {
             </EnvironmentVariablesHeader>
             <EnvironmentVariablesContent>
               {Object.entries(keys).flatMap(([p, v]) =>
-                v ? [
-                  <EnvironmentVariable
-                    key={p}
-                    name={`${p.toUpperCase()}_API_KEY`}
-                    value={v}
-                  />
-                ] : []
+                v
+                  ? [
+                      <EnvironmentVariable
+                        key={p}
+                        name={`${p.toUpperCase()}_API_KEY`}
+                        value={v}
+                      />,
+                    ]
+                  : []
               )}
             </EnvironmentVariablesContent>
           </EnvironmentVariables>

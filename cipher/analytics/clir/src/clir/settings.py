@@ -15,10 +15,14 @@ class Settings(BaseServiceSettings):
         description="Path to HuggingFace text embedding model directory",
         alias="TEXT_EMBEDDING_MODEL_DIR",
     )
-    max_batch_size: int = Field(1, description="Maximum batch size for batching")
-    batch_timeout: float = Field(0, description="Timeout for batching in seconds")
+    max_batch_size: int = Field(
+        1, description="Maximum batch size for batching", ge=1, alias="TEXT_EMBEDDING_MAX_BATCH_SIZE"
+    )
+    batch_timeout: float = Field(
+        0, description="Timeout for batching in seconds", ge=0, alias="TEXT_EMBEDDING_BATCH_TIMEOUT"
+    )
     model_device: ModelDevice | None = Field(
-        None, description="Device to use for the model"
+        None, description="Device to use for the model", alias="TEXT_EMBEDDING_MODEL_DEVICE"
     )
 
     model_config = SettingsConfigDict(env_file=".env", protected_namespaces=[])

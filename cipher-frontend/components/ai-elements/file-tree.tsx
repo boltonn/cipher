@@ -13,13 +13,7 @@ import {
   FolderOpenIcon,
 } from "lucide-react";
 import type { HTMLAttributes, ReactNode } from "react";
-import {
-  createContext,
-  useCallback,
-  use,
-  useMemo,
-  useState,
-} from "react";
+import { createContext, use, useCallback, useMemo, useState } from "react";
 
 interface FileTreeContextType {
   expandedPaths: Set<string>;
@@ -166,6 +160,7 @@ export const FileTreeFolder = ({
         <div
           className={cn("", className)}
           role="treeitem"
+          aria-selected={isSelected}
           tabIndex={0}
           {...props}
         >
@@ -195,9 +190,9 @@ export const FileTreeFolder = ({
             >
               <FileTreeIcon>
                 {isExpanded ? (
-                  <FolderOpenIcon className="size-4 text-blue-500" />
+                  <FolderOpenIcon className="size-4 text-indigo-500" />
                 ) : (
-                  <FolderIcon className="size-4 text-blue-500" />
+                  <FolderIcon className="size-4 text-indigo-500" />
                 )}
               </FileTreeIcon>
               <FileTreeName>{name}</FileTreeName>
@@ -265,6 +260,7 @@ export const FileTreeFile = ({
         onClick={handleClick}
         onKeyDown={handleKeyDown}
         role="treeitem"
+        aria-selected={isSelected}
         tabIndex={0}
         {...props}
       >

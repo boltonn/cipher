@@ -1,6 +1,5 @@
-"use client"
+"use client";
 
-import * as React from "react"
 import {
   AlignBoxBottomCenterIcon,
   Heading01Icon,
@@ -10,28 +9,29 @@ import {
   Table01Icon,
   TextCenterlineCenterTopIcon,
   TextNumberSignIcon,
-} from "@hugeicons/core-free-icons"
-import { HugeiconsIcon } from "@hugeicons/react"
-import { useVirtualizer } from "@tanstack/react-virtual"
-import ReactMarkdown from "react-markdown"
-import rehypeRaw from "rehype-raw"
-import rehypeSanitize, { defaultSchema } from "rehype-sanitize"
-import remarkGfm from "remark-gfm"
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import * as React from "react";
+import ReactMarkdown from "react-markdown";
+import rehypeRaw from "rehype-raw";
+import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
+import remarkGfm from "remark-gfm";
 
-import { cn } from "@/lib/utils"
-import { ScrollArea } from "@/components/ui/scroll-area"
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
 
 export type Point = {
-  x: number
-  y: number
-}
+  x: number;
+  y: number;
+};
 
 export type BoundingBox = {
-  left: number
-  top: number
-  right: number
-  bottom: number
-}
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+};
 
 export type OcrBlockType =
   | "heading"
@@ -41,51 +41,51 @@ export type OcrBlockType =
   | "figure"
   | "header"
   | "footer"
-  | "page_number"
+  | "page_number";
 
 export type ParsedOcrBlock = {
-  id: string
-  type: string
-  content: string
+  id: string;
+  type: string;
+  content: string;
   metadata: {
     page: {
-      number: number
-      width: number
-      height: number
-    }
-    layoutClass?: string
-    minOcrConfidence?: number
-    avgOcrConfidence?: number
-  }
-  polygon?: Point[]
-  boundingBox?: BoundingBox
-}
+      number: number;
+      width: number;
+      height: number;
+    };
+    layoutClass?: string;
+    minOcrConfidence?: number;
+    avgOcrConfidence?: number;
+  };
+  polygon?: Point[];
+  boundingBox?: BoundingBox;
+};
 
 export type ParsedOcrOutput = {
   chunks: {
-    blocks: ParsedOcrBlock[]
-  }[]
-}
+    blocks: ParsedOcrBlock[];
+  }[];
+};
 
 export type OcrBlock = {
-  id: string
-  type: OcrBlockType
-  text: string
-  page: number
-  pageWidth: number
-  pageHeight: number
-  confidence: number
-  polygon?: Point[]
-  boundingBox?: BoundingBox
-}
+  id: string;
+  type: OcrBlockType;
+  text: string;
+  page: number;
+  pageWidth: number;
+  pageHeight: number;
+  confidence: number;
+  polygon?: Point[];
+  boundingBox?: BoundingBox;
+};
 
-export const PDF_URL = "/samples/attention-rotated.pdf"
-const OCR_BLOCK_ROW_MIN_ESTIMATE = 92
-const OCR_BLOCK_ROW_VERTICAL_CHROME = 62
-const OCR_BLOCK_LINE_HEIGHT = 20
-const OCR_BLOCK_ESTIMATED_CHARS_PER_LINE = 42
-const OCR_BLOCK_ROW_GAP = 8
-const OCR_BLOCK_LIST_PADDING = 12
+export const PDF_URL = "/samples/attention-rotated.pdf";
+const OCR_BLOCK_ROW_MIN_ESTIMATE = 92;
+const OCR_BLOCK_ROW_VERTICAL_CHROME = 62;
+const OCR_BLOCK_LINE_HEIGHT = 20;
+const OCR_BLOCK_ESTIMATED_CHARS_PER_LINE = 42;
+const OCR_BLOCK_ROW_GAP = 8;
+const OCR_BLOCK_LIST_PADDING = 12;
 const OCR_MARKDOWN_SCHEMA = {
   ...defaultSchema,
   attributes: {
@@ -98,29 +98,29 @@ const OCR_MARKDOWN_SCHEMA = {
     "figcaption",
     "figure",
   ],
-}
+};
 const OCR_MARKDOWN_REHYPE_PLUGINS: NonNullable<
   React.ComponentProps<typeof ReactMarkdown>["rehypePlugins"]
-> = [rehypeRaw, [rehypeSanitize, OCR_MARKDOWN_SCHEMA]]
+> = [rehypeRaw, [rehypeSanitize, OCR_MARKDOWN_SCHEMA]];
 const OCR_MARKDOWN_REMARK_PLUGINS: NonNullable<
   React.ComponentProps<typeof ReactMarkdown>["remarkPlugins"]
-> = [remarkGfm]
-const OCR_MARKDOWN_FIGURE_CAPTION_PATTERN = /<\/?caption>/gi
+> = [remarkGfm];
+const OCR_MARKDOWN_FIGURE_CAPTION_PATTERN = /<\/?caption>/gi;
 
 function getEstimatedOcrBlockRowHeight(block: OcrBlock) {
   const plainText = block.text
     .replace(OCR_MARKDOWN_FIGURE_CAPTION_PATTERN, "")
     .replace(/<[^>]*>/g, "")
     .replace(/\s+/g, " ")
-    .trim()
-  const explicitLineCount = block.text.split(/\n+/).filter(Boolean).length
+    .trim();
+  const explicitLineCount = block.text.split(/\n+/).filter(Boolean).length;
   const wrappedLineCount = Math.max(
     explicitLineCount,
     Math.ceil(plainText.length / OCR_BLOCK_ESTIMATED_CHARS_PER_LINE)
-  )
-  const contentHeight = Math.max(1, wrappedLineCount) * OCR_BLOCK_LINE_HEIGHT
+  );
+  const contentHeight = Math.max(1, wrappedLineCount) * OCR_BLOCK_LINE_HEIGHT;
   const typeExtraHeight =
-    block.type === "figure" ? 44 : block.type === "table" ? 28 : 0
+    block.type === "figure" ? 44 : block.type === "table" ? 28 : 0;
 
   return Math.max(
     OCR_BLOCK_ROW_MIN_ESTIMATE,
@@ -128,7 +128,7 @@ function getEstimatedOcrBlockRowHeight(block: OcrBlock) {
       contentHeight +
       typeExtraHeight +
       OCR_BLOCK_ROW_GAP
-  )
+  );
 }
 
 const ATTENTION_OCR_OUTPUT = {
@@ -7934,17 +7934,17 @@ const ATTENTION_OCR_OUTPUT = {
       ],
     },
   ],
-} satisfies ParsedOcrOutput
+} satisfies ParsedOcrOutput;
 
 const BLOCK_STYLES: Record<
   OcrBlockType,
   {
-    label: string
-    icon: React.ComponentProps<typeof HugeiconsIcon>["icon"]
-    overlay: string
-    mutedOverlay: string
-    ring: string
-    badge: string
+    label: string;
+    icon: React.ComponentProps<typeof HugeiconsIcon>["icon"];
+    overlay: string;
+    mutedOverlay: string;
+    ring: string;
+    badge: string;
   }
 > = {
   heading: {
@@ -8015,50 +8015,50 @@ const BLOCK_STYLES: Record<
     ring: "border-zinc-500/60 bg-zinc-500/5 text-zinc-700",
     badge: "bg-zinc-50 text-zinc-600 dark:bg-zinc-300/10 dark:text-zinc-300",
   },
-}
+};
 
 function getBlockType(block: ParsedOcrBlock): OcrBlockType | undefined {
   if (block.type === "heading" || block.type === "section_heading") {
-    return "heading"
+    return "heading";
   }
 
   if (block.type === "header") {
-    return "header"
+    return "header";
   }
 
   if (block.type === "footer") {
-    return "footer"
+    return "footer";
   }
 
   if (block.type === "page_number") {
-    return "page_number"
+    return "page_number";
   }
 
   if (block.type === "figure" || block.type === "image") {
-    return "figure"
+    return "figure";
   }
 
   if (block.type === "table") {
-    return "table"
+    return "table";
   }
 
   if (block.metadata.layoutClass === "List Item") {
-    return "list"
+    return "list";
   }
 
   if (block.type === "text") {
-    return "paragraph"
+    return "paragraph";
   }
 }
 
 function getOcrBlocks(output: ParsedOcrOutput): OcrBlock[] {
   return output.chunks.flatMap((chunk) =>
     chunk.blocks.flatMap((block) => {
-      const type = getBlockType(block)
-      const { page } = block.metadata
+      const type = getBlockType(block);
+      const { page } = block.metadata;
 
       if (!type || page.width <= 0 || page.height <= 0) {
-        return []
+        return [];
       }
 
       return {
@@ -8074,42 +8074,42 @@ function getOcrBlocks(output: ParsedOcrOutput): OcrBlock[] {
           1,
         polygon: block.polygon,
         boundingBox: block.boundingBox,
-      }
+      };
     })
-  )
+  );
 }
 
 function getBoundingBox(block: OcrBlock): BoundingBox {
   if (block.boundingBox) {
-    return block.boundingBox
+    return block.boundingBox;
   }
 
-  const polygon = block.polygon ?? []
-  const xValues = polygon.map((point) => point.x)
-  const yValues = polygon.map((point) => point.y)
-  const left = Math.min(...xValues)
-  const right = Math.max(...xValues)
-  const top = Math.min(...yValues)
-  const bottom = Math.max(...yValues)
+  const polygon = block.polygon ?? [];
+  const xValues = polygon.map((point) => point.x);
+  const yValues = polygon.map((point) => point.y);
+  const left = Math.min(...xValues);
+  const right = Math.max(...xValues);
+  const top = Math.min(...yValues);
+  const bottom = Math.max(...yValues);
 
-  return { left, top, right, bottom }
+  return { left, top, right, bottom };
 }
 
 function blockToArea(block: OcrBlock): React.CSSProperties {
-  const { left, top, right, bottom } = getBoundingBox(block)
+  const { left, top, right, bottom } = getBoundingBox(block);
 
   return {
     left: `${(left / block.pageWidth) * 100}%`,
     top: `${(top / block.pageHeight) * 100}%`,
     width: `${((right - left) / block.pageWidth) * 100}%`,
     height: `${((bottom - top) / block.pageHeight) * 100}%`,
-  }
+  };
 }
 
 function OcrBlockMarkdown({ text }: { text: string }) {
   const markdown = text.replace(OCR_MARKDOWN_FIGURE_CAPTION_PATTERN, (tag) =>
     tag.startsWith("</") ? "</figcaption>" : "<figcaption>"
-  )
+  );
 
   return (
     <div className="space-y-1 text-sm leading-5 text-foreground/90">
@@ -8165,7 +8165,7 @@ function OcrBlockMarkdown({ text }: { text: string }) {
         {markdown}
       </ReactMarkdown>
     </div>
-  )
+  );
 }
 
 function OcrBlockButton({
@@ -8173,11 +8173,11 @@ function OcrBlockButton({
   isActive,
   onFocusBlock,
 }: {
-  block: OcrBlock
-  isActive: boolean
-  onFocusBlock: (block: OcrBlock) => void
+  block: OcrBlock;
+  isActive: boolean;
+  onFocusBlock: (block: OcrBlock) => void;
 }) {
-  const style = BLOCK_STYLES[block.type]
+  const style = BLOCK_STYLES[block.type];
 
   return (
     <button
@@ -8214,17 +8214,17 @@ function OcrBlockButton({
         </div>
       </div>
     </button>
-  )
+  );
 }
 
 export function OcrBlockOverlay({
   block,
   isActive,
 }: {
-  block: OcrBlock
-  isActive?: boolean
+  block: OcrBlock;
+  isActive?: boolean;
 }) {
-  const style = BLOCK_STYLES[block.type]
+  const style = BLOCK_STYLES[block.type];
 
   return (
     <div
@@ -8234,7 +8234,7 @@ export function OcrBlockOverlay({
       )}
       style={blockToArea(block)}
     />
-  )
+  );
 }
 
 export function OcrBlocksPanel({
@@ -8243,63 +8243,59 @@ export function OcrBlocksPanel({
   className,
   onBlockFocus,
 }: {
-  activeBlockId?: string
-  blocks: OcrBlock[]
-  className?: string
-  onBlockFocus?: (block: OcrBlock) => void
+  activeBlockId?: string;
+  blocks: OcrBlock[];
+  className?: string;
+  onBlockFocus?: (block: OcrBlock) => void;
 }) {
-  const scrollViewportRef = React.useRef<HTMLDivElement | null>(null)
+  const scrollViewportRef = React.useRef<HTMLDivElement | null>(null);
   const [localActiveBlockId, setLocalActiveBlockId] = React.useState(
     activeBlockId ?? blocks[0]?.id
-  )
-  const firstBlock = blocks[0]
-  const focusedBlockId = activeBlockId ?? localActiveBlockId
+  );
+  const firstBlock = blocks[0];
+  const focusedBlockId = activeBlockId ?? localActiveBlockId;
   const activeBlock =
-    blocks.find((block) => block.id === focusedBlockId) ?? firstBlock
+    blocks.find((block) => block.id === focusedBlockId) ?? firstBlock;
   const estimateBlockSize = React.useCallback(
     (index: number) => {
-      const block = blocks[index]
+      const block = blocks[index];
       return block
         ? getEstimatedOcrBlockRowHeight(block)
-        : OCR_BLOCK_ROW_MIN_ESTIMATE
+        : OCR_BLOCK_ROW_MIN_ESTIMATE;
     },
     [blocks]
-  )
+  );
   const virtualizer = useVirtualizer({
     count: blocks.length,
     estimateSize: estimateBlockSize,
     getItemKey: (index) => blocks[index]?.id ?? index,
     getScrollElement: () => scrollViewportRef.current,
     overscan: 12,
-  })
+  });
 
   const focusBlock = React.useCallback(
     (block: OcrBlock) => {
-      if (block.id === focusedBlockId) return
+      if (block.id === focusedBlockId) return;
 
-      setLocalActiveBlockId(block.id)
-      onBlockFocus?.(block)
+      setLocalActiveBlockId(block.id);
+      onBlockFocus?.(block);
     },
     [focusedBlockId, onBlockFocus]
-  )
+  );
 
   if (
     firstBlock &&
     !activeBlockId &&
     !blocks.some((block) => block.id === localActiveBlockId)
   ) {
-    setLocalActiveBlockId(firstBlock.id)
+    setLocalActiveBlockId(firstBlock.id);
   }
 
   return (
     <aside
-      className={cn("flex h-[420px] min-h-0 flex-col bg-background", className)}
+      className={cn("flex h-105 min-h-0 flex-col bg-background", className)}
     >
-      <ScrollArea
-        className="min-h-0 flex-1"
-        scrollFade
-        viewportRef={scrollViewportRef}
-      >
+      <ScrollArea className="min-h-0 flex-1" viewportRef={scrollViewportRef}>
         {blocks.length ? (
           <div
             className="relative"
@@ -8308,15 +8304,15 @@ export function OcrBlocksPanel({
             }}
           >
             {virtualizer.getVirtualItems().map((virtualRow) => {
-              const block = blocks[virtualRow.index]
-              if (!block) return null
+              const block = blocks[virtualRow.index];
+              if (!block) return null;
 
               return (
                 <div
                   key={virtualRow.key}
                   ref={virtualizer.measureElement}
                   data-index={virtualRow.index}
-                  className="absolute top-0 right-3 left-3 pb-2 [contain:layout_paint]"
+                  className="absolute top-0 right-3 left-3 pb-2 contain-[layout_paint]"
                   style={{
                     transform: `translateY(${
                       virtualRow.start + OCR_BLOCK_LIST_PADDING
@@ -8329,7 +8325,7 @@ export function OcrBlocksPanel({
                     onFocusBlock={focusBlock}
                   />
                 </div>
-              )
+              );
             })}
           </div>
         ) : (
@@ -8341,11 +8337,11 @@ export function OcrBlocksPanel({
         )}
       </ScrollArea>
     </aside>
-  )
+  );
 }
 
 export function OcrBlocks() {
   return (
     <OcrBlocksPanel blocks={getOcrBlocks(ATTENTION_OCR_OUTPUT).slice(0, 12)} />
-  )
+  );
 }

@@ -1,9 +1,9 @@
 """Text chunk repository — Elasticsearch operations for the unified document+email index.
 
-One flat ES document per chunk, discriminated by `content_type`, so
+One flat ES document per chunk, discriminated by `filetype_group`, so
 "search everything" is a single query rather than a federated one across
 separate indices. A hit is validated back into `ScoredDocumentTextChunk` or
-`ScoredEmailTextChunk` by its `content_type` field.
+`ScoredEmailTextChunk` by its `filetype_group` field.
 """
 
 from elastic_transport import ObjectApiResponse
@@ -28,7 +28,7 @@ DEFAULT_INDEX = "text_chunks"
 
 ScoredTextChunk = ScoredDocumentTextChunk | ScoredEmailTextChunk
 
-_MODEL_BY_CONTENT_TYPE: dict[str, type[ScoredTextChunk]] = {
+_MODEL_BY_FILETYPE_GROUP: dict[str, type[ScoredTextChunk]] = {
     "document": ScoredDocumentTextChunk,
     "email": ScoredEmailTextChunk,
 }
@@ -42,8 +42,8 @@ def _build_chunk_filters(filters: ChunkFilters) -> list[dict]:
         clauses.append({"term": {"file_id": filters.file_id}})
     if filters.tags:
         clauses.append({"terms": {"tags": filters.tags}})
-    if filters.content_type is not None:
-        clauses.append({"term": {"content_type": filters.content_type}})
+    if filters.filetype_group is not None:
+        clauses.append({"term": {"filetype_group": filters.filetype_group}})
     return clauses
 
 
@@ -66,7 +66,7 @@ def _knn_clause(
 
 def _from_hit(hit: dict) -> ScoredTextChunk:
     source = hit["_source"]
-    model = _MODEL_BY_CONTENT_TYPE[source["content_type"]]
+    model = _MODEL_BY_FILETYPE_GROUP[source["filetype_group"]]
     score = hit.get("_score") or hit.get("_knn_score") or 1.0
     return model(id=hit["_id"], score=score, **source)
 
@@ -117,6 +117,22 @@ class ElasticsearchTextChunkRepository:
             return True
         except NotFoundError:
             return False
+
+    async def list_by_file_id(self, file_id: str, limit: int = 500) -> list[ScoredTextChunk]:
+        """List every chunk belonging to a file, in original document order.
+
+        Unlike the search methods, this is a plain lookup with no relevance
+        scoring -- used to reconstruct a file's full extracted text.
+        """
+        resp = await self.client.search(
+            index=self.index,
+            body={
+                "query": {"term": {"file_id": file_id}},
+                "sort": [{"chunk_index": {"order": "asc"}}],
+                "size": limit,
+            },
+        )
+        return [_from_hit(hit) for hit in resp["hits"]["hits"]]
 
     async def delete_by_file_id(self, file_id: str) -> int:
         """Delete every chunk belonging to a file (e.g. before re-embedding it)."""
@@ -178,10 +194,10 @@ class ElasticsearchTextChunkRepository:
     async def search_semantic(self, request: ChunkSemanticSearchRequest) -> PaginatedResponse[ScoredTextChunk]:
         """KNN search over chunk embeddings, scored by cosine similarity.
 
-        Comparing raw kNN scores across content types with very different
+        Comparing raw kNN scores across filetype groups with very different
         typical chunk lengths is a known caveat -- callers wanting apples-
         to-apples ranking across documents and emails should filter to one
-        `content_type` or normalize scores themselves before merging.
+        `filetype_group` or normalize scores themselves before merging.
         """
         clauses = _build_chunk_filters(request.filters)
         knn = _knn_clause(
@@ -239,12 +255,21 @@ class ElasticsearchTextChunkRepository:
         indexed = sum(1 for item in resp["items"] if item["index"]["status"] in (200, 201))
         return indexed, len(resp["items"]) - indexed
 
-    async def bulk_index(self, chunks: list[TextChunk], batch_size: int = 100) -> tuple[int, int]:
-        """Bulk index document/email chunks with internal batching. Returns (indexed, failed)."""
+    async def bulk_index(self, chunks: list[TextChunk], batch_size: int = 100, show_progress: bool = True) -> tuple[int, int]:
+        """Bulk index document/email chunks with internal batching. Returns (indexed, failed).
+
+        `show_progress=False` for callers that already track their own
+        higher-level progress bar (e.g. embed_text_workflow) -- a fresh bar
+        per call here would otherwise repaint over that one.
+        """
         total_indexed = 0
         total_failed = 0
 
-        for i in tqdm(range(0, len(chunks), batch_size), desc=f"Indexing to {self.index}", unit="batch"):
+        batches = range(0, len(chunks), batch_size)
+        if show_progress:
+            batches = tqdm(batches, desc=f"Indexing to {self.index}", unit="batch")
+
+        for i in batches:
             batch = chunks[i : i + batch_size]
             indexed, failed = await self._send_batch(batch)
             total_indexed += indexed

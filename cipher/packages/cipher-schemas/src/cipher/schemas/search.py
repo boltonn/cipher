@@ -64,8 +64,8 @@ class ChunkFilters(BaseModel):
     dataset_id: str | None = None
     file_id: str | None = None
     tags: list[str] | None = None
-    content_type: Literal["document", "email"] | None = Field(
-        default=None, description="Restrict to one content type; omit to search both"
+    filetype_group: Literal["document", "email"] | None = Field(
+        default=None, description="Restrict to one filetype group; omit to search both"
     )
 
 

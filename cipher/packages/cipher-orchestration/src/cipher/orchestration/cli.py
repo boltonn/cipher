@@ -15,7 +15,7 @@ from typing import Annotated
 import typer
 from loguru import logger
 
-from cipher.datastores.postgres.repositories import PostgresDatasetRepository
+from cipher.datastores.postgres.repositories import PostgresDatasetRepository, PostgresEnrichmentRepository
 from cipher.orchestration.benchmark import benchmark_storage
 from cipher.orchestration.detect_faces import (
     detect_faces_workflow,
@@ -207,6 +207,9 @@ def embed_text_cmd(
     min_chunk_tokens: Annotated[
         int, typer.Option(help="Merge a final chunk below this many tokens into the previous one instead of embedding it alone")
     ] = 0,
+    embed_batch_size: Annotated[
+        int, typer.Option(help="Max spans per model.encode() call -- caps GPU memory use for heavily-chunked files")
+    ] = 32,
 ):
     """Chunk (if needed) and embed a dataset's extracted text into the unified `text_chunks` search index.
 
@@ -238,8 +241,43 @@ def embed_text_cmd(
                     chunk_size=chunk_size,
                     chunk_overlap=chunk_overlap,
                     min_chunk_tokens=min_chunk_tokens,
+                    embed_batch_size=embed_batch_size,
                 )
                 logger.success(f"Embedded text for {count} files")
+
+    asyncio.run(_run())
+
+
+@app.command("reset-text")
+def reset_text_cmd(
+    dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
+    dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
+):
+    """Delete a dataset's indexed text chunks and reset extraction/embedding to pending.
+
+    Use after a chunking/embedding config change (chunk size, model, mapping)
+    so `extract-text` and `embed-text` reprocess every file from scratch
+    instead of skipping ones already marked complete under the old config.
+    """
+    from cipher.datastores.elasticsearch.repositories.text_chunk import ElasticsearchTextChunkRepository
+    from cipher.schemas.enrichment import EnrichmentType
+
+    async def _run():
+        async with get_elasticsearch_client_context() as client:
+            es_repo = ElasticsearchTextChunkRepository(client=client)
+            async with get_session_context() as session:
+                resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
+                deleted_chunks = await es_repo.delete_by_dataset_id(resolved_id)
+
+                enrichment_repo = PostgresEnrichmentRepository(session=session)
+                reset_extraction = await enrichment_repo.delete_by_type(resolved_id, EnrichmentType.TEXT_EXTRACTION)
+                reset_embedding = await enrichment_repo.delete_by_type(resolved_id, EnrichmentType.TEXT_EMBEDDING)
+
+                logger.success(
+                    f"Reset dataset {resolved_id}: deleted {deleted_chunks} indexed chunks, "
+                    f"{reset_extraction} extraction + {reset_embedding} embedding enrichments cleared -- "
+                    "re-run extract-text then embed-text to reprocess"
+                )
 
     asyncio.run(_run())
 

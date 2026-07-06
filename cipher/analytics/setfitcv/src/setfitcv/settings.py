@@ -15,8 +15,14 @@ class Settings(BaseServiceSettings):
         description="Path to HuggingFace image embedding model directory",
         alias="IMAGE_EMBEDDING_MODEL_DIR",
     )
-    max_batch_size: int = Field(1, description="Maximum batch size for batching")
-    batch_timeout: float = Field(0, description="Timeout for batching in seconds")
-    device: ModelDevice | None = Field(None, description="Device to use for the model")
+    max_batch_size: int = Field(
+        default=1, description="Maximum batch size for batching", alias="IMAGE_EMBEDDING_MAX_BATCH_SIZE"
+    )
+    batch_timeout: float = Field(
+        default=0, description="Timeout for batching in seconds", alias="IMAGE_EMBEDDING_BATCH_TIMEOUT"
+    )
+    device: ModelDevice | None = Field(
+        default=None, description="Device to use for the model", alias="IMAGE_EMBEDDING_MODE_DEVICE"
+    )
 
     model_config = SettingsConfigDict(env_file=".env", protected_namespaces=[])

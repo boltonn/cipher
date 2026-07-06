@@ -160,6 +160,7 @@ class FileBrowserType(StrEnum):
 class FileBrowserItem(FileBase):
     """Schema representing a file or directory in the file browser."""
 
+    id: str | None = Field(default=None, description="File ID (unset for directories)")
     type: FileBrowserType = Field(..., description="Type: file or directory")
 
 
@@ -167,6 +168,8 @@ class FileBrowserRequest(FilesRequest):
     path: str | None = Field(
         None, description="Directory path to list; None = entire dataset"
     )
+    filetype: str | None = Field(None, description="Filter to a specific filetype")
+    filetype_group: str | None = Field(None, description="Filter to a specific filetype group")
 
 
 class FileBrowserResponse(PaginatedResponse):

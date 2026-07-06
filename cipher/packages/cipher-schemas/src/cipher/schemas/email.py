@@ -109,11 +109,11 @@ class EmailBase(BaseModel):
 class EmailTextChunk(EmailMetadata, TextChunk):
     """Searchable chunk of an email, inheriting metadata for filtering.
 
-    `content_type` discriminates document vs. email chunks living side by
+    `filetype_group` discriminates document vs. email chunks living side by
     side in the same unified `text_chunks` index/search surface.
     """
 
-    content_type: Literal["email"] = "email"
+    filetype_group: Literal["email"] = "email"
 
 
 class ScoredEmailTextChunk(EmailTextChunk):

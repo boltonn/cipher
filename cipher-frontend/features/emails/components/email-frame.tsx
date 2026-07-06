@@ -4,11 +4,47 @@
 "use client";
 import DOMPurify from "dompurify";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 
 interface EmailIframeProps {
   body: string;
   /** When true, iframe auto-sizes to content height instead of filling parent */
   autoSize?: boolean;
+}
+
+interface CspViolation {
+  blockedURI: string;
+  directive: string;
+}
+
+/** Best-effort hostname for display; falls back to the raw URI if it doesn't parse. */
+function hostnameOf(uri: string): string {
+  try {
+    return new URL(uri).hostname || uri;
+  } catch {
+    return uri;
+  }
+}
+
+function notifyBlockedImages(violations: CspViolation[]) {
+  const hosts = Array.from(
+    new Set(
+      violations.filter((v) => v.directive.startsWith("img-src")).map((v) => hostnameOf(v.blockedURI))
+    )
+  );
+  if (hosts.length === 0) return;
+
+  const shown = hosts.slice(0, 5).join(", ");
+  const more = hosts.length > 5 ? ` and ${hosts.length - 5} more` : "";
+
+  toast.warning(`Blocked ${hosts.length} image${hosts.length > 1 ? "s" : ""} in this email`, {
+    description: `Insecure or unsupported sources: ${shown}${more}`,
+    duration: 10_000,
+    action: {
+      label: "Copy URLs",
+      onClick: () => navigator.clipboard.writeText(hosts.join("\n")),
+    },
+  });
 }
 
 /**
@@ -25,7 +61,11 @@ interface EmailIframeProps {
  *   The `allow-scripts` flag is required for this, but scripts inside
  *   the opaque-origin sandbox cannot access anything useful.
  * - A strict CSP meta tag blocks external resource loads inside the
- *   iframe as a defense-in-depth layer.
+ *   iframe as a defense-in-depth layer -- most commonly this blocks
+ *   plain-http tracking pixels. Blocked-resource reports from the
+ *   iframe's own `securitypolicyviolation` events are relayed to the
+ *   parent via the same postMessage channel and surfaced as a toast,
+ *   so images being blocked is visible rather than silent.
  */
 export default function EmailIframe({ body, autoSize }: EmailIframeProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -37,16 +77,21 @@ export default function EmailIframe({ body, autoSize }: EmailIframeProps) {
 
   useEffect(() => {
     const handler = (event: MessageEvent) => {
-      if (!autoSizeRef.current) return;
       if (event.source !== iframeRef.current?.contentWindow) return;
+      const data = event.data;
+      if (!data || typeof data !== "object") return;
+
       if (
-        event.data &&
-        typeof event.data === "object" &&
-        event.data.__emailIframeHeight &&
-        typeof event.data.height === "number" &&
-        event.data.height > 0
+        autoSizeRef.current &&
+        data.__emailIframeHeight &&
+        typeof data.height === "number" &&
+        data.height > 0
       ) {
-        setHeight(event.data.height);
+        setHeight(data.height);
+      }
+
+      if (data.__emailIframeCspViolations && Array.isArray(data.violations)) {
+        notifyBlockedImages(data.violations);
       }
     };
     window.addEventListener("message", handler);
@@ -90,6 +135,22 @@ export default function EmailIframe({ body, autoSize }: EmailIframeProps) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data: cid: https:; script-src 'unsafe-inline';">
+<script>
+(function () {
+	// Registered before any <img> in the body parses, so it catches
+	// violations from images that start loading immediately during
+	// HTML parsing -- a listener added after the body would miss them.
+	var violations = [];
+	var timer = null;
+	document.addEventListener("securitypolicyviolation", function (e) {
+		violations.push({ blockedURI: e.blockedURI, directive: e.violatedDirective });
+		if (timer) clearTimeout(timer);
+		timer = setTimeout(function () {
+			parent.postMessage({ __emailIframeCspViolations: true, violations: violations }, "*");
+		}, 300);
+	});
+})();
+<\/script>
 <style>
 * { box-sizing: border-box; }
 html {

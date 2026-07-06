@@ -271,6 +271,30 @@ class PostgresEnrichmentRepository:
         await self.session.commit()
         return result.rowcount or 0
 
+    async def delete_by_type(
+        self,
+        dataset_id: str,
+        enrichment_type: EnrichmentType,
+        enrichable_type: EnrichableType = EnrichableType.FILE,
+    ) -> int:
+        """Delete a dataset's enrichment rows of one type, e.g. to force a clean re-run.
+
+        `queue_enrichments_by_filter` only queues files *lacking* an
+        enrichment row -- an already-COMPLETED one is otherwise never
+        revisited, so deleting it here (rather than resetting it to PENDING)
+        is what makes the next `queue_enrichments_by_filter` call re-create
+        it and pick the file back up.
+        """
+        file_ids = select(FileTable.id).where(FileTable.dataset_id == dataset_id)
+        statement = delete(EnrichmentTable).where(
+            EnrichmentTable.enrichable_type == enrichable_type,
+            EnrichmentTable.enrichment_type == enrichment_type,
+            EnrichmentTable.enrichable_id.in_(file_ids),
+        )
+        result = await self.session.execute(statement)
+        await self.session.commit()
+        return result.rowcount or 0
+
     async def delete_by_dataset_files(self, dataset_id: str) -> int:
         """Delete FILE-type enrichments for every file in a dataset.
 
@@ -292,6 +316,7 @@ class PostgresEnrichmentRepository:
         enrichment_type: EnrichmentType | None = None,
         enrichable_type: EnrichableType | None = None,
         dataset_id: str | None = None,
+        filetype_group_filter: str | None = None,
     ) -> int:
         """Count pending enrichments."""
         statement = select(func.count(EnrichmentTable.id)).where(EnrichmentTable.status == ProcessingStatus.PENDING)
@@ -302,12 +327,16 @@ class PostgresEnrichmentRepository:
         if enrichable_type:
             statement = statement.where(EnrichmentTable.enrichable_type == enrichable_type)
 
-        if dataset_id:
+        if dataset_id or filetype_group_filter:
             statement = statement.join(
                 FileTable,
                 (EnrichmentTable.enrichable_id == FileTable.id)
                 & (EnrichmentTable.enrichable_type == EnrichableType.FILE),
-            ).where(FileTable.dataset_id == dataset_id)
+            )
+            if dataset_id:
+                statement = statement.where(FileTable.dataset_id == dataset_id)
+            if filetype_group_filter:
+                statement = statement.where(FileTable.filetype_group == filetype_group_filter)
 
         result = await self.session.execute(statement)
         return result.scalar_one()

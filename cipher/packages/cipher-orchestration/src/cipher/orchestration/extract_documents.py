@@ -13,21 +13,28 @@ get swept up in the same batch as everything else -- no special-casing.
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
-from time import perf_counter
 from typing import TYPE_CHECKING, Any
 
 import anyio
 from loguru import logger
+from tqdm import tqdm
 
 from cipher.datastores.postgres.repositories import (
     PostgresEnrichmentRepository,
     PostgresExtractedTextRepository,
+    PostgresFileRepository,
 )
 from cipher.schemas.detection import BoundingBox
 from cipher.schemas.document import DocumentMetadata, DocumentStructureNode, ExtractedTableInfo
 from cipher.schemas.email import EmailMetadata
 from cipher.schemas.enrichment import EnrichableType, EnrichmentType
-from cipher.schemas.extraction import ExtractedTextCreate, ExtractionContentFormat, PrechunkedSpan, TextExtractor
+from cipher.schemas.extraction import (
+    ExtractedText,
+    ExtractedTextCreate,
+    ExtractionContentFormat,
+    PrechunkedSpan,
+    TextExtractor,
+)
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,7 +42,7 @@ if TYPE_CHECKING:
 # Shared with embed_text.py's CLIR chunker -- both take this as their
 # `chunk_size` default so chunk boundaries don't drift depending on which
 # chunker produced them for otherwise-similar documents.
-DEFAULT_CHUNK_SIZE = 512
+DEFAULT_CHUNK_SIZE = 256
 
 
 class Chunker(StrEnum):
@@ -196,6 +203,106 @@ def _build_extracted_text(
     )
 
 
+async def _find_extracted_duplicate(
+    file_repo: PostgresFileRepository,
+    extracted_text_repo: PostgresExtractedTextRepository,
+    file_id: str,
+    sha256: str,
+) -> ExtractedText | None:
+    """Find another file's already-extracted text sharing this content hash."""
+    for duplicate_file in await file_repo.find_duplicates(sha256=sha256):
+        if duplicate_file.id == file_id:
+            continue
+        extracted = await extracted_text_repo.get_by_file_id(duplicate_file.id)
+        if extracted is not None:
+            return extracted
+    return None
+
+
+async def dedupe_pending_extractions(
+    session: "AsyncSession",
+    dataset_id: str | None = None,
+    batch_size: int = 100,
+) -> int:
+    """Resolve pending document extractions whose content has already been extracted elsewhere.
+
+    Cheap pre-pass mirroring embed_images.py's image dedupe: for each pending
+    document, look for another file (any dataset) with the same sha256 that's
+    already been through xberg, and copy its extracted content/structure
+    instead of re-running OCR/parsing -- the expensive step in this pipeline.
+    `filename` and email-attachment context (`sent_from`/`sent_to`) are
+    re-derived for this file rather than copied, since a byte-identical
+    attachment can arrive under a different name or from a different parent
+    email.
+    """
+    enrichment_repo = PostgresEnrichmentRepository(session=session)
+    file_repo = PostgresFileRepository(session=session)
+    extracted_text_repo = PostgresExtractedTextRepository(session=session)
+
+    total = 0
+    while True:
+        batch = await enrichment_repo.get_pending_batch(
+            enrichment_type=EnrichmentType.TEXT_EXTRACTION,
+            enrichable_type=EnrichableType.FILE,
+            batch_size=batch_size,
+            dataset_id=dataset_id,
+            filetype_group_filter="document",
+        )
+        if not batch:
+            break
+
+        resolved = []
+        for item in batch:
+            file_id, sha256 = item.resource["id"], item.resource["sha256"]
+            duplicate = await _find_extracted_duplicate(file_repo, extracted_text_repo, file_id, sha256)
+            if duplicate is None:
+                continue
+
+            metadata = duplicate.metadata
+            if isinstance(metadata, DocumentMetadata):
+                parent_email_metadata = None
+                if parent_id := item.resource.get("parent_id"):
+                    parent_extracted = await extracted_text_repo.get_by_file_id(parent_id)
+                    if parent_extracted and isinstance(parent_extracted.metadata, EmailMetadata):
+                        parent_email_metadata = parent_extracted.metadata
+                metadata = metadata.model_copy(
+                    update={
+                        "filename": item.resource["filename"],
+                        "sent_from": parent_email_metadata.sent_from if parent_email_metadata else None,
+                        "sent_to": parent_email_metadata.sent_to if parent_email_metadata else [],
+                    }
+                )
+
+            await extracted_text_repo.upsert(
+                ExtractedTextCreate(
+                    file_id=file_id,
+                    content=duplicate.content,
+                    content_format=duplicate.content_format,
+                    extractor=duplicate.extractor,
+                    metadata=metadata,
+                    prechunked=duplicate.prechunked,
+                )
+            )
+            resolved.append(item.enrichment.id)
+
+        if resolved:
+            await enrichment_repo.mark_completed_batch(resolved)
+            total += len(resolved)
+            logger.info(f"Deduped {len(resolved)} document extractions from existing content")
+
+        # Always commit, even with nothing resolved -- get_pending_batch's FOR
+        # UPDATE SKIP LOCKED holds a lock on the whole batch until commit/
+        # rollback (see embed_images.py's dedupe_pending_embeddings).
+        await session.commit()
+
+        if len(resolved) < len(batch):
+            # Remaining pending items are genuinely new content; stop here
+            # rather than re-fetching the same unresolved rows forever.
+            break
+
+    return total
+
+
 async def queue_document_extraction_enrichments(session: "AsyncSession", dataset_id: str) -> int:
     """Queue TEXT_EXTRACTION enrichments for a dataset's document files."""
     enrichment_repo = PostgresEnrichmentRepository(session=session)
@@ -217,7 +324,6 @@ async def extract_documents_workflow(
     batch_size: int = 50,
 ) -> int:
     """Extract text for a dataset's documents in xberg-batched passes. Returns files processed."""
-    logger.debug(f"extract_documents_workflow starting for dataset {dataset_id} (chunker={chunker.value})")
     enrichment_repo = PostgresEnrichmentRepository(session=session)
 
     # Attachments only exist once extract_emails_workflow has parsed their
@@ -238,75 +344,81 @@ async def extract_documents_workflow(
         )
 
     await queue_document_extraction_enrichments(session=session, dataset_id=dataset_id)
+    await dedupe_pending_extractions(session=session, dataset_id=dataset_id)
 
     extracted_text_repo = PostgresExtractedTextRepository(session=session)
     use_chunking = chunker == Chunker.KREUZBERG
 
-    start = perf_counter()
-    count = 0
+    total = await enrichment_repo.count_pending(
+        enrichment_type=EnrichmentType.TEXT_EXTRACTION,
+        enrichable_type=EnrichableType.FILE,
+        dataset_id=dataset_id,
+        filetype_group_filter="document",
+    )
+    count = failed_count = 0
 
-    while True:
-        batch = await enrichment_repo.get_pending_batch(
-            enrichment_type=EnrichmentType.TEXT_EXTRACTION,
-            enrichable_type=EnrichableType.FILE,
-            batch_size=batch_size,
-            dataset_id=dataset_id,
-            filetype_group_filter="document",
-        )
-        if not batch:
-            break
+    with tqdm(total=total, desc="Extracting documents", unit="file") as pbar:
+        while True:
+            batch = await enrichment_repo.get_pending_batch(
+                enrichment_type=EnrichmentType.TEXT_EXTRACTION,
+                enrichable_type=EnrichableType.FILE,
+                batch_size=batch_size,
+                dataset_id=dataset_id,
+                filetype_group_filter="document",
+            )
+            if not batch:
+                break
 
-        logger.debug(f"Processing batch of {len(batch)} pending documents")
-        await enrichment_repo.mark_processing(enrichment_ids=[item.enrichment.id for item in batch])
-        await session.commit()
+            await enrichment_repo.mark_processing(enrichment_ids=[item.enrichment.id for item in batch])
+            await session.commit()
 
-        # xberg's batch API needs local paths -- files without one (e.g. not
-        # yet downloaded from a remote store) can't be batched and fail fast.
-        resolvable = [item for item in batch if item.resource.get("path")]
-        failed = [item.enrichment.id for item in batch if not item.resource.get("path")]
-        completed = []
+            # xberg's batch API needs local paths -- files without one (e.g. not
+            # yet downloaded from a remote store) can't be batched and fail fast.
+            resolvable = [item for item in batch if item.resource.get("path")]
+            failed = [item.enrichment.id for item in batch if not item.resource.get("path")]
+            completed = []
 
-        if resolvable:
-            paths = [item.resource["path"] for item in resolvable]
-            logger.debug(f"Running xberg batch extraction over {len(paths)} files (chunking={use_chunking})")
-            try:
-                results = await anyio.to_thread.run_sync(
-                    _run_batch, paths, use_chunking, tokenizer_model_dir, chunk_size
-                )
-            except Exception as e:
-                logger.error(f"Batch extraction failed for {len(paths)} files: {e}")
-                results = []
-
-            for item, result in zip(resolvable, results, strict=False):
+            if resolvable:
+                paths = [item.resource["path"] for item in resolvable]
                 try:
-                    parent_email_metadata = None
-                    if parent_id := item.resource.get("parent_id"):
-                        parent_extracted = await extracted_text_repo.get_by_file_id(parent_id)
-                        if parent_extracted and isinstance(parent_extracted.metadata, EmailMetadata):
-                            parent_email_metadata = parent_extracted.metadata
-
-                    extracted = _build_extracted_text(item.resource, result, use_chunking, parent_email_metadata)
-                    await extracted_text_repo.upsert(extracted)
-                    completed.append(item.enrichment.id)
+                    results = await anyio.to_thread.run_sync(
+                        _run_batch, paths, use_chunking, tokenizer_model_dir, chunk_size
+                    )
                 except Exception as e:
-                    logger.error(f"Extraction failed for file {item.resource['id']}: {e}")
-                    await session.rollback()
-                    failed.append(item.enrichment.id)
+                    logger.error(f"Batch extraction failed for {len(paths)} files: {e}")
+                    results = []
 
-            # Any resolvable items the batch call itself didn't return a result for
-            failed.extend(item.enrichment.id for item in resolvable[len(results) :])
+                for item, result in zip(resolvable, results, strict=False):
+                    try:
+                        parent_email_metadata = None
+                        if parent_id := item.resource.get("parent_id"):
+                            parent_extracted = await extracted_text_repo.get_by_file_id(parent_id)
+                            if parent_extracted and isinstance(parent_extracted.metadata, EmailMetadata):
+                                parent_email_metadata = parent_extracted.metadata
 
-        if completed:
-            await enrichment_repo.mark_completed_batch(completed)
-        if failed:
-            await enrichment_repo.mark_failed_batch(failed, increment_retry=True)
-        await session.commit()
+                        extracted = _build_extracted_text(item.resource, result, use_chunking, parent_email_metadata)
+                        await extracted_text_repo.upsert(extracted)
+                        completed.append(item.enrichment.id)
+                    except Exception as e:
+                        logger.error(f"Extraction failed for file {item.resource['id']}: {e}")
+                        await session.rollback()
+                        failed.append(item.enrichment.id)
 
-        count += len(completed)
-        logger.info(f"Extracted {len(completed)} document files ({count} total)")
+                # Any resolvable items the batch call itself didn't return a result for
+                failed.extend(item.enrichment.id for item in resolvable[len(results) :])
 
-    total_ms = int((perf_counter() - start) * 1000)
-    logger.success(f"Extracted text for {count} document files in {total_ms}ms")
+            if completed:
+                await enrichment_repo.mark_completed_batch(completed)
+            if failed:
+                await enrichment_repo.mark_failed_batch(failed, increment_retry=True)
+            await session.commit()
+
+            count += len(completed)
+            failed_count += len(failed)
+            pbar.set_postfix(failed=failed_count)
+            pbar.update(len(completed) + len(failed))
+
+    logger.success(f"Extracted text for {count} document files ({failed_count} failed)")
     return count
 
 

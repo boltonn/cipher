@@ -84,11 +84,11 @@ class DocumentMetadata(BaseModel):
 class DocumentTextChunk(DocumentMetadata, TextChunk):
     """Searchable chunk of a document, inheriting metadata for filtering.
 
-    `content_type` discriminates document vs. email chunks living side by
+    `filetype_group` discriminates document vs. email chunks living side by
     side in the same unified `text_chunks` index/search surface.
     """
 
-    content_type: Literal["document"] = "document"
+    filetype_group: Literal["document"] = "document"
     page_number: int | None = Field(
         default=None, description="Page this chunk's text came from, if known"
     )

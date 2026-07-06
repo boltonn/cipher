@@ -20,10 +20,18 @@ export interface FileRecord {
   dateLastUpdated?: string;
 }
 
+/** Reconstructed extracted text for a file, from its indexed search chunks. */
+export interface FileText {
+  text: string;
+  chunkCount: number;
+}
+
 export type FileBrowserEntryType = "file" | "directory";
 
 /** One row in a dataset's file browser -- a file or a folder. Folders have no id/hashes/size. */
 export interface FileBrowserItem {
+  /** File ID; unset for directories. */
+  id?: string;
   type: FileBrowserEntryType;
   filename: string;
   filetypeGroup: string;
@@ -44,6 +52,8 @@ export interface FileBrowserRequest {
   query?: string;
   /** Folder path to list; omit to list the whole dataset flat. */
   path?: string;
+  filetype?: string;
+  filetypeGroup?: string;
   limit?: number;
   page?: number;
   sortBy?: "filename" | "dateCreated" | "dateLastUpdated";

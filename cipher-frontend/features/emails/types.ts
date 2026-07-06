@@ -1,18 +1,20 @@
 import { FileRecord } from "@/features/files/types";
 
-export interface EmailAddress {
+export interface EmailParticipant {
   name?: string | null;
-  address: string;
+  type: "email" | "phone";
+  value: string;
 }
 
 export interface EmailMetadata {
+  /** Subject line. */
+  title?: string | null;
   /** Sender if email is sent on behalf of someone else. */
-  sender?: EmailAddress | null;
-  from: EmailAddress;
-  to: EmailAddress[];
-  cc: EmailAddress[];
-  bcc: EmailAddress[];
-  subject?: string | null; // serialization_alias for subject
+  sender?: EmailParticipant | null;
+  from: EmailParticipant;
+  to: EmailParticipant[];
+  cc: EmailParticipant[];
+  bcc: EmailParticipant[];
   dateSent?: Date | string | null;
   conversationId?: string | null;
   messageId?: string | null;
@@ -23,7 +25,7 @@ export interface EmailMetadata {
 export interface EmailBase {
   /** Parsed representation of a single RFC 2822 email message. */
   id: string;
-  text?: string | null;
+  plain?: string | null;
   html?: string | null;
   metadata: EmailMetadata;
   attachments: FileRecord[];

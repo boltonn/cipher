@@ -7,9 +7,19 @@ import { cn } from "@/lib/utils"
 
 function ScrollArea({
   className,
+  viewportClassName,
+  viewportRef,
+  scrollFade,
   children,
   ...props
-}: React.ComponentProps<typeof ScrollAreaPrimitive.Root>) {
+}: React.ComponentProps<typeof ScrollAreaPrimitive.Root> & {
+  /** Extra className applied to the inner scrollable viewport, not the root. */
+  viewportClassName?: string
+  /** Ref to the inner scrollable viewport element (e.g. for virtualizers needing the real scroll container). */
+  viewportRef?: React.Ref<HTMLDivElement | null>
+  /** Fades content near the scrollable edges instead of a hard clip. */
+  scrollFade?: boolean
+}) {
   return (
     <ScrollAreaPrimitive.Root
       data-slot="scroll-area"
@@ -17,8 +27,14 @@ function ScrollArea({
       {...props}
     >
       <ScrollAreaPrimitive.Viewport
+        ref={viewportRef}
         data-slot="scroll-area-viewport"
-        className="size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1"
+        className={cn(
+          "size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1",
+          scrollFade &&
+            "[mask-image:linear-gradient(to_bottom,transparent,black_12px,black_calc(100%-12px),transparent)]",
+          viewportClassName
+        )}
       >
         {children}
       </ScrollAreaPrimitive.Viewport>

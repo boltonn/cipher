@@ -66,8 +66,8 @@ import type {
 import {
   Children,
   createContext,
-  useCallback,
   use,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -221,8 +221,7 @@ const usePromptInputController = () => {
 };
 
 // Optional variants (do NOT throw). Useful for dual-mode components.
-const useOptionalPromptInputController = () =>
-  use(PromptInputController);
+const useOptionalPromptInputController = () => use(PromptInputController);
 
 const useProviderAttachments = () => {
   const ctx = use(ProviderAttachmentsContext);
@@ -234,8 +233,7 @@ const useProviderAttachments = () => {
   return ctx;
 };
 
-const useOptionalProviderAttachments = () =>
-  use(ProviderAttachmentsContext);
+const useOptionalProviderAttachments = () => use(ProviderAttachmentsContext);
 
 export type PromptInputProviderProps = PropsWithChildren<{
   initialInput?: string;
@@ -558,9 +556,10 @@ export const PromptInput = ({
         return true;
       }
 
-      const patterns = accept
-        .split(",")
-        .flatMap((s) => { const t = s.trim(); return t ? [t] : []; });
+      const patterns = accept.split(",").flatMap((s) => {
+        const t = s.trim();
+        return t ? [t] : [];
+      });
 
       return patterns.some((pattern) => {
         if (pattern.endsWith("/*")) {
@@ -1037,8 +1036,12 @@ export const PromptInputTextarea = ({
     [attachments]
   );
 
-  const handleCompositionEnd = useCallback(() => { isComposingRef.current = false; }, []);
-  const handleCompositionStart = useCallback(() => { isComposingRef.current = true; }, []);
+  const handleCompositionEnd = useCallback(() => {
+    isComposingRef.current = false;
+  }, []);
+  const handleCompositionStart = useCallback(() => {
+    isComposingRef.current = true;
+  }, []);
 
   const controlledProps = controller
     ? {
@@ -1054,7 +1057,10 @@ export const PromptInputTextarea = ({
 
   return (
     <InputGroupTextarea
-      className={cn("field-sizing-content max-h-48 min-h-16", className)}
+      className={cn(
+        "field-sizing-content max-h-48 min-h-16 w-140 resize-none overflow-y-auto",
+        className
+      )}
       name="message"
       onCompositionEnd={handleCompositionEnd}
       onCompositionStart={handleCompositionStart}
@@ -1072,10 +1078,7 @@ export type PromptInputHeaderProps = Omit<
   "align"
 >;
 
-const PromptInputHeader = ({
-  className,
-  ...props
-}: PromptInputHeaderProps) => (
+const PromptInputHeader = ({ className, ...props }: PromptInputHeaderProps) => (
   <InputGroupAddon
     align="block-end"
     className={cn("order-first flex-wrap gap-1", className)}
@@ -1352,10 +1355,9 @@ const PromptInputTabsList = ({
 
 export type PromptInputTabProps = HTMLAttributes<HTMLDivElement>;
 
-const PromptInputTab = ({
-  className,
-  ...props
-}: PromptInputTabProps) => <div className={cn(className)} {...props} />;
+const PromptInputTab = ({ className, ...props }: PromptInputTabProps) => (
+  <div className={cn(className)} {...props} />
+);
 
 export type PromptInputTabLabelProps = HTMLAttributes<HTMLHeadingElement>;
 

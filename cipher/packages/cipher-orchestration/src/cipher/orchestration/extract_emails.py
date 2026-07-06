@@ -12,11 +12,11 @@ run picks them up and can batch them through xberg alongside everything else.
 """
 
 from pathlib import Path
-from time import perf_counter
 from typing import TYPE_CHECKING
 
 import anyio
 from loguru import logger
+from tqdm import tqdm
 
 from cipher.datastores.postgres.repositories import (
     PostgresEnrichmentRepository,
@@ -52,7 +52,6 @@ async def _persist_attachment(
     file = await file_repo.upsert_file(file_create)
 
     if file.filetype_group in eligible_attachment_groups:
-        logger.debug(f"Queuing attachment {file.filename!r} ({file.id}) from email {parent_id} for extraction")
         enrichment_repo = PostgresEnrichmentRepository(session=session)
         await enrichment_repo.queue_enrichments_for_resource(
             enrichable_type=EnrichableType.FILE,
@@ -70,7 +69,6 @@ async def _extract_email(
 
     from pyparse.parsers.email import parse_email
 
-    # logger.debug(f"Parsing email {file_resource['id']} ({file_resource['filename']!r})")
     data = await anyio.to_thread.run_sync(fetch_bytes_from_uri, file_resource["uri"])
 
     out_dir = Path(file_resource["path"]).parent / f"{Path(file_resource['path']).stem}_attachments"
@@ -114,50 +112,55 @@ async def extract_emails_workflow(
     batch_size: int = 20,
 ) -> int:
     """Extract text for a dataset's emails, persisting their attachments as files. Returns emails processed."""
-    logger.debug(f"extract_emails_workflow starting for dataset {dataset_id}")
     await queue_email_extraction_enrichments(session=session, dataset_id=dataset_id)
 
     enrichment_repo = PostgresEnrichmentRepository(session=session)
     extracted_text_repo = PostgresExtractedTextRepository(session=session)
 
-    start = perf_counter()
-    count = 0
+    total = await enrichment_repo.count_pending(
+        enrichment_type=EnrichmentType.TEXT_EXTRACTION,
+        enrichable_type=EnrichableType.FILE,
+        dataset_id=dataset_id,
+        filetype_group_filter="email",
+    )
+    count = failed_count = 0
 
-    while True:
-        batch = await enrichment_repo.get_pending_batch(
-            enrichment_type=EnrichmentType.TEXT_EXTRACTION,
-            enrichable_type=EnrichableType.FILE,
-            batch_size=batch_size,
-            dataset_id=dataset_id,
-            filetype_group_filter="email",
-        )
-        if not batch:
-            break
+    with tqdm(total=total, desc="Extracting emails", unit=" email") as pbar:
+        while True:
+            batch = await enrichment_repo.get_pending_batch(
+                enrichment_type=EnrichmentType.TEXT_EXTRACTION,
+                enrichable_type=EnrichableType.FILE,
+                batch_size=batch_size,
+                dataset_id=dataset_id,
+                filetype_group_filter="email",
+            )
+            if not batch:
+                break
 
-        logger.debug(f"Processing batch of {len(batch)} pending emails")
-        await enrichment_repo.mark_processing(enrichment_ids=[item.enrichment.id for item in batch])
-        await session.commit()
+            await enrichment_repo.mark_processing(enrichment_ids=[item.enrichment.id for item in batch])
+            await session.commit()
 
-        completed, failed = [], []
-        for item in batch:
-            try:
-                result = await _extract_email(session, item.resource, eligible_attachment_groups)
-                await extracted_text_repo.upsert(result)
-                completed.append(item.enrichment.id)
-            except Exception as e:
-                logger.error(f"Email extraction failed for file {item.resource['id']}: {e}")
-                await session.rollback()
-                failed.append(item.enrichment.id)
+            completed, failed = [], []
+            for item in batch:
+                try:
+                    result = await _extract_email(session, item.resource, eligible_attachment_groups)
+                    await extracted_text_repo.upsert(result)
+                    completed.append(item.enrichment.id)
+                except Exception as e:
+                    logger.error(f"Email extraction failed for file {item.resource['id']}: {e}")
+                    await session.rollback()
+                    failed.append(item.enrichment.id)
 
-        if completed:
-            await enrichment_repo.mark_completed_batch(completed)
-        if failed:
-            await enrichment_repo.mark_failed_batch(failed, increment_retry=True)
-        await session.commit()
+            if completed:
+                await enrichment_repo.mark_completed_batch(completed)
+            if failed:
+                await enrichment_repo.mark_failed_batch(failed, increment_retry=True)
+            await session.commit()
 
-        count += len(completed)
-        logger.info(f"Extracted {len(completed)} emails ({count} total)")
+            count += len(completed)
+            failed_count += len(failed)
+            pbar.set_postfix(failed=failed_count)
+            pbar.update(len(completed) + len(failed))
 
-    total_ms = int((perf_counter() - start) * 1000)
-    logger.success(f"Extracted text for {count} emails in {total_ms}ms")
+    logger.success(f"Extracted text for {count} emails ({failed_count} failed)")
     return count

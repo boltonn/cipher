@@ -1,7 +1,7 @@
 """Elasticsearch index mapping for the unified `text_chunks` index.
 
 Documents and emails are chunked into the same index -- one flat document
-per chunk, discriminated by `content_type` -- so "search everything" is a
+per chunk, discriminated by `filetype_group` -- so "search everything" is a
 single query rather than a federated multi-index one. Raw BM25/kNN scores
 aren't directly comparable across content types with very different average
 chunk lengths (a short email reply vs. a 512-token document chunk), so
@@ -42,7 +42,7 @@ def build_text_chunk_mapping(
         "mappings": {
             "properties": {
                 # Shared (TextChunk)
-                "content_type": {"type": "keyword"},
+                "filetype_group": {"type": "keyword"},
                 "dataset_id": {"type": "keyword"},
                 "file_id": {"type": "keyword"},
                 "chunk_index": {"type": "integer"},

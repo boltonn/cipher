@@ -50,7 +50,7 @@ class PlainTextChunker:
         self.min_chunk_tokens = min_chunk_tokens
 
         special = tokenizer("", add_special_tokens=True)
-        self._token_budget = self.chunk_size - len(special["input_ids"])
+        self.token_budget = self.chunk_size - len(special["input_ids"])
 
     @classmethod
     def from_pretrained(cls, model_name_or_path: str | Path, **kwargs) -> "PlainTextChunker":
@@ -74,12 +74,12 @@ class PlainTextChunker:
         if n == 0:
             return
 
-        step = max(self._token_budget - self.chunk_overlap, 1)
+        step = max(self.token_budget - self.chunk_overlap, 1)
         pending: TextChunkSpan | None = None
 
         i = 0
         while i < n:
-            end = min(i + self._token_budget, n)
+            end = min(i + self.token_budget, n)
             start_char, end_char = offsets[i][0], offsets[end - 1][1]
             token_count = end - i
 

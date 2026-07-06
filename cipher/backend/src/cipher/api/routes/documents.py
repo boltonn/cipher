@@ -20,8 +20,8 @@ router = APIRouter(
 
 
 def _scoped_to_documents(filters: ChunkFilters) -> ChunkFilters:
-    """Force content_type=document regardless of what the caller passed -- this router only ever searches documents."""
-    return filters.model_copy(update={"content_type": "document"})
+    """Force filetype_group=document regardless of what the caller passed -- this router only ever searches documents."""
+    return filters.model_copy(update={"filetype_group": "document"})
 
 
 @router.get(
@@ -32,7 +32,7 @@ def _scoped_to_documents(filters: ChunkFilters) -> ChunkFilters:
 async def get_chunk_by_id(id: str, datastore: TextChunkDatastoreDep):
     """Get a single document chunk by its Elasticsearch document ID."""
     chunk = await datastore.get_by_id(id)
-    if chunk is None or chunk.content_type != "document":
+    if chunk is None or chunk.filetype_group != "document":
         raise HTTPException(status_code=404, detail=f"Document chunk not found: {id}")
     return chunk
 

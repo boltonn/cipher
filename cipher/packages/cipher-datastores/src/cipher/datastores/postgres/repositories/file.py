@@ -171,6 +171,8 @@ class PostgresFileRepository:
         *,
         path: str | None = None,
         query: str | None = None,
+        filetype: str | None = None,
+        filetype_group: str | None = None,
     ) -> int:
         """Count files in a dataset with optional path filtering and search."""
         stmt = select(func.count(FileTable.id)).where(
@@ -189,6 +191,11 @@ class PostgresFileRepository:
         # Search by filename
         if query:
             stmt = stmt.where(FileTable.filename.ilike(f"%{query}%"))
+
+        if filetype:
+            stmt = stmt.where(FileTable.filetype == filetype)
+        if filetype_group:
+            stmt = stmt.where(FileTable.filetype_group == filetype_group)
 
         result = await self.session.execute(stmt)
         return result.scalar_one()
@@ -264,6 +271,8 @@ class PostgresFileRepository:
         limit: int,
         sort_by: FileInstanceSortField,
         sort_order: SortOrder,
+        filetype: str | None = None,
+        filetype_group: str | None = None,
     ) -> list[File]:
         """List files in a dataset, optionally scoped to a directory."""
         stmt = select(FileTable).where(FileTable.dataset_id == dataset_id)
@@ -283,6 +292,11 @@ class PostgresFileRepository:
         # Search
         if query:
             stmt = stmt.where(FileTable.filename.ilike(f"%{query}%"))
+
+        if filetype:
+            stmt = stmt.where(FileTable.filetype == filetype)
+        if filetype_group:
+            stmt = stmt.where(FileTable.filetype_group == filetype_group)
 
         # Sorting
         sort_column = {
@@ -320,10 +334,13 @@ class PostgresFileRepository:
                 limit=req.limit,
                 sort_by=req.sort_by,
                 sort_order=req.sort_order,
+                filetype=req.filetype,
+                filetype_group=req.filetype_group,
             )
 
             entries.extend(
                 FileBrowserItem(
+                    id=f.id,
                     type=FileBrowserType.FILE,
                     filename=f.filename,
                     path=f.path,
@@ -343,7 +360,11 @@ class PostgresFileRepository:
             )
 
             total = await self.count_files_by_dataset(
-                dataset_id, path=None, query=req.query
+                dataset_id,
+                path=None,
+                query=req.query,
+                filetype=req.filetype,
+                filetype_group=req.filetype_group,
             )
 
             return FileBrowserResponse(
@@ -404,10 +425,13 @@ class PostgresFileRepository:
                 limit=remaining,
                 sort_by=req.sort_by,
                 sort_order=req.sort_order,
+                filetype=req.filetype,
+                filetype_group=req.filetype_group,
             )
 
             entries.extend(
                 FileBrowserItem(
+                    id=f.id,
                     type=FileBrowserType.FILE,
                     filename=f.filename,
                     path=f.path,
@@ -428,7 +452,11 @@ class PostgresFileRepository:
 
         # Calculate total (folders + files in this directory)
         file_count = await self.count_files_by_dataset(
-            dataset_id, path=req.path, query=req.query
+            dataset_id,
+            path=req.path,
+            query=req.query,
+            filetype=req.filetype,
+            filetype_group=req.filetype_group,
         )
         total = folder_count + file_count
 

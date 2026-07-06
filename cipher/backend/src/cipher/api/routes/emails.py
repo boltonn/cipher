@@ -19,8 +19,8 @@ router = APIRouter(
 
 
 def _scoped_to_emails(filters: ChunkFilters) -> ChunkFilters:
-    """Force content_type=email regardless of what the caller passed -- this router only ever searches emails."""
-    return filters.model_copy(update={"content_type": "email"})
+    """Force filetype_group=email regardless of what the caller passed -- this router only ever searches emails."""
+    return filters.model_copy(update={"filetype_group": "email"})
 
 
 @router.post(
@@ -45,7 +45,7 @@ async def parse_email(
 async def get_chunk_by_id(id: str, datastore: TextChunkDatastoreDep):
     """Get a single email chunk by its Elasticsearch document ID."""
     chunk = await datastore.get_by_id(id)
-    if chunk is None or chunk.content_type != "email":
+    if chunk is None or chunk.filetype_group != "email":
         raise HTTPException(status_code=404, detail=f"Email chunk not found: {id}")
     return chunk
 

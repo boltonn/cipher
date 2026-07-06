@@ -10,6 +10,7 @@ class CommentableType(StrEnum):
     DATASET = "dataset"
     IMAGE = "image"
     PERSON = "person"
+    FILE = "file"
 
 
 class CommentBase(BaseModel):

@@ -1,4 +1,4 @@
-export type CommentableType = "dataset" | "image" | "person";
+export type CommentableType = "dataset" | "image" | "person" | "file";
 
 export interface Comment {
   id: string;

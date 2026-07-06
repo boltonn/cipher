@@ -15,6 +15,8 @@ class Settings(BaseServiceSettings):
         description="Path to HuggingFace text embedding model directory",
         alias="FACE_MODEL_DIR",
     )
-    model_device: ModelDevice | None = Field(default=None, description="Device to use for the model")
+    model_device: ModelDevice | None = Field(
+        default=None, description="Device to use for the model", alias="FACE_MODEL_DEVICE"
+    )
 
     model_config = SettingsConfigDict(env_file=".env", protected_namespaces=[])

@@ -72,7 +72,7 @@ rather than reparsing files:
    chunks them (skipped if `extract-text` already produced chunks via
    `--chunker kreuzberg`) and embeds each chunk into the unified
    `text_chunks` Elasticsearch index (documents and emails share one index,
-   discriminated by `content_type`, so "search everything" is a single
+   discriminated by `filetype_group`, so "search everything" is a single
    query).
 
 If you run `embed-text` before `extract-text` has finished, or run
@@ -110,7 +110,10 @@ Every command here is safe to run more than once, with one exception:
   result is copied instead of recomputed. A duplicate photo loaded 10 times
   only ever gets embedded/detected once. Both can run in **either order** —
   `detect-faces` doesn't need `embed-images` to have run.
-- **`extract-text`** and **`embed-text`** are each idempotent per file
+- **`extract-text`** and **`embed-text`** dedupe the same way: if another
+  file (any dataset) with the same sha256 already has extracted text or
+  indexed chunks, that content/embeddings are copied instead of re-running
+  xberg or the GPU model. They're also each idempotent per file
   (re-running upserts the same `ExtractedText` row / re-indexes the same
   chunks, deleting a file's prior chunks before re-indexing it), but **do**
   have a required order relative to each other -- see above.
@@ -128,8 +131,8 @@ uv run cipher detect-faces --dataset-id <uuid> --model-dir "$FACE_MODEL_DIR"
 uv run cipher extract-text --dataset-name my-test-dataset
 
 # Extract with xberg's own chunker instead of CLIR's (same --chunk-size either way)
-uv run cipher extract-text --dataset-name my-test-dataset --chunker kreuzberg --chunk-size 512 --model-dir "$TEXT_EMBEDDING_MODEL_DIR"
-uv run cipher embed-text --dataset-name my-test-dataset --chunk-size 512 --model-dir "$TEXT_EMBEDDING_MODEL_DIR"
+uv run cipher extract-text --dataset-name my-test-dataset --chunker kreuzberg --chunk-size 256 --model-dir "$TEXT_EMBEDDING_MODEL_DIR"
+uv run cipher embed-text --dataset-name my-test-dataset --chunk-size 256 --model-dir "$TEXT_EMBEDDING_MODEL_DIR"
 ```
 
 ## Benchmarks

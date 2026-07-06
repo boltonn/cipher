@@ -258,7 +258,7 @@ export default function DatasetDetailPage({
             </h2>
           </div>
           {statsPending ? (
-            <div className="h-24 flex items-center justify-center text-xs text-slate-600">
+            <div className="h-80 flex items-center justify-center text-xs text-slate-600">
               Loading...
             </div>
           ) : (
@@ -277,7 +277,7 @@ export default function DatasetDetailPage({
             </h2>
           </div>
           {statsPending ? (
-            <div className="h-24 flex items-center justify-center text-xs text-slate-600">
+            <div className="h-80 flex items-center justify-center text-xs text-slate-600">
               Loading...
             </div>
           ) : (
@@ -298,7 +298,7 @@ export default function DatasetDetailPage({
             Files
           </h2>
         </div>
-        <DatasetFileBrowser datasetId={id} />
+        <DatasetFileBrowser datasetId={id} filetype={filetype} filetypeGroup={filetypeGroup} />
       </div>
     </div>
   );
