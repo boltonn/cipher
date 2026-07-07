@@ -2,11 +2,12 @@ from fastapi import APIRouter, HTTPException, Response
 from pyparse.parsers.email import EmlParser
 
 from cipher.api.deps.elasticsearch import TextChunkDatastoreDep
-from cipher.api.deps.postgres import FileDatastoreDep
+from cipher.api.deps.postgres import FileDatastoreDep, ImageDatastoreDep
 from cipher.api.utils import download_uri
 from cipher.schemas.base import BaseModel
 from cipher.schemas.email import EmailBase
 from cipher.schemas.file import File
+from cipher.schemas.image import ImagePublic
 
 router = APIRouter(
     prefix="/files",
@@ -50,9 +51,20 @@ async def get_file_email(id: str, datastore: FileDatastoreDep):
         raise HTTPException(status_code=404, detail=f"File not found: {id}")
     if file.filetype != "eml":
         raise HTTPException(status_code=400, detail=f"Unsupported email filetype: {file.filetype}")
-    email = EmlParser().parse(download_uri(file.uri))
-    email.id = file.id
-    return email
+    return EmlParser().parse(download_uri(file.uri))
+
+
+@router.get(
+    "/{id}/image",
+    summary="Get the Image record for a file, if the images pipeline has processed it",
+    response_model=ImagePublic,
+)
+async def get_file_image(id: str, image_datastore: ImageDatastoreDep):
+    """Look up the Image entity (EXIF metadata, embedding-backed similarity) for a file."""
+    image = await image_datastore.get_image_by_file_id(file_id=id)
+    if image is None:
+        raise HTTPException(status_code=404, detail=f"No image record found for file: {id}")
+    return image
 
 
 class FileText(BaseModel):

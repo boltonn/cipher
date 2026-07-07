@@ -26,6 +26,14 @@ from elasticsearch import AsyncElasticsearch, NotFoundError
 
 DEFAULT_INDEX = "text_chunks"
 
+# Vectors are indexed/searchable for kNN but never worth paying to transfer
+# back out to a caller that already has the chunk -- every path that returns
+# chunks to an API response excludes it. `list_by_file_id` is the one
+# exception: `embed_text.py`'s duplicate-content dedup reuses another file's
+# already-computed embeddings verbatim via that method, so it needs the real
+# vector, not an empty stand-in.
+_EXCLUDE_EMBEDDING_SOURCE = {"excludes": ["embedding"]}
+
 ScoredTextChunk = ScoredDocumentTextChunk | ScoredEmailTextChunk
 
 _MODEL_BY_FILETYPE_GROUP: dict[str, type[ScoredTextChunk]] = {
@@ -44,6 +52,8 @@ def _build_chunk_filters(filters: ChunkFilters) -> list[dict]:
         clauses.append({"terms": {"tags": filters.tags}})
     if filters.filetype_group is not None:
         clauses.append({"term": {"filetype_group": filters.filetype_group}})
+    if filters.filetype is not None:
+        clauses.append({"term": {"filetype": filters.filetype}})
     return clauses
 
 
@@ -78,9 +88,7 @@ class ElasticsearchTextChunkRepository:
         self.client = client
         self.index = index
 
-    async def create_index(
-        self, embedding_size: int, text_analyzer: AnalyzerName = AnalyzerName.ENGLISH
-    ) -> bool:
+    async def create_index(self, embedding_size: int, text_analyzer: AnalyzerName = AnalyzerName.ENGLISH) -> bool:
         """Create the index if it does not already exist."""
         if await self.client.indices.exists(index=self.index):
             return False
@@ -105,7 +113,9 @@ class ElasticsearchTextChunkRepository:
     async def get_by_id(self, chunk_id: str) -> ScoredTextChunk | None:
         """Get a single chunk by its ES document ID."""
         try:
-            resp: ObjectApiResponse = await self.client.get(index=self.index, id=chunk_id)
+            resp: ObjectApiResponse = await self.client.get(
+                index=self.index, id=chunk_id, source_excludes="embedding"
+            )
         except NotFoundError:
             return None
         return _from_hit({"_id": resp["_id"], "_source": resp["_source"]})
@@ -178,6 +188,7 @@ class ElasticsearchTextChunkRepository:
             },
             "from": request.offset,
             "size": request.limit,
+            "_source": _EXCLUDE_EMBEDDING_SOURCE,
         }
         sort = _sort_clause(request.sort_by, request.sort_order)
         if sort:
@@ -207,7 +218,10 @@ class ElasticsearchTextChunkRepository:
             min_similarity=request.min_similarity,
             filters=clauses,
         )
-        resp = await self.client.search(index=self.index, body={"knn": knn, "size": request.limit})
+        resp = await self.client.search(
+            index=self.index,
+            body={"knn": knn, "size": request.limit, "_source": _EXCLUDE_EMBEDDING_SOURCE},
+        )
         return paginate(
             data=[_from_hit(hit) for hit in resp["hits"]["hits"]],
             total=resp["hits"]["total"]["value"],
@@ -235,6 +249,7 @@ class ElasticsearchTextChunkRepository:
             },
             "knn": knn,
             "rank": {"rrf": {"window_size": request.num_candidates, "rank_constant": 60}},
+            "_source": _EXCLUDE_EMBEDDING_SOURCE,
         }
         count_resp = await self.client.count(index=self.index, body={"query": body["query"]})
         resp = await self.client.search(index=self.index, body=body)
@@ -255,7 +270,9 @@ class ElasticsearchTextChunkRepository:
         indexed = sum(1 for item in resp["items"] if item["index"]["status"] in (200, 201))
         return indexed, len(resp["items"]) - indexed
 
-    async def bulk_index(self, chunks: list[TextChunk], batch_size: int = 100, show_progress: bool = True) -> tuple[int, int]:
+    async def bulk_index(
+        self, chunks: list[TextChunk], batch_size: int = 100, show_progress: bool = True
+    ) -> tuple[int, int]:
         """Bulk index document/email chunks with internal batching. Returns (indexed, failed).
 
         `show_progress=False` for callers that already track their own
@@ -267,7 +284,7 @@ class ElasticsearchTextChunkRepository:
 
         batches = range(0, len(chunks), batch_size)
         if show_progress:
-            batches = tqdm(batches, desc=f"Indexing to {self.index}", unit="batch")
+            batches = tqdm(batches, desc=f"Indexing to {self.index}", unit=" batch")
 
         for i in batches:
             batch = chunks[i : i + batch_size]

@@ -29,8 +29,7 @@ def parse_email(
     if filetype == "eml":
         return EmlParser().parse(source, extract_children=extract_children, out_dir=out_dir)
     if filetype == "outlook":
-        parsed = MsgParser().parse(source, extract_children=extract_children, out_dir=out_dir)
-        return EmailBase.model_validate(parsed)
+        return MsgParser().parse(source, extract_children=extract_children, out_dir=out_dir)
     raise ValueError(
         f"No email parser for filetype {filetype!r}; supported: {sorted(SUPPORTED_FILETYPES)}"
     )

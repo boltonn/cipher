@@ -9,7 +9,6 @@ import {
   MessageSquare,
   ShieldCheck,
 } from "lucide-react";
-import Image from "next/image";
 
 import { Button } from "@/components/ui/button";
 import { CopyableId } from "@/components/copyable-id";
@@ -26,10 +25,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CommentSection } from "@/features/comments/components/comment-section";
 import { useFile } from "@/features/files/api";
 import { cn, formatBytes } from "@/lib/utils";
-import { imagesService } from "../api";
 import { ImagePublic, ImageSimilarityResult } from "../types";
+import { ImageViewerContent } from "./image-viewer-content";
 
-interface ImageDetailDialogProps {
+interface ImageViewerDialogProps {
   image: ImagePublic | ImageSimilarityResult;
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
@@ -39,7 +38,7 @@ interface ImageDetailDialogProps {
   hasPrev: boolean;
 }
 
-export function ImageDetailDialog({
+export function ImageViewerDialog({
   image,
   isOpen,
   onOpenChange,
@@ -47,7 +46,7 @@ export function ImageDetailDialog({
   onPrev,
   hasMore,
   hasPrev,
-}: ImageDetailDialogProps) {
+}: ImageViewerDialogProps) {
   const { data: file, isPending: isFileLoading } = useFile(image.fileId);
 
   return (
@@ -59,15 +58,8 @@ export function ImageDetailDialog({
         aria-describedby={undefined}
       >
         {/* Left: Image Preview Section */}
-        <div className="flex-1 bg-black relative flex items-center justify-center p-8 group/image">
-          <Image
-            src={imagesService.getImageUrl(image.id)}
-            alt={image.id}
-            fill
-            className="object-contain transition-opacity duration-300"
-            unoptimized
-            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-          />
+        <div className="flex-1 bg-black relative flex flex-col overflow-hidden group/image">
+          <ImageViewerContent image={image} />
 
           <div className="absolute inset-0 flex items-center justify-between px-4 pointer-events-none">
             <Button

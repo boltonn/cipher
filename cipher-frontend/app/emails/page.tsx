@@ -8,7 +8,7 @@ const email = rawData as EmailBase;
 export default function Page() {
   return (
     <div style={{ width: "100%", height: "100vh" }}>
-      <EmailIframe body={email.html || ""} autoSize />
+      <EmailIframe body={email.html || ""} />
     </div>
   );
 }

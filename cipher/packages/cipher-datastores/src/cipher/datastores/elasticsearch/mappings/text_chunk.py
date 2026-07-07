@@ -43,6 +43,7 @@ def build_text_chunk_mapping(
             "properties": {
                 # Shared (TextChunk)
                 "filetype_group": {"type": "keyword"},
+                "filetype": {"type": "keyword"},
                 "dataset_id": {"type": "keyword"},
                 "file_id": {"type": "keyword"},
                 "chunk_index": {"type": "integer"},
@@ -89,6 +90,7 @@ def build_text_chunk_mapping(
                 "bcc": _PARTICIPANT_PROPERTIES,
                 "date_sent": {"type": "date"},
                 "conversation_id": {"type": "keyword"},
+                "email_client": {"type": "keyword"},
                 "state": {"type": "keyword"},
                 "message_id": {"type": "keyword"},
                 "labels": {"type": "keyword"},

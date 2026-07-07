@@ -9,6 +9,14 @@ its own text/metadata is persisted, and its attachments are written to
 disk and inserted into the `file` table with `parent_id` set to the email,
 then queued for their own extraction -- so a later extract_documents_workflow
 run picks them up and can batch them through xberg alongside everything else.
+
+Tried thread-pool-parallelizing the parse step across a batch (the same
+pattern embed_images.py/detect_faces.py use for their CPU-bound work), but
+benchmarked measurably *slower* (~20% on a real ~1600-email corpus) than
+the plain sequential loop below. `email`/MIME parsing is pure Python and
+holds the GIL almost continuously, so threads add scheduling/GIL-contention
+overhead without buying real parallelism -- unlike hashing or ONNX
+inference, which release the GIL for large enough inputs. Kept sequential.
 """
 
 from pathlib import Path
@@ -23,6 +31,7 @@ from cipher.datastores.postgres.repositories import (
     PostgresExtractedTextRepository,
     PostgresFileRepository,
 )
+from cipher.schemas.email import EmailBase
 from cipher.schemas.enrichment import EnrichableType, EnrichmentType
 from cipher.schemas.extraction import ExtractedTextCreate, ExtractionContentFormat, TextExtractor
 from cipher.schemas.file import FileBase, FileCreate
@@ -60,10 +69,26 @@ async def _persist_attachment(
         )
 
 
+def _attachments_out_dir(file_resource: dict, attachments_dir: Path | None) -> Path:
+    """Where to write this email's attachment payloads.
+
+    Defaults to a sibling `<stem>_attachments` directory next to the source
+    file (the original behavior). Passing `attachments_dir` keeps attachments
+    out of the source tree entirely, grouped by file ID under that root
+    instead -- useful for local directories you don't want mutated, or to
+    keep extracted payloads on a separate device/volume from the source.
+    """
+    if attachments_dir is not None:
+        return attachments_dir / file_resource["id"]
+    source_path = Path(file_resource["path"])
+    return source_path.parent / f"{source_path.stem}_attachments"
+
+
 async def _extract_email(
     session: "AsyncSession",
     file_resource: dict,
     eligible_attachment_groups: frozenset[str],
+    attachments_dir: Path | None = None,
 ) -> ExtractedTextCreate:
     from functools import partial
 
@@ -71,17 +96,21 @@ async def _extract_email(
 
     data = await anyio.to_thread.run_sync(fetch_bytes_from_uri, file_resource["uri"])
 
-    out_dir = Path(file_resource["path"]).parent / f"{Path(file_resource['path']).stem}_attachments"
+    out_dir = _attachments_out_dir(file_resource, attachments_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    email = await anyio.to_thread.run_sync(
+    email: EmailBase = await anyio.to_thread.run_sync(
         partial(parse_email, data, file_resource["filetype"], extract_children=True, out_dir=out_dir)
     )
 
     for attachment in email.attachments:
         if isinstance(attachment, FileBase):
             await _persist_attachment(
-                session, attachment, file_resource["dataset_id"], file_resource["id"], eligible_attachment_groups
+                session=session,
+                attachment=attachment,
+                dataset_id=file_resource["dataset_id"],
+                parent_id=file_resource["id"],
+                eligible_attachment_groups=eligible_attachment_groups,
             )
 
     return ExtractedTextCreate(
@@ -110,8 +139,14 @@ async def extract_emails_workflow(
     dataset_id: str,
     eligible_attachment_groups: frozenset[str] = DEFAULT_ELIGIBLE_ATTACHMENT_GROUPS,
     batch_size: int = 20,
+    attachments_dir: Path | None = None,
 ) -> int:
-    """Extract text for a dataset's emails, persisting their attachments as files. Returns emails processed."""
+    """Extract text for a dataset's emails, persisting their attachments as files. Returns emails processed.
+
+    `attachments_dir`, if set, roots every email's extracted attachments
+    under `attachments_dir/<file_id>/` instead of a sibling directory next
+    to the source `.eml`/`.msg` file -- see `_attachments_out_dir`.
+    """
     await queue_email_extraction_enrichments(session=session, dataset_id=dataset_id)
 
     enrichment_repo = PostgresEnrichmentRepository(session=session)
@@ -143,7 +178,12 @@ async def extract_emails_workflow(
             completed, failed = [], []
             for item in batch:
                 try:
-                    result = await _extract_email(session, item.resource, eligible_attachment_groups)
+                    result = await _extract_email(
+                        session=session,
+                        file_resource=item.resource,
+                        eligible_attachment_groups=eligible_attachment_groups,
+                        attachments_dir=attachments_dir,
+                    )
                     await extracted_text_repo.upsert(result)
                     completed.append(item.enrichment.id)
                 except Exception as e:

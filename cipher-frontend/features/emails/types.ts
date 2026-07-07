@@ -1,20 +1,26 @@
 import { FileRecord } from "@/features/files/types";
 
-export interface EmailParticipant {
+export type ParticipantType = "email" | "phone";
+
+export interface Participant {
   name?: string | null;
-  type: "email" | "phone";
+  type: ParticipantType;
   value: string;
+}
+
+export interface EmailAddress extends Omit<Participant, "type"> {
+  type: "email";
 }
 
 export interface EmailMetadata {
   /** Subject line. */
   title?: string | null;
   /** Sender if email is sent on behalf of someone else. */
-  sender?: EmailParticipant | null;
-  from: EmailParticipant;
-  to: EmailParticipant[];
-  cc: EmailParticipant[];
-  bcc: EmailParticipant[];
+  sender?: EmailAddress | null;
+  from: EmailAddress;
+  to: EmailAddress[];
+  cc: EmailAddress[];
+  bcc: EmailAddress[];
   dateSent?: Date | string | null;
   conversationId?: string | null;
   messageId?: string | null;
@@ -23,8 +29,7 @@ export interface EmailMetadata {
 }
 
 export interface EmailBase {
-  /** Parsed representation of a single RFC 2822 email message. */
-  id: string;
+  /** Parsed representation of a single RFC 2822 email message. Has no id of its own -- correlate via the source file's id. */
   plain?: string | null;
   html?: string | null;
   metadata: EmailMetadata;

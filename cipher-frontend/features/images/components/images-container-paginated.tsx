@@ -8,7 +8,7 @@ import { SlidersHorizontal } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type { PaginatedImagesResponse, PaginatedImageSimilarityResponse } from "../types";
 import { ImageCard } from "./image-card";
-import { ImageDetailDialog } from "./image-detail-dialog";
+import { ImageViewerDialog } from "./image-viewer-dialog";
 
 interface ImagesContainerPaginatedProps {
   data: PaginatedImagesResponse | PaginatedImageSimilarityResponse | undefined;
@@ -99,7 +99,7 @@ export function ImagesContainerPaginated({
       </div>
 
       {selectedIndex !== null && (
-        <ImageDetailDialog
+        <ImageViewerDialog
           image={images[selectedIndex]}
           isOpen={selectedIndex !== null}
           onOpenChange={(open) => !open && setSelectedIndex(null)}

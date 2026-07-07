@@ -1,4 +1,4 @@
-from sqlalchemy import asc, desc, distinct, func, select
+from sqlalchemy import asc, desc, distinct, func, select, tuple_
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -67,6 +67,29 @@ class PostgresFileRepository:
         )
         file_orm = result.scalar_one()
         return File.model_validate(file_orm)
+
+    async def bulk_upsert_files(self, files: list[FileCreate]) -> list[File]:
+        """Upsert many files in one round trip.
+
+        Same conflict target as `upsert_file` (`dataset_id`, `uri`), but a
+        single INSERT + commit + SELECT for the whole batch instead of one
+        of each per file -- that per-file round trip is the dominant cost
+        when loading a large directory, not the file-typing/hashing itself.
+        """
+        if not files:
+            return []
+
+        rows = [f.model_dump() for f in files]
+        stmt = pg_insert(FileTable).values(rows).on_conflict_do_nothing(index_elements=["dataset_id", "uri"])
+        await self.session.execute(stmt)
+        await self.session.commit()
+
+        keys = [(f.dataset_id, f.uri) for f in files]
+        result = await self.session.execute(
+            select(FileTable).where(tuple_(FileTable.dataset_id, FileTable.uri).in_(keys))
+        )
+        by_key = {(orm.dataset_id, orm.uri): orm for orm in result.scalars().all()}
+        return [File.model_validate(by_key[(f.dataset_id, f.uri)]) for f in files]
 
     async def get_file_by_id(self, file_id: str) -> File | None:
         """Retrieve a file by its ID."""

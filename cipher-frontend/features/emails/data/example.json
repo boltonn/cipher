@@ -5,20 +5,22 @@
   "metadata": {
     "from": {
       "name": "7656382 435",
-      "address": "7656382.435@student.ens.sch.ae"
+      "type": "email",
+      "value": "7656382.435@student.ens.sch.ae"
     },
     "to": [
       {
         "name": null,
-        "address": "bolton213@yahoo.com"
+        "type": "email",
+        "value": "bolton213@yahoo.com"
       }
     ],
     "cc": [],
     "bcc": [],
-    "subject": "Invitation: $499.99 USD Within 12 hours, a automated charge will be\n m... @ Thu Jan 29, 2026 6:30pm - 7:30pm (GMT+4) (bolton213@yahoo.com)",
+    "title": "Invitation: $499.99 USD Within 12 hours, a automated charge will be\n m... @ Thu Jan 29, 2026 6:30pm - 7:30pm (GMT+4) (bolton213@yahoo.com)",
     "dateSent": "2026-01-29T09:45:30",
     "conversationId": "1855662777461079182",
-    "messaged": "calendar-8b6d6828-54f7-4fc6-8fe5-095c9e4c0468@google.com",
+    "messageId": "calendar-8b6d6828-54f7-4fc6-8fe5-095c9e4c0468@google.com",
     "labels": [
       "Spam",
       "Category Personal",
@@ -28,6 +30,7 @@
   "attachments": [
     {
       "id": "98d79ae0-c227-41b4-8e47-b60e09779eee",
+      "datasetId": "demo-dataset",
       "filename": "invite.ics",
       "uri": "1",
       "filetypeGroup": "application",

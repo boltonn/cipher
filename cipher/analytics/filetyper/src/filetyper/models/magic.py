@@ -1,4 +1,5 @@
 import json
+import zipfile
 from pathlib import Path
 from typing import BinaryIO
 
@@ -7,6 +8,14 @@ from loguru import logger
 from filetyper.schemas import FileTypeInfo
 
 DEFAULT_REGISTRY_PATH = Path(__file__).parent.parent / "data" / "registry.json"
+
+# OOXML formats are themselves zip archives, so they match the generic zip
+# magic number; these internal paths disambiguate them from a plain zip.
+_OOXML_ZIP_MARKERS = {
+    "word/document.xml": "docx",
+    "xl/workbook.xml": "xlsx",
+    "ppt/presentation.xml": "pptx",
+}
 
 
 class MagicNumberFilterTyper:
@@ -79,6 +88,8 @@ class MagicNumberFilterTyper:
             with path.open("rb") as f:
                 header = f.read(n)
                 if info := self.infer_bytes(header):
+                    if info["filetype"] == "zip" and (ooxml_info := self._disambiguate_ooxml(path)):
+                        return ooxml_info
                     return info
         except (OSError, PermissionError) as e:
             logger.warning(f"Could not read file at {path} for byte inference: {e}")
@@ -87,6 +98,19 @@ class MagicNumberFilterTyper:
         # O(1) lookup in our pre-compiled map
         logger.debug(f"Falling back to extension matching for {path.name}")
         return self.match_extension(path.suffix)
+
+    def _disambiguate_ooxml(self, path: Path) -> FileTypeInfo | None:
+        """Peek at a zip-matched file's internal listing to tell docx/xlsx/pptx apart from a plain zip."""
+        try:
+            with zipfile.ZipFile(path) as archive:
+                names = set(archive.namelist())
+        except zipfile.BadZipFile:
+            return None
+
+        for marker, filetype in _OOXML_ZIP_MARKERS.items():
+            if marker in names:
+                return self._extension_map.get(filetype)
+        return None
 
     def infer_stream(self, stream: BinaryIO) -> FileTypeInfo | None:
         """Infer type from a seekable binary stream without reading everything."""

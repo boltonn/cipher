@@ -1,46 +1,35 @@
 "use client";
 
-import { CodeBlock } from "@/components/ai-elements/code-block";
-import { CsvViewer } from "@/components/ui/csv-viewer";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { DocxViewerPreview } from "@/components/ui/docx-viewer";
 import {
   useElementWidth,
   useInlineThumbnailSidebar,
 } from "@/components/ui/document-viewer-sidebar";
-import { PDFViewer } from "@/components/ui/pdf-viewer";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { XlsxViewerPreview } from "@/components/ui/xlsx-viewer";
 
 import { Button } from "@/components/ui/button";
 import { CopyableId } from "@/components/copyable-id";
 import { CommentSection } from "@/features/comments/components/comment-section";
-import { useEmail } from "@/features/emails/api";
-import EmailIframe from "@/features/emails/components/email-frame";
 import { cn, formatBytes } from "@/lib/utils";
-import type { BundledLanguage } from "shiki";
-import { useQuery } from "@tanstack/react-query";
 import {
   ChevronLeft,
   ChevronRight,
-  Download,
-  File as FileIcon,
   FileText as FileTextIcon,
   HardDrive,
   Loader2,
   MessageSquare,
   ScrollText,
 } from "lucide-react";
-import { useState } from "react";
 import { filesService, useFileText } from "../api";
 import type { FileBrowserItem } from "../types";
+import { FileViewerContent, useFileViewerData } from "./file-viewer-content";
 
 interface FileViewerDialogProps {
   file: FileBrowserItem | null;
@@ -50,28 +39,6 @@ interface FileViewerDialogProps {
   onPrev: () => void;
   hasNext: boolean;
   hasPrev: boolean;
-}
-
-const TEXT_VIEWER_TYPES = new Set(["csv", "tsv"]);
-const CODE_TEXT_GROUPS = new Set(["code", "text"]);
-
-/** Shiki's bundled language ids match most filetyper `filetype` strings directly
- * (python, javascript, json, html, ...); only the mismatches need overriding.
- * An unrecognized id just falls back to unhighlighted text at render time. */
-const SHIKI_LANGUAGE_OVERRIDES: Record<string, string> = {
-  h: "cpp",
-  hpp: "cpp",
-  batch: "bat",
-  csproj: "xml",
-  dockerfile: "docker",
-  jsonl: "json",
-  ipynb: "json",
-  yml: "yaml",
-};
-
-function filetypeToShikiLanguage(file: FileBrowserItem): BundledLanguage {
-  if (file.filetypeGroup === "text") return "plaintext" as BundledLanguage;
-  return (SHIKI_LANGUAGE_OVERRIDES[file.filetype] ?? file.filetype) as BundledLanguage;
 }
 
 export function FileViewerDialog({
@@ -85,17 +52,7 @@ export function FileViewerDialog({
 }: FileViewerDialogProps) {
   const fileUrl = file?.id ? filesService.getFileUrl(file.id) : undefined;
 
-  const isTextViewer =
-    !!file &&
-    (TEXT_VIEWER_TYPES.has(file.filetype) || CODE_TEXT_GROUPS.has(file.filetypeGroup));
-  const { data: textContent, isPending: isTextLoading } = useQuery({
-    queryKey: ["file-text", fileUrl],
-    queryFn: () => fetch(fileUrl as string).then((res) => res.text()),
-    enabled: isTextViewer && !!fileUrl,
-  });
-
-  const isEmail = !!file && file.filetype === "eml";
-  const { data: email, isPending: isEmailLoading } = useEmail(isEmail ? file?.id : undefined);
+  const { textContent, isTextLoading, email, isEmailLoading } = useFileViewerData(file, fileUrl);
 
   if (!file) return null;
 
@@ -304,116 +261,6 @@ function ViewerPane({
   );
 }
 
-interface FileViewerContentProps {
-  file: FileBrowserItem;
-  fileUrl?: string;
-  textContent?: string;
-  isTextLoading: boolean;
-  email: import("@/features/emails/types").EmailBase | undefined;
-  isEmailLoading: boolean;
-  sidebarFitsInline: boolean;
-}
-
-function FileViewerContent({
-  file,
-  fileUrl,
-  textContent,
-  isTextLoading,
-  email,
-  isEmailLoading,
-  sidebarFitsInline,
-}: FileViewerContentProps) {
-  if (!fileUrl) return null;
-
-  if (file.filetype === "pdf") {
-    return <PdfWithThumbnails fileUrl={fileUrl} sidebarFitsInline={sidebarFitsInline} />;
-  }
-
-  if (file.filetype === "docx") {
-    return <DocxViewerPreview src={fileUrl} fileName={file.filename} className="h-full" />;
-  }
-
-  if (file.filetype === "xlsx") {
-    return <XlsxViewerPreview src={fileUrl} fileName={file.filename} className="h-full" />;
-  }
-
-  if (TEXT_VIEWER_TYPES.has(file.filetype)) {
-    if (isTextLoading) return <ViewerLoading label="Loading file..." />;
-    return <CsvViewer data={textContent} className="h-full" />;
-  }
-
-  if (CODE_TEXT_GROUPS.has(file.filetypeGroup)) {
-    if (isTextLoading) return <ViewerLoading label="Loading file..." />;
-    if (textContent === undefined) return <ViewerFallback file={file} fileUrl={fileUrl} />;
-    return (
-      <div className="h-full overflow-auto p-4 bg-background">
-        <CodeBlock
-          code={textContent}
-          language={filetypeToShikiLanguage(file)}
-          showLineNumbers={file.filetypeGroup === "code"}
-        />
-      </div>
-    );
-  }
-
-  if (file.filetype === "eml") {
-    if (isEmailLoading) return <ViewerLoading label="Parsing email..." />;
-    if (!email) return <ViewerFallback file={file} fileUrl={fileUrl} />;
-    return (
-      <div className="h-full overflow-auto bg-white">
-        <div className="border-b border-slate-200 bg-slate-50 p-4 text-xs text-slate-700 space-y-1">
-          <p className="font-bold text-sm">{email.metadata.title ?? "(no subject)"}</p>
-          <p>
-            <span className="text-slate-400">From:</span>{" "}
-            {email.metadata.from.name ?? email.metadata.from.value}
-          </p>
-          <p>
-            <span className="text-slate-400">To:</span>{" "}
-            {email.metadata.to.map((t) => t.name ?? t.value).join(", ")}
-          </p>
-          {email.metadata.dateSent && (
-            <p>
-              <span className="text-slate-400">Date:</span>{" "}
-              {new Date(email.metadata.dateSent).toLocaleString()}
-            </p>
-          )}
-        </div>
-        <EmailIframe body={email.html || email.plain || ""} autoSize />
-      </div>
-    );
-  }
-
-  if (file.filetypeGroup === "image") {
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img src={fileUrl} alt={file.filename} className="w-full h-full object-contain" />;
-  }
-
-  return <ViewerFallback file={file} fileUrl={fileUrl} />;
-}
-
-/**
- * `PDFViewer`'s thumbnail sidebar only accepts a mount-time default (no
- * controlled open state), so it can't be toggled after render once we learn
- * the page count from `onDocumentLoadSuccess`. Instead, remount once via a
- * `key` change the first time we learn the doc is multi-page and there's
- * enough width to show the sidebar inline (not as a content-covering overlay,
- * mirroring the same width threshold the component uses internally).
- */
-function PdfWithThumbnails({ fileUrl, sidebarFitsInline }: { fileUrl: string; sidebarFitsInline: boolean }) {
-  const [numPages, setNumPages] = useState<number | null>(null);
-  const showThumbnails = numPages !== null && numPages > 1 && sidebarFitsInline;
-
-  return (
-    <PDFViewer
-      key={showThumbnails ? "with-sidebar" : "no-sidebar"}
-      file={fileUrl}
-      className="h-full"
-      defaultThumbnailSidebarOpen={showThumbnails}
-      onDocumentLoadSuccess={setNumPages}
-    />
-  );
-}
-
 function FileTextTab({ fileId }: { fileId?: string }) {
   const { data, isPending, isError } = useFileText(fileId);
 
@@ -441,36 +288,6 @@ function FileTextTab({ fileId }: { fileId?: string }) {
     <pre className="text-[10px] font-mono text-slate-300 leading-relaxed whitespace-pre-wrap break-words p-3 rounded-lg bg-black/40 border border-white/5 max-h-125 overflow-auto">
       {data.text}
     </pre>
-  );
-}
-
-function ViewerLoading({ label }: { label: string }) {
-  return (
-    <div className="flex-1 flex flex-col items-center justify-center gap-3 text-slate-500 h-full">
-      <Loader2 className="h-8 w-8 animate-spin text-indigo-500" />
-      <span className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-400/70">
-        {label}
-      </span>
-    </div>
-  );
-}
-
-function ViewerFallback({ file, fileUrl }: { file: FileBrowserItem; fileUrl: string }) {
-  return (
-    <div className="flex-1 flex flex-col items-center justify-center gap-4 text-slate-400 h-full">
-      <FileIcon className="h-16 w-16 text-slate-600" strokeWidth={1} />
-      <div className="text-center space-y-1">
-        <p className="text-sm text-slate-300 max-w-xs truncate">{file.filename}</p>
-        <p className="text-[10px] uppercase tracking-widest text-slate-500">
-          No preview available for {file.filetype || "this file type"}
-        </p>
-      </div>
-      <a href={fileUrl} download={file.filename}>
-        <Button variant="outline" size="sm" className="gap-2">
-          <Download size={14} /> Download
-        </Button>
-      </a>
-    </div>
   );
 }
 

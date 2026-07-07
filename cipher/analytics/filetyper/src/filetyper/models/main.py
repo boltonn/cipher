@@ -6,7 +6,7 @@ from loguru import logger
 from tqdm import tqdm
 
 from cipher.schemas.file import FileCreate
-from cipher.utils.io import HashType, compute_hash, convert_st_time_to_datetime
+from cipher.utils.io import HashType, compute_hashes, convert_st_time_to_datetime
 from filetyper.models.aiml import MagikaFileTyper
 from filetyper.models.magic import MagicNumberFilterTyper
 from filetyper.schemas import FileTypeInfo, FilteTyperStrategy
@@ -89,10 +89,11 @@ class FileTyper:
     ) -> dict:
         """Infer file type and compute content hashes/size for a local file."""
         type_info = self.infer_path(path, strategy=strategy)
+        hashes = compute_hashes(path, [HashType.MD5, HashType.SHA256])
         return {
             **type_info,
-            "md5": compute_hash(path, HashType.MD5),
-            "sha256": compute_hash(path, HashType.SHA256),
+            "md5": hashes[HashType.MD5],
+            "sha256": hashes[HashType.SHA256],
             "size": path.stat().st_size,
         }
 

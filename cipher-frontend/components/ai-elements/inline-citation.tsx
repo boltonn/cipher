@@ -114,13 +114,17 @@ export const InlineCitationCarousel = ({
   );
 };
 
-export type InlineCitationCarouselContentProps = ComponentProps<"div">;
+export type InlineCitationCarouselContentProps = ComponentProps<
+  typeof CarouselContent
+>;
 
 export const InlineCitationCarouselContent = (
   props: InlineCitationCarouselContentProps
 ) => <CarouselContent {...props} />;
 
-export type InlineCitationCarouselItemProps = ComponentProps<"div">;
+export type InlineCitationCarouselItemProps = ComponentProps<
+  typeof CarouselItem
+>;
 
 export const InlineCitationCarouselItem = ({
   className,

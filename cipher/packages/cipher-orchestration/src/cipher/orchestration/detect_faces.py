@@ -189,7 +189,7 @@ async def detect_faces(
     # own AsyncSession -- a single session isn't safe for concurrent use and
     # will corrupt its transaction state under interleaved commits/queries.
     engine = session.bind
-    async with AsyncSession(engine, expire_on_commit=False) as producer_session:
+    async with AsyncSession(engine, expire_on_commit=False) as producer_session:  # noqa: SIM117
         async with AsyncSession(engine, expire_on_commit=False) as consumer_session:
             with tqdm(total=pending_count, desc="Detecting faces") as progress:
                 _, total = await asyncio.gather(

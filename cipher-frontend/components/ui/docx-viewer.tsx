@@ -217,6 +217,7 @@ function DocxToolbar({
   pageCount,
   setZoomScale,
   showNightRenderToggle,
+  showUpload,
   zoomScale,
 }: {
   activePage: number
@@ -228,6 +229,7 @@ function DocxToolbar({
   pageCount: number
   setZoomScale: React.Dispatch<React.SetStateAction<number>>
   showNightRenderToggle: boolean
+  showUpload: boolean
   zoomScale: number
 }) {
   const canZoomIn = zoomScale < ZOOM_OPTIONS[ZOOM_OPTIONS.length - 1]
@@ -295,7 +297,6 @@ function DocxToolbar({
               value={zoomScale.toString()}
               onValueChange={(value) => setZoomScale(Number(value))}
               disabled={controlsDisabled}
-              modal={false}
             >
               <SelectTrigger
                 size="sm"
@@ -304,7 +305,7 @@ function DocxToolbar({
               >
                 <SelectValue>{Math.round(zoomScale)}%</SelectValue>
               </SelectTrigger>
-              <SelectContent align="end" alignItemWithTrigger={false}>
+              <SelectContent align="end">
                 {ZOOM_OPTIONS.map((value) => (
                   <SelectItem key={value} value={value.toString()}>
                     {value}%
@@ -329,18 +330,22 @@ function DocxToolbar({
               </Button>
             </ToolbarTooltip>
           </div>
-          <Separator orientation="vertical" className="mx-1 h-4 self-center" />
-          <ToolbarTooltip label="Upload DOCX">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Upload DOCX"
-              onClick={onUploadClick}
-            >
-              <HugeiconsIcon icon={Upload01Icon} className="size-4" />
-            </Button>
-          </ToolbarTooltip>
+          {showUpload ? (
+            <>
+              <Separator orientation="vertical" className="mx-1 h-4 self-center" />
+              <ToolbarTooltip label="Upload DOCX">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Upload DOCX"
+                  onClick={onUploadClick}
+                >
+                  <HugeiconsIcon icon={Upload01Icon} className="size-4" />
+                </Button>
+              </ToolbarTooltip>
+            </>
+          ) : null}
         </div>
       </TooltipProvider>
     </div>
@@ -402,6 +407,7 @@ export function DocxViewerPreview({
   isDark: controlledIsDark,
   onIsDarkChange,
   rounded = false,
+  showUpload = true,
   src,
 }: {
   className?: string
@@ -411,6 +417,7 @@ export function DocxViewerPreview({
   isDark?: boolean
   onIsDarkChange?: (isDark: boolean) => void
   rounded?: boolean
+  showUpload?: boolean
   src?: string
 }) {
   const [effectiveIsDark, setIsDark] = useControllableDarkMode({
@@ -428,6 +435,7 @@ export function DocxViewerPreview({
       rounded={rounded}
       setNightRenderEnabled={setIsDark}
       shouldRenderNightMode
+      showUpload={showUpload}
       url={src}
     />
   )
@@ -441,6 +449,7 @@ function DocxViewerContent({
   rounded,
   setNightRenderEnabled,
   shouldRenderNightMode,
+  showUpload,
   url,
 }: {
   className?: string
@@ -450,6 +459,7 @@ function DocxViewerContent({
   rounded: boolean
   setNightRenderEnabled: (checked: boolean) => void
   shouldRenderNightMode: boolean
+  showUpload: boolean
   url?: string
 }) {
   const fileInputRef = React.useRef<HTMLInputElement>(null)
@@ -507,9 +517,9 @@ function DocxViewerContent({
   const [zoomScale, setZoomScale] = React.useState(100)
   const [loadError, setLoadError] = React.useState<string>()
   const [isLoadingDocument, setIsLoadingDocument] = React.useState(true)
-  const prevDocUrlRef = React.useRef(url)
-  if (prevDocUrlRef.current !== url) {
-    prevDocUrlRef.current = url
+  const [prevDocUrl, setPrevDocUrl] = React.useState(url)
+  if (prevDocUrl !== url) {
+    setPrevDocUrl(url)
     setZoomScale(100)
     setActivePage(1)
     if (url) setUploadedDocxFile(null)
@@ -539,16 +549,18 @@ function DocxViewerContent({
     viewportRef.current?.scrollTo({ top: 0, left: 0 })
   }, [url])
 
-  const prevThemeRef = React.useRef<"dark" | "light">(effectiveIsDark ? "dark" : "light")
+  const [prevTheme, setPrevTheme] = React.useState<"dark" | "light">(
+    effectiveIsDark ? "dark" : "light"
+  )
   const nextTheme = effectiveIsDark ? "dark" : "light"
-  if (prevThemeRef.current !== nextTheme) {
-    prevThemeRef.current = nextTheme
+  if (prevTheme !== nextTheme) {
+    setPrevTheme(nextTheme)
     setDocumentTheme(nextTheme)
   }
 
-  const prevStatusRef = React.useRef(status)
-  if (prevStatusRef.current !== status) {
-    prevStatusRef.current = status
+  const [prevStatus, setPrevStatus] = React.useState(status)
+  if (prevStatus !== status) {
+    setPrevStatus(status)
     if (
       status.startsWith("Failed to load file") ||
       status === "Only .docx files are supported"
@@ -696,14 +708,16 @@ function DocxViewerContent({
         className
       )}
     >
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        aria-label="Upload DOCX file"
-        className="hidden"
-        onChange={handleUpload}
-      />
+      {showUpload && (
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          aria-label="Upload DOCX file"
+          className="hidden"
+          onChange={handleUpload}
+        />
+      )}
       <DocxToolbar
         activePage={activePage}
         controlsDisabled={controlsDisabled}
@@ -714,6 +728,7 @@ function DocxViewerContent({
         pageCount={pageCount}
         setZoomScale={setZoomScale}
         showNightRenderToggle={shouldRenderNightMode}
+        showUpload={showUpload}
         zoomScale={zoomScale}
       />
       <div
@@ -783,21 +798,25 @@ function DocxViewerContent({
           {!url && !uploadedDocxFile ? (
             <div className="grid h-full min-h-96 place-items-center p-6 text-center">
               <div className="max-w-md rounded-lg border bg-background p-4 text-sm shadow-xs">
-                <div className="font-medium">Upload a DOCX to preview</div>
-                <div className="mt-1 text-muted-foreground">
-                  Pass a DOCX URL with the <code>src</code> prop or upload a
-                  file.
+                <div className="font-medium">
+                  {showUpload ? "Upload a DOCX to preview" : "No document to preview"}
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="mt-4"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <HugeiconsIcon icon={Upload01Icon} className="size-4" />
-                  Upload DOCX
-                </Button>
+                <div className="mt-1 text-muted-foreground">
+                  Pass a DOCX URL with the <code>src</code> prop
+                  {showUpload ? " or upload a file." : "."}
+                </div>
+                {showUpload && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="mt-4"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <HugeiconsIcon icon={Upload01Icon} className="size-4" />
+                    Upload DOCX
+                  </Button>
+                )}
               </div>
             </div>
           ) : loadError ? (

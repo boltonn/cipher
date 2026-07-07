@@ -61,15 +61,12 @@ async def load_files(
         batch.append(file_create)
 
         if len(batch) >= batch_size:
-            for f in batch:
-                await file_repo.upsert_file(f)
-            await session.flush()
+            await file_repo.bulk_upsert_files(batch)
             total_processed += len(batch)
             batch = []
 
     if batch:
-        for f in batch:
-            await file_repo.upsert_file(f)
+        await file_repo.bulk_upsert_files(batch)
         total_processed += len(batch)
 
     await session.commit()

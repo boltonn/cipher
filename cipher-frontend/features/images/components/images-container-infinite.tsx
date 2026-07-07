@@ -13,7 +13,7 @@ import type {
   PaginatedImageSimilarityResponse,
 } from "../types";
 import { ImageCard } from "./image-card";
-import { ImageDetailDialog } from "./image-detail-dialog";
+import { ImageViewerDialog } from "./image-viewer-dialog";
 
 interface ImagesContainerInfiniteProps {
   data: InfiniteData<PaginatedImagesResponse | PaginatedImageSimilarityResponse> | undefined;
@@ -123,7 +123,7 @@ export function ImagesContainerInfinite({
       </div>
 
       {selectedIndex !== null && (
-        <ImageDetailDialog
+        <ImageViewerDialog
           image={images[selectedIndex]}
           isOpen={selectedIndex !== null}
           onOpenChange={(open) => !open && setSelectedIndex(null)}

@@ -12,7 +12,6 @@ import {
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useVirtualizer } from "@tanstack/react-virtual"
-import type { PDFDocumentProxy } from "pdfjs-dist"
 import type * as ReactPdf from "react-pdf"
 
 import "react-pdf/dist/Page/TextLayer.css"
@@ -51,6 +50,11 @@ import {
 
 type ReactPdfModule = typeof ReactPdf
 type PageRotationDeltas = Map<number, number>
+// Matches whatever pdfjs-dist version react-pdf's own onLoadSuccess resolves
+// to internally, which can drift from the project's top-level pdfjs-dist.
+type PDFDocumentProxy = Parameters<
+  NonNullable<ReactPdf.DocumentProps["onLoadSuccess"]>
+>[0]
 
 type PDFPageMetrics = {
   width: number
@@ -132,6 +136,8 @@ export type PDFViewerProps = {
     event: React.PointerEvent<HTMLDivElement>,
     pageNumber: number
   ) => void
+  /** Seeds the viewer's own text-layer search/highlight whenever this value changes -- e.g. to jump to a search result's query term. The user's own search popover can still override it afterward. */
+  searchQuery?: string
 }
 
 const DEFAULT_PAGE_WIDTH = 612
@@ -673,6 +679,7 @@ export function PDFViewer(
     onPagePointerMove,
     onPagePointerUp,
     onPagePointerCancel,
+    searchQuery: externalSearchQuery,
     ref,
   }: PDFViewerProps & { ref?: React.Ref<PDFViewerHandle> }
 ) {
@@ -680,6 +687,7 @@ export function PDFViewer(
     const pdfDocumentRef = React.useRef<PDFDocumentProxy | null>(null)
     const [pdfFile, setPdfFile] = React.useState(file ?? "")
     const uploadedPdfUrlRef = React.useRef<string | null>(null)
+    const uploadInputRef = React.useRef<HTMLInputElement | null>(null)
     const [numPages, setNumPages] = React.useState(0)
     const [activePage, setActivePage] = React.useState(1)
     const [zoom, setZoom] = React.useState(defaultZoom)
@@ -741,6 +749,16 @@ export function PDFViewer(
       setLowResolutionPageNumbers(new Set())
       setVisiblePageNumbers(new Set([1]))
       setScrollState({ direction: "none", isFastScrolling: false })
+    }
+
+    const prevExternalSearchQueryRef = React.useRef(externalSearchQuery)
+    if (
+      externalSearchQuery !== undefined &&
+      prevExternalSearchQueryRef.current !== externalSearchQuery
+    ) {
+      prevExternalSearchQueryRef.current = externalSearchQuery
+      setSearchQuery(externalSearchQuery)
+      setSearchDraft(externalSearchQuery)
     }
 
     React.useEffect(() => {
@@ -1651,14 +1669,13 @@ export function PDFViewer(
                   value={String(zoom)}
                   onValueChange={(value) => setZoom(Number(value))}
                   disabled={controlsDisabled}
-                  modal={false}
                 >
                   <SelectTrigger size="sm" className="w-[84px] min-w-[84px]">
                     <SelectValue placeholder="Zoom">
                       {Math.round(zoom * 100)}%
                     </SelectValue>
                   </SelectTrigger>
-                  <SelectContent alignItemWithTrigger={false}>
+                  <SelectContent>
                     {ZOOM_OPTIONS.map((option) => (
                       <SelectItem key={option} value={String(option)}>
                         {Math.round(option * 100)}%
@@ -1764,34 +1781,30 @@ export function PDFViewer(
                     orientation="vertical"
                     className="mx-1 h-4 self-center"
                   />
+                  <input
+                    ref={uploadInputRef}
+                    type="file"
+                    accept="application/pdf,.pdf"
+                    className="sr-only"
+                    onChange={(event) => {
+                      const nextFile = event.target.files?.[0]
+
+                      if (nextFile) {
+                        handleUpload(nextFile)
+                        event.currentTarget.value = ""
+                      }
+                    }}
+                  />
                   <ToolbarTooltip label="Upload PDF">
                     <Button
                       type="button"
                       variant="ghost"
                       size="icon-sm"
                       aria-label="Upload PDF"
-                      render={
-                        <label>
-                          <input
-                            type="file"
-                            accept="application/pdf,.pdf"
-                            className="sr-only"
-                            onChange={(event) => {
-                              const nextFile = event.target.files?.[0]
-
-                              if (nextFile) {
-                                handleUpload(nextFile)
-                                event.currentTarget.value = ""
-                              }
-                            }}
-                          />
-                          <HugeiconsIcon
-                            icon={Upload01Icon}
-                            className="size-4"
-                          />
-                        </label>
-                      }
-                    />
+                      onClick={() => uploadInputRef.current?.click()}
+                    >
+                      <HugeiconsIcon icon={Upload01Icon} className="size-4" />
+                    </Button>
                   </ToolbarTooltip>
                 </>
               ) : null}

@@ -13,7 +13,7 @@ get swept up in the same batch as everything else -- no special-casing.
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import anyio
 from loguru import logger
@@ -38,6 +38,7 @@ from cipher.schemas.extraction import (
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
+    from xberg import ExtractionResult
 
 # Shared with embed_text.py's CLIR chunker -- both take this as their
 # `chunk_size` default so chunk boundaries don't drift depending on which
@@ -88,9 +89,7 @@ def _prechunked_from_kreuzberg(chunks: list) -> list[PrechunkedSpan]:
     spans = []
     for chunk in chunks:
         heading_context = chunk.metadata.get("heading_context")
-        heading_path = (
-            [h["text"] for h in heading_context["headings"]] if heading_context else None
-        )
+        heading_path = [h["text"] for h in heading_context["headings"]] if heading_context else None
         spans.append(
             PrechunkedSpan(
                 content=chunk.content,
@@ -129,9 +128,22 @@ def _document_structure_from_kreuzberg(
 
 
 def _run_batch(
-    paths: list[str], use_chunking: bool, tokenizer_model_dir: Path | None, chunk_size: int
-) -> "list[Any]":
-    """CPU-bound worker: xberg's batched extraction call, run off the event loop."""
+    paths: list[str],
+    use_chunking: bool,
+    tokenizer_model_dir: Path | None,
+    chunk_size: int,
+    max_concurrent_extractions: int | None = None,
+) -> "list[ExtractionResult]":
+    """CPU-bound worker: xberg's batched extraction call, run off the event loop.
+
+    xberg parallelizes internally (Rayon thread pool) across the batch --
+    `max_concurrent_extractions` caps how many files it processes at once,
+    defaulting to its own `num_cpus * 2` when left None. Python-level
+    threading/multiprocessing around this call would just double up on
+    parallelism xberg already provides; tune this instead, benchmarked via
+    `cipher benchmark-ingest`, if extraction is CPU-underutilized or
+    memory-constrained on a given machine.
+    """
     from xberg import ChunkingConfig, ExtractionConfig, HierarchyConfig, PdfConfig, batch_extract_files_sync
 
     chunking = None
@@ -155,12 +167,13 @@ def _run_batch(
         chunking=chunking,
         include_document_structure=True,
         pdf_options=PdfConfig(hierarchy=HierarchyConfig(include_bbox=True)),
+        max_concurrent_extractions=max_concurrent_extractions,
     )
     return batch_extract_files_sync(paths, config=config)
 
 
 def _build_extracted_text(
-    file_resource: dict, result: "Any", use_chunking: bool, parent_email_metadata: EmailMetadata | None
+    file_resource: dict, result: "ExtractionResult", use_chunking: bool, parent_email_metadata: EmailMetadata | None
 ) -> ExtractedTextCreate:
     error = result.metadata.get("error")
     if error:
@@ -254,7 +267,9 @@ async def dedupe_pending_extractions(
         resolved = []
         for item in batch:
             file_id, sha256 = item.resource["id"], item.resource["sha256"]
-            duplicate = await _find_extracted_duplicate(file_repo, extracted_text_repo, file_id, sha256)
+            duplicate = await _find_extracted_duplicate(
+                file_repo=file_repo, extracted_text_repo=extracted_text_repo, file_id=file_id, sha256=sha256
+            )
             if duplicate is None:
                 continue
 
@@ -322,8 +337,16 @@ async def extract_documents_workflow(
     tokenizer_model_dir: Path | None = None,
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     batch_size: int = 50,
+    max_concurrent_extractions: int | None = None,
 ) -> int:
-    """Extract text for a dataset's documents in xberg-batched passes. Returns files processed."""
+    """Extract text for a dataset's documents in xberg-batched passes. Returns files processed.
+
+    `max_concurrent_extractions` caps xberg's own internal parallelism per
+    batch; left None, xberg defaults to `num_cpus * 2`. Tune this (and
+    `batch_size`, which needs to be at least as large to keep xberg's pool
+    fed) via `cipher benchmark-ingest`, not by adding Python-level
+    threading/multiprocessing around this call -- see `_run_batch`.
+    """
     enrichment_repo = PostgresEnrichmentRepository(session=session)
 
     # Attachments only exist once extract_emails_workflow has parsed their
@@ -357,7 +380,7 @@ async def extract_documents_workflow(
     )
     count = failed_count = 0
 
-    with tqdm(total=total, desc="Extracting documents", unit="file") as pbar:
+    with tqdm(total=total, desc="Extracting documents", unit=" file") as pbar:
         while True:
             batch = await enrichment_repo.get_pending_batch(
                 enrichment_type=EnrichmentType.TEXT_EXTRACTION,
@@ -382,7 +405,7 @@ async def extract_documents_workflow(
                 paths = [item.resource["path"] for item in resolvable]
                 try:
                     results = await anyio.to_thread.run_sync(
-                        _run_batch, paths, use_chunking, tokenizer_model_dir, chunk_size
+                        _run_batch, paths, use_chunking, tokenizer_model_dir, chunk_size, max_concurrent_extractions
                     )
                 except Exception as e:
                     logger.error(f"Batch extraction failed for {len(paths)} files: {e}")
@@ -396,7 +419,12 @@ async def extract_documents_workflow(
                             if parent_extracted and isinstance(parent_extracted.metadata, EmailMetadata):
                                 parent_email_metadata = parent_extracted.metadata
 
-                        extracted = _build_extracted_text(item.resource, result, use_chunking, parent_email_metadata)
+                        extracted = _build_extracted_text(
+                            file_resource=item.resource,
+                            result=result,
+                            use_chunking=use_chunking,
+                            parent_email_metadata=parent_email_metadata,
+                        )
                         await extracted_text_repo.upsert(extracted)
                         completed.append(item.enrichment.id)
                     except Exception as e:

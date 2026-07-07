@@ -13,7 +13,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from cipher.api.deps.elasticsearch import elasticsearch_lifespan
 from cipher.api.deps.postgres import postgres_lifespan
-from cipher.api.routes import chat, comments, datasets, documents, emails, faces, files, images, persons, users
+from cipher.api.routes import chat, comments, datasets, documents, emails, faces, files, images, persons, search, users
 from cipher.api.settings import Settings
 from cipher.schemas.exceptions import EntityAlreadyExistsError, EntityNotFoundError
 from cipher.utils.fastapi.health import ServiceHealthStatus, service_health
@@ -70,6 +70,7 @@ app.include_router(datasets.router)
 # app.include_router(enrichments.router)
 app.include_router(files.router)
 app.include_router(images.router)
+app.include_router(search.router)
 # app.include_router(messages.router)
 app.include_router(users.router)
 app.include_router(faces.router)

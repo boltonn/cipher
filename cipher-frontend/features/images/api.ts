@@ -67,6 +67,12 @@ export const imagesService = {
     apiClient
       .patch<ImagePublic>(`${imagesBaseURL}/${id}`, { tags })
       .then((res) => res.data),
+
+  // GET /files/{id}/image -- a 404 just means this file has no Image record yet
+  getByFileId: (fileId: string): Promise<ImagePublic> =>
+    apiClient
+      .get<ImagePublic>(`/files/${fileId}/image`, { suppressErrorToast: true })
+      .then((res) => res.data),
 };
 
 export function useImageFiletypes() {
@@ -74,6 +80,17 @@ export function useImageFiletypes() {
     queryKey: ["images", "filetypes"],
     queryFn: imagesService.getFiletypes,
     staleTime: 5 * 60_000,
+  });
+}
+
+/** A 404 (file has no associated Image record) resolves as `isError`, not a thrown/toasted error. */
+export function useFileImage(fileId: string | undefined) {
+  return useQuery({
+    queryKey: ["files", fileId, "image"],
+    queryFn: () => imagesService.getByFileId(fileId as string),
+    enabled: !!fileId,
+    staleTime: 60_000,
+    retry: false,
   });
 }
 

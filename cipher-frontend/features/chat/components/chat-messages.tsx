@@ -38,7 +38,7 @@ import {
   ToolOutput,
   type ToolPart,
 } from "@/components/ai-elements/tool";
-import type { UIMessage } from "ai";
+import type { UIMessage, UIMessagePart, UIDataTypes, UITools } from "ai";
 import { MessageSquareIcon } from "lucide-react";
 import { Fragment } from "react";
 import { ChatMessageActions } from "./chat-message-actions";
@@ -51,21 +51,10 @@ interface ChatMessagesProps {
   onRegenerate: () => void;
 }
 
-function isToolPart(part: unknown): part is {
-  type: `tool-${string}`;
-  toolCallId: string;
-  state: ToolPart["state"];
-  input?: Record<string, unknown>;
-  output?: unknown;
-  errorText?: string;
-} {
-  if (typeof part !== "object" || part === null) return false;
-  const record = part as Record<string, unknown>;
-  return (
-    typeof record.type === "string" &&
-    record.type.startsWith("tool-") &&
-    "state" in record
-  );
+function isToolPart(
+  part: UIMessagePart<UIDataTypes, UITools>
+): part is ToolPart {
+  return part.type === "dynamic-tool" || part.type.startsWith("tool-");
 }
 
 export function ChatMessages({ messages, onRegenerate }: ChatMessagesProps) {
@@ -91,22 +80,18 @@ export function ChatMessages({ messages, onRegenerate }: ChatMessagesProps) {
                     return (
                       <Reasoning key={key}>
                         <ReasoningTrigger />
-                        <ReasoningContent>{part.reasoning}</ReasoningContent>
+                        <ReasoningContent>{part.text}</ReasoningContent>
                       </Reasoning>
                     );
                   }
 
-                  if (part.type === "source") {
-                    const { source } = part as {
-                      type: "source";
-                      source: { url: string; title?: string };
-                    };
+                  if (part.type === "source-url") {
                     return (
                       <Sources key={key}>
                         <SourcesTrigger count={1} />
                         <SourcesContent>
-                          <Source href={source.url}>
-                            {source.title ?? source.url}
+                          <Source href={part.url}>
+                            {part.title ?? part.url}
                           </Source>
                         </SourcesContent>
                       </Sources>
@@ -132,12 +117,21 @@ export function ChatMessages({ messages, onRegenerate }: ChatMessagesProps) {
                   }
 
                   if (isToolPart(part)) {
+                    const toolLabel =
+                      part.type === "dynamic-tool"
+                        ? part.toolName
+                        : part.type.replace(/^tool-/, "");
+
                     if (part.state === "approval-requested") {
                       return (
-                        <Confirmation key={key}>
+                        <Confirmation
+                          key={key}
+                          state={part.state}
+                          approval={part.approval}
+                        >
                           <ConfirmationRequest>
                             <ConfirmationTitle>
-                              {part.type.replace(/^tool-/, "")} needs approval
+                              {toolLabel} needs approval
                             </ConfirmationTitle>
                           </ConfirmationRequest>
                         </Confirmation>
@@ -146,13 +140,19 @@ export function ChatMessages({ messages, onRegenerate }: ChatMessagesProps) {
 
                     return (
                       <Tool key={key}>
-                        <ToolHeader
-                          type={part.type as ToolPart["type"]}
-                          state={part.state}
-                        />
+                        {part.type === "dynamic-tool" ? (
+                          <ToolHeader
+                            type={part.type}
+                            state={part.state}
+                            toolName={part.toolName}
+                          />
+                        ) : (
+                          <ToolHeader type={part.type} state={part.state} />
+                        )}
                         <ToolContent>
                           {part.input != null &&
-                            Object.keys(part.input).length > 0 && (
+                            typeof part.input === "object" &&
+                            Object.keys(part.input as object).length > 0 && (
                               <ToolInput input={part.input} />
                             )}
                           <ToolOutput

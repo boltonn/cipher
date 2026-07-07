@@ -5,7 +5,7 @@ from pydantic import Field
 
 from cipher.schemas.base import BaseModel
 from cipher.schemas.detection import BoundingBox
-from cipher.schemas.email import Participant
+from cipher.schemas.email import NamedParticipant
 from cipher.schemas.search import TextChunk
 
 
@@ -57,12 +57,8 @@ class DocumentMetadata(BaseModel):
     keywords: list[str] = Field(default_factory=list)
     date_content_created: datetime | None = None
     date_content_modified: datetime | None = None
-    page_count: int | None = Field(
-        default=None, description="Total page count, if the source format has pages"
-    )
-    detected_language: str | None = Field(
-        default=None, description="Best-guess language of the document's text"
-    )
+    page_count: int | None = Field(default=None, description="Total page count, if the source format has pages")
+    detected_language: str | None = Field(default=None, description="Best-guess language of the document's text")
     tables: list[ExtractedTableInfo] | None = Field(
         default=None, description="Structured tables detected during extraction, if any"
     )
@@ -71,10 +67,10 @@ class DocumentMetadata(BaseModel):
         description="xberg's hierarchical layout nodes (heading/paragraph/table/etc, with page + bounding box), "
         "when extracted with document-structure detection enabled",
     )
-    sent_from: Participant | None = Field(
+    sent_from: NamedParticipant | None = Field(
         default=None, description="Sender, if this document arrived as an email attachment"
     )
-    sent_to: list[Participant] = Field(
+    sent_to: list[NamedParticipant] = Field(
         default_factory=list, description="Recipients, if this document arrived as an email attachment"
     )
 
@@ -89,9 +85,7 @@ class DocumentTextChunk(DocumentMetadata, TextChunk):
     """
 
     filetype_group: Literal["document"] = "document"
-    page_number: int | None = Field(
-        default=None, description="Page this chunk's text came from, if known"
-    )
+    page_number: int | None = Field(default=None, description="Page this chunk's text came from, if known")
     heading_path: list[str] | None = Field(
         default=None,
         description="Section heading hierarchy this chunk falls under, e.g. ['Introduction', 'Background']",

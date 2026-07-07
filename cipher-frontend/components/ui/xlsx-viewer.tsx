@@ -16,10 +16,10 @@ import {
   MoreHorizontalIcon,
   PlusSignCircleIcon,
   Sun03Icon,
-  Upload01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import Image from "next/image";
+import { ScrollArea as ScrollAreaPrimitive } from "radix-ui";
 import * as React from "react";
 import { createPortal } from "react-dom";
 
@@ -31,7 +31,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
@@ -67,12 +67,6 @@ const XLSX_SHEET_TAB_THUMBNAIL_OPTIONS = {
     maxWidth: 560,
   },
 } as const;
-
-type UploadedWorkbook = {
-  buffer: ArrayBuffer;
-  fileName: string;
-  identity: string;
-};
 
 function formatWorkbookName(fileName: string | undefined, url: string) {
   if (fileName?.trim()) return fileName;
@@ -162,13 +156,33 @@ function renderXlsxScroller({
   children,
   viewportProps,
 }: XlsxScrollerRenderProps) {
+  const { className: viewportClassName, key, style, ...restViewportProps } = viewportProps;
+  // Radix's Viewport applies its own overflowX/overflowY inline; keeping the
+  // library's shorthand `overflow` alongside those longhands is what trips
+  // React's "conflicting style property" warning on rerender.
+  const restStyle = { ...style };
+  delete restStyle.overflow;
+
   return (
-    <ScrollArea
-      className="h-full min-h-0 w-full min-w-0 flex-1"
-      viewportProps={viewportProps}
+    <ScrollAreaPrimitive.Root
+      data-slot="scroll-area"
+      className="relative h-full min-h-0 w-full min-w-0 flex-1"
     >
-      {children}
-    </ScrollArea>
+      <ScrollAreaPrimitive.Viewport
+        key={key}
+        {...restViewportProps}
+        style={restStyle}
+        data-slot="scroll-area-viewport"
+        className={cn(
+          "size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1",
+          viewportClassName
+        )}
+      >
+        {children}
+      </ScrollAreaPrimitive.Viewport>
+      <ScrollBar />
+      <ScrollAreaPrimitive.Corner />
+    </ScrollAreaPrimitive.Root>
   );
 }
 
@@ -229,16 +243,12 @@ export function WorkbookTableHeaderMenu({
 function WorkbookToolbar({
   isDark,
   onIsDarkChange,
-  onUploadClick,
   showNightRenderToggle,
-  showUploadButton = true,
   workbookIdentity,
 }: {
   isDark: boolean;
   onIsDarkChange: (checked: boolean) => void;
-  onUploadClick: () => void;
   showNightRenderToggle: boolean;
-  showUploadButton?: boolean;
   workbookIdentity: string;
 }) {
   const { canZoomIn, canZoomOut, setZoomScale, zoomIn, zoomOut, zoomScale } =
@@ -288,7 +298,6 @@ function WorkbookToolbar({
             <Select
               value={currentZoom.toString()}
               onValueChange={(value) => setZoomScale(Number(value))}
-              modal={false}
             >
               <SelectTrigger
                 size="sm"
@@ -299,7 +308,6 @@ function WorkbookToolbar({
               </SelectTrigger>
               <SelectContent
                 align="end"
-                alignItemWithTrigger={false}
                 className={XLSX_DROPDOWN_Z_INDEX_CLASS}
               >
                 {ZOOM_OPTIONS.map((value) => (
@@ -322,25 +330,6 @@ function WorkbookToolbar({
               </Button>
             </ToolbarTooltip>
           </div>
-          {showUploadButton ? (
-            <>
-              <Separator
-                orientation="vertical"
-                className="mx-1 h-4 self-center"
-              />
-              <ToolbarTooltip label="Upload XLSX">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label="Upload XLSX"
-                  onClick={onUploadClick}
-                >
-                  <HugeiconsIcon icon={Upload01Icon} className="size-4" />
-                </Button>
-              </ToolbarTooltip>
-            </>
-          ) : null}
         </div>
       </TooltipProvider>
     </div>
@@ -373,6 +362,7 @@ export function WorkbookSheetTabs({
 
   return (
     <WorkbookSheetTabsInner
+      key={workbookIdentity}
       activeSheetIndex={activeSheetIndex}
       onActiveSheetIndexChange={handleActiveSheetIndexChange}
       sheets={sheets}
@@ -408,7 +398,6 @@ const WorkbookSheetTabsInner = React.memo(function WorkbookSheetTabsInner({
   const closeTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(
     null
   );
-  const prevWorkbookIdentityRef = React.useRef(workbookIdentity);
 
   const clearOpenTimeout = React.useCallback(() => {
     if (openTimeoutRef.current) {
@@ -498,17 +487,6 @@ const WorkbookSheetTabsInner = React.memo(function WorkbookSheetTabsInner({
       clearCloseTimeout();
     };
   }, [clearCloseTimeout, clearOpenTimeout]);
-
-  if (prevWorkbookIdentityRef.current !== workbookIdentity) {
-    prevWorkbookIdentityRef.current = workbookIdentity;
-    if (openTimeoutRef.current) clearTimeout(openTimeoutRef.current);
-    if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
-    openTimeoutRef.current = null;
-    closeTimeoutRef.current = null;
-    setVisiblePreviewIndex(null);
-    setPreviewPosition({ left: 0, top: 0 });
-    setThumbnailUrls({});
-  }
 
   React.useEffect(() => {
     thumbnails.forEach((thumbnail) => {
@@ -629,23 +607,19 @@ export function XlsxWorkbookSurface({
   className,
   isDark,
   onIsDarkChange,
-  onUploadClick,
   renderTableHeaderMenu,
   rounded,
   showNightRenderToggle,
-  showUploadButton = true,
   workbookIdentity,
 }: {
   className?: string;
   isDark: boolean;
   onIsDarkChange: (checked: boolean) => void;
-  onUploadClick: () => void;
   renderTableHeaderMenu: (
     props: XlsxTableHeaderMenuRenderProps
   ) => React.ReactNode;
   rounded: boolean;
   showNightRenderToggle: boolean;
-  showUploadButton?: boolean;
   workbookIdentity: string;
 }) {
   const { error } = useXlsxViewer();
@@ -685,9 +659,7 @@ export function XlsxWorkbookSurface({
       <WorkbookToolbar
         isDark={isDark}
         onIsDarkChange={onIsDarkChange}
-        onUploadClick={onUploadClick}
         showNightRenderToggle={showNightRenderToggle}
-        showUploadButton={showUploadButton}
         workbookIdentity={workbookIdentity}
       />
       <div className="flex min-h-0 flex-1 flex-col">
@@ -768,32 +740,19 @@ function XlsxViewerContent({
   shouldRenderNightMode: boolean;
   url?: string;
 }) {
-  const fileInputRef = React.useRef<HTMLInputElement>(null);
-  const [uploadedWorkbook, setUploadedWorkbook] =
-    React.useState<UploadedWorkbook | null>(null);
-  const prevUrlRef = React.useRef(url);
-  if (prevUrlRef.current !== url) {
-    prevUrlRef.current = url;
-    if (url) setUploadedWorkbook(null);
-  }
-  const sourceFileName = React.useMemo(
-    () =>
-      url ? formatWorkbookName(fileName, url) : (fileName ?? "workbook.xlsx"),
+  const displayFileName = React.useMemo(
+    () => (url ? formatWorkbookName(fileName, url) : (fileName ?? "workbook.xlsx")),
     [fileName, url]
   );
-  const displayFileName = React.useMemo(
-    () => uploadedWorkbook?.fileName ?? sourceFileName,
-    [sourceFileName, uploadedWorkbook?.fileName]
-  );
   const workbookIdentity = React.useMemo(
-    () => uploadedWorkbook?.identity ?? `${url ?? "empty"}::${displayFileName}`,
-    [displayFileName, uploadedWorkbook?.identity, url]
+    () => `${url ?? "empty"}::${displayFileName}`,
+    [displayFileName, url]
   );
   const [workbookBuffer, setWorkbookBuffer] =
     React.useState<ArrayBuffer | null>(null);
   const [loadError, setLoadError] = React.useState<string>();
   const shouldShowLoadingSpinner = useDelayedLoadingIndicator(
-    !workbookBuffer && !loadError && !uploadedWorkbook,
+    !workbookBuffer && !loadError,
     XLSX_LOADING_INDICATOR_DELAY_MS
   );
 
@@ -836,26 +795,7 @@ function XlsxViewerContent({
     };
   }, [url]);
 
-  async function handleUpload(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-
-    if (!file) return;
-
-    const buffer = await file.arrayBuffer();
-    setLoadError(undefined);
-    setUploadedWorkbook({
-      buffer,
-      fileName: file.name,
-      identity: `${file.name}-${file.size}-${file.lastModified}`,
-    });
-  }
-
-  const activeBuffer = uploadedWorkbook?.buffer ?? workbookBuffer;
-  const activeFileName = uploadedWorkbook?.fileName ?? displayFileName;
-  const activeIdentity = workbookIdentity;
-
-  if (!url && !uploadedWorkbook) {
+  if (!url) {
     return (
       <div
         className={cn(
@@ -863,37 +803,19 @@ function XlsxViewerContent({
           className
         )}
       >
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
-          aria-label="Upload XLSX file"
-          className="hidden"
-          onChange={handleUpload}
-        />
         <div className="grid min-h-0 flex-1 place-items-center bg-muted/30 p-4">
           <div className="max-w-md rounded-lg border bg-background p-4 text-center text-sm shadow-xs">
-            <p className="font-medium">Upload a workbook to preview</p>
+            <p className="font-medium">No workbook to preview</p>
             <p className="mt-1 text-muted-foreground">
-              Pass an XLSX URL with the <code>src</code> prop or upload a file.
+              Pass an XLSX URL with the <code>src</code> prop.
             </p>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="mt-4"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <HugeiconsIcon icon={Upload01Icon} className="size-4" />
-              Upload XLSX
-            </Button>
           </div>
         </div>
       </div>
     );
   }
 
-  if (loadError && !activeBuffer) {
+  if (loadError && !workbookBuffer) {
     return (
       <div
         className={cn(
@@ -901,35 +823,17 @@ function XlsxViewerContent({
           className
         )}
       >
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
-          aria-label="Upload XLSX file"
-          className="hidden"
-          onChange={handleUpload}
-        />
         <div className="grid min-h-0 flex-1 place-items-center bg-muted/30 p-4">
           <div className="max-w-md rounded-lg border bg-background p-4 text-sm">
             <p className="font-medium">Unable to display workbook</p>
             <p className="mt-1 text-muted-foreground">{loadError}</p>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="mt-4"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <HugeiconsIcon icon={Upload01Icon} className="size-4" />
-              Upload XLSX
-            </Button>
           </div>
         </div>
       </div>
     );
   }
 
-  if (!activeBuffer) {
+  if (!workbookBuffer) {
     return (
       <div
         className={cn(
@@ -937,14 +841,6 @@ function XlsxViewerContent({
           className
         )}
       >
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
-          aria-label="Upload XLSX file"
-          className="hidden"
-          onChange={handleUpload}
-        />
         <ViewerLoadingSurface showSpinner={shouldShowLoadingSpinner} />
       </div>
     );
@@ -952,26 +848,17 @@ function XlsxViewerContent({
 
   return (
     <div className={cn("overflow-hidden", className)}>
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
-        aria-label="Upload XLSX file"
-        className="hidden"
-        onChange={handleUpload}
-      />
       <XlsxWorkbookLoadedViewer
-        fileName={activeFileName}
+        fileName={displayFileName}
         isDark={effectiveIsDark}
         onIsDarkChange={setNightRenderEnabled}
-        onUploadClick={() => fileInputRef.current?.click()}
         renderTableHeaderMenu={(props) => (
           <WorkbookTableHeaderMenu {...props} />
         )}
         rounded={rounded}
         showNightRenderToggle={shouldRenderNightMode}
-        workbookBuffer={activeBuffer}
-        workbookIdentity={activeIdentity}
+        workbookBuffer={workbookBuffer}
+        workbookIdentity={workbookIdentity}
       />
     </div>
   );
@@ -981,7 +868,6 @@ function XlsxWorkbookLoadedViewer({
   fileName,
   isDark,
   onIsDarkChange,
-  onUploadClick,
   renderTableHeaderMenu,
   rounded,
   showNightRenderToggle,
@@ -991,7 +877,6 @@ function XlsxWorkbookLoadedViewer({
   fileName: string;
   isDark: boolean;
   onIsDarkChange: (checked: boolean) => void;
-  onUploadClick: () => void;
   renderTableHeaderMenu: (
     props: XlsxTableHeaderMenuRenderProps
   ) => React.ReactNode;
@@ -1018,7 +903,6 @@ function XlsxWorkbookLoadedViewer({
       <XlsxWorkbookSurface
         isDark={isDark}
         onIsDarkChange={onIsDarkChange}
-        onUploadClick={onUploadClick}
         renderTableHeaderMenu={renderTableHeaderMenu}
         rounded={rounded}
         showNightRenderToggle={showNightRenderToggle}

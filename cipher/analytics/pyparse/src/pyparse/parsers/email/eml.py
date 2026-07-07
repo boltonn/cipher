@@ -32,7 +32,7 @@ from typing import Any
 import chardet
 from filetyper import FileTyper
 
-from cipher.schemas.email import EmailBase, EmailState, ParticipantDict, ParticipantType
+from cipher.schemas.email import EmailBase, EmailClient, EmailState, NamedParticipantDict
 from cipher.schemas.file import FileBase
 from pyparse.parsers.text.html import HtmlParser
 from pyparse.utils.io import get_encoding_families, map_unsupported_encoding, safe_open
@@ -130,24 +130,17 @@ class EmlParser:
         return "".join(decoded)
 
     def _decode_all_headers(self, msg: Message) -> dict[str, str]:
-        return {
-            key.lower(): self._decode_header_value(value)
-            for key, value in dict(msg.items()).items()
-        }
+        return {key.lower(): self._decode_header_value(value) for key, value in dict(msg.items()).items()}
 
-    def _get_addresses(self, msg: Message, header_field: str) -> list[ParticipantDict]:
+    def _get_addresses(self, msg: Message, header_field: str) -> list[NamedParticipantDict]:
         raw = msg.get_all(header_field, [])
-        results: list[ParticipantDict] = []
+        results: list[NamedParticipantDict] = []
         for name, addr in getaddresses(raw):
             try:
                 decoded_name = self._decode_header_value(name) or None
             except Exception:
                 decoded_name = None
-            results.append(
-                ParticipantDict(
-                    name=decoded_name, type=ParticipantType.EMAIL, value=re.sub(r"\s+", "", addr)
-                )
-            )
+            results.append(NamedParticipantDict(name=decoded_name, value=re.sub(r"\s+", "", addr)))
         return results
 
     @staticmethod
@@ -218,11 +211,7 @@ class EmlParser:
         if payload is None:
             return None
 
-        file_name = (
-            disposition_params.get("filename")
-            or self._resolve_filename(part, content_type)
-            or None
-        )
+        file_name = disposition_params.get("filename") or self._resolve_filename(part, content_type) or None
         ext = Path(file_name).suffix if file_name else None
         md5 = hashlib.md5(payload).hexdigest()
         sha256 = hashlib.sha256(payload).hexdigest()
@@ -358,14 +347,18 @@ class EmlParser:
             out["date_sent"] = self._parse_date(date_str)
 
         thread_keys = ["thread-index", "x-gm-thrid"]
-        out["conversation_id"] = next(
-            (headers[k] for k in thread_keys if headers.get(k) is not None), None
-        )
-        out["state"] = EmailState.from_folder(headers.get("x-folder"))
+        out["conversation_id"] = next((headers[k] for k in thread_keys if headers.get(k) is not None), None)
         out["message_id"] = headers.get("message-id", "").strip().strip("<>") or None
-        out["labels"] = [
-            v.strip() for v in headers.get("x-gmail-labels", "").split(",") if v.strip()
-        ]
+        out["labels"] = [v.strip() for v in headers.get("x-gmail-labels", "").split(",") if v.strip()]
+
+        client = EmailClient.detect(headers)
+        out["email_client"] = client
+        if client == EmailClient.GMAIL:
+            out["state"] = EmailState.from_gmail_labels(out["labels"])
+        elif client == EmailClient.OUTLOOK:
+            out["state"] = EmailState.from_folder(headers.get("x-folder"))
+        else:
+            out["state"] = None
 
         if return_raw_header:
             out["raw_header"] = headers

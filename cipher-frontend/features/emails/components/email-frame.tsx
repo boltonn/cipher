@@ -3,13 +3,11 @@
 //     https://opensource.org/licenses/Apache-2.0
 "use client";
 import DOMPurify from "dompurify";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 
 interface EmailIframeProps {
   body: string;
-  /** When true, iframe auto-sizes to content height instead of filling parent */
-  autoSize?: boolean;
 }
 
 interface CspViolation {
@@ -48,47 +46,33 @@ function notifyBlockedImages(violations: CspViolation[]) {
 }
 
 /**
- * Renders email HTML inside a sandboxed iframe.
+ * Renders email HTML inside a sandboxed iframe that fills its parent's
+ * height (the caller is expected to give it a sized container) and scrolls
+ * internally, rather than trying to measure and report its own content
+ * height back to the parent -- that required a postMessage round-trip
+ * from inside a cross-origin sandbox, which turned out to race badly
+ * against dialog-open transitions and container visibility changes.
  *
  * Security model:
  * - DOMPurify sanitises the HTML before injection.
  * - The iframe sandbox does NOT include `allow-same-origin`, so even if
  *   DOMPurify has a bypass the attacker's code runs in an opaque origin
  *   with no access to the parent page's cookies, DOM, or API.
- * - Because the iframe is cross-origin we cannot read `contentDocument`
- *   for auto-sizing. Instead, the injected HTML includes a tiny inline
- *   script that posts its body height to the parent via `postMessage`.
- *   The `allow-scripts` flag is required for this, but scripts inside
- *   the opaque-origin sandbox cannot access anything useful.
  * - A strict CSP meta tag blocks external resource loads inside the
  *   iframe as a defense-in-depth layer -- most commonly this blocks
  *   plain-http tracking pixels. Blocked-resource reports from the
  *   iframe's own `securitypolicyviolation` events are relayed to the
- *   parent via the same postMessage channel and surfaced as a toast,
- *   so images being blocked is visible rather than silent.
+ *   parent via `postMessage` and surfaced as a toast, so images being
+ *   blocked is visible rather than silent.
  */
-export default function EmailIframe({ body, autoSize }: EmailIframeProps) {
+export default function EmailIframe({ body }: EmailIframeProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const [height, setHeight] = useState(autoSize ? 100 : 0);
-
-  // Keep a ref to autoSize so the event handler never needs to re-register
-  const autoSizeRef = useRef(autoSize);
-  useLayoutEffect(() => { autoSizeRef.current = autoSize; });
 
   useEffect(() => {
     const handler = (event: MessageEvent) => {
       if (event.source !== iframeRef.current?.contentWindow) return;
       const data = event.data;
       if (!data || typeof data !== "object") return;
-
-      if (
-        autoSizeRef.current &&
-        data.__emailIframeHeight &&
-        typeof data.height === "number" &&
-        data.height > 0
-      ) {
-        setHeight(data.height);
-      }
 
       if (data.__emailIframeCspViolations && Array.isArray(data.violations)) {
         notifyBlockedImages(data.violations);
@@ -108,24 +92,6 @@ export default function EmailIframe({ body, autoSize }: EmailIframeProps) {
       ADD_ATTR: ["target"],
       FORCE_BODY: true,
     });
-
-    const padding = autoSize ? "0" : "24px";
-
-    // Height-reporting script: sends body.scrollHeight to the parent.
-    // Runs inside the opaque-origin sandbox so it has zero access to
-    // the parent page — it can only postMessage.
-    const heightScript = autoSize
-      ? `<script>
-				function reportHeight() {
-					var h = document.body.scrollHeight;
-					if (h > 0) parent.postMessage({ __emailIframeHeight: true, height: h }, "*");
-				}
-				reportHeight();
-				setTimeout(reportHeight, 50);
-				setTimeout(reportHeight, 150);
-				setTimeout(reportHeight, 400);
-			<\/script>`
-      : "";
 
     // Use srcdoc so the iframe is truly sandboxed (no same-origin access).
     // We can't use doc.write() because that requires allow-same-origin.
@@ -163,11 +129,10 @@ body {
 	line-height: 1.6;
 	color: #1a1a1a;
 	background: #ffffff;
-	padding: ${padding};
+	padding: 24px;
 	margin: 0;
 	word-wrap: break-word;
 	overflow-wrap: break-word;
-	${autoSize ? "overflow: hidden;" : ""}
 }
 [style*="position: fixed"], [style*="position:fixed"], [style*="position: absolute"], [style*="position:absolute"] {
 	position: relative !important;
@@ -194,15 +159,14 @@ h1, h2, h3 { margin: 8px 0 4px; }
 ul, ol { padding-left: 20px; margin: 4px 0; }
 </style>
 </head>
-<body>${cleanBody}${heightScript}</body>
+<body>${cleanBody}</body>
 </html>`;
-  }, [body, autoSize]);
+  }, [body]);
 
   return (
     <iframe
       ref={iframeRef}
-      className="block w-full border-0"
-      style={autoSize ? { height: `${height}px` } : { height: "100%" }}
+      className="block w-full border-0 h-full"
       sandbox="allow-scripts allow-popups allow-top-navigation-by-user-activation"
       title="Email content"
     />

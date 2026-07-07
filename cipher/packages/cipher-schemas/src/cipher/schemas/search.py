@@ -22,6 +22,7 @@ class TextChunk(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     dataset_id: str
     file_id: str
+    filetype: str = Field(description="Specific file type of the parent file, e.g. 'pdf', 'docx', 'eml'")
     chunk_index: int = Field(
         description="0-based position of this chunk within its parent's extracted text"
     )
@@ -33,7 +34,13 @@ class TextChunk(BaseModel):
     )
     text: str
     embedding: Annotated[
-        list[float], Field(description="Vector embedding of the chunk text")
+        list[float],
+        Field(
+            default_factory=list,
+            description="Vector embedding of the chunk text. Populated when indexing; "
+            "empty when read back, since the `text_chunks` index excludes it from "
+            "`_source` (large, and never needed by a caller that already has the chunk).",
+        ),
     ]
     tags: Annotated[
         list[str],
@@ -67,6 +74,7 @@ class ChunkFilters(BaseModel):
     filetype_group: Literal["document", "email"] | None = Field(
         default=None, description="Restrict to one filetype group; omit to search both"
     )
+    filetype: str | None = Field(default=None, description="Restrict to one specific filetype, e.g. 'pdf'")
 
 
 class BaseChunkSearchParameters(BaseModel):
@@ -85,10 +93,25 @@ class BaseChunkSearchParameters(BaseModel):
 
 
 class ChunkTextSearchRequest(BaseChunkSearchParameters):
-    """BM25 full-text search over chunk text."""
+    """BM25 full-text search over chunk text.
+
+    `min_similarity` is only meaningful for the semantic/hybrid endpoints
+    (which convert this same request body into a `ChunkSemanticSearchRequest`/
+    `ChunkHybridSearchRequest` server-side) -- BM25 scores aren't a bounded
+    similarity, so there's no equivalent cutoff for plain text search, and
+    the field is ignored there. Pagination for text search instead relies on
+    BM25 only ever matching chunks containing a query term, so it naturally
+    runs out on its own.
+    """
 
     query: str = Field(..., description="Text to search for")
     sort_by: ChunkSortField = Field(ChunkSortField.RELEVANCE)
+    min_similarity: float | None = Field(
+        None,
+        ge=0.0,
+        le=1.0,
+        description="Minimum similarity threshold for the semantic/hybrid endpoints; ignored for BM25 text search",
+    )
 
 
 class ChunkSemanticSearchRequest(BaseChunkSearchParameters):
@@ -97,7 +120,12 @@ class ChunkSemanticSearchRequest(BaseChunkSearchParameters):
     embedding: Annotated[list[float], Field(description="Query embedding vector")]
     num_candidates: int = Field(100, ge=10, le=10_000, description="ES kNN candidate pool size")
     min_similarity: float | None = Field(
-        None, ge=0.0, le=1.0, description="Minimum cosine similarity threshold (0 to 1)"
+        None,
+        ge=0.0,
+        le=1.0,
+        description="Minimum similarity threshold -- unlike BM25, kNN always returns its "
+        "requested candidate count regardless of relevance, so this is what gives semantic/"
+        "hybrid pagination a real stopping point once nothing left clears the bar",
     )
     sort_by: ChunkSortField = Field(ChunkSortField.SIMILARITY)
 

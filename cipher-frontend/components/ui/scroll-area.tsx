@@ -5,11 +5,19 @@ import { ScrollArea as ScrollAreaPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
 
+function setRef<T>(ref: React.Ref<T> | undefined, value: T) {
+  if (typeof ref === "function") ref(value)
+  else if (ref && typeof ref === "object")
+    (ref as React.MutableRefObject<T>).current = value
+}
+
 function ScrollArea({
   className,
   viewportClassName,
   viewportRef,
   scrollFade,
+  orientation = "vertical",
+  scrollbarGutter = false,
   children,
   ...props
 }: React.ComponentProps<typeof ScrollAreaPrimitive.Root> & {
@@ -19,7 +27,39 @@ function ScrollArea({
   viewportRef?: React.Ref<HTMLDivElement | null>
   /** Fades content near the scrollable edges instead of a hard clip. */
   scrollFade?: boolean
+  /** Which scrollbar(s) to render. @default "vertical" */
+  orientation?: "vertical" | "horizontal" | "both"
+  /**
+   * Marks the viewport with `data-has-overflow-x`/`data-has-overflow-y` once content
+   * actually overflows, so callers can reserve layout space for the scrollbar via a
+   * `has-[[data-slot=scroll-area-viewport][data-has-overflow-x]]:...` selector.
+   */
+  scrollbarGutter?: boolean
 }) {
+  const internalViewportRef = React.useRef<HTMLDivElement | null>(null)
+
+  React.useEffect(() => {
+    if (!scrollbarGutter) return
+    const viewport = internalViewportRef.current
+    if (!viewport) return
+
+    const updateOverflow = () => {
+      viewport.toggleAttribute(
+        "data-has-overflow-x",
+        viewport.scrollWidth > viewport.clientWidth
+      )
+      viewport.toggleAttribute(
+        "data-has-overflow-y",
+        viewport.scrollHeight > viewport.clientHeight
+      )
+    }
+
+    updateOverflow()
+    const observer = new ResizeObserver(updateOverflow)
+    observer.observe(viewport)
+    return () => observer.disconnect()
+  }, [scrollbarGutter, children])
+
   return (
     <ScrollAreaPrimitive.Root
       data-slot="scroll-area"
@@ -27,7 +67,10 @@ function ScrollArea({
       {...props}
     >
       <ScrollAreaPrimitive.Viewport
-        ref={viewportRef}
+        ref={(node) => {
+          internalViewportRef.current = node
+          setRef(viewportRef, node)
+        }}
         data-slot="scroll-area-viewport"
         className={cn(
           "size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1",
@@ -38,7 +81,12 @@ function ScrollArea({
       >
         {children}
       </ScrollAreaPrimitive.Viewport>
-      <ScrollBar />
+      {(orientation === "vertical" || orientation === "both") && (
+        <ScrollBar orientation="vertical" />
+      )}
+      {(orientation === "horizontal" || orientation === "both") && (
+        <ScrollBar orientation="horizontal" />
+      )}
       <ScrollAreaPrimitive.Corner />
     </ScrollAreaPrimitive.Root>
   )

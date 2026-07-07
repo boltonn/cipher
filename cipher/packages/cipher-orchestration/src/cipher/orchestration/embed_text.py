@@ -7,12 +7,23 @@ embedded directly -- no second split. Otherwise CLIR's `PlainTextChunker`
 splits the extracted text now, using the same `chunk_size` as
 extract_documents.py's xberg chunker so chunk boundaries don't drift
 depending on which chunker produced them.
+
+Chunking (CPU) and embedding (GPU) run as a producer/consumer pipeline
+(mirrors embed_images.py) rather than one file at a time end-to-end -- doing
+both stages inline per file serializes CPU tokenization and GPU inference,
+leaving the GPU idle while the next file tokenizes. The producer tokenizes
+files in a thread pool and feeds the consumer fixed-size span batches
+regardless of which file they came from, so a heavily-chunked file doesn't
+stall the GPU queue and a one-chunk email doesn't underfill a batch.
 """
 
-from typing import TYPE_CHECKING, Any
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
-import anyio
 from loguru import logger
+from sqlalchemy.ext.asyncio import AsyncSession
 from tqdm import tqdm
 
 from cipher.datastores.elasticsearch.repositories.text_chunk import ElasticsearchTextChunkRepository
@@ -24,18 +35,22 @@ from cipher.datastores.postgres.repositories import (
 from cipher.orchestration.extract_documents import DEFAULT_CHUNK_SIZE
 from cipher.schemas.document import DocumentMetadata, DocumentTextChunk
 from cipher.schemas.email import EmailMetadata, EmailTextChunk
-from cipher.schemas.enrichment import EnrichableType, EnrichmentType
+from cipher.schemas.enrichment import EnrichableType, EnrichmentBatchItem, EnrichmentType
 from cipher.schemas.extraction import ExtractedText
 from cipher.schemas.search import TextChunk
 
 if TYPE_CHECKING:
     from clir.models.pytorch import TextEmbeddingPytorchModel
     from clir.utils.text_chunk import PlainTextChunker
-    from sqlalchemy.ext.asyncio import AsyncSession
 
 # Both document and email files land here once their respective extraction
 # workflow (extract_emails.py / extract_documents.py) has completed.
 _TEXT_GROUPS = ("document", "email")
+
+# Tokenizing (CPU) is what the producer offloads here -- HF's fast (Rust)
+# tokenizers release the GIL during encode, so threads (not processes) give
+# real parallelism without the IPC cost of shipping large text blobs around.
+_EXECUTOR = ThreadPoolExecutor(max_workers=4)
 
 
 def _split_if_oversized(span: dict, chunker: "PlainTextChunker") -> list[dict]:
@@ -70,16 +85,23 @@ def _spans_for(extracted: ExtractedText, chunker: "PlainTextChunker") -> list[di
             for s in chunker.chunk(extracted.content)
         ]
     spans = [
-        {"content": s.content, "start_offset": s.start_offset, "end_offset": s.end_offset}
-        for s in extracted.prechunked
+        {"content": s.content, "start_offset": s.start_offset, "end_offset": s.end_offset} for s in extracted.prechunked
     ]
     return [sub for span in spans for sub in _split_if_oversized(span, chunker)]
 
 
-def _build_chunk(extracted: ExtractedText, dataset_id: str, span: dict, chunk_index: int, embedding: list[float]) -> TextChunk:
+def _build_chunk(
+    extracted: ExtractedText,
+    dataset_id: str,
+    filetype: str,
+    span: dict,
+    chunk_index: int,
+    embedding: list[float],
+) -> TextChunk:
     base = dict(
         dataset_id=dataset_id,
         file_id=extracted.file_id,
+        filetype=filetype,
         chunk_index=chunk_index,
         start_offset=span["start_offset"],
         end_offset=span["end_offset"],
@@ -95,34 +117,6 @@ def _build_chunk(extracted: ExtractedText, dataset_id: str, span: dict, chunk_in
     if isinstance(extracted.metadata, EmailMetadata):
         return EmailTextChunk(**base, **extracted.metadata.model_dump())
     raise ValueError(f"No document/email metadata to embed for file_id={extracted.file_id!r}")
-
-
-def _run_chunk_and_encode(
-    extracted: ExtractedText,
-    dataset_id: str,
-    chunker: "PlainTextChunker",
-    model: "TextEmbeddingPytorchModel",
-    embed_batch_size: int,
-) -> "list[Any]":
-    """CPU/GPU-bound worker: split (if needed) and embed one file's extracted text.
-
-    Encodes in sub-batches of `embed_batch_size` spans rather than one
-    `model.encode` call per file -- a heavily-chunked file (hundreds of
-    spans) would otherwise pad every span into a single tensor in one
-    forward pass, which is what was blowing out GPU memory even with each
-    individual chunk well within budget.
-    """
-    spans = _spans_for(extracted, chunker)
-    if not spans:
-        return []
-    embeddings = []
-    for i in range(0, len(spans), embed_batch_size):
-        batch = spans[i : i + embed_batch_size]
-        embeddings.extend(model.encode([s["content"] for s in batch], task="retrieval", is_query=False))
-    return [
-        _build_chunk(extracted, dataset_id, span, i, emb.tolist())
-        for i, (span, emb) in enumerate(zip(spans, embeddings, strict=True))
-    ]
 
 
 async def _find_embedded_duplicate(
@@ -176,7 +170,9 @@ async def dedupe_pending_text_embeddings(
             resolved = []
             for item in batch:
                 file_id, sha256 = item.resource["id"], item.resource["sha256"]
-                duplicate_chunks = await _find_embedded_duplicate(file_repo, es_repo, file_id, sha256)
+                duplicate_chunks = await _find_embedded_duplicate(
+                    file_repo=file_repo, es_repo=es_repo, file_id=file_id, sha256=sha256
+                )
                 if duplicate_chunks is None:
                     continue
 
@@ -186,11 +182,16 @@ async def dedupe_pending_text_embeddings(
 
                 new_chunks = [
                     _build_chunk(
-                        extracted,
-                        item.resource["dataset_id"],
-                        {"content": chunk.text, "start_offset": chunk.start_offset, "end_offset": chunk.end_offset},
-                        chunk.chunk_index,
-                        chunk.embedding,
+                        extracted=extracted,
+                        dataset_id=item.resource["dataset_id"],
+                        filetype=item.resource["filetype"],
+                        span={
+                            "content": chunk.text,
+                            "start_offset": chunk.start_offset,
+                            "end_offset": chunk.end_offset,
+                        },
+                        chunk_index=chunk.chunk_index,
+                        embedding=chunk.embedding,
                     )
                     for chunk in sorted(duplicate_chunks, key=lambda c: c.chunk_index)
                 ]
@@ -230,6 +231,168 @@ async def queue_text_embedding_enrichments(session: "AsyncSession", dataset_id: 
     return total
 
 
+@dataclass
+class _PendingFile:
+    """Tracks one file's spans as they trickle back embedded, possibly out of batch order."""
+
+    item: EnrichmentBatchItem
+    extracted: ExtractedText
+    total: int
+    seen: int = 0
+    failed: bool = False
+    chunks: list[TextChunk] = field(default_factory=list)
+
+
+async def _producer(
+    queue: "asyncio.Queue",
+    session: "AsyncSession",
+    chunker: "PlainTextChunker",
+    dataset_id: str,
+    group: str,
+    batch_size: int,
+    embed_batch_size: int,
+    stats: dict,
+    pbar: tqdm,
+) -> None:
+    """Producer: pull pending files, tokenize/chunk them (CPU), and feed batches.
+
+    Feeds the consumer fixed-size span batches regardless of which file each
+    span came from, so the GPU always gets a full batch even when file chunk
+    counts vary wildly (a one-chunk email next to a thousand-chunk document).
+    """
+    enrichment_repo = PostgresEnrichmentRepository(session=session)
+    extracted_text_repo = PostgresExtractedTextRepository(session=session)
+    loop = asyncio.get_event_loop()
+
+    pending_spans: list[tuple[_PendingFile, dict, int]] = []
+
+    while True:
+        batch = await enrichment_repo.get_pending_batch(
+            enrichment_type=EnrichmentType.TEXT_EMBEDDING,
+            enrichable_type=EnrichableType.FILE,
+            batch_size=batch_size,
+            dataset_id=dataset_id,
+            filetype_group_filter=group,
+        )
+        if not batch:
+            break
+
+        await enrichment_repo.mark_processing(enrichment_ids=[item.enrichment.id for item in batch])
+        await session.commit()
+
+        for item in batch:
+            extracted = await extracted_text_repo.get_by_file_id(item.resource["id"])
+            if extracted is None:
+                logger.error(f"No extracted text yet for file {item.resource['id']}")
+                await enrichment_repo.mark_failed_batch([item.enrichment.id], increment_retry=True)
+                await session.commit()
+                stats["failed"] += 1
+                pbar.update(1)
+                continue
+
+            try:
+                spans = await loop.run_in_executor(_EXECUTOR, _spans_for, extracted, chunker)
+            except Exception as e:
+                logger.error(f"Chunking failed for file {item.resource['id']}: {e}")
+                await enrichment_repo.mark_failed_batch([item.enrichment.id], increment_retry=True)
+                await session.commit()
+                stats["failed"] += 1
+                pbar.update(1)
+                continue
+
+            if not spans:
+                await enrichment_repo.mark_completed_batch([item.enrichment.id])
+                await session.commit()
+                stats["files"] += 1
+                pbar.update(1)
+                continue
+
+            file_ctx = _PendingFile(item=item, extracted=extracted, total=len(spans))
+            for i, span in enumerate(spans):
+                pending_spans.append((file_ctx, span, i))
+                if len(pending_spans) >= embed_batch_size:
+                    await queue.put(pending_spans)
+                    pending_spans = []
+
+    if pending_spans:
+        await queue.put(pending_spans)
+    await queue.put(None)
+
+
+async def _consumer(
+    queue: "asyncio.Queue",
+    session: "AsyncSession",
+    model: "TextEmbeddingPytorchModel",
+    es_repo: ElasticsearchTextChunkRepository,
+    commit_batch_size: int,
+    stats: dict,
+    pbar: tqdm,
+) -> None:
+    """Consumer: run GPU inference on span batches and persist completed files."""
+    enrichment_repo = PostgresEnrichmentRepository(session=session)
+    ready: list[_PendingFile] = []
+    failed: list[_PendingFile] = []
+
+    async def _flush() -> None:
+        if not ready and not failed:
+            return
+        chunks = [c for f in ready for c in f.chunks]
+        for f in ready:
+            await es_repo.delete_by_file_id(f.item.resource["id"])
+        if chunks:
+            await es_repo.bulk_index(chunks, show_progress=False)
+        if ready:
+            await enrichment_repo.mark_completed_batch([f.item.enrichment.id for f in ready])
+        if failed:
+            await enrichment_repo.mark_failed_batch([f.item.enrichment.id for f in failed], increment_retry=True)
+        await session.commit()
+
+        stats["files"] += len(ready)
+        stats["failed"] += len(failed)
+        stats["chunks"] += len(chunks)
+        pbar.set_postfix(chunks=stats["chunks"], failed=stats["failed"])
+        pbar.update(len(ready) + len(failed))
+        ready.clear()
+        failed.clear()
+
+    while True:
+        work = await queue.get()
+        if work is None:
+            queue.task_done()
+            break
+
+        contents = [span["content"] for _, span, _ in work]
+        embeddings = await asyncio.to_thread(model.encode, contents, task="retrieval", is_query=False)
+
+        for (file_ctx, span, idx), emb in zip(work, embeddings, strict=True):
+            if file_ctx.failed:
+                continue
+            try:
+                chunk = _build_chunk(
+                    extracted=file_ctx.extracted,
+                    dataset_id=file_ctx.item.resource["dataset_id"],
+                    filetype=file_ctx.item.resource["filetype"],
+                    span=span,
+                    chunk_index=idx,
+                    embedding=emb.tolist(),
+                )
+                file_ctx.chunks.append(chunk)
+            except Exception as e:
+                logger.error(f"Embedding failed for file {file_ctx.item.resource['id']}: {e}")
+                file_ctx.failed = True
+
+            file_ctx.seen += 1
+            if file_ctx.seen == file_ctx.total:
+                (failed if file_ctx.failed else ready).append(file_ctx)
+
+        if len(ready) + len(failed) >= commit_batch_size:
+            await _flush()
+
+        queue.task_done()
+
+    await _flush()
+
+
 async def embed_text_workflow(
     session: "AsyncSession",
     dataset_id: str,
@@ -240,8 +403,13 @@ async def embed_text_workflow(
     min_chunk_tokens: int = 0,
     batch_size: int = 20,
     embed_batch_size: int = 32,
+    commit_batch_size: int = 20,
 ) -> int:
     """Chunk (if needed) and embed a dataset's extracted text into the unified ES index.
+
+    Runs documents and emails as separate producer/consumer pipelines (each
+    with its own progress bar) so CPU tokenization and GPU embedding overlap
+    within a group instead of serializing per file.
 
     Returns the number of files embedded (not the number of chunks).
     """
@@ -269,75 +437,63 @@ async def embed_text_workflow(
     await queue_text_embedding_enrichments(session=session, dataset_id=dataset_id)
     await dedupe_pending_text_embeddings(session=session, es_repo=es_repo, dataset_id=dataset_id)
 
-    extracted_text_repo = PostgresExtractedTextRepository(session=session)
     chunker = PlainTextChunker(
         tokenizer=model.tokenizer, chunk_size=chunk_size, chunk_overlap=chunk_overlap, min_chunk_tokens=min_chunk_tokens
     )
 
-    total = 0
+    engine = session.bind
+    total_count = total_failed = total_chunks = 0
+
     for group in _TEXT_GROUPS:
-        total += await enrichment_repo.count_pending(
+        pending = await enrichment_repo.count_pending(
             enrichment_type=EnrichmentType.TEXT_EMBEDDING,
             enrichable_type=EnrichableType.FILE,
             dataset_id=dataset_id,
             filetype_group_filter=group,
         )
-    count = failed_count = chunk_count = 0
+        if not pending:
+            continue
 
-    with tqdm(total=total, desc="Embedding text", unit="file") as pbar:
-        for group in _TEXT_GROUPS:
-            while True:
-                batch = await enrichment_repo.get_pending_batch(
-                    enrichment_type=EnrichmentType.TEXT_EMBEDDING,
-                    enrichable_type=EnrichableType.FILE,
-                    batch_size=batch_size,
-                    dataset_id=dataset_id,
-                    filetype_group_filter=group,
-                )
-                if not batch:
-                    break
+        stats = {"files": 0, "failed": 0, "chunks": 0}
+        queue: asyncio.Queue = asyncio.Queue(maxsize=4)
 
-                await enrichment_repo.mark_processing(enrichment_ids=[item.enrichment.id for item in batch])
-                await session.commit()
+        # _producer and _consumer run concurrently via gather, so each needs
+        # its own AsyncSession -- a single session isn't safe for concurrent
+        # use and will corrupt its transaction state under interleaved
+        # commits/queries (see embed_images.py).
+        with tqdm(total=pending, desc=f"Embedding {group}s", unit=" file") as pbar:
+            async with AsyncSession(engine, expire_on_commit=False) as producer_session:
+                async with AsyncSession(engine, expire_on_commit=False) as consumer_session:
+                    await asyncio.gather(
+                        _producer(
+                            queue=queue,
+                            session=producer_session,
+                            chunker=chunker,
+                            dataset_id=dataset_id,
+                            group=group,
+                            batch_size=batch_size,
+                            embed_batch_size=embed_batch_size,
+                            stats=stats,
+                            pbar=pbar,
+                        ),
+                        _consumer(
+                            queue=queue,
+                            session=consumer_session,
+                            model=model,
+                            es_repo=es_repo,
+                            commit_batch_size=commit_batch_size,
+                            stats=stats,
+                            pbar=pbar,
+                        ),
+                    )
 
-                completed, failed = [], []
-                all_chunks: list[TextChunk] = []
-                for item in batch:
-                    try:
-                        extracted = await extracted_text_repo.get_by_file_id(item.resource["id"])
-                        if extracted is None:
-                            raise ValueError("No extracted text yet for this file")
+        logger.success(f"Embedded {stats['files']} {group}s into {stats['chunks']} chunks ({stats['failed']} failed)")
+        total_count += stats["files"]
+        total_failed += stats["failed"]
+        total_chunks += stats["chunks"]
 
-                        chunks = await anyio.to_thread.run_sync(
-                            _run_chunk_and_encode, extracted, item.resource["dataset_id"], chunker, model, embed_batch_size
-                        )
-                        all_chunks.extend(chunks)
-                        completed.append(item.enrichment.id)
-                    except Exception as e:
-                        logger.error(f"Embedding failed for file {item.resource['id']}: {e}")
-                        failed.append(item.enrichment.id)
-
-                if all_chunks:
-                    # Re-embedding a file replaces its prior chunks rather than
-                    # appending duplicates alongside them.
-                    for file_id in {c.file_id for c in all_chunks}:
-                        await es_repo.delete_by_file_id(file_id)
-                    await es_repo.bulk_index(all_chunks, show_progress=False)
-
-                if completed:
-                    await enrichment_repo.mark_completed_batch(completed)
-                if failed:
-                    await enrichment_repo.mark_failed_batch(failed, increment_retry=True)
-                await session.commit()
-
-                count += len(completed)
-                failed_count += len(failed)
-                chunk_count += len(all_chunks)
-                pbar.set_postfix(chunks=chunk_count, failed=failed_count)
-                pbar.update(len(completed) + len(failed))
-
-    logger.success(f"Embedded text for {count} files into {chunk_count} chunks ({failed_count} failed)")
-    return count
+    logger.success(f"Embedded text for {total_count} files into {total_chunks} chunks ({total_failed} failed)")
+    return total_count
 
 
 async def get_text_embedding_stats(session: "AsyncSession", dataset_id: str | None = None) -> dict:

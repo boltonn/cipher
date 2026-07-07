@@ -12,11 +12,17 @@ class HashType(StrEnum):
 
 def compute_hash(path: Path, algorithm: HashType, chunk_size: int = 65536) -> str:
     """Compute the hash of a file using the specified algorithm."""
-    hash_func = hashlib.new(algorithm)
+    return compute_hashes(path, [algorithm], chunk_size=chunk_size)[algorithm]
+
+
+def compute_hashes(path: Path, algorithms: list[HashType], chunk_size: int = 65536) -> dict[HashType, str]:
+    """Compute multiple hashes of a file in a single read pass."""
+    hash_funcs = {algorithm: hashlib.new(algorithm) for algorithm in algorithms}
     with path.open("rb") as f:
         while chunk := f.read(chunk_size):
-            hash_func.update(chunk)
-    return hash_func.hexdigest()
+            for hash_func in hash_funcs.values():
+                hash_func.update(chunk)
+    return {algorithm: hash_func.hexdigest() for algorithm, hash_func in hash_funcs.items()}
 
 
 def convert_st_time_to_datetime(st_time: float) -> datetime:

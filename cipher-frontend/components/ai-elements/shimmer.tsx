@@ -22,7 +22,10 @@ const ShimmerComponent = ({
   duration = 2,
   spread = 2,
 }: TextShimmerProps) => {
-  const MotionComponent = (m as Record<string, React.ComponentType<MotionHTMLProps>>)[Component as string] ?? m.p;
+  const MotionComponent =
+    (m as unknown as Record<string, React.ComponentType<MotionHTMLProps>>)[
+      Component as string
+    ] ?? m.p;
 
   const dynamicSpread = useMemo(
     () => (children?.length ?? 0) * spread,

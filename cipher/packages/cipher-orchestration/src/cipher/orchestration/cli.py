@@ -16,7 +16,7 @@ import typer
 from loguru import logger
 
 from cipher.datastores.postgres.repositories import PostgresDatasetRepository, PostgresEnrichmentRepository
-from cipher.orchestration.benchmark import benchmark_storage
+from cipher.orchestration.benchmark import benchmark_ingest, benchmark_storage
 from cipher.orchestration.detect_faces import (
     detect_faces_workflow,
     get_face_detection_stats,
@@ -166,6 +166,17 @@ def extract_text_cmd(
         Path | None,
         typer.Option(help="Local tokenizer directory for chunker=kreuzberg with token-based sizing (same dir as the embedding model)"),
     ] = None,
+    attachments_dir: Annotated[
+        Path | None,
+        typer.Option(
+            help="Root directory for extracted email attachments, grouped by file ID. "
+            "Default writes a '<stem>_attachments' directory next to each source email instead."
+        ),
+    ] = None,
+    max_concurrent_extractions: Annotated[
+        int | None,
+        typer.Option(help="Cap xberg's internal batch parallelism -- default is xberg's own num_cpus*2"),
+    ] = None,
 ):
     """Extract text (and structure) from a dataset's eligible files.
 
@@ -180,7 +191,9 @@ def extract_text_cmd(
     async def _run():
         async with get_session_context() as session:
             resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
-            email_count = await extract_emails_workflow(session=session, dataset_id=resolved_id)
+            email_count = await extract_emails_workflow(
+                session=session, dataset_id=resolved_id, attachments_dir=attachments_dir
+            )
             logger.success(f"Extracted text for {email_count} emails")
             doc_count = await extract_documents_workflow(
                 session=session,
@@ -188,6 +201,7 @@ def extract_text_cmd(
                 chunker=chunker,
                 tokenizer_model_dir=model_dir,
                 chunk_size=chunk_size,
+                max_concurrent_extractions=max_concurrent_extractions,
             )
             logger.success(f"Extracted text for {doc_count} document files")
 
@@ -344,6 +358,49 @@ def benchmark_storage_cmd(
                 session=session, n=n, content_chars=content_chars, n_tables=tables_per_row, cleanup=not keep
             )
             typer.echo(json.dumps(result, indent=2))
+
+    asyncio.run(_run())
+
+
+@app.command("benchmark-ingest")
+def benchmark_ingest_cmd(
+    directory: Annotated[Path, typer.Argument(exists=True, file_okay=False, help="Directory of files to ingest")],
+    limit: Annotated[int | None, typer.Option(help="Max number of files to load")] = None,
+    skip_emails: Annotated[bool, typer.Option(help="Skip the extract-emails stage")] = False,
+    skip_documents: Annotated[bool, typer.Option(help="Skip the extract-documents stage")] = False,
+    keep: Annotated[bool, typer.Option(help="Keep the benchmark dataset instead of deleting it after")] = False,
+    report: Annotated[Path | None, typer.Option(help="Write the full JSON result to this path")] = None,
+):
+    """Benchmark real ingest throughput (filetyping, email/document extraction) over a local directory.
+
+    Times the actual `load-files` / `extract-text` workflow functions
+    end-to-end against a disposable dataset, rather than a synthetic
+    workload -- so it reflects real filetyping/hashing/DB-write cost, and
+    any pipeline optimization shows up here automatically. Use it to get a
+    baseline before a change and compare after:
+
+        uv run cipher benchmark-ingest ~/data/large-dir --report baseline.json
+        # ...apply a change...
+        uv run cipher benchmark-ingest ~/data/large-dir --report after.json
+    """
+    from filetyper.models.main import FileTyper
+
+    async def _run():
+        file_typer = FileTyper()
+        async with get_session_context() as session:
+            result = await benchmark_ingest(
+                session=session,
+                directory=directory,
+                file_analyzer=file_typer.generate_from_local_path,
+                limit=limit,
+                skip_emails=skip_emails,
+                skip_documents=skip_documents,
+                cleanup=not keep,
+            )
+            typer.echo(json.dumps(result, indent=2))
+            if report is not None:
+                report.write_text(json.dumps(result, indent=2))
+                typer.echo(f"\nWrote report to {report}")
 
     asyncio.run(_run())
 
