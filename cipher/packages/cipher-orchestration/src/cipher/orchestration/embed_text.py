@@ -19,6 +19,7 @@ stall the GPU queue and a one-chunk email doesn't underfill a batch.
 
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -34,7 +35,7 @@ from cipher.datastores.postgres.repositories import (
 )
 from cipher.orchestration.extract_documents import DEFAULT_CHUNK_SIZE
 from cipher.schemas.document import DocumentMetadata, DocumentTextChunk
-from cipher.schemas.email import EmailMetadata, EmailTextChunk
+from cipher.schemas.email import EmailMetadata, EmailState, EmailTextChunk
 from cipher.schemas.enrichment import EnrichableType, EnrichmentBatchItem, EnrichmentType
 from cipher.schemas.extraction import ExtractedText
 from cipher.schemas.search import TextChunk
@@ -51,6 +52,27 @@ _TEXT_GROUPS = ("document", "email")
 # tokenizers release the GIL during encode, so threads (not processes) give
 # real parallelism without the IPC cost of shipping large text blobs around.
 _EXECUTOR = ThreadPoolExecutor(max_workers=4)
+
+# Spam contributes noise chunks to the search index without triage value --
+# skipped by default, overridable per run (embed-text --skip-email-state).
+DEFAULT_SKIP_EMAIL_STATES = frozenset({EmailState.SPAM})
+
+
+def _skip_email_state(extracted: ExtractedText, skip_email_states: frozenset[EmailState]) -> bool:
+    return isinstance(extracted.metadata, EmailMetadata) and extracted.metadata.state in skip_email_states
+
+
+def _truncate_to_pages(extracted: ExtractedText, max_pages: int | None) -> str:
+    """Approximate a page cap for content with no per-span page info.
+
+    CLIR-chunked documents only know their total `page_count`, not where page
+    boundaries fall in the extracted text, so the cap is applied as a
+    proportional character truncation rather than an exact page cut.
+    """
+    page_count = getattr(extracted.metadata, "page_count", None)
+    if max_pages is None or not page_count or page_count <= max_pages:
+        return extracted.content
+    return extracted.content[: (len(extracted.content) * max_pages) // page_count]
 
 
 def _split_if_oversized(span: dict, chunker: "PlainTextChunker") -> list[dict]:
@@ -77,15 +99,22 @@ def _split_if_oversized(span: dict, chunker: "PlainTextChunker") -> list[dict]:
     ]
 
 
-def _spans_for(extracted: ExtractedText, chunker: "PlainTextChunker") -> list[dict]:
-    """Chunk boundaries either from xberg's own chunker (prechunked) or CLIR's now."""
+def _spans_for(extracted: ExtractedText, chunker: "PlainTextChunker", max_pages: int | None = None) -> list[dict]:
+    """Chunk boundaries either from xberg's own chunker (prechunked) or CLIR's now.
+
+    `max_pages` caps how much of a long document gets embedded: prechunked
+    spans carry real page numbers and are dropped past the cap; CLIR-chunked
+    content falls back to `_truncate_to_pages`'s proportional cut.
+    """
     if not extracted.prechunked:
         return [
             {"content": s.content, "start_offset": s.start_offset, "end_offset": s.end_offset}
-            for s in chunker.chunk(extracted.content)
+            for s in chunker.chunk(_truncate_to_pages(extracted, max_pages))
         ]
     spans = [
-        {"content": s.content, "start_offset": s.start_offset, "end_offset": s.end_offset} for s in extracted.prechunked
+        {"content": s.content, "start_offset": s.start_offset, "end_offset": s.end_offset}
+        for s in extracted.prechunked
+        if max_pages is None or s.first_page is None or s.first_page <= max_pages
     ]
     return [sub for span in spans for sub in _split_if_oversized(span, chunker)]
 
@@ -140,6 +169,7 @@ async def dedupe_pending_text_embeddings(
     es_repo: ElasticsearchTextChunkRepository,
     dataset_id: str | None = None,
     batch_size: int = 100,
+    skip_email_states: frozenset[EmailState] = DEFAULT_SKIP_EMAIL_STATES,
 ) -> int:
     """Resolve pending text embeddings whose content has already been embedded elsewhere.
 
@@ -177,7 +207,9 @@ async def dedupe_pending_text_embeddings(
                     continue
 
                 extracted = await extracted_text_repo.get_by_file_id(file_id)
-                if extracted is None:
+                if extracted is None or _skip_email_state(extracted, skip_email_states):
+                    # Skipped states are left pending for the producer, which
+                    # marks them completed without indexing any chunks.
                     continue
 
                 new_chunks = [
@@ -251,6 +283,8 @@ async def _producer(
     group: str,
     batch_size: int,
     embed_batch_size: int,
+    max_pages: int | None,
+    skip_email_states: frozenset[EmailState],
     stats: dict,
     pbar: tqdm,
 ) -> None:
@@ -290,8 +324,15 @@ async def _producer(
                 pbar.update(1)
                 continue
 
+            if _skip_email_state(extracted, skip_email_states):
+                await enrichment_repo.mark_completed_batch([item.enrichment.id])
+                await session.commit()
+                stats["skipped"] += 1
+                pbar.update(1)
+                continue
+
             try:
-                spans = await loop.run_in_executor(_EXECUTOR, _spans_for, extracted, chunker)
+                spans = await loop.run_in_executor(_EXECUTOR, _spans_for, extracted, chunker, max_pages)
             except Exception as e:
                 logger.error(f"Chunking failed for file {item.resource['id']}: {e}")
                 await enrichment_repo.mark_failed_batch([item.enrichment.id], increment_retry=True)
@@ -404,12 +445,18 @@ async def embed_text_workflow(
     batch_size: int = 20,
     embed_batch_size: int = 32,
     commit_batch_size: int = 20,
+    max_pages: int | None = None,
+    skip_email_states: frozenset[EmailState] = DEFAULT_SKIP_EMAIL_STATES,
 ) -> int:
     """Chunk (if needed) and embed a dataset's extracted text into the unified ES index.
 
     Runs documents and emails as separate producer/consumer pipelines (each
     with its own progress bar) so CPU tokenization and GPU embedding overlap
     within a group instead of serializing per file.
+
+    `max_pages` caps how much of a long document gets embedded (see
+    `_spans_for`); `skip_email_states` drops whole emails (spam by default)
+    from the index. Both exist to keep chunk counts sane on large corpora.
 
     Returns the number of files embedded (not the number of chunks).
     """
@@ -435,10 +482,19 @@ async def embed_text_workflow(
         )
 
     await queue_text_embedding_enrichments(session=session, dataset_id=dataset_id)
-    await dedupe_pending_text_embeddings(session=session, es_repo=es_repo, dataset_id=dataset_id)
+    await dedupe_pending_text_embeddings(
+        session=session, es_repo=es_repo, dataset_id=dataset_id, skip_email_states=skip_email_states
+    )
 
+    # The chunker needs its own tokenizer instance: a fast (Rust) tokenizer is
+    # a single mutably-borrowed object, and the consumer's model.encode()
+    # re-borrows model.tokenizer (to set truncation/padding) concurrently with
+    # the producer's chunking thread -- sharing one raises "Already borrowed".
     chunker = PlainTextChunker(
-        tokenizer=model.tokenizer, chunk_size=chunk_size, chunk_overlap=chunk_overlap, min_chunk_tokens=min_chunk_tokens
+        tokenizer=deepcopy(model.tokenizer),
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        min_chunk_tokens=min_chunk_tokens,
     )
 
     engine = session.bind
@@ -454,7 +510,7 @@ async def embed_text_workflow(
         if not pending:
             continue
 
-        stats = {"files": 0, "failed": 0, "chunks": 0}
+        stats = {"files": 0, "failed": 0, "chunks": 0, "skipped": 0}
         queue: asyncio.Queue = asyncio.Queue(maxsize=4)
 
         # _producer and _consumer run concurrently via gather, so each needs
@@ -473,6 +529,8 @@ async def embed_text_workflow(
                             group=group,
                             batch_size=batch_size,
                             embed_batch_size=embed_batch_size,
+                            max_pages=max_pages,
+                            skip_email_states=skip_email_states,
                             stats=stats,
                             pbar=pbar,
                         ),
@@ -487,7 +545,10 @@ async def embed_text_workflow(
                         ),
                     )
 
-        logger.success(f"Embedded {stats['files']} {group}s into {stats['chunks']} chunks ({stats['failed']} failed)")
+        logger.success(
+            f"Embedded {stats['files']} {group}s into {stats['chunks']} chunks "
+            f"({stats['failed']} failed, {stats['skipped']} skipped by state)"
+        )
         total_count += stats["files"]
         total_failed += stats["failed"]
         total_chunks += stats["chunks"]

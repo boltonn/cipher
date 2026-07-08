@@ -3,6 +3,7 @@
 import { HighlightedText } from "@/components/ui/highlighted-text";
 import { cn } from "@/lib/utils";
 import { FileText, Mail, Target } from "lucide-react";
+import { matchTerms, snippetAround } from "../highlight";
 import type { SearchChunk, SearchMode } from "../types";
 
 interface ChunkResultRowProps {
@@ -24,13 +25,14 @@ export function ChunkResultRow({
   showFilename = true,
 }: ChunkResultRowProps) {
   const Icon = chunk.filetypeGroup === "email" ? Mail : FileText;
+  const terms = matchTerms(chunk, query);
 
   return (
     <button
       type="button"
       onClick={onClick}
       className={cn(
-        "group relative w-full cursor-pointer border-b border-slate-800/50 p-4 text-left transition-all",
+        "group relative w-full cursor-pointer border-b border-white/5 p-4 text-left transition-all",
         isSelected
           ? "border-l-4 border-l-indigo-500 bg-indigo-500/10 shadow-[inset_0_0_20px_rgba(79,70,229,0.05)]"
           : "border-l-4 border-l-transparent hover:bg-slate-800/30"
@@ -42,8 +44,8 @@ export function ChunkResultRow({
           <span className="truncate">{chunk.displayName}</span>
         </div>
       )}
-      <p className={cn("mb-2 line-clamp-2 text-sm", isSelected ? "text-slate-100" : "text-slate-400")}>
-        <HighlightedText text={chunk.text} query={query ?? undefined} />
+      <p className={cn("mb-2 line-clamp-3 text-sm", isSelected ? "text-slate-100" : "text-slate-400")}>
+        <HighlightedText text={snippetAround(chunk.text, terms)} terms={terms} />
       </p>
       <div className="flex flex-wrap items-center gap-1.5">
         {(searchMode === "semantic" || searchMode === "hybrid") && (

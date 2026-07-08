@@ -42,16 +42,12 @@ class MagicNumberFilterTyper:
         # 2. Pre-map Extensions for O(1) lookup
         # We flatten the list of extensions so each one is a key
         self._extension_map = {
-            ext.lower(): self._build_info(item)
-            for item in full_registry
-            for ext in (item.get("extensions") or [])
+            ext.lower(): self._build_info(item) for item in full_registry for ext in (item.get("extensions") or [])
         }
 
         # 3. Pre-map MIME types
         self._mime_type_map = {
-            item["mime_type"]: self._build_info(item)
-            for item in full_registry
-            if item.get("mime_type")
+            item["mime_type"]: self._build_info(item) for item in full_registry if item.get("mime_type")
         }
 
     @property
@@ -96,7 +92,7 @@ class MagicNumberFilterTyper:
 
         # 2. Try Extension Matching (Fallback)
         # O(1) lookup in our pre-compiled map
-        logger.debug(f"Falling back to extension matching for {path.name}")
+        # logger.debug(f"Falling back to extension matching for {path.name}")
         return self.match_extension(path.suffix)
 
     def _disambiguate_ooxml(self, path: Path) -> FileTypeInfo | None:

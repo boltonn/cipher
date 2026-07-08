@@ -15,6 +15,7 @@ export interface SearchFilters {
   datasetId?: string;
   fileId?: string;
   tags?: string[];
+  filetypeGroup?: SearchFiletypeGroup;
   filetype?: string;
 }
 
@@ -45,6 +46,8 @@ interface TextChunkRawBase {
   dateCreated: string;
   title?: string;
   score: number;
+  /** Matched words/phrases from Elasticsearch highlighting; empty for pure kNN (semantic) results. */
+  highlights?: string[];
 }
 
 export interface DocumentTextChunkRaw extends TextChunkRawBase {
@@ -78,6 +81,8 @@ export interface SearchChunk {
   score: number;
   tags: string[];
   dateCreated: string;
+  /** Matched words/phrases from Elasticsearch highlighting; empty for pure kNN (semantic) results. */
+  highlights: string[];
 }
 
 export interface GroupedFileResult {

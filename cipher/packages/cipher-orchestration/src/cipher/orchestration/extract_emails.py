@@ -93,6 +93,7 @@ async def _extract_email(
     from functools import partial
 
     from pyparse.parsers.email import parse_email
+    from pyparse.parsers.text import HtmlParser
 
     data = await anyio.to_thread.run_sync(fetch_bytes_from_uri, file_resource["uri"])
 
@@ -113,9 +114,16 @@ async def _extract_email(
                 eligible_attachment_groups=eligible_attachment_groups,
             )
 
+    # The HTML body, stripped to plain text, is the preferred content: it's
+    # usually the richer/authoritative part (multipart emails often carry a
+    # degraded text/plain sibling), and persisting raw markup would waste the
+    # embedding token budget and pollute search results with tags. The plain
+    # part is only a fallback for emails with no HTML body at all.
+    content = (HtmlParser.to_text(email.html) if email.html else "") or email.plain or ""
+
     return ExtractedTextCreate(
         file_id=file_resource["id"],
-        content=email.plain or email.html or "",
+        content=content,
         content_format=ExtractionContentFormat.PLAIN,
         extractor=TextExtractor.PYPARSE,
         metadata=email.metadata,

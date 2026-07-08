@@ -6,6 +6,8 @@ separate indices. A hit is validated back into `ScoredDocumentTextChunk` or
 `ScoredEmailTextChunk` by its `filetype_group` field.
 """
 
+import re
+
 from elastic_transport import ObjectApiResponse
 from loguru import logger
 from tqdm import tqdm
@@ -74,11 +76,27 @@ def _knn_clause(
     return knn
 
 
+# The `text`/`title` highlight clause both BM25-backed searches attach --
+# fragments come back with the matched terms wrapped in these tags, which
+# `_matched_terms` then extracts so callers get bare words/phrases.
+_HIGHLIGHT_CLAUSE = {"fields": {"text": {}, "title": {}}}
+_HIGHLIGHT_TAG_RE = re.compile(r"<em>(.*?)</em>")
+
+
+def _matched_terms(hit: dict) -> list[str]:
+    fragments = (f for frags in hit.get("highlight", {}).values() for f in frags)
+    # Case-insensitive dedupe: analyzed matches come back in every casing the
+    # document used ("Agreement"/"AGREEMENT"), but consumers highlight
+    # case-insensitively, so one casing per term is enough.
+    unique = {m.casefold(): m for f in fragments for m in _HIGHLIGHT_TAG_RE.findall(f)}
+    return list(unique.values())
+
+
 def _from_hit(hit: dict) -> ScoredTextChunk:
     source = hit["_source"]
     model = _MODEL_BY_FILETYPE_GROUP[source["filetype_group"]]
     score = hit.get("_score") or hit.get("_knn_score") or 1.0
-    return model(id=hit["_id"], score=score, **source)
+    return model(id=hit["_id"], score=score, highlights=_matched_terms(hit), **source)
 
 
 class ElasticsearchTextChunkRepository:
@@ -145,12 +163,19 @@ class ElasticsearchTextChunkRepository:
         return [_from_hit(hit) for hit in resp["hits"]["hits"]]
 
     async def delete_by_file_id(self, file_id: str) -> int:
-        """Delete every chunk belonging to a file (e.g. before re-embedding it)."""
+        """Delete every chunk belonging to a file (e.g. before re-embedding it).
+
+        `conflicts="proceed"`: delete_by_query otherwise aborts the whole
+        request on a version conflict (e.g. a doc concurrently deleted or
+        reindexed since the query snapshot) -- for a purge, a conflicted doc
+        is one that's already gone, so skipping it is the desired outcome.
+        """
         resp = await self.client.delete_by_query(
             index=self.index,
             body={"query": {"term": {"file_id": file_id}}},
             refresh=True,
             ignore_unavailable=True,
+            conflicts="proceed",
         )
         return resp.get("deleted", 0)
 
@@ -159,13 +184,17 @@ class ElasticsearchTextChunkRepository:
 
         `ignore_unavailable=True` so this is a no-op rather than an error
         when the index hasn't been created yet (a dataset with no
-        documents/emails ever extracted/embedded).
+        documents/emails ever extracted/embedded). `conflicts="proceed"` for
+        the same reason as `delete_by_file_id` -- an aborted purge here left
+        reset-text half-done (chunks partially deleted, enrichments never
+        cleared).
         """
         resp = await self.client.delete_by_query(
             index=self.index,
             body={"query": {"term": {"dataset_id": dataset_id}}},
             refresh=True,
             ignore_unavailable=True,
+            conflicts="proceed",
         )
         return resp.get("deleted", 0)
 
@@ -189,6 +218,7 @@ class ElasticsearchTextChunkRepository:
             "from": request.offset,
             "size": request.limit,
             "_source": _EXCLUDE_EMBEDDING_SOURCE,
+            "highlight": _HIGHLIGHT_CLAUSE,
         }
         sort = _sort_clause(request.sort_by, request.sort_order)
         if sort:
@@ -250,6 +280,7 @@ class ElasticsearchTextChunkRepository:
             "knn": knn,
             "rank": {"rrf": {"window_size": request.num_candidates, "rank_constant": 60}},
             "_source": _EXCLUDE_EMBEDDING_SOURCE,
+            "highlight": _HIGHLIGHT_CLAUSE,
         }
         count_resp = await self.client.count(index=self.index, body={"query": body["query"]})
         resp = await self.client.search(index=self.index, body=body)

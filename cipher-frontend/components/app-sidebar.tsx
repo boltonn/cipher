@@ -21,14 +21,11 @@ import {
   HelpCircle,
   Home,
   Image as ImageIcon,
-  MapPin,
   MessageSquare,
-  MessagesSquare,
   Search,
   Settings,
   Smile,
   User,
-  Users,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -99,10 +96,10 @@ const data = {
   media: [
     { title: "Images", url: "/images", icon: ImageIcon },
     // { title: "Documents", url: "/documents", icon: FileText },
-    { title: "Messages", url: "/messages", icon: MessagesSquare },
-    { title: "Contacts", url: "/contacts", icon: Users },
+    // { title: "Messages", url: "/messages", icon: MessagesSquare },
+    // { title: "Contacts", url: "/contacts", icon: Users },
     // { title: "Calendar", url: "/calendar", icon: Calendar },
-    { title: "Locations", url: "/locations", icon: MapPin },
+    // { title: "Locations", url: "/locations", icon: MapPin },
     // { title: "Video", url: "/video", icon: Video },
     // { title: "Email", url: "/email", icon: Mail },
     { title: "Faces", url: "/faces", icon: Smile },

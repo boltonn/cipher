@@ -17,11 +17,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { CopyableId } from "@/components/copyable-id";
 import { CommentSection } from "@/features/comments/components/comment-section";
-import { cn, formatBytes } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import {
   ChevronLeft,
   ChevronRight,
-  FileText as FileTextIcon,
   HardDrive,
   Loader2,
   MessageSquare,
@@ -29,6 +28,7 @@ import {
 } from "lucide-react";
 import { filesService, useFileText } from "../api";
 import type { FileBrowserItem } from "../types";
+import { FileMetadataPanel } from "./file-metadata-panel";
 import { FileViewerContent, useFileViewerData } from "./file-viewer-content";
 
 interface FileViewerDialogProps {
@@ -123,50 +123,7 @@ export function FileViewerDialog({
                 </TabsList>
 
                 <TabsContent value="details" className="mt-4">
-                  <section className="p-4 rounded-xl bg-black/40 border border-white/5 space-y-4">
-                    <div className="flex items-center gap-2">
-                      <FileTextIcon size={14} className="text-emerald-500" />
-                      <h4 className="text-[10px] font-black text-slate-300 uppercase tracking-widest">
-                        File Metadata
-                      </h4>
-                    </div>
-                    <div className="space-y-3">
-                      <p className="text-[9px] font-mono text-slate-400 break-all">
-                        {file.path ?? file.filename}
-                      </p>
-                      <div className="space-y-1">
-                        <p className="text-[8px] text-slate-500 font-bold uppercase">
-                          SHA256 Hash
-                        </p>
-                        <p className="text-[9px] font-mono text-emerald-500/80 break-all bg-emerald-500/5 p-1.5 rounded border border-emerald-500/10 uppercase">
-                          {file.sha256}
-                        </p>
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <DataPoint label="Filetype" value={file.filetypeName ?? file.filetype} />
-                        <DataPoint label="Type Group" value={file.filetypeGroup} />
-                        <DataPoint label="Mime Type" value={file.mimeType} />
-                        <DataPoint label="Storage" value={formatBytes(file.size)} />
-                        {file.device && <DataPoint label="Device" value={file.device} />}
-                        <DataPoint
-                          label="Date Created"
-                          value={
-                            file.dateCreated
-                              ? new Date(file.dateCreated).toLocaleDateString()
-                              : "—"
-                          }
-                        />
-                        <DataPoint
-                          label="Last Updated"
-                          value={
-                            file.dateLastUpdated
-                              ? new Date(file.dateLastUpdated).toLocaleDateString()
-                              : "—"
-                          }
-                        />
-                      </div>
-                    </div>
-                  </section>
+                  <FileMetadataPanel file={file} />
                 </TabsContent>
 
                 <TabsContent value="text" className="mt-4">
@@ -291,11 +248,3 @@ function FileTextTab({ fileId }: { fileId?: string }) {
   );
 }
 
-const DataPoint = ({ label, value }: { label: string; value: string }) => (
-  <div className="flex flex-col gap-0.5 min-w-0">
-    <p className="text-slate-600 uppercase text-[8px] font-black tracking-widest leading-none mb-1">
-      {label}
-    </p>
-    <p className="text-slate-200 font-mono text-[11px] truncate leading-none">{value}</p>
-  </div>
-);

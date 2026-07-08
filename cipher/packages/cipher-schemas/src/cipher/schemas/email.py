@@ -202,3 +202,7 @@ class ScoredEmailTextChunk(EmailTextChunk):
     """An `EmailTextChunk` decorated with its Elasticsearch retrieval score."""
 
     score: float = Field(..., description="Retrieval score from Elasticsearch")
+    highlights: list[str] = Field(
+        default_factory=list,
+        description="Matched words/phrases from Elasticsearch highlighting; empty for pure kNN results",
+    )

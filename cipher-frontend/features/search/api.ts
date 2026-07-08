@@ -15,6 +15,7 @@ export function toSearchChunk(raw: SearchChunkRaw): SearchChunk {
     score: raw.score,
     tags: raw.tags,
     dateCreated: raw.dateCreated,
+    highlights: raw.highlights ?? [],
   };
 }
 

@@ -22,7 +22,7 @@ from cipher.orchestration.detect_faces import (
     get_face_detection_stats,
 )
 from cipher.orchestration.embed_images import embed_images_workflow, get_embedding_stats
-from cipher.orchestration.embed_text import embed_text_workflow, get_text_embedding_stats
+from cipher.orchestration.embed_text import DEFAULT_SKIP_EMAIL_STATES, embed_text_workflow, get_text_embedding_stats
 from cipher.orchestration.extract_documents import (
     DEFAULT_CHUNK_SIZE,
     Chunker,
@@ -34,6 +34,7 @@ from cipher.orchestration.ingest import create_dataset, load_files
 from cipher.orchestration.schema import create_tables
 from cipher.orchestration.session import get_elasticsearch_client_context, get_session_context
 from cipher.schemas.common import ModelDevice
+from cipher.schemas.email import EmailState
 
 app = typer.Typer(help="Test-drive ingestion, embedding, and face detection against a local dataset.")
 
@@ -224,6 +225,19 @@ def embed_text_cmd(
     embed_batch_size: Annotated[
         int, typer.Option(help="Max spans per model.encode() call -- caps GPU memory use for heavily-chunked files")
     ] = 32,
+    max_pages: Annotated[
+        int | None,
+        typer.Option(
+            help="Only embed a document's first N pages -- exact for kreuzberg-prechunked spans (real page numbers), "
+            "a proportional character cut otherwise. Keeps very long documents from flooding the index with chunks."
+        ),
+    ] = None,
+    skip_email_state: Annotated[
+        list[EmailState] | None,
+        typer.Option(
+            help="Email states to exclude from embedding entirely (repeat the flag to skip several); default: spam"
+        ),
+    ] = None,
 ):
     """Chunk (if needed) and embed a dataset's extracted text into the unified `text_chunks` search index.
 
@@ -256,6 +270,10 @@ def embed_text_cmd(
                     chunk_overlap=chunk_overlap,
                     min_chunk_tokens=min_chunk_tokens,
                     embed_batch_size=embed_batch_size,
+                    max_pages=max_pages,
+                    skip_email_states=(
+                        frozenset(skip_email_state) if skip_email_state is not None else DEFAULT_SKIP_EMAIL_STATES
+                    ),
                 )
                 logger.success(f"Embedded text for {count} files")
 

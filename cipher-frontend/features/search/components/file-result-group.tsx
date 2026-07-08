@@ -31,7 +31,7 @@ export function FileResultGroup({
   const Icon = group.filetypeGroup === "email" ? Mail : FileText;
 
   return (
-    <div className="border-b border-slate-800/50">
+    <div className="border-b border-white/5">
       <button
         type="button"
         onClick={() => {

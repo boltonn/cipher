@@ -1,5 +1,7 @@
 "use client";
 
+import { Pagination } from "@/components/pagination";
+import type { PaginationModeType } from "@/types/common";
 import { Loader2 } from "lucide-react";
 import { useState } from "react";
 import type { GroupedFileResult, SearchChunk, SearchMode, SearchSelection } from "../types";
@@ -16,9 +18,14 @@ interface ResultsListProps {
   searchMode: SearchMode;
   query: string | null;
   isPending: boolean;
+  paginationMode: PaginationModeType;
   hasMore: boolean;
   isFetching: boolean;
   onLoadMore: () => void;
+  currentPage: number;
+  total: number;
+  limit: number;
+  onPageChange: (page: number) => void;
 }
 
 export function ResultsList({
@@ -31,9 +38,14 @@ export function ResultsList({
   searchMode,
   query,
   isPending,
+  paginationMode,
   hasMore,
   isFetching,
   onLoadMore,
+  currentPage,
+  total,
+  limit,
+  onPageChange,
 }: ResultsListProps) {
   const [expandedFileIds, setExpandedFileIds] = useState<Set<string>>(new Set());
 
@@ -90,15 +102,26 @@ export function ResultsList({
             />
           ))}
 
-      {hasMore && (
-        <button
-          type="button"
-          disabled={isFetching}
-          onClick={onLoadMore}
-          className="flex w-full items-center justify-center gap-2 py-3 text-xs italic text-slate-500 hover:bg-slate-800/30 disabled:opacity-50"
-        >
-          {isFetching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Load more results..."}
-        </button>
+      {paginationMode === "normal" ? (
+        <Pagination
+          currentPage={currentPage}
+          totalItems={total}
+          itemsPerPage={limit}
+          onPageChange={onPageChange}
+          isLoading={isFetching}
+          className="flex-wrap gap-1 px-2 py-4"
+        />
+      ) : (
+        hasMore && (
+          <button
+            type="button"
+            disabled={isFetching}
+            onClick={onLoadMore}
+            className="flex w-full items-center justify-center gap-2 border-t border-white/5 py-3 text-xs italic text-slate-500 transition-colors hover:bg-white/[0.03] hover:text-indigo-300 disabled:opacity-50"
+          >
+            {isFetching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : `Load more (${chunks.length.toLocaleString()} of ${total.toLocaleString()})`}
+          </button>
+        )
       )}
     </div>
   );

@@ -140,6 +140,28 @@ MODERATE_ATTRS: Final[dict[str, frozenset[str]]] = {
 
 EVENT_ATTR_RE: Final[re.Pattern[str]] = re.compile(r"^on[a-z]+$", re.IGNORECASE)
 
+# Elements whose boundaries should become line breaks in plain-text output --
+# lxml's text_content() otherwise joins adjacent blocks with no separator
+# ("<h1>Invoice</h1><p>Hello</p>" -> "InvoiceHello").
+BLOCK_BREAK_TAGS: Final[frozenset[str]] = frozenset(
+    {
+        "blockquote",
+        "br",
+        "div",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "hr",
+        "li",
+        "p",
+        "pre",
+        "tr",
+    }
+)
+
 
 @dataclass(frozen=True)
 class SanitizeConfig:
@@ -231,6 +253,7 @@ class HtmlParser:
         else:
             HtmlParser._drop_subtrees(doc)
             HtmlParser._format_tables_inplace(doc)
+            HtmlParser._insert_block_breaks(doc)
             content = doc.text_content() or ""
             content = re.sub(r"[ \t]{2,}", " ", content)
             text = re.sub(r"\n{3,}", "\n\n", content).strip()
@@ -321,6 +344,7 @@ class HtmlParser:
         doc = HtmlParser._parse(html)
         HtmlParser._drop_subtrees(doc)
         HtmlParser._format_tables_inplace(doc)
+        HtmlParser._insert_block_breaks(doc)
         content = doc.text_content() or ""
         content = re.sub(r"[ \t]{2,}", " ", content)
         return re.sub(r"\n{3,}", "\n\n", content.strip())
@@ -431,6 +455,12 @@ class HtmlParser:
             for child in target.iterchildren()
         ]
         return "".join(parts)
+
+    @staticmethod
+    def _insert_block_breaks(doc: Any) -> None:
+        """Appends a newline after each block-level element so text_content() keeps block boundaries."""
+        for element in doc.iter(*BLOCK_BREAK_TAGS):
+            element.tail = "\n" + (element.tail or "")
 
     @staticmethod
     def _drop_subtrees(doc: Any, tags: frozenset[str] | None = None) -> None:

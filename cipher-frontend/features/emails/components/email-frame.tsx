@@ -3,7 +3,7 @@
 //     https://opensource.org/licenses/Apache-2.0
 "use client";
 import DOMPurify from "dompurify";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { toast } from "sonner";
 
 interface EmailIframeProps {
@@ -82,9 +82,14 @@ export default function EmailIframe({ body }: EmailIframeProps) {
     return () => window.removeEventListener("message", handler);
   }, []);
 
-  useEffect(() => {
-    const iframe = iframeRef.current;
-    if (!iframe || !body) return;
+  // Rendered as a `srcDoc` prop rather than assigned in an effect: the iframe
+  // then enters the DOM with its document already set, as a single navigation.
+  // Assigning `iframe.srcdoc` post-mount first commits about:blank and then
+  // navigates to the srcdoc, and when that second navigation lands mid
+  // dialog-open the compositor can keep showing the stale blank frame -- the
+  // document loads but the pane paints white.
+  const srcDoc = useMemo(() => {
+    if (!body) return undefined;
 
     const cleanBody = DOMPurify.sanitize(body, {
       USE_PROFILES: { html: true },
@@ -95,7 +100,7 @@ export default function EmailIframe({ body }: EmailIframeProps) {
 
     // Use srcdoc so the iframe is truly sandboxed (no same-origin access).
     // We can't use doc.write() because that requires allow-same-origin.
-    iframe.srcdoc = `<!DOCTYPE html>
+    return `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
@@ -166,6 +171,7 @@ ul, ol { padding-left: 20px; margin: 4px 0; }
   return (
     <iframe
       ref={iframeRef}
+      srcDoc={srcDoc}
       className="block w-full border-0 h-full"
       sandbox="allow-scripts allow-popups allow-top-navigation-by-user-activation"
       title="Email content"
