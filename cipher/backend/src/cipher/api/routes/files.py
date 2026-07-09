@@ -2,12 +2,13 @@ from fastapi import APIRouter, HTTPException, Response
 from pyparse.parsers.email import EmlParser
 
 from cipher.api.deps.elasticsearch import TextChunkDatastoreDep
-from cipher.api.deps.postgres import FileDatastoreDep, ImageDatastoreDep
+from cipher.api.deps.postgres import ExtractedTextDatastoreDep, FileDatastoreDep, ImageDatastoreDep
 from cipher.api.utils import download_uri
 from cipher.schemas.base import BaseModel
 from cipher.schemas.email import EmailBase
 from cipher.schemas.file import File
 from cipher.schemas.image import ImagePublic
+from cipher.schemas.search import ChunkFilters
 
 router = APIRouter(
     prefix="/files",
@@ -68,7 +69,7 @@ async def get_file_image(id: str, image_datastore: ImageDatastoreDep):
 
 
 class FileText(BaseModel):
-    """Reconstructed extracted text for a file, from its indexed search chunks."""
+    """A file's extracted text plus how many search chunks it was indexed into."""
 
     text: str
     chunk_count: int
@@ -76,21 +77,24 @@ class FileText(BaseModel):
 
 @router.get(
     "/{id}/text",
-    summary="Get a file's extracted text, reconstructed from its indexed chunks",
+    summary="Get a file's extracted text",
     response_model=FileText,
 )
-async def get_file_text(id: str, file_datastore: FileDatastoreDep, chunk_datastore: TextChunkDatastoreDep):
-    """Concatenate a file's indexed text chunks, in original document order."""
-    file = await file_datastore.get_file_by_id(file_id=id)
-    if file is None:
-        raise HTTPException(status_code=404, detail=f"File not found: {id}")
+async def get_file_text(
+    id: str,
+    extracted_text_datastore: ExtractedTextDatastoreDep,
+    chunk_datastore: TextChunkDatastoreDep,
+):
+    """Return the stored extractor output verbatim.
 
-    chunks = await chunk_datastore.list_by_file_id(file_id=id)
-    if not chunks:
+    Served from the `extracted_text` table rather than rejoined from indexed
+    chunks -- chunk `start_offset`/`end_offset` are offsets into this exact
+    string, so any reconstruction would break highlighting (and would drop
+    content wherever a chunk is missing from the index).
+    """
+    extracted = await extracted_text_datastore.get_by_file_id(file_id=id)
+    if extracted is None:
         raise HTTPException(status_code=404, detail=f"No extracted text found for file: {id}")
 
-    ordered = sorted(chunks, key=lambda chunk: chunk.chunk_index)
-    return FileText(
-        text="\n\n".join(chunk.text for chunk in ordered),
-        chunk_count=len(ordered),
-    )
+    chunk_count = await chunk_datastore.count(filters=ChunkFilters(file_id=id))
+    return FileText(text=extracted.content, chunk_count=chunk_count)

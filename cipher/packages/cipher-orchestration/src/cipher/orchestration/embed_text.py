@@ -381,7 +381,12 @@ async def _consumer(
         for f in ready:
             await es_repo.delete_by_file_id(f.item.resource["id"])
         if chunks:
-            await es_repo.bulk_index(chunks, show_progress=False)
+            _, failed_chunks = await es_repo.bulk_index(chunks, show_progress=False)
+            if failed_chunks:
+                # Files are still marked completed below (per-chunk retry
+                # isn't worth the machinery here), but the gap must not be
+                # silent -- reset-text + re-run is the recovery path.
+                logger.error(f"{failed_chunks} of {len(chunks)} chunks failed to index this flush")
         if ready:
             await enrichment_repo.mark_completed_batch([f.item.enrichment.id for f in ready])
         if failed:
@@ -406,21 +411,23 @@ async def _consumer(
         embeddings = await asyncio.to_thread(model.encode, contents, task="retrieval", is_query=False)
 
         for (file_ctx, span, idx), emb in zip(work, embeddings, strict=True):
-            if file_ctx.failed:
-                continue
-            try:
-                chunk = _build_chunk(
-                    extracted=file_ctx.extracted,
-                    dataset_id=file_ctx.item.resource["dataset_id"],
-                    filetype=file_ctx.item.resource["filetype"],
-                    span=span,
-                    chunk_index=idx,
-                    embedding=emb.tolist(),
-                )
-                file_ctx.chunks.append(chunk)
-            except Exception as e:
-                logger.error(f"Embedding failed for file {file_ctx.item.resource['id']}: {e}")
-                file_ctx.failed = True
+            # A failed file's remaining spans still count toward `seen` --
+            # skipping them would leave `seen < total` forever, so the file
+            # would never flush and its enrichment would stay PROCESSING.
+            if not file_ctx.failed:
+                try:
+                    chunk = _build_chunk(
+                        extracted=file_ctx.extracted,
+                        dataset_id=file_ctx.item.resource["dataset_id"],
+                        filetype=file_ctx.item.resource["filetype"],
+                        span=span,
+                        chunk_index=idx,
+                        embedding=emb.tolist(),
+                    )
+                    file_ctx.chunks.append(chunk)
+                except Exception as e:
+                    logger.error(f"Embedding failed for file {file_ctx.item.resource['id']}: {e}")
+                    file_ctx.failed = True
 
             file_ctx.seen += 1
             if file_ctx.seen == file_ctx.total:

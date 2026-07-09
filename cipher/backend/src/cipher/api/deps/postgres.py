@@ -13,6 +13,7 @@ from cipher.datastores.postgres.repositories.dataset import PostgresDatasetRepos
 from cipher.datastores.postgres.repositories.enrichment import (
     PostgresEnrichmentRepository,
 )
+from cipher.datastores.postgres.repositories.extracted_text import PostgresExtractedTextRepository
 from cipher.datastores.postgres.repositories.face import PostgresFaceRepository
 from cipher.datastores.postgres.repositories.face_match import PostgresFaceMatchRepository
 from cipher.datastores.postgres.repositories.file import PostgresFileRepository
@@ -89,6 +90,12 @@ async def get_file_repository() -> AsyncGenerator[PostgresFileRepository, None]:
         yield PostgresFileRepository(session=session)
 
 
+async def get_extracted_text_repository() -> AsyncGenerator[PostgresExtractedTextRepository, None]:
+    """Dependency injector for PostgresExtractedTextRepository."""
+    async with get_session() as session:
+        yield PostgresExtractedTextRepository(session=session)
+
+
 async def get_image_repository() -> AsyncGenerator[PostgresImageRepository, None]:
     """Dependency injector for PostgresImageRepository."""
     async with get_session() as session:
@@ -132,6 +139,9 @@ EnrichmentDatastoreDep = Annotated[
     PostgresEnrichmentRepository, Depends(get_enrichment_repository)
 ]
 FileDatastoreDep = Annotated[PostgresFileRepository, Depends(get_file_repository)]
+ExtractedTextDatastoreDep = Annotated[
+    PostgresExtractedTextRepository, Depends(get_extracted_text_repository)
+]
 ImageDatastoreDep = Annotated[PostgresImageRepository, Depends(get_image_repository)]
 UserDatastoreDep = Annotated[PostgresUserRepository, Depends(get_user_repository)]
 FaceDatastoreDep = Annotated[PostgresFaceRepository, Depends(get_face_repository)]
@@ -237,6 +247,7 @@ __all__ = [
     "get_dataset_repository",
     "get_enrichment_repository",
     "get_file_repository",
+    "get_extracted_text_repository",
     "get_image_repository",
     "get_face_repository",
     "get_person_repository",
@@ -245,6 +256,7 @@ __all__ = [
     "DatasetDatastoreDep",
     "EnrichmentDatastoreDep",
     "FileDatastoreDep",
+    "ExtractedTextDatastoreDep",
     "ImageDatastoreDep",
     "ImageSimilaritySearchFormParametersDep",
     "FaceDatastoreDep",

@@ -254,9 +254,7 @@ class HtmlParser:
             HtmlParser._drop_subtrees(doc)
             HtmlParser._format_tables_inplace(doc)
             HtmlParser._insert_block_breaks(doc)
-            content = doc.text_content() or ""
-            content = re.sub(r"[ \t]{2,}", " ", content)
-            text = re.sub(r"\n{3,}", "\n\n", content).strip()
+            text = HtmlParser._normalize_text(doc.text_content() or "")
 
         return HtmlParseResult(text=text, children=children)
 
@@ -345,9 +343,20 @@ class HtmlParser:
         HtmlParser._drop_subtrees(doc)
         HtmlParser._format_tables_inplace(doc)
         HtmlParser._insert_block_breaks(doc)
-        content = doc.text_content() or ""
+        return HtmlParser._normalize_text(doc.text_content() or "")
+
+    @staticmethod
+    def _normalize_text(content: str) -> str:
+        r"""Collapses runs of spaces and excess blank lines in extracted text.
+
+        Trimming whitespace around each newline first is what makes the
+        blank-line collapse effective -- nested block elements emit lines
+        holding only inherited indentation, which ``\n{3,}`` alone never
+        matches.
+        """
         content = re.sub(r"[ \t]{2,}", " ", content)
-        return re.sub(r"\n{3,}", "\n\n", content.strip())
+        content = re.sub(r"[ \t]*\n[ \t]*", "\n", content)
+        return re.sub(r"\n{3,}", "\n\n", content).strip()
 
     def _mine_images(self, doc: Any, out_dir: Path | None = None) -> list[FileBase]:
         """Finds base64-encoded images in ``<img src="data:…">`` attributes.

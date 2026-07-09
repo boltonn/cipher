@@ -18,12 +18,12 @@ interface ChunkHighlightedTextProps {
 }
 
 /**
- * Locates `chunk.text` inside the file's full reconstructed text (verbatim
- * substring match, not the chunk's `startOffset`/`endOffset` -- those are
- * offsets into the original extractor output, while `GET /files/{id}/text`
- * rebuilds the text by joining chunks with `"\n\n"`, which can drift from the
- * original offsets) and highlights it in place. The chunk region uses the
- * app's indigo accent, not amber -- amber is reserved for AI/ML annotation.
+ * Highlights the chunk's region inside the file's extracted text.
+ * `GET /files/{id}/text` serves the extractor output verbatim, so
+ * `startOffset`/`endOffset` slice it exactly; a verbatim `indexOf` on
+ * `chunk.text` is the fallback for chunks indexed before that guarantee
+ * held. The chunk region uses the app's indigo accent, not amber -- amber
+ * is reserved for AI/ML annotation.
  */
 export function ChunkHighlightedText({ fileId, chunk, terms, highlightChunk = true }: ChunkHighlightedTextProps) {
   const { data, isPending, isError } = useFileText(fileId);
@@ -54,10 +54,11 @@ export function ChunkHighlightedText({ fileId, chunk, terms, highlightChunk = tr
     highlightChunk ? "bg-indigo-500/20 shadow-[inset_0_0_0_1px_rgba(99,102,241,0.25)]" : "bg-transparent"
   );
 
-  const matchIndex = chunk ? data.text.indexOf(chunk.text) : -1;
+  const offsetsMatch = chunk ? data.text.slice(chunk.startOffset, chunk.endOffset) === chunk.text : false;
+  const matchIndex = !chunk ? -1 : offsetsMatch ? chunk.startOffset : data.text.indexOf(chunk.text);
 
-  // Always render the full reconstructed text -- if the chunk's region can't
-  // be verbatim-located (offset drift, see above), fall back to term-only
+  // Always render the full text -- if the chunk's region can't be located
+  // (stale chunk from a pre-verbatim index), fall back to term-only
   // highlighting rather than truncating the view down to just that chunk.
   if (!chunk || matchIndex === -1) {
     return (
