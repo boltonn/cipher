@@ -9,7 +9,7 @@ import {
 import {
   useElementWidth,
   useInlineThumbnailSidebar,
-} from "@/components/ui/document-viewer-sidebar";
+} from "@/components/viewers/document-viewer-sidebar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -27,7 +27,7 @@ import {
   ScrollText,
 } from "lucide-react";
 import { filesService, useFileText } from "../api";
-import type { FileBrowserItem } from "../types";
+import type { FileBrowserItem, FileLocationTarget } from "../types";
 import { FileMetadataPanel } from "./file-metadata-panel";
 import { FileViewerContent, useFileViewerData } from "./file-viewer-content";
 
@@ -35,10 +35,13 @@ interface FileViewerDialogProps {
   file: FileBrowserItem | null;
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
-  onNext: () => void;
-  onPrev: () => void;
-  hasNext: boolean;
-  hasPrev: boolean;
+  /** Prev/next navigation across a file list -- omit for single-file contexts (e.g. opening a chat citation). */
+  onNext?: () => void;
+  onPrev?: () => void;
+  hasNext?: boolean;
+  hasPrev?: boolean;
+  /** Where to jump on open -- e.g. a search result's chunk or a chat citation. */
+  locationTarget?: FileLocationTarget;
 }
 
 export function FileViewerDialog({
@@ -47,12 +50,16 @@ export function FileViewerDialog({
   onOpenChange,
   onNext,
   onPrev,
-  hasNext,
-  hasPrev,
+  hasNext = false,
+  hasPrev = false,
+  locationTarget,
 }: FileViewerDialogProps) {
   const fileUrl = file?.id ? filesService.getFileUrl(file.id) : undefined;
 
-  const { textContent, isTextLoading, email, isEmailLoading } = useFileViewerData(file, fileUrl);
+  const { textContent, isTextLoading, email, isEmailLoading, table, isTableLoading } = useFileViewerData(
+    file,
+    fileUrl
+  );
 
   if (!file) return null;
 
@@ -74,10 +81,13 @@ export function FileViewerDialog({
           isTextLoading={isTextLoading}
           email={email}
           isEmailLoading={isEmailLoading}
+          table={table}
+          isTableLoading={isTableLoading}
           onNext={onNext}
           onPrev={onPrev}
           hasNext={hasNext}
           hasPrev={hasPrev}
+          locationTarget={locationTarget}
         />
 
         {/* Right: Metadata Sidebar */}
@@ -155,10 +165,13 @@ interface ViewerPaneProps {
   isTextLoading: boolean;
   email: import("@/features/emails/types").EmailBase | undefined;
   isEmailLoading: boolean;
-  onNext: () => void;
-  onPrev: () => void;
+  table: import("../types").FileTables | undefined;
+  isTableLoading: boolean;
+  onNext?: () => void;
+  onPrev?: () => void;
   hasNext: boolean;
   hasPrev: boolean;
+  locationTarget?: import("../types").FileLocationTarget;
 }
 
 function ViewerPane({
@@ -168,10 +181,13 @@ function ViewerPane({
   isTextLoading,
   email,
   isEmailLoading,
+  table,
+  isTableLoading,
   onNext,
   onPrev,
   hasNext,
   hasPrev,
+  locationTarget,
 }: ViewerPaneProps) {
   const [viewerRef, viewerWidth] = useElementWidth<HTMLDivElement>();
   const sidebarFitsInline = useInlineThumbnailSidebar(viewerWidth);
@@ -185,7 +201,10 @@ function ViewerPane({
         isTextLoading={isTextLoading}
         email={email}
         isEmailLoading={isEmailLoading}
+        table={table}
+        isTableLoading={isTableLoading}
         sidebarFitsInline={sidebarFitsInline}
+        locationTarget={locationTarget}
       />
 
       <div className="absolute inset-0 flex items-center justify-between px-4 pointer-events-none">

@@ -5,9 +5,6 @@ import {
   ConfirmationRequest,
   ConfirmationTitle,
 } from "@/components/ai-elements/confirmation";
-import { EnvironmentVariables } from "@/components/ai-elements/environment-variables";
-import { FileTree } from "@/components/ai-elements/file-tree";
-import { InlineCitation } from "@/components/ai-elements/inline-citation";
 import {
   Conversation,
   ConversationContent,
@@ -41,14 +38,15 @@ import {
 import type { UIMessage, UIMessagePart, UIDataTypes, UITools } from "ai";
 import { MessageSquareIcon } from "lucide-react";
 import { Fragment } from "react";
+import type { ChatCitation } from "../types";
 import { ChatMessageActions } from "./chat-message-actions";
-
-// Available part renderers — activate when backend sends these part types
-const _partRenderers = { EnvironmentVariables, FileTree, InlineCitation } as const;
+import { Citations } from "./citations";
 
 interface ChatMessagesProps {
   messages: UIMessage[];
   onRegenerate: () => void;
+  /** Called when a citation card is clicked -- opens the cited file at that location. */
+  onOpenCitation: (citation: ChatCitation) => void;
 }
 
 function isToolPart(
@@ -57,7 +55,7 @@ function isToolPart(
   return part.type === "dynamic-tool" || part.type.startsWith("tool-");
 }
 
-export function ChatMessages({ messages, onRegenerate }: ChatMessagesProps) {
+export function ChatMessages({ messages, onRegenerate, onOpenCitation }: ChatMessagesProps) {
   return (
     <Conversation>
       <ConversationContent>
@@ -135,6 +133,20 @@ export function ChatMessages({ messages, onRegenerate }: ChatMessagesProps) {
                             </ConfirmationTitle>
                           </ConfirmationRequest>
                         </Confirmation>
+                      );
+                    }
+
+                    if (
+                      toolLabel === "search_documents" &&
+                      part.state === "output-available" &&
+                      Array.isArray(part.output)
+                    ) {
+                      return (
+                        <Citations
+                          key={key}
+                          citations={part.output as ChatCitation[]}
+                          onOpen={onOpenCitation}
+                        />
                       );
                     }
 

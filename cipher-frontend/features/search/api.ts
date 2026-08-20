@@ -16,6 +16,8 @@ export function toSearchChunk(raw: SearchChunkRaw): SearchChunk {
     tags: raw.tags,
     dateCreated: raw.dateCreated,
     highlights: raw.highlights ?? [],
+    pageNumber: raw.filetypeGroup === "document" ? raw.pageNumber : undefined,
+    headingPath: raw.filetypeGroup === "document" ? raw.headingPath : undefined,
   };
 }
 

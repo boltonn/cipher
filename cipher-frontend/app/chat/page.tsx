@@ -5,11 +5,15 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ApiKeyDialog } from "@/features/chat/components/api-key-dialog";
 import { ChatInput } from "@/features/chat/components/chat-input";
 import { ChatMessages } from "@/features/chat/components/chat-messages";
+import type { ChatCitation } from "@/features/chat/types";
 // Import both hooks from your store file
 import {
   useChatStore,
   useChatStoreHydrated,
 } from "@/features/chat/hooks/use-chat-store";
+import { useFile } from "@/features/files/api";
+import { FileViewerDialog } from "@/features/files/components/file-viewer-dialog";
+import type { FileBrowserItem, FileLocationTarget } from "@/features/files/types";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { useState } from "react";
@@ -18,6 +22,18 @@ export default function ChatPage() {
   const { keys, model } = useChatStore();
   const isStoreHydrated = useChatStoreHydrated(); // Reusable hydration state
   const [keyDialogOpen, setKeyDialogOpen] = useState(false);
+  const [openCitation, setOpenCitation] = useState<ChatCitation | null>(null);
+  const { data: citationFile } = useFile(openCitation?.fileId);
+  const citationBrowserItem: FileBrowserItem | null = citationFile
+    ? { ...citationFile, type: "file" }
+    : null;
+  const citationLocationTarget: FileLocationTarget | undefined = openCitation
+    ? {
+        pageNumber: openCitation.pageNumber,
+        startOffset: openCitation.startOffset,
+        endOffset: openCitation.endOffset,
+      }
+    : undefined;
 
   // Clean dynamic string lookup based on your store state
   const currentProvider = model.split(":")[0];
@@ -83,7 +99,7 @@ export default function ChatPage() {
   return (
     <div className="flex flex-col h-full max-w-3xl mx-auto px-4 py-6">
       <div className="flex-1 overflow-y-auto min-h-0 space-y-4">
-        <ChatMessages messages={messages} onRegenerate={handleRegenerate} />
+        <ChatMessages messages={messages} onRegenerate={handleRegenerate} onOpenCitation={setOpenCitation} />
 
         {/* Animated Three-Dot Loader on the System/AI Side */}
         {isLoading && (
@@ -141,6 +157,17 @@ export default function ChatPage() {
       )}
 
       <ApiKeyDialog open={keyDialogOpen} onOpenChange={setKeyDialogOpen} />
+
+      <FileViewerDialog
+        file={citationBrowserItem}
+        isOpen={!!openCitation}
+        onOpenChange={(open) => {
+          if (!open) setOpenCitation(null);
+        }}
+        hasNext={false}
+        hasPrev={false}
+        locationTarget={citationLocationTarget}
+      />
 
       <ChatInput
         status={status}

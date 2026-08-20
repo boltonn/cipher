@@ -2,23 +2,32 @@
 
 import { CodeBlock } from "@/components/ai-elements/code-block";
 import { Button } from "@/components/ui/button";
-import { CsvViewer } from "@/components/ui/csv-viewer";
-import { DocxViewerPreview } from "@/components/ui/docx-viewer";
-import { PDFViewer } from "@/components/ui/pdf-viewer";
-import { XlsxViewerPreview } from "@/components/ui/xlsx-viewer";
+import { DocxViewerPreview } from "@/components/viewers/docx-viewer";
+import { PDFViewer, type PDFViewerHandle } from "@/components/viewers/pdf-viewer";
+import { PptxViewerPreview } from "@/components/viewers/pptx-viewer";
+import {
+  parseDelimitedText,
+  TabularViewer,
+} from "@/components/viewers/tabular-viewer";
+import { XlsxViewerPreview } from "@/components/viewers/xlsx-viewer";
 import { useEmail } from "@/features/emails/api";
-import EmailIframe from "@/features/emails/components/email-frame";
+import { EmailViewer } from "@/features/emails/components/email-viewer";
 import { useFileImage } from "@/features/images/api";
 import { ImageViewerContent } from "@/features/images/components/image-viewer-content";
-import { cn, formatBytes } from "@/lib/utils";
+import { formatBytes } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { Download, File as FileIcon, Loader2, TriangleAlert } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { BundledLanguage } from "shiki";
+import { useFileTable } from "../api";
 import { getMaxPreviewBytes } from "../file-preview-limits";
-import type { FileBrowserItem } from "../types";
+import type { FileBrowserItem, FileLocationTarget } from "../types";
 
-export const TEXT_VIEWER_TYPES = new Set(["csv", "tsv"]);
+/** Backend-extracted (or, for csv/tsv, client-parsed as a fallback) tabular preview. */
+export const TABULAR_TYPES = new Set(["csv", "tsv", "json", "jsonl"]);
+/** Of `TABULAR_TYPES`, the ones that can also be parsed client-side (via papaparse)
+ * before backend extraction has run, so the preview isn't stuck waiting on the pipeline. */
+const CLIENT_PARSEABLE_TABULAR_TYPES = new Set(["csv", "tsv"]);
 export const CODE_TEXT_GROUPS = new Set(["code", "text"]);
 
 /** Shiki's bundled language ids match most filetyper `filetype` strings directly
@@ -48,7 +57,7 @@ function filetypeToShikiLanguage(file: FileBrowserItem): BundledLanguage {
  */
 export function useFileViewerData(file: FileBrowserItem | null, fileUrl?: string) {
   const isTextViewer =
-    !!file && (TEXT_VIEWER_TYPES.has(file.filetype) || CODE_TEXT_GROUPS.has(file.filetypeGroup));
+    !!file && (TABULAR_TYPES.has(file.filetype) || CODE_TEXT_GROUPS.has(file.filetypeGroup));
   const { data: textContent, isPending: isTextLoading } = useQuery({
     queryKey: ["file-text", fileUrl],
     queryFn: () => fetch(fileUrl as string).then((res) => res.text()),
@@ -58,7 +67,14 @@ export function useFileViewerData(file: FileBrowserItem | null, fileUrl?: string
   const isEmail = !!file && file.filetype === "eml";
   const { data: email, isPending: isEmailLoading } = useEmail(isEmail ? file?.id : undefined);
 
-  return { textContent, isTextLoading, email, isEmailLoading };
+  const isTabular = !!file && TABULAR_TYPES.has(file.filetype);
+  const {
+    data: table,
+    isPending: isTableLoading,
+    isError: isTableError,
+  } = useFileTable(isTabular ? file?.id : undefined);
+
+  return { textContent, isTextLoading, email, isEmailLoading, table, isTableLoading, isTableError };
 }
 
 interface FileViewerContentProps {
@@ -68,9 +84,13 @@ interface FileViewerContentProps {
   isTextLoading: boolean;
   email: import("@/features/emails/types").EmailBase | undefined;
   isEmailLoading: boolean;
+  table: import("../types").FileTables | undefined;
+  isTableLoading: boolean;
   sidebarFitsInline: boolean;
   /** Query string to highlight in-place; currently only the PDF viewer's text layer supports it. */
   searchQuery?: string;
+  /** Where to jump on open -- e.g. a search result's chunk or a chat citation. */
+  locationTarget?: FileLocationTarget;
 }
 
 export function FileViewerContent({
@@ -80,8 +100,11 @@ export function FileViewerContent({
   isTextLoading,
   email,
   isEmailLoading,
+  table,
+  isTableLoading,
   sidebarFitsInline,
   searchQuery,
+  locationTarget,
 }: FileViewerContentProps) {
   // Only files the images pipeline has actually processed have an Image
   // record; most files won't, so this resolves to `undefined` and the plain
@@ -97,24 +120,75 @@ export function FileViewerContent({
 
   if (file.filetype === "pdf") {
     return (
-      <PdfWithThumbnails fileUrl={fileUrl} sidebarFitsInline={sidebarFitsInline} searchQuery={searchQuery} />
+      <PdfWithThumbnails
+        fileUrl={fileUrl}
+        sidebarFitsInline={sidebarFitsInline}
+        searchQuery={searchQuery}
+        locationTarget={locationTarget}
+      />
     );
   }
 
   if (file.filetype === "docx") {
-    return <DocxViewerPreview src={fileUrl} fileName={file.filename} className="h-full" showUpload={false} />;
+    return (
+      <DocxViewerPreview
+        src={fileUrl}
+        fileName={file.filename}
+        className="h-full"
+        showUpload={false}
+        initialPage={locationTarget?.pageNumber}
+      />
+    );
   }
 
   if (file.filetype === "xlsx") {
     return <XlsxViewerPreview src={fileUrl} fileName={file.filename} className="h-full" />;
   }
 
-  if (TEXT_VIEWER_TYPES.has(file.filetype)) {
-    if (isTextLoading) return <ViewerLoading label="Loading file..." />;
-    return <CsvViewer data={textContent} className="h-full" />;
+  if (file.filetype === "pptx") {
+    return (
+      <PptxViewerPreview
+        src={fileUrl}
+        fileName={file.filename}
+        className="h-full"
+        showUpload={false}
+        initialSlide={locationTarget?.pageNumber}
+      />
+    );
   }
 
-  if (CODE_TEXT_GROUPS.has(file.filetypeGroup)) {
+  if (TABULAR_TYPES.has(file.filetype)) {
+    if (isTableLoading) return <ViewerLoading label="Loading table..." />;
+    if (table && table.sheets.length > 0) {
+      return (
+        <TabularViewer
+          sheets={table.sheets}
+          className="h-full"
+          downloadUrl={fileUrl}
+          downloadFileName={file.filename}
+        />
+      );
+    }
+    // Not yet extracted server-side -- csv/tsv can still preview instantly by
+    // parsing the raw file client-side; json/jsonl fall through to the plain
+    // code view below until extraction catches up.
+    if (CLIENT_PARSEABLE_TABULAR_TYPES.has(file.filetype)) {
+      if (isTextLoading) return <ViewerLoading label="Loading file..." />;
+      if (textContent !== undefined) {
+        const parsed = parseDelimitedText(textContent);
+        if (parsed.rows.length > 0) {
+          return (
+            <TabularViewer
+              sheets={[{ columns: parsed.columns, rows: parsed.rows }]}
+              className="h-full"
+            />
+          );
+        }
+      }
+    }
+  }
+
+  if (CODE_TEXT_GROUPS.has(file.filetypeGroup) || TABULAR_TYPES.has(file.filetype)) {
     if (isTextLoading) return <ViewerLoading label="Loading file..." />;
     if (textContent === undefined) return <ViewerFallback file={file} fileUrl={fileUrl} />;
     return (
@@ -131,7 +205,16 @@ export function FileViewerContent({
   if (file.filetype === "eml") {
     if (isEmailLoading) return <ViewerLoading label="Parsing email..." />;
     if (!email) return <ViewerFallback file={file} fileUrl={fileUrl} />;
-    return <EmailViewer email={email} />;
+    return (
+      <EmailViewer
+        email={email}
+        locationTarget={
+          locationTarget?.startOffset !== undefined && locationTarget?.endOffset !== undefined
+            ? { startOffset: locationTarget.startOffset, endOffset: locationTarget.endOffset }
+            : undefined
+        }
+      />
+    );
   }
 
   if (file.filetypeGroup === "image") {
@@ -141,73 +224,6 @@ export function FileViewerContent({
   }
 
   return <ViewerFallback file={file} fileUrl={fileUrl} />;
-}
-
-/**
- * Defaults to the rendered HTML view but lets the user switch to plain text,
- * which renders no iframe/images at all -- useful when offline or on a slow
- * connection, since the HTML view will otherwise sit there trying (and
- * failing) to load every remote image the email references.
- */
-function EmailViewer({ email }: { email: import("@/features/emails/types").EmailBase }) {
-  const [view, setView] = useState<"html" | "plain">(email.html ? "html" : "plain");
-
-  return (
-    <div className="h-full flex flex-col bg-white">
-      <div className="shrink-0 border-b border-slate-200 bg-slate-50 p-4 text-xs text-slate-700 space-y-1">
-        <div className="flex items-start justify-between gap-4">
-          <p className="font-bold text-sm">{email.metadata.title ?? "(no subject)"}</p>
-          {email.html && (
-            <div className="shrink-0 flex rounded-md border border-slate-200 bg-white p-0.5 text-[10px] font-bold uppercase tracking-wide">
-              <button
-                type="button"
-                onClick={() => setView("html")}
-                className={cn(
-                  "px-2 py-1 rounded",
-                  view === "html" ? "bg-indigo-600 text-white" : "text-slate-500 hover:text-slate-800"
-                )}
-              >
-                HTML
-              </button>
-              <button
-                type="button"
-                onClick={() => setView("plain")}
-                className={cn(
-                  "px-2 py-1 rounded",
-                  view === "plain" ? "bg-indigo-600 text-white" : "text-slate-500 hover:text-slate-800"
-                )}
-              >
-                Plain text
-              </button>
-            </div>
-          )}
-        </div>
-        <p>
-          <span className="text-slate-400">From:</span>{" "}
-          {email.metadata.from.name ?? email.metadata.from.value}
-        </p>
-        <p>
-          <span className="text-slate-400">To:</span>{" "}
-          {email.metadata.to.map((t) => t.name ?? t.value).join(", ")}
-        </p>
-        {email.metadata.dateSent && (
-          <p>
-            <span className="text-slate-400">Date:</span>{" "}
-            {new Date(email.metadata.dateSent).toLocaleString()}
-          </p>
-        )}
-      </div>
-      <div className="flex-1 min-h-0">
-        {view === "html" ? (
-          <EmailIframe body={email.html || email.plain || ""} />
-        ) : (
-          <pre className="h-full overflow-auto p-4 text-xs text-slate-800 whitespace-pre-wrap break-words font-sans">
-            {email.plain || "(no plain-text body)"}
-          </pre>
-        )}
-      </div>
-    </div>
-  );
 }
 
 /**
@@ -222,16 +238,36 @@ function PdfWithThumbnails({
   fileUrl,
   sidebarFitsInline,
   searchQuery,
+  locationTarget,
 }: {
   fileUrl: string;
   sidebarFitsInline: boolean;
   searchQuery?: string;
+  locationTarget?: FileLocationTarget;
 }) {
   const [numPages, setNumPages] = useState<number | null>(null);
   const showThumbnails = numPages !== null && numPages > 1 && sidebarFitsInline;
+  const viewerRef = useRef<PDFViewerHandle>(null);
+  const { pageNumber, boundingBox } = locationTarget ?? {};
+
+  useEffect(() => {
+    if (numPages === null || pageNumber === undefined) return;
+    if (boundingBox) {
+      viewerRef.current?.scrollToPageArea(pageNumber, {
+        top: boundingBox.top * 100,
+        left: boundingBox.left * 100,
+        width: boundingBox.width * 100,
+        height: boundingBox.height * 100,
+      });
+    } else {
+      viewerRef.current?.scrollToPage(pageNumber);
+    }
+    // Re-run whenever a new location is requested, once the doc has loaded.
+  }, [numPages, pageNumber, boundingBox]);
 
   return (
     <PDFViewer
+      ref={viewerRef}
       key={showThumbnails ? "with-sidebar" : "no-sidebar"}
       file={fileUrl}
       className="h-full"

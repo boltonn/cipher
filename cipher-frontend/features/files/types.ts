@@ -26,6 +26,19 @@ export interface FileText {
   chunkCount: number;
 }
 
+/** One extracted table's cells, split into a header row and (possibly capped) data rows. */
+export interface FileTableSheet {
+  columns: string[];
+  rows: string[][];
+  totalRows: number;
+  truncated: boolean;
+}
+
+/** A file's structured tables, if extraction found any (csv/tsv/json/jsonl/xlsx/...). */
+export interface FileTables {
+  sheets: FileTableSheet[];
+}
+
 export type FileBrowserEntryType = "file" | "directory";
 
 /** One row in a dataset's file browser -- a file or a folder. Folders have no id/hashes/size. */
@@ -66,4 +79,22 @@ export interface FileBrowserResponse {
   page: number;
   limit: number;
   hasMore: boolean;
+}
+
+/** Normalized [0,1] region on a page, e.g. from a document chunk's bounding box. */
+export interface BoundingBox {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+}
+
+/** Where in a file's viewer to jump to -- e.g. from a search result or a chat citation.
+ * `pageNumber` drives PDF/PPTX (slide)/DOCX; `startOffset`/`endOffset` drive the
+ * character-range highlight used for email (and as a fallback elsewhere). */
+export interface FileLocationTarget {
+  pageNumber?: number;
+  boundingBox?: BoundingBox;
+  startOffset?: number;
+  endOffset?: number;
 }

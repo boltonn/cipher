@@ -24,7 +24,7 @@ import {
   DocumentViewerThumbnailSidebar,
   useElementWidth,
   useInlineThumbnailSidebar,
-} from "@/components/ui/document-viewer-sidebar"
+} from "@/components/viewers/document-viewer-sidebar"
 import { FileThumbnail } from "@/components/ui/file-thumbnail"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
@@ -404,6 +404,7 @@ export function DocxViewerPreview({
   defaultThumbnailSidebarOpen = false,
   defaultIsDark = false,
   fileName,
+  initialPage,
   isDark: controlledIsDark,
   onIsDarkChange,
   rounded = false,
@@ -414,6 +415,8 @@ export function DocxViewerPreview({
   defaultThumbnailSidebarOpen?: boolean
   defaultIsDark?: boolean
   fileName?: string
+  /** 1-based page to scroll to once the document has loaded -- e.g. from a search result or chat citation. Re-navigates whenever this changes. */
+  initialPage?: number
   isDark?: boolean
   onIsDarkChange?: (isDark: boolean) => void
   rounded?: boolean
@@ -432,6 +435,7 @@ export function DocxViewerPreview({
       defaultThumbnailSidebarOpen={defaultThumbnailSidebarOpen}
       effectiveIsDark={effectiveIsDark}
       fileName={fileName}
+      initialPage={initialPage}
       rounded={rounded}
       setNightRenderEnabled={setIsDark}
       shouldRenderNightMode
@@ -446,6 +450,7 @@ function DocxViewerContent({
   defaultThumbnailSidebarOpen,
   effectiveIsDark,
   fileName,
+  initialPage,
   rounded,
   setNightRenderEnabled,
   shouldRenderNightMode,
@@ -456,6 +461,7 @@ function DocxViewerContent({
   defaultThumbnailSidebarOpen: boolean
   effectiveIsDark: boolean
   fileName?: string
+  initialPage?: number
   rounded: boolean
   setNightRenderEnabled: (checked: boolean) => void
   shouldRenderNightMode: boolean
@@ -685,6 +691,14 @@ function DocxViewerContent({
       behavior: "auto",
     })
   }, [])
+
+  React.useEffect(() => {
+    if (initialPage === undefined || !pageCount) return
+    // Deferred to a frame (rather than called synchronously in the effect
+    // body) since scrollToPage itself calls setActivePage.
+    const frameId = window.requestAnimationFrame(() => scrollToPage(initialPage))
+    return () => window.cancelAnimationFrame(frameId)
+  }, [initialPage, pageCount, url, scrollToPage])
 
   async function handleUpload(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]

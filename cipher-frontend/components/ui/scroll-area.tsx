@@ -15,6 +15,7 @@ function ScrollArea({
   className,
   viewportClassName,
   viewportRef,
+  viewportProps,
   scrollFade,
   orientation = "vertical",
   scrollbarGutter = false,
@@ -25,6 +26,11 @@ function ScrollArea({
   viewportClassName?: string
   /** Ref to the inner scrollable viewport element (e.g. for virtualizers needing the real scroll container). */
   viewportRef?: React.Ref<HTMLDivElement | null>
+  /** Extra props (aria attributes, event handlers, tabIndex, ...) applied to the inner scrollable viewport. */
+  viewportProps?: Omit<
+    React.ComponentProps<typeof ScrollAreaPrimitive.Viewport>,
+    "className" | "ref"
+  >
   /** Fades content near the scrollable edges instead of a hard clip. */
   scrollFade?: boolean
   /** Which scrollbar(s) to render. @default "vertical" */
@@ -78,6 +84,7 @@ function ScrollArea({
             "[mask-image:linear-gradient(to_bottom,transparent,black_12px,black_calc(100%-12px),transparent)]",
           viewportClassName
         )}
+        {...viewportProps}
       >
         {children}
       </ScrollAreaPrimitive.Viewport>

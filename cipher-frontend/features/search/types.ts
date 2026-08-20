@@ -53,6 +53,8 @@ interface TextChunkRawBase {
 export interface DocumentTextChunkRaw extends TextChunkRawBase {
   filetypeGroup: "document";
   filename: string;
+  pageNumber?: number;
+  headingPath?: string[];
 }
 
 export interface EmailTextChunkRaw extends TextChunkRawBase {
@@ -83,6 +85,10 @@ export interface SearchChunk {
   dateCreated: string;
   /** Matched words/phrases from Elasticsearch highlighting; empty for pure kNN (semantic) results. */
   highlights: string[];
+  /** Document-only: page this chunk's text came from, if known. */
+  pageNumber?: number;
+  /** Document-only: section heading hierarchy this chunk falls under. */
+  headingPath?: string[];
 }
 
 export interface GroupedFileResult {

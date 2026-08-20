@@ -23,7 +23,7 @@ import {
   DocumentViewerThumbnailSidebar,
   useElementWidth,
   useInlineThumbnailSidebar,
-} from "@/components/ui/document-viewer-sidebar"
+} from "@/components/viewers/document-viewer-sidebar"
 import { FileThumbnail } from "@/components/ui/file-thumbnail"
 import { Input } from "@/components/ui/input"
 import {

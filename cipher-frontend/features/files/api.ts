@@ -2,6 +2,7 @@ import type {
   FileBrowserRequest,
   FileBrowserResponse,
   FileRecord,
+  FileTables,
   FileText,
 } from "@/features/files/types";
 import { apiClient, baseURL } from "@/lib/api-client";
@@ -29,6 +30,13 @@ export const filesService = {
     });
     return data;
   },
+  // A 404 here just means "not extracted yet, or nothing tabular in this file" -- not an error worth toasting.
+  getFileTable: async (id: string): Promise<FileTables> => {
+    const { data } = await apiClient.get<FileTables>(`/files/${id}/table`, {
+      suppressErrorToast: true,
+    });
+    return data;
+  },
 };
 
 export function useFile(fileId: string | undefined) {
@@ -45,6 +53,17 @@ export function useFileText(fileId: string | undefined) {
   return useQuery({
     queryKey: ["files", fileId, "text"],
     queryFn: () => filesService.getFileText(fileId as string),
+    enabled: !!fileId,
+    staleTime: 60_000,
+    retry: false,
+  });
+}
+
+/** A 404 (not yet extracted, or nothing tabular) resolves as `isError`, not a thrown/toasted error. */
+export function useFileTable(fileId: string | undefined) {
+  return useQuery({
+    queryKey: ["files", fileId, "table"],
+    queryFn: () => filesService.getFileTable(fileId as string),
     enabled: !!fileId,
     staleTime: 60_000,
     retry: false,

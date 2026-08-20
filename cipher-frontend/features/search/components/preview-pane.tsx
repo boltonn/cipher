@@ -4,7 +4,7 @@ import { CopyableId } from "@/components/copyable-id";
 import {
   useElementWidth,
   useInlineThumbnailSidebar,
-} from "@/components/ui/document-viewer-sidebar";
+} from "@/components/viewers/document-viewer-sidebar";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { filesService, useFile } from "@/features/files/api";
@@ -54,7 +54,10 @@ export function PreviewPane({ fileId, chunk, query, isExpanded, onToggleExpand }
   const sidebarFitsInline = useInlineThumbnailSidebar(viewerWidth);
   const fileUrl = file?.id ? filesService.getFileUrl(file.id) : undefined;
   const browserItem: FileBrowserItem | null = file ? { ...file, type: "file" } : null;
-  const { textContent, isTextLoading, email, isEmailLoading } = useFileViewerData(browserItem, fileUrl);
+  const { textContent, isTextLoading, email, isEmailLoading, table, isTableLoading } = useFileViewerData(
+    browserItem,
+    fileUrl
+  );
 
   if (!fileId) {
     return (
@@ -159,6 +162,8 @@ export function PreviewPane({ fileId, chunk, query, isExpanded, onToggleExpand }
             isTextLoading={isTextLoading}
             email={email}
             isEmailLoading={isEmailLoading}
+            table={table}
+            isTableLoading={isTableLoading}
             sidebarFitsInline={sidebarFitsInline}
             searchQuery={query ?? undefined}
           />
