@@ -5,6 +5,7 @@ from cipher.api.deps.elasticsearch import TextChunkDatastoreDep
 from cipher.api.deps.postgres import ExtractedTextDatastoreDep, FileDatastoreDep, ImageDatastoreDep
 from cipher.api.utils import download_uri
 from cipher.schemas.base import BaseModel
+from cipher.schemas.document import DocumentMetadata
 from cipher.schemas.email import EmailBase
 from cipher.schemas.file import File
 from cipher.schemas.image import ImagePublic
@@ -98,3 +99,62 @@ async def get_file_text(
 
     chunk_count = await chunk_datastore.count(filters=ChunkFilters(file_id=id))
     return FileText(text=extracted.content, chunk_count=chunk_count)
+
+
+# Caps the rows returned per sheet regardless of how large the underlying table
+# is -- extraction stores the full table (a huge CSV can produce millions of
+# rows), and without this cap a single request could ship a multi-hundred-MB
+# JSON payload and force the client to parse and hold it all in memory. This
+# is a last-resort ceiling, not a pagination window -- the client's table
+# viewer virtualizes rendering, so it comfortably handles this many rows in
+# memory without needing incremental fetches.
+MAX_TABLE_ROWS = 100_000
+
+
+class FileTableSheet(BaseModel):
+    """One extracted table's cells, split into a header row and (possibly capped) data rows."""
+
+    columns: list[str]
+    rows: list[list[str]]
+    total_rows: int
+    truncated: bool
+
+
+class FileTables(BaseModel):
+    """A file's structured tables, if extraction found any (e.g. csv/tsv/xlsx/json)."""
+
+    sheets: list[FileTableSheet]
+
+
+@router.get(
+    "/{id}/table",
+    summary="Get a file's structured table data",
+    response_model=FileTables,
+)
+async def get_file_table(id: str, extracted_text_datastore: ExtractedTextDatastoreDep):
+    """Return structured tables extracted from a file (csv/tsv/json/jsonl/xlsx/...), if any.
+
+    Each sheet is capped at `MAX_TABLE_ROWS`; `truncated`/`total_rows` tell the
+    client when it's only seeing a prefix of the full table.
+    """
+    extracted = await extracted_text_datastore.get_by_file_id(file_id=id)
+    tables = extracted.metadata.tables if extracted and isinstance(extracted.metadata, DocumentMetadata) else None
+    if not tables:
+        raise HTTPException(status_code=404, detail=f"No table data found for file: {id}")
+
+    sheets = []
+    for table in tables:
+        if not table.cells:
+            continue
+        columns, *rows = table.cells
+        sheets.append(
+            FileTableSheet(
+                columns=columns,
+                rows=rows[:MAX_TABLE_ROWS],
+                total_rows=len(rows),
+                truncated=len(rows) > MAX_TABLE_ROWS,
+            )
+        )
+    if not sheets:
+        raise HTTPException(status_code=404, detail=f"No table data found for file: {id}")
+    return FileTables(sheets=sheets)

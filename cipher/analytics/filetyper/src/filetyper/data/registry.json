@@ -525,7 +525,7 @@
     },
     {
         "name": "csv",
-        "group": "code",
+        "group": "document",
         "mime_type": "text/csv",
         "extensions": [
             "csv"
@@ -1208,7 +1208,7 @@
     },
     {
         "name": "json",
-        "group": "code",
+        "group": "document",
         "mime_type": "application/json",
         "extensions": [
             "json"
@@ -1222,7 +1222,7 @@
     },
     {
         "name": "jsonl",
-        "group": "code",
+        "group": "document",
         "mime_type": "application/json",
         "extensions": [
             "jsonl",
@@ -2410,7 +2410,7 @@
     },
     {
         "name": "tsv",
-        "group": "code",
+        "group": "document",
         "mime_type": "text/tsv",
         "extensions": [
             "tsv"

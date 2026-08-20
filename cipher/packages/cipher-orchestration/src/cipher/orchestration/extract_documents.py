@@ -127,6 +127,28 @@ def _document_structure_from_kreuzberg(
     return nodes or None
 
 
+def _fallback_json_tables(file_resource: dict) -> list[ExtractedTableInfo]:
+    """Table view for JSON/JSONL, which xberg extracts as text but not as a table.
+
+    Reads the same local path xberg already extracted from, rather than
+    threading file bytes through the batch pipeline just for this.
+    """
+    from pyparse.parsers.tabular.json_tabular import flatten_json_records
+
+    data = Path(file_resource["path"]).read_bytes()
+    cells = flatten_json_records(data, jsonl=file_resource["filetype"] == "jsonl")
+    if not cells:
+        return []
+    return [ExtractedTableInfo(cells=cells, markdown=_cells_to_markdown(cells), page_number=1)]
+
+
+def _cells_to_markdown(cells: list[list[str]]) -> str:
+    header, *rows = cells
+    lines = [f"| {' | '.join(header)} |", f"| {' | '.join(['---'] * len(header))} |"]
+    lines.extend(f"| {' | '.join(row)} |" for row in rows)
+    return "\n".join(lines) + "\n"
+
+
 def _run_batch(
     paths: list[str],
     use_chunking: bool,
@@ -182,6 +204,18 @@ def _build_extracted_text(
     page_width = result.metadata.get("width")
     page_height = result.metadata.get("height")
 
+    tables = [
+        ExtractedTableInfo(
+            cells=t.cells,
+            markdown=t.markdown,
+            page_number=t.page_number,
+            bounding_box=_normalize_bbox(t.bounding_box, page_width, page_height),
+        )
+        for t in (result.tables or [])
+    ]
+    if not tables and file_resource.get("filetype") in {"json", "jsonl"}:
+        tables = _fallback_json_tables(file_resource)
+
     metadata = DocumentMetadata(
         filename=file_resource["filename"],
         title=result.metadata.get("title"),
@@ -191,16 +225,7 @@ def _build_extracted_text(
         date_content_modified=_parse_xberg_datetime(result.metadata.get("modified_at")),
         detected_language=result.get_detected_language(),
         page_count=result.get_page_count(),
-        tables=[
-            ExtractedTableInfo(
-                cells=t.cells,
-                markdown=t.markdown,
-                page_number=t.page_number,
-                bounding_box=_normalize_bbox(t.bounding_box, page_width, page_height),
-            )
-            for t in (result.tables or [])
-        ]
-        or None,
+        tables=tables or None,
         document_structure=_document_structure_from_kreuzberg(result.document, page_width, page_height),
         sent_from=parent_email_metadata.sent_from if parent_email_metadata else None,
         sent_to=parent_email_metadata.sent_to if parent_email_metadata else [],

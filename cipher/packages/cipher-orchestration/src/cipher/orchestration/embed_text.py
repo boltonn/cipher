@@ -94,6 +94,11 @@ def _split_if_oversized(span: dict, chunker: "PlainTextChunker") -> list[dict]:
             "content": sub.content,
             "start_offset": base_offset + sub.start_offset,
             "end_offset": base_offset + sub.end_offset,
+            # The re-chunker only knows characters, not page boundaries -- every
+            # sub-span inherits the parent prechunked span's page/heading info.
+            "first_page": span.get("first_page"),
+            "last_page": span.get("last_page"),
+            "heading_path": span.get("heading_path"),
         }
         for sub in chunker.chunk(span["content"])
     ]
@@ -112,7 +117,14 @@ def _spans_for(extracted: ExtractedText, chunker: "PlainTextChunker", max_pages:
             for s in chunker.chunk(_truncate_to_pages(extracted, max_pages))
         ]
     spans = [
-        {"content": s.content, "start_offset": s.start_offset, "end_offset": s.end_offset}
+        {
+            "content": s.content,
+            "start_offset": s.start_offset,
+            "end_offset": s.end_offset,
+            "first_page": s.first_page,
+            "last_page": s.last_page,
+            "heading_path": s.heading_path,
+        }
         for s in extracted.prechunked
         if max_pages is None or s.first_page is None or s.first_page <= max_pages
     ]
@@ -142,7 +154,15 @@ def _build_chunk(
         # persisted once on ExtractedText -- denormalizing them onto every chunk
         # would repeat that payload per chunk for no query benefit.
         metadata = extracted.metadata.model_dump(exclude={"tables", "document_structure"})
-        return DocumentTextChunk(**base, **metadata)
+        # page_number/heading_path live on DocumentTextChunk itself, not on
+        # DocumentMetadata -- only populated for prechunked (Kreuzberg) spans;
+        # CLIR-chunked spans have no per-span page info by construction.
+        return DocumentTextChunk(
+            **base,
+            **metadata,
+            page_number=span.get("first_page"),
+            heading_path=span.get("heading_path"),
+        )
     if isinstance(extracted.metadata, EmailMetadata):
         return EmailTextChunk(**base, **extracted.metadata.model_dump())
     raise ValueError(f"No document/email metadata to embed for file_id={extracted.file_id!r}")

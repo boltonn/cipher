@@ -12,8 +12,8 @@ from clir.api.deps import TextEmbeddingModelDep
 from fastapi import APIRouter, HTTPException
 
 from cipher.api.deps.elasticsearch import TextChunkDatastoreDep
+from cipher.api.services.search import search_chunks
 from cipher.schemas.search import (
-    ChunkHybridSearchRequest,
     ChunkSemanticSearchRequest,
     ChunkTextSearchRequest,
 )
@@ -78,11 +78,7 @@ async def search_hybrid(
     model: TextEmbeddingModelDep,
 ):
     """Embed a query string and run hybrid RRF search -- no pre-computed embedding needed."""
-    embedding = await model.infer(text=params.query, task="retrieval", prompt="Query: ")
-    if embedding is None:
-        raise HTTPException(status_code=503, detail="Embedding model unavailable")
-
-    request = ChunkHybridSearchRequest.model_validate(
-        {**params.model_dump(exclude_none=True), "embedding": embedding}
-    )
-    return await datastore.search_hybrid(request=request)
+    try:
+        return await search_chunks(params=params, datastore=datastore, embedding_model=model)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
