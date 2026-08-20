@@ -5,8 +5,10 @@ import { persist } from "zustand/middleware";
 interface ChatStore {
   keys: Record<string, string>;
   model: string;
+  datasetId?: string;
   setKey: (provider: string, key: string) => void;
   setModel: (model: string) => void;
+  setDatasetId: (datasetId: string | undefined) => void;
 }
 
 export const useChatStore = create<ChatStore>()(
@@ -14,9 +16,11 @@ export const useChatStore = create<ChatStore>()(
     (set) => ({
       keys: {},
       model: "openai:gpt-4o-mini",
+      datasetId: undefined,
       setKey: (provider, key) =>
         set((s) => ({ keys: { ...s.keys, [provider]: key } })),
       setModel: (model) => set({ model }),
+      setDatasetId: (datasetId) => set({ datasetId }),
     }),
     { name: "chat-config" }
   )

@@ -11,6 +11,7 @@ import {
   PromptInputTools,
   type PromptInputMessage,
 } from "@/components/ai-elements/prompt-input";
+import { DatasetSelect } from "@/features/datasets/components/dataset-select";
 import type { ChatStatus, UIMessage } from "ai";
 import { Trash2Icon } from "lucide-react";
 import { useState } from "react";
@@ -19,6 +20,8 @@ import { ModelConfigPopover } from "./model-config-popover";
 interface ChatInputProps {
   status: ChatStatus;
   messages: UIMessage[];
+  datasetId?: string;
+  onDatasetIdChange: (datasetId: string | undefined) => void;
   onSubmit: (message: PromptInputMessage) => void;
   onStop: () => void;
   onClear: () => void;
@@ -27,6 +30,8 @@ interface ChatInputProps {
 export function ChatInput({
   status,
   messages,
+  datasetId,
+  onDatasetIdChange,
   onSubmit,
   onStop,
   onClear,
@@ -51,6 +56,7 @@ export function ChatInput({
       <PromptInputFooter>
         <PromptInputTools>
           <ModelConfigPopover />
+          <DatasetSelect datasetId={datasetId} onChange={onDatasetIdChange} className="h-7 w-44" />
           {messages.length > 0 && (
             <ConversationDownload
               messages={messages}

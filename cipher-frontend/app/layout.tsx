@@ -1,5 +1,6 @@
 import { AppSidebar } from "@/components/app-sidebar";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import { PageHeaderProvider, PageHeaderSlot } from "@/components/page-header";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ReactQueryProvider } from "@/providers/react-query-provider";
 import { ThemeProvider } from "@/providers/theme-provider";
@@ -58,12 +59,15 @@ export default function RootLayout({
             <ReactQueryProvider>
               <SidebarProvider>
                 <AppSidebar />
-                <main
-                  id="main-content"
-                  className="relative flex-1 h-screen overflow-y-auto overflow-x-hidden"
-                >
-                  {children}
-                </main>
+                <PageHeaderProvider>
+                  <SidebarInset
+                    id="main-content"
+                    className="h-screen overflow-y-auto overflow-x-hidden"
+                  >
+                    <PageHeaderSlot />
+                    {children}
+                  </SidebarInset>
+                </PageHeaderProvider>
               </SidebarProvider>
             </ReactQueryProvider>
           </TooltipProvider>

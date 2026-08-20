@@ -24,7 +24,7 @@ function Textarea({ className, ...props }: React.ComponentProps<"textarea">) {
       onMouseMove={handleMouseMove}
       onMouseEnter={() => setVisible(true)}
       onMouseLeave={() => setVisible(false)}
-      className="group/input rounded-lg p-px transition duration-300"
+      className="group/input w-full rounded-lg p-px transition duration-300"
     >
       <textarea
         data-slot="textarea"

@@ -28,40 +28,9 @@ import {
 import { Settings2Icon } from "lucide-react";
 import { useState } from "react";
 import { useChatStore } from "../hooks/use-chat-store";
+import { MODELS, PROVIDER_LABELS } from "../lib/models";
 // Planned: replace Select with Combobox for searchable model picker
 const _modelCombobox = Combobox;
-
-const MODELS = [
-  { id: "openai:gpt-4o-mini", label: "GPT-4o Mini", provider: "openai" },
-  { id: "openai:gpt-4o", label: "GPT-4o", provider: "openai" },
-  {
-    id: "anthropic:claude-haiku-4-5-20251001",
-    label: "Claude Haiku",
-    provider: "anthropic",
-  },
-  {
-    id: "anthropic:claude-sonnet-4-5",
-    label: "Claude Sonnet",
-    provider: "anthropic",
-  },
-  {
-    id: "google:gemini-2.5-flash",
-    label: "Gemini 2.5 Flash",
-    provider: "google",
-  },
-  {
-    id: "google:gemini-2.5-flash-lite",
-    label: "Gemini 2.5 Flash Lite",
-    provider: "google",
-  },
-  { id: "google:gemini-2.5-pro", label: "Gemini 2.5 Pro", provider: "google" },
-];
-
-const PROVIDER_LABELS: Record<string, string> = {
-  openai: "OpenAI",
-  anthropic: "Anthropic",
-  google: "Google",
-};
 
 export function ModelConfigPopover() {
   const { keys, model, setKey, setModel } = useChatStore();
@@ -139,20 +108,27 @@ export function ModelConfigPopover() {
           </Select>
         </div>
 
-        <div className="space-y-1.5">
-          <Label>{PROVIDER_LABELS[draftProvider]} API Key</Label>
-          <Input
-            type="password"
-            placeholder={`Enter ${PROVIDER_LABELS[draftProvider]} key...`}
-            value={draftKeys[draftProvider] ?? ""}
-            onChange={(e) =>
-              setDraftKeys((k) => ({ ...k, [draftProvider]: e.target.value }))
-            }
-          />
+        {draftProvider === "local" ? (
           <p className="text-xs text-muted-foreground">
-            Stored locally. Switch model to set a different provider&apos;s key.
+            Runs against the vLLM server on your machine (localhost:8002) — no
+            API key needed.
           </p>
-        </div>
+        ) : (
+          <div className="space-y-1.5">
+            <Label>{PROVIDER_LABELS[draftProvider]} API Key</Label>
+            <Input
+              type="password"
+              placeholder={`Enter ${PROVIDER_LABELS[draftProvider]} key...`}
+              value={draftKeys[draftProvider] ?? ""}
+              onChange={(e) =>
+                setDraftKeys((k) => ({ ...k, [draftProvider]: e.target.value }))
+              }
+            />
+            <p className="text-xs text-muted-foreground">
+              Stored locally. Switch model to set a different provider&apos;s key.
+            </p>
+          </div>
+        )}
 
         {Object.entries(keys).filter(([, v]) => v).length > 0 && (
           <EnvironmentVariables>

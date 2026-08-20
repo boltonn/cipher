@@ -11,7 +11,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useDataset, useDatasetStats, useDeleteDataset } from "@/features/datasets/api";
 import { DatasetFileBrowser } from "@/features/datasets/components/dataset-file-browser";
 import { EditDatasetDialog } from "@/features/datasets/components/edit-dataset-dialog";
@@ -102,19 +101,16 @@ export default function DatasetDetailPage({
   return (
     <div className="max-w-350 mx-auto px-6 relative pb-20">
       <PageHeader>
-        <div className="flex items-center gap-4">
-          <SidebarTrigger className="h-9 w-9 text-slate-400 hover:text-indigo-400" />
-          <div className="flex flex-col">
-            <Link
-              href="/datasets"
-              className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] hover:text-indigo-400 transition-colors"
-            >
-              Registry
-            </Link>
-            <span className="text-xs font-mono text-indigo-400/80">
-              {dataset.name}
-            </span>
-          </div>
+        <div className="flex flex-col">
+          <Link
+            href="/datasets"
+            className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] hover:text-indigo-400 transition-colors"
+          >
+            Registry
+          </Link>
+          <span className="text-xs font-mono text-indigo-400/80">
+            {dataset.name}
+          </span>
         </div>
       </PageHeader>
 

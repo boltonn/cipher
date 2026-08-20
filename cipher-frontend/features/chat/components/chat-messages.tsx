@@ -55,7 +55,11 @@ function isToolPart(
   return part.type === "dynamic-tool" || part.type.startsWith("tool-");
 }
 
-export function ChatMessages({ messages, onRegenerate, onOpenCitation }: ChatMessagesProps) {
+export function ChatMessages({
+  messages,
+  onRegenerate,
+  onOpenCitation,
+}: ChatMessagesProps) {
   return (
     <Conversation>
       <ConversationContent>
@@ -68,117 +72,125 @@ export function ChatMessages({ messages, onRegenerate, onOpenCitation }: ChatMes
         ) : (
           messages.map((message, messageIndex) => {
             const isLast = messageIndex === messages.length - 1;
+            const isAssistant = message.role === "assistant";
 
             return (
-              <Fragment key={message.id}>
-                {message.parts.map((part, i) => {
-                  const key = `${message.id}-${i}`;
+              <div key={message.id} className="flex w-full items-start gap-2">
+                {isAssistant && (
+                  <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center shrink-0 border text-xs font-medium">
+                    AI
+                  </div>
+                )}
+                <div className="flex min-w-0 flex-1 flex-col gap-2">
+                  {message.parts.map((part, i) => {
+                    const key = `${message.id}-${i}`;
 
-                  if (part.type === "reasoning") {
-                    return (
-                      <Reasoning key={key}>
-                        <ReasoningTrigger />
-                        <ReasoningContent>{part.text}</ReasoningContent>
-                      </Reasoning>
-                    );
-                  }
-
-                  if (part.type === "source-url") {
-                    return (
-                      <Sources key={key}>
-                        <SourcesTrigger count={1} />
-                        <SourcesContent>
-                          <Source href={part.url}>
-                            {part.title ?? part.url}
-                          </Source>
-                        </SourcesContent>
-                      </Sources>
-                    );
-                  }
-
-                  if (part.type === "text") {
-                    return (
-                      <Fragment key={key}>
-                        <Message from={message.role}>
-                          <MessageContent>
-                            <MessageResponse>{part.text}</MessageResponse>
-                          </MessageContent>
-                        </Message>
-                        {message.role === "assistant" && isLast && (
-                          <ChatMessageActions
-                            text={part.text}
-                            onRegenerate={onRegenerate}
-                          />
-                        )}
-                      </Fragment>
-                    );
-                  }
-
-                  if (isToolPart(part)) {
-                    const toolLabel =
-                      part.type === "dynamic-tool"
-                        ? part.toolName
-                        : part.type.replace(/^tool-/, "");
-
-                    if (part.state === "approval-requested") {
+                    if (part.type === "reasoning") {
                       return (
-                        <Confirmation
-                          key={key}
-                          state={part.state}
-                          approval={part.approval}
-                        >
-                          <ConfirmationRequest>
-                            <ConfirmationTitle>
-                              {toolLabel} needs approval
-                            </ConfirmationTitle>
-                          </ConfirmationRequest>
-                        </Confirmation>
+                        <Reasoning key={key}>
+                          <ReasoningTrigger />
+                          <ReasoningContent>{part.text}</ReasoningContent>
+                        </Reasoning>
                       );
                     }
 
-                    if (
-                      toolLabel === "search_documents" &&
-                      part.state === "output-available" &&
-                      Array.isArray(part.output)
-                    ) {
+                    if (part.type === "source-url") {
                       return (
-                        <Citations
-                          key={key}
-                          citations={part.output as ChatCitation[]}
-                          onOpen={onOpenCitation}
-                        />
+                        <Sources key={key}>
+                          <SourcesTrigger count={1} />
+                          <SourcesContent>
+                            <Source href={part.url}>
+                              {part.title ?? part.url}
+                            </Source>
+                          </SourcesContent>
+                        </Sources>
                       );
                     }
 
-                    return (
-                      <Tool key={key}>
-                        {part.type === "dynamic-tool" ? (
-                          <ToolHeader
-                            type={part.type}
+                    if (part.type === "text") {
+                      return (
+                        <Fragment key={key}>
+                          <Message from={message.role}>
+                            <MessageContent>
+                              <MessageResponse>{part.text}</MessageResponse>
+                            </MessageContent>
+                          </Message>
+                          {message.role === "assistant" && isLast && (
+                            <ChatMessageActions
+                              text={part.text}
+                              onRegenerate={onRegenerate}
+                            />
+                          )}
+                        </Fragment>
+                      );
+                    }
+
+                    if (isToolPart(part)) {
+                      const toolLabel =
+                        part.type === "dynamic-tool"
+                          ? part.toolName
+                          : part.type.replace(/^tool-/, "");
+
+                      if (part.state === "approval-requested") {
+                        return (
+                          <Confirmation
+                            key={key}
                             state={part.state}
-                            toolName={part.toolName}
-                          />
-                        ) : (
-                          <ToolHeader type={part.type} state={part.state} />
-                        )}
-                        <ToolContent>
-                          {part.input != null &&
-                            typeof part.input === "object" &&
-                            Object.keys(part.input as object).length > 0 && (
-                              <ToolInput input={part.input} />
-                            )}
-                          <ToolOutput
-                            output={part.output}
-                            errorText={part.errorText}
-                          />
-                        </ToolContent>
-                      </Tool>
-                    );
-                  }
+                            approval={part.approval}
+                          >
+                            <ConfirmationRequest>
+                              <ConfirmationTitle>
+                                {toolLabel} needs approval
+                              </ConfirmationTitle>
+                            </ConfirmationRequest>
+                          </Confirmation>
+                        );
+                      }
 
-                  return null;
-                })}
-              </Fragment>
+                      if (
+                        toolLabel === "search_documents" &&
+                        part.state === "output-available" &&
+                        Array.isArray(part.output)
+                      ) {
+                        return (
+                          <Citations
+                            key={key}
+                            citations={part.output as ChatCitation[]}
+                            onOpen={onOpenCitation}
+                          />
+                        );
+                      }
+
+                      return (
+                        <Tool key={key}>
+                          {part.type === "dynamic-tool" ? (
+                            <ToolHeader
+                              type={part.type}
+                              state={part.state}
+                              toolName={part.toolName}
+                            />
+                          ) : (
+                            <ToolHeader type={part.type} state={part.state} />
+                          )}
+                          <ToolContent>
+                            {part.input != null &&
+                              typeof part.input === "object" &&
+                              Object.keys(part.input as object).length > 0 && (
+                                <ToolInput input={part.input} />
+                              )}
+                            <ToolOutput
+                              output={part.output}
+                              errorText={part.errorText}
+                            />
+                          </ToolContent>
+                        </Tool>
+                      );
+                    }
+
+                    return null;
+                  })}
+                </div>
+              </div>
             );
           })
         )}
