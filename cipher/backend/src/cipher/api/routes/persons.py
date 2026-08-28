@@ -9,6 +9,7 @@ from PIL import Image as PILImage
 
 from cipher.api.deps.postgres import (
     DatasetDatastoreDep,
+    EntityDatastoreDep,
     FaceDatastoreDep,
     FaceMatchDatastoreDep,
     FileDatastoreDep,
@@ -76,14 +77,20 @@ async def _get_or_create_reference_dataset(dataset_datastore: DatasetDatastoreDe
 
 
 @router.post("", summary="Create a new person", response_model=Person, response_model_by_alias=True)
-async def create_person(person: PersonCreate, datastore: PersonDatastoreDep) -> Person:
+async def create_person(
+    person: PersonCreate,
+    datastore: PersonDatastoreDep,
+    entity_datastore: EntityDatastoreDep,
+) -> Person:
     """Create a new person.
 
     Persons created through the app are always verified -- there is no
     manual toggle, since a human explicitly chose to create them.
     """
     person = person.model_copy(update={"is_verified": True})
-    return await datastore.add_person(person)
+    created = await datastore.add_person(person)
+    await entity_datastore.upsert_person_entity(created)
+    return created
 
 
 @router.get("/{id}", summary="Get person by ID", response_model=Person, response_model_by_alias=True)
@@ -101,9 +108,7 @@ async def get_person_by_id(id: str, datastore: PersonDatastoreDep):
     response_model=PaginatedPersonsResponse,
     response_model_by_alias=True,
 )
-async def get_persons(
-    params: Annotated[PersonSearchParameters, Depends()], datastore: PersonDatastoreDep
-):
+async def get_persons(params: Annotated[PersonSearchParameters, Depends()], datastore: PersonDatastoreDep):
     """Get all persons, optionally filtered by name/tags/verification, with pagination."""
     return await datastore.search_persons(request=params)
 
@@ -162,12 +167,11 @@ async def _create_reference_face(
     )
 
     image_record = await image_datastore.upsert_image(
-        ImageCreate(file_id=file_record.id, width=img.width, height=img.height)
+        ImageCreate(id=file_record.sha256, width=img.width, height=img.height),
+        file_id=file_record.id,
     )
 
-    face_create = face_annotation_to_face_create(
-        best, image_id=image_record.id, detector_model="insightface-buffalo_l"
-    )
+    face_create = face_annotation_to_face_create(best, image_id=image_record.id, detector_model="insightface-buffalo_l")
     return await face_datastore.add_face(face_create)
 
 
@@ -218,6 +222,7 @@ async def create_person_from_face(
     person_datastore: PersonDatastoreDep,
     face_datastore: FaceDatastoreDep,
     face_match_datastore: FaceMatchDatastoreDep,
+    entity_datastore: EntityDatastoreDep,
 ):
     """Create a person from a face that's already been detected and persisted.
 
@@ -239,6 +244,7 @@ async def create_person_from_face(
             is_verified=True,
         )
     )
+    await entity_datastore.upsert_person_entity(person)
 
     await face_datastore.assign_person(
         face_id=request.face_id,
@@ -274,13 +280,16 @@ async def create_person_from_image(
     dataset_datastore: DatasetDatastoreDep,
     file_datastore: FileDatastoreDep,
     image_datastore: ImageDatastoreDep,
+    entity_datastore: EntityDatastoreDep,
     model: FaceModelDep,
     name: Annotated[str | None, Form()] = None,
     sex: Annotated[str | None, Form()] = None,
     date_of_birth: Annotated[str | None, Form()] = None,
     notes: Annotated[str | None, Form()] = None,
     tags: Annotated[str | None, Form(description="Comma-separated tags")] = None,
-    face_index: Annotated[int, Form(ge=0, description="Which detected face to use, ranked by descending confidence")] = 0,
+    face_index: Annotated[
+        int, Form(ge=0, description="Which detected face to use, ranked by descending confidence")
+    ] = 0,
 ):
     """Detect faces in an uploaded photo, store the chosen one, and create a person from it.
 
@@ -301,6 +310,7 @@ async def create_person_from_image(
             is_verified=True,
         )
     )
+    await entity_datastore.upsert_person_entity(person)
 
     await face_datastore.assign_person(
         face_id=face.id,
@@ -338,7 +348,9 @@ async def add_person_example(
     file_datastore: FileDatastoreDep,
     image_datastore: ImageDatastoreDep,
     model: FaceModelDep,
-    face_index: Annotated[int, Form(ge=0, description="Which detected face to use, ranked by descending confidence")] = 0,
+    face_index: Annotated[
+        int, Form(ge=0, description="Which detected face to use, ranked by descending confidence")
+    ] = 0,
 ):
     """Detect a face in an uploaded photo and add it as a representative example for an existing person.
 
@@ -386,15 +398,28 @@ async def get_person_representative_faces(id: str, datastore: FaceDatastoreDep):
 
 
 @router.patch("/{id}", summary="Update a person", response_model=Person, response_model_by_alias=True)
-async def update_person(id: str, data: PersonUpdate, datastore: PersonDatastoreDep):
+async def update_person(
+    id: str,
+    data: PersonUpdate,
+    datastore: PersonDatastoreDep,
+    entity_datastore: EntityDatastoreDep,
+):
     """Update a person by their ID."""
     person = await datastore.update_person(person_id=id, data=data)
     if person is None:
         raise HTTPException(status_code=404, detail=f"Person not found: {id}")
+    await entity_datastore.upsert_person_entity(person)
     return person
 
 
 @router.delete("/{id}", summary="Delete person by ID")
-async def delete_person(id: str, datastore: PersonDatastoreDep) -> bool:
+async def delete_person(
+    id: str,
+    datastore: PersonDatastoreDep,
+    entity_datastore: EntityDatastoreDep,
+) -> bool:
     """Delete a person by their ID."""
-    return await datastore.delete_person(person_id=id)
+    deleted = await datastore.delete_person(person_id=id)
+    if deleted:
+        await entity_datastore.delete_person_entity(person_id=id)
+    return deleted

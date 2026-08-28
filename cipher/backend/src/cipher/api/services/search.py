@@ -4,7 +4,7 @@ from clir.api.deps import AsyncTextEmbeddingModel
 
 from cipher.datastores.elasticsearch.repositories.text_chunk import (
     ElasticsearchTextChunkRepository,
-    ScoredTextChunk,
+    FileSearchResult,
 )
 from cipher.datastores.elasticsearch.utils import PaginatedResponse
 from cipher.schemas.search import ChunkHybridSearchRequest, ChunkTextSearchRequest
@@ -15,7 +15,7 @@ async def search_chunks(
     params: ChunkTextSearchRequest,
     datastore: ElasticsearchTextChunkRepository,
     embedding_model: AsyncTextEmbeddingModel,
-) -> PaginatedResponse[ScoredTextChunk]:
+) -> PaginatedResponse[FileSearchResult]:
     """Embed `params.query` and run hybrid RRF search across documents and emails.
 
     Raises `RuntimeError` if the embedding model is unavailable.

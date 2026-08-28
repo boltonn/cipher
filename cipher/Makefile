@@ -1,12 +1,8 @@
 SHELL=/bin/bash
 APP_NAME = cipher
 USERNAME ?= boltonn
-VERSION ?= $(shell cat config/version.txt)
-TODAY ?= $(shell date +%Y-%m-%d)
+VERSION ?= $(shell grep -m1 '^version' pyproject.toml | cut -d'"' -f2)
 WORKING_DIR = $(shell pwd)
-PORT ?= 8000
-_BUILD_NAME = ${APP_NAME}
-_BUILD_DOCKERFILE ?= docker/Dockerfile
 
 install-cpu:
 	uv sync --group dev --extra analytics-cpu --extra backend
@@ -19,10 +15,16 @@ start:
 	uv run --no-sync cipher-serve
 	
 test:
-	uvx pytest
+	uv run --no-sync pytest
 
 style:
 	uvx ruff check --select I --fix && uvx ruff format
 
+lint:
+	uv run --no-sync ruff check .
+
+typecheck:
+	uv run --no-sync ty check
+
 start-setfitcv:
-	cd services/analytics/setfitcv && uv run --extra fastapi --extra cuda setfitcv-api
+	cd analytics/setfitcv && uv run --extra fastapi setfitcv-api

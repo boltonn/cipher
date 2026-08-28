@@ -1,8 +1,6 @@
-import json
-
-from loguru import logger
 
 from clir import settings
+from loguru import logger
 
 try:
     import boto3
@@ -18,8 +16,7 @@ except ImportError:
 def generate_presigned_url(
     bucket: str, key: str, expiration: int = settings.aws_presigned_url_expiration
 ) -> str:
-    """
-    Generate a presigned URL to share an S3 object
+    """Generate a presigned URL to share an S3 object
     """
     config = Config(signature_version="s3v4")
     s3_client = boto3.client(
@@ -39,8 +36,7 @@ def generate_presigned_url(
 
 
 def download_file(bucket: str, key: str, file_path: str) -> bool:
-    """
-    Download a file from S3
+    """Download a file from S3
     """
     s3_client = boto3.client("s3", region_name=settings.aws_default_region)
     try:
@@ -52,8 +48,7 @@ def download_file(bucket: str, key: str, file_path: str) -> bool:
 
 
 def download_file_contents(bucket: str, key: str) -> bytes:
-    """
-    Download the contents of a file from S3
+    """Download the contents of a file from S3
     """
     s3_client = boto3.client("s3", region_name=settings.aws_default_region)
     try:

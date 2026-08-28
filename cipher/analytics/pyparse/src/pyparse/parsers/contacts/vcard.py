@@ -10,8 +10,8 @@ from dateutil import parser as date_parser
 from dateutil.parser import ParserError
 from loguru import logger
 
-from pyparse.utils.mobile import normalize_phone_number
 from cipher.schemas import Contact
+from pyparse.utils.mobile import normalize_phone_number
 
 
 class VcardParser:

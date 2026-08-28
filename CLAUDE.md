@@ -89,6 +89,8 @@ types/      # common schemas
 * prefer typescript objects that align with pydantic schemas (but camelCase), rather than many pieces of useState, especially for things like filters
 * use react doctor to make code performant
 * keep most data out of the URL unless its an ID specific page
+* search / filter text inputs commit on Enter (and blur), never on every keystroke -- use the shared `SearchInput` (`components/search-input.tsx`), no debounced-refetch-as-you-type
+* never rely on native HTML autocomplete / `datalist` for suggestion-driven fields (browser autofill covers the menu); use the `Autocomplete` primitive (`components/ui/autocomplete.tsx`) -- cmdk + portaled popover, free-text value, opts out of autofill
 * Annotation for AI/ML should be a first-class citizen but should be denoted with a specific color
 * consistent terminology with the backend where appropriate with the exception of casing per above
 * support both paginated and infinite scroll for most things

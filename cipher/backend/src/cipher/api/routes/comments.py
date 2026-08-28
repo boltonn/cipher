@@ -7,8 +7,8 @@ from cipher.api.deps.postgres import CommentDatastoreDep
 from cipher.schemas.base import BaseModel
 from cipher.schemas.comment import (
     Comment,
-    CommentBase,
     CommentableType,
+    CommentBase,
     CommentCreate,
     CommentPublic,
     CommentUpdate,

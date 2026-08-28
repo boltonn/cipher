@@ -2,8 +2,8 @@ from pathlib import Path
 
 from pydantic import Field
 from pydantic_settings import SettingsConfigDict
-from setfitcv.schemas import ModelDevice
 
+from cipher.schemas.common import ModelDevice
 from cipher.utils.fastapi.settings import BaseServiceSettings
 
 

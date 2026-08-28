@@ -13,7 +13,22 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from cipher.api.deps.elasticsearch import elasticsearch_lifespan
 from cipher.api.deps.postgres import postgres_lifespan
-from cipher.api.routes import chat, comments, datasets, documents, emails, faces, files, images, persons, search, users
+from cipher.api.routes import (
+    chat,
+    comments,
+    dataset_requests,
+    datasets,
+    documents,
+    emails,
+    entities,
+    faces,
+    files,
+    images,
+    mentions,
+    persons,
+    search,
+    users,
+)
 from cipher.api.settings import Settings
 from cipher.schemas.exceptions import EntityAlreadyExistsError, EntityNotFoundError
 from cipher.utils.fastapi.health import ServiceHealthStatus, service_health
@@ -66,6 +81,7 @@ app.add_middleware(
 app.include_router(chat.router)
 app.include_router(documents.router)
 app.include_router(emails.router)
+app.include_router(dataset_requests.router)
 app.include_router(datasets.router)
 # app.include_router(enrichments.router)
 app.include_router(files.router)
@@ -75,6 +91,8 @@ app.include_router(search.router)
 app.include_router(users.router)
 app.include_router(faces.router)
 app.include_router(persons.router)
+app.include_router(entities.router)
+app.include_router(mentions.router)
 app.include_router(comments.router)
 static_path = Path(__file__).parent / "assets"
 app.mount(f"/{static_path.name}", StaticFiles(directory=static_path), name="static")

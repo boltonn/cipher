@@ -2,8 +2,6 @@ from pathlib import Path
 
 from loguru import logger
 
-from filetyper.api.deps import FileTyperDep, model_lifespan
-from filetyper.schemas import FilteTyperStrategy
 from cipher.utils.fastapi.health import ServiceHealthStatus, service_health
 from cipher.utils.fastapi.info import ServiceInfo, get_package_info
 from cipher.utils.fastapi.middleware import (
@@ -12,6 +10,8 @@ from cipher.utils.fastapi.middleware import (
     validation_exception_handler,
 )
 from cipher.utils.fastapi.settings import BaseServiceSettings
+from filetyper.api.deps import FileTyperDep, model_lifespan
+from filetyper.schemas import FilteTyperStrategy
 
 settings = BaseServiceSettings()
 service_info = get_package_info("filetyper")

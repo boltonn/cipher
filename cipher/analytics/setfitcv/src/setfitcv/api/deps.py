@@ -19,6 +19,10 @@ class AsyncImageEmbeddingModel:
     def __init__(self, model_dir: Path | str, device: str | None = None):
         self._model = CLIP(model_dir=Path(model_dir), device=device)
 
+    def unload(self) -> None:
+        """Release the underlying CLIP model."""
+        self._model.decommission()
+
     @batch(
         max_batch_size=settings.max_batch_size,
         batch_wait_timeout_s=settings.batch_timeout,
@@ -66,7 +70,8 @@ async def model_lifespan(app: FastAPI):
     app.state.image_model = model
     logger.info("✅ Image embedding model loaded.")
     yield
-    # Cleanup if needed
+    model.unload()
+    del app.state.image_model
     logger.info("🛑 App shutdown. Cleaning up model.")
 
 

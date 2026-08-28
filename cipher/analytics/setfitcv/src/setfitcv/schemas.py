@@ -1,11 +1,4 @@
-from enum import StrEnum
-
 from pydantic import BaseModel, ConfigDict, Field
-
-
-class ModelDevice(StrEnum):
-    CPU = "cpu"
-    CUDA = "cuda"
 
 
 class ClipTextRequest(BaseModel):

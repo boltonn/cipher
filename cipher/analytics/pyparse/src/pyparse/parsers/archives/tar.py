@@ -3,8 +3,8 @@ from datetime import datetime
 from pathlib import Path
 from tarfile import TarFile, TarInfo
 
-from pyparse.utils.io import safe_open
 from cipher.utils.io import compute_hash
+from pyparse.utils.io import safe_open
 
 
 class TarParser:

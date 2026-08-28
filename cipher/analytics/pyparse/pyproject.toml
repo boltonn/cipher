@@ -4,8 +4,16 @@ version = "0.0.1"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "loguru"
+    "cipher-schemas",
+    "cipher-utils",
+    "filetyper",
+    "loguru",
 ]
+
+[tool.uv.sources]
+cipher-schemas = { workspace = true }
+cipher-utils = { workspace = true }
+filetyper = { workspace = true }
 
 [project.optional-dependencies]
 cli = ["fastparquet", "pandas", "typer"]

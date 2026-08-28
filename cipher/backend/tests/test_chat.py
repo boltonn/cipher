@@ -1,8 +1,10 @@
 import asyncio
 
 import httpx
+import pytest
 
 
+@pytest.mark.skip(reason="manual smoke test: requires a running cipher-serve on :8000")
 async def test_stream():
     """A simple test to demonstrate how to consume the streaming endpoint."""
     url = "http://localhost:8000/chat"  # Update to your actual host/port

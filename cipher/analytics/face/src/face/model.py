@@ -1,3 +1,4 @@
+import gc
 import math
 from pathlib import Path
 
@@ -53,6 +54,18 @@ class InsightFaceModel:
             root=model_dir, providers=providers, name="buffalo_l", allowed_modules=allowed_modules
         )
         self.model.prepare(ctx_id=0, det_thresh=det_thresh, det_size=det_size)
+
+    def unload(self) -> None:
+        """Release the underlying onnxruntime InferenceSessions.
+
+        Each allowed_module owns its own onnxruntime session and thread
+        pool; deleting them here (instead of leaving it to interpreter-exit
+        GC) lets onnxruntime tear its native semaphores down deterministically,
+        which avoids `resource_tracker: leaked semaphore objects` warnings on
+        process shutdown.
+        """
+        del self.model
+        gc.collect()
 
     def standardize(self, face: dict, height: int, width: int) -> FaceAnnotation:
         """Standardize the output of InsightFace to FaceAnnotation schema."""

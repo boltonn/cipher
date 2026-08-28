@@ -4,7 +4,6 @@ USERNAME ?= nazgul44
 VERSION ?= $(shell grep -E '^version = ' pyproject.toml | sed -E 's/version = "(.*)"/\1/')
 WORKING_DIR = $(shell pwd)
 PORT ?= 8000
-_BUILD_DOCKERFILE ?= docker/Dockerfile
 DEPS_DIR = deps
 MODEL_GROUP = jinaai
 MODEL_NAME = jina-embeddings-v5-text-small

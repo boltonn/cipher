@@ -30,7 +30,8 @@ async def model_lifespan(app: FastAPI):
     app.state.face_model = model
     logger.info("✅ InsightFace model loaded.")
     yield
-    # Cleanup if needed
+    model.unload()
+    del app.state.face_model
     logger.info("🛑 App shutdown. Cleaning up InsightFace model.")
 
 

@@ -72,6 +72,7 @@ async def get_file_image(id: str, image_datastore: ImageDatastoreDep):
 class FileText(BaseModel):
     """A file's extracted text plus how many search chunks it was indexed into."""
 
+    extracted_text_id: str
     text: str
     chunk_count: int
 
@@ -98,7 +99,7 @@ async def get_file_text(
         raise HTTPException(status_code=404, detail=f"No extracted text found for file: {id}")
 
     chunk_count = await chunk_datastore.count(filters=ChunkFilters(file_id=id))
-    return FileText(text=extracted.content, chunk_count=chunk_count)
+    return FileText(extracted_text_id=extracted.id, text=extracted.content, chunk_count=chunk_count)
 
 
 # Caps the rows returned per sheet regardless of how large the underlying table

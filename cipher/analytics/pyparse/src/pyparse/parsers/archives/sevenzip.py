@@ -7,8 +7,8 @@ from loguru import logger
 from py7zr import SevenZipFile
 from py7zr.py7zr import ArchiveFile
 
-from pyparse.utils.io import safe_open
 from cipher.utils.io import compute_hash
+from pyparse.utils.io import safe_open
 
 
 class SevenZipParser:

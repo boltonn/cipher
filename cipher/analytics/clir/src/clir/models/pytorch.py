@@ -13,10 +13,10 @@ from transformers import (
 )
 from transformers.utils import is_flash_attn_2_available
 
+from cipher.schemas.common import ModelDevice
 from clir.models.base import Model
 from clir.models.registry import ModelConfig, get_model_config_from_name
 from clir.schemas import ConversationChunkTokenized
-from cipher.schemas.common import ModelDevice
 
 
 def _resolve_attn_implementation() -> str:
@@ -199,7 +199,12 @@ class TextEmbeddingPytorchModel(Model):
             if truncate_dim is not None:
                 pooled = pooled[:, :truncate_dim]
 
-            embeddings = F.normalize(pooled, p=2, dim=-1)
+            # Normalize in float32 even when inference runs in bfloat16 (modern GPUs, see
+            # _resolve_dtype) -- bf16's ~3-decimal-digit precision leaves the result's
+            # magnitude off by up to ~0.2%, which downstream consumers relying on a strict
+            # unit-length vector (e.g. Elasticsearch's dot_product similarity, tolerance
+            # ~1e-4) reject outright. Normalizing in float32 brings it to exactly 1.0.
+            embeddings = F.normalize(pooled.float(), p=2, dim=-1)
 
         return embeddings.detach().cpu().float().numpy()
 

@@ -11,8 +11,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-analytics-cpu = [ "clir", "face", "filetyper", "pyparse[all]", "pyxberg", "setfitcv" ]
-analytics-cuda = [ "clir[cuda,tables]", "face[cuda]", "filetyper", "pyparse[all]", "pyxberg", "setfitcv[cuda]" ]
+analytics-cpu = [ "clir", "face", "filetyper", "nerd", "pygliner", "pyparse[all]", "pyselectors", "pyxberg", "setfitcv" ]
+analytics-cuda = [ "clir[cuda,tables]", "face[cuda]", "filetyper", "nerd[cuda]", "pygliner[cuda]", "pyparse[all]", "pyselectors", "pyxberg", "setfitcv[cuda]" ]
 elasticsearch = [ "cipher-datastores[elasticsearch]" ]
 postgres = [ "cipher-datastores[postgres]" ]
 backend = [ "cipher-backend" ]
@@ -36,18 +36,24 @@ filetyper = { workspace = true }
 setfitcv = { workspace = true }
 pyparse = { workspace = true }
 pyxberg = { workspace = true }
+pyselectors = { workspace = true }
+pygliner = { workspace = true }
+nerd = { workspace = true }
 clir = { workspace = true }
 
 [tool.uv.workspace]
 members = [
-    "packages/cipher-datastores",
-    "packages/cipher-schemas",
-    "packages/cipher-utils",
-    "packages/cipher-orchestration",
+    "libs/cipher-datastores",
+    "libs/cipher-schemas",
+    "libs/cipher-utils",
+    "pipelines/cipher-orchestration",
     "backend",
     "analytics/clir",
     "analytics/face",
     "analytics/filetyper",
+    "analytics/nerd",
+    "analytics/pygliner",
+    "analytics/pyselectors",
     "analytics/setfitcv",
     "analytics/pyparse",
     "analytics/pyxberg",
@@ -64,6 +70,7 @@ flash-attn = ["torch", "setuptools", "wheel", "ninja"]
 
 [dependency-groups]
 dev = [
+    "alembic",
     "debugpy",
     "faker",
     "httpx",
@@ -72,6 +79,7 @@ dev = [
     "pytest-asyncio",
     "pytest-loguru",
     "ruff",
+    "ty",
     "setuptools",
     "wheel",
     "ninja",
@@ -79,6 +87,8 @@ dev = [
 
 [tool.ruff]
 line-length = 120
+# migrations: alembic scripts; nerd/data: vendored NER dataset processors.
+extend-exclude = ["**/migrations/**", "analytics/nerd/src/nerd/data/**"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "D"]
@@ -109,5 +119,23 @@ quote-style = "double"
 indent-style = "space"
 line-ending = "auto"
 
-[tool.isort]
-py_version=311
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["backend/tests"]
+
+[tool.ty.environment]
+python-version = "3.12"
+
+[tool.ty.src]
+exclude = [
+    "**/scripts/**",
+    "**/tests/**",
+    "**/.venv/**",
+]
+
+[tool.ty.rules]
+# Pre-existing backlog (~470 diagnostics at adoption on 2026-08-28); the CI `ty`
+# job is non-blocking until this is burned down. Tighten to a gate once green.
+unresolved-import = "warn"
+unresolved-attribute = "warn"
+invalid-parameter-default = "warn"

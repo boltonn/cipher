@@ -13,11 +13,18 @@ from cipher.datastores.postgres.repositories.dataset import PostgresDatasetRepos
 from cipher.datastores.postgres.repositories.enrichment import (
     PostgresEnrichmentRepository,
 )
+from cipher.datastores.postgres.repositories.entity import PostgresEntityRepository
+from cipher.datastores.postgres.repositories.entity_match import PostgresEntityMatchRepository
+from cipher.datastores.postgres.repositories.entity_relationship import PostgresGraphRepository
+from cipher.datastores.postgres.repositories.entity_relationship_candidate import (
+    PostgresRelationshipCandidateRepository,
+)
 from cipher.datastores.postgres.repositories.extracted_text import PostgresExtractedTextRepository
 from cipher.datastores.postgres.repositories.face import PostgresFaceRepository
 from cipher.datastores.postgres.repositories.face_match import PostgresFaceMatchRepository
 from cipher.datastores.postgres.repositories.file import PostgresFileRepository
 from cipher.datastores.postgres.repositories.image import PostgresImageRepository
+from cipher.datastores.postgres.repositories.mention import PostgresMentionRepository
 from cipher.datastores.postgres.repositories.person import PostgresPersonRepository
 from cipher.datastores.postgres.repositories.user import PostgresUserRepository
 from cipher.datastores.postgres.tables.base import Base
@@ -67,6 +74,7 @@ async def init_db_from_settings():
     """Initialize the database by creating all tables."""
     async with get_async_engine_from_settings().begin() as conn:
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
         await conn.run_sync(Base.metadata.create_all)
 
 
@@ -132,6 +140,38 @@ async def get_face_match_repository() -> AsyncGenerator[PostgresFaceMatchReposit
         yield PostgresFaceMatchRepository(session=session)
 
 
+async def get_entity_repository() -> AsyncGenerator[PostgresEntityRepository, None]:
+    """Dependency injector for PostgresEntityRepository."""
+    async with get_session() as session:
+        yield PostgresEntityRepository(session=session)
+
+
+async def get_mention_repository() -> AsyncGenerator[PostgresMentionRepository, None]:
+    """Dependency injector for PostgresMentionRepository."""
+    async with get_session() as session:
+        yield PostgresMentionRepository(session=session)
+
+
+async def get_graph_repository() -> AsyncGenerator[PostgresGraphRepository, None]:
+    """Dependency injector for PostgresGraphRepository."""
+    async with get_session() as session:
+        yield PostgresGraphRepository(session=session)
+
+
+async def get_relationship_candidate_repository() -> AsyncGenerator[
+    PostgresRelationshipCandidateRepository, None
+]:
+    """Dependency injector for PostgresRelationshipCandidateRepository."""
+    async with get_session() as session:
+        yield PostgresRelationshipCandidateRepository(session=session)
+
+
+async def get_entity_match_repository() -> AsyncGenerator[PostgresEntityMatchRepository, None]:
+    """Dependency injector for PostgresEntityMatchRepository."""
+    async with get_session() as session:
+        yield PostgresEntityMatchRepository(session=session)
+
+
 DatasetDatastoreDep = Annotated[
     PostgresDatasetRepository, Depends(get_dataset_repository)
 ]
@@ -153,6 +193,15 @@ CommentDatastoreDep = Annotated[
 ]
 FaceMatchDatastoreDep = Annotated[
     PostgresFaceMatchRepository, Depends(get_face_match_repository)
+]
+EntityDatastoreDep = Annotated[PostgresEntityRepository, Depends(get_entity_repository)]
+MentionDatastoreDep = Annotated[PostgresMentionRepository, Depends(get_mention_repository)]
+GraphDatastoreDep = Annotated[PostgresGraphRepository, Depends(get_graph_repository)]
+RelationshipCandidateDatastoreDep = Annotated[
+    PostgresRelationshipCandidateRepository, Depends(get_relationship_candidate_repository)
+]
+EntityMatchDatastoreDep = Annotated[
+    PostgresEntityMatchRepository, Depends(get_entity_match_repository)
 ]
 
 
@@ -253,6 +302,11 @@ __all__ = [
     "get_person_repository",
     "get_comment_repository",
     "get_face_match_repository",
+    "get_entity_repository",
+    "get_mention_repository",
+    "get_graph_repository",
+    "get_relationship_candidate_repository",
+    "get_entity_match_repository",
     "DatasetDatastoreDep",
     "EnrichmentDatastoreDep",
     "FileDatastoreDep",
@@ -263,6 +317,11 @@ __all__ = [
     "PersonDatastoreDep",
     "CommentDatastoreDep",
     "FaceMatchDatastoreDep",
+    "EntityDatastoreDep",
+    "MentionDatastoreDep",
+    "GraphDatastoreDep",
+    "RelationshipCandidateDatastoreDep",
+    "EntityMatchDatastoreDep",
     "FaceSimilaritySearchFormParametersDep",
     "postgres_lifespan",
 ]

@@ -24,6 +24,10 @@ class AsyncTextEmbeddingModel:
         #     max_length=self._model.default_max_seq_length,
         # )
 
+    def unload(self) -> None:
+        """Release the underlying text embedding model."""
+        self._model.unload()
+
     async def infer(
         self,
         text: str,
@@ -73,7 +77,8 @@ async def model_lifespan(app: FastAPI):
     app.state.text_embedding_model = model
     logger.info("✅ Text embedding model loaded.")
     yield
-    # Cleanup if needed
+    model.unload()
+    del app.state.text_embedding_model
     logger.info("🛑 App shutdown. Cleaning up model.")
 
 

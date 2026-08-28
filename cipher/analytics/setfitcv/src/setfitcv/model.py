@@ -1,3 +1,4 @@
+import gc
 from pathlib import Path
 
 import torch
@@ -5,7 +6,7 @@ from loguru import logger
 from PIL import Image
 from transformers import CLIPImageProcessor, CLIPModel, CLIPTokenizer
 
-from setfitcv.schemas import ModelDevice
+from cipher.schemas.common import ModelDevice
 
 
 class CLIP:
@@ -41,6 +42,7 @@ class CLIP:
         self.model.to("cpu")
         del self.model
         torch.cuda.empty_cache()
+        gc.collect()
 
     def preprocess_txt(self, texts: list[str]):
         """Preprocess text inputs into token IDs.

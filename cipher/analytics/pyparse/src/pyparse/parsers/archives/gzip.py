@@ -1,8 +1,8 @@
 import gzip
 from pathlib import Path
 
-from pyparse.utils.io import safe_open
 from cipher.utils.io import compute_hash
+from pyparse.utils.io import safe_open
 
 
 class GzipParser:

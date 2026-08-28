@@ -11,6 +11,7 @@ keywords = [
 version = "0.0.1"
 requires-python = ">=3.12"
 dependencies = [
+  "cipher-schemas",
   "langchain-text-splitters",
   "loguru",
   "peft",
@@ -20,6 +21,7 @@ dependencies = [
 ]
 
 [tool.uv.sources]
+cipher-schemas = { workspace = true }
 cipher-utils = { workspace = true }
 
 [build-system]

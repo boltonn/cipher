@@ -13,15 +13,17 @@ keywords = [
 version = "0.0.1"
 requires-python = ">=3.12"
 dependencies = [
+  "cipher-schemas",
   "insightface",
   "loguru",
-  "numpy<2", 
+  "numpy<2",
   "opencv-python-headless",
   "pillow",
-  "pillow-heif", 
+  "pillow-heif",
 ]
 
 [tool.uv.sources]
+cipher-schemas = { workspace = true }
 cipher-utils = { workspace = true }
 
 [build-system]
