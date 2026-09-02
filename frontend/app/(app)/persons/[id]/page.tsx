@@ -1,17 +1,22 @@
 "use client";
 
 import { PageHeader } from "@/components/page-header";
+import { PageLoading } from "@/components/page-loading";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CommentSection } from "@/features/comments/components/comment-section";
+import { AddConnectionDialog } from "@/features/entities/components/add-connection-dialog";
+import { AttachSelectorDialog } from "@/features/entities/components/attach-selector-dialog";
 import { EntityGraph } from "@/features/entities/components/entity-graph";
 import { EntityMentionsByFile } from "@/features/entities/components/entity-mentions-by-file";
+import { EntitySelectors } from "@/features/entities/components/entity-selectors";
 import { ENTITY_TYPE_META } from "@/features/entities/components/entity-type-meta";
 import { Section } from "@/features/entities/components/section";
 import { useEntityProfile } from "@/features/entities/hooks/use-entities";
+import { FAMILY_ROLE_INVERSE } from "@/features/entities/types";
 import { FaceCard } from "@/features/faces/components/face-card";
-import { FaceDetailDialog } from "@/features/faces/components/face-detail-dialog";
 import { usePersonFaces } from "@/features/faces/hooks/use-person-faces";
+import { ImageViewerDialog } from "@/features/images/components/image-viewer-dialog";
 import { FacePublic } from "@/features/faces/types";
 import { EditPersonDialog } from "@/features/persons/components/edit-person-dialog";
 import { PersonExampleUploadButton } from "@/features/persons/components/person-example-upload-button";
@@ -27,8 +32,11 @@ import {
   Fingerprint,
   ImagePlus,
   Loader2,
+  type LucideIcon,
+  MessageSquare,
   Network,
   Pencil,
+  Plus,
   ScanFace,
 } from "lucide-react";
 import Link from "next/link";
@@ -56,15 +64,16 @@ export default function PersonDetailPage({
   } = usePersonFaces(id);
 
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isAddSelectorOpen, setIsAddSelectorOpen] = useState(false);
+  const [isAddConnectionOpen, setIsAddConnectionOpen] = useState(false);
   const [selectedFace, setSelectedFace] = useState<FacePublic | null>(null);
 
   const recentFaces = useMemo(
     () => facesData?.pages.flatMap((p) => p.data) ?? [],
     [facesData]
   );
-  const allFacesForNav = recentFaces;
   const selectedIndex = selectedFace
-    ? allFacesForNav.findIndex((f) => f.id === selectedFace.id)
+    ? recentFaces.findIndex((f) => f.id === selectedFace.id)
     : -1;
 
   const selectors = profile?.selectors ?? [];
@@ -73,15 +82,38 @@ export default function PersonDetailPage({
   const totalMentions = Object.values(mentionCounts).reduce((a, b) => a + b, 0);
 
   if (isPending || !person) {
-    return (
-      <div className="flex items-center justify-center py-48 text-muted-foreground">
-        <Loader2 className="h-8 w-8 animate-spin text-primary/40" />
-      </div>
-    );
+    return <PageLoading icon={ScanFace} label="Loading person…" />;
   }
 
+  const stats: {
+    label: string;
+    value: number;
+    href: string;
+    Icon: LucideIcon;
+  }[] = [
+    { label: "Faces", value: recentFaces.length, href: "#faces", Icon: ScanFace },
+    {
+      label: "Mentions",
+      value: totalMentions,
+      href: "#files",
+      Icon: FileText,
+    },
+    {
+      label: "Selectors",
+      value: selectors.length,
+      href: "#selectors",
+      Icon: Fingerprint,
+    },
+    {
+      label: "Connections",
+      value: related.length,
+      href: "#connections",
+      Icon: Network,
+    },
+  ];
+
   return (
-    <div className="max-w-400 mx-auto px-6 relative pb-20">
+    <div className="relative mx-auto max-w-5xl px-6 pb-24">
       <PageHeader
         eyebrow="Person"
         value={
@@ -92,7 +124,7 @@ export default function PersonDetailPage({
       />
 
       {/* Identity header */}
-      <div className="mt-4 rounded-2xl bg-muted/40 backdrop-blur-2xl border border-border p-6 flex flex-col gap-4">
+      <div className="mt-4 flex flex-col gap-4 rounded-2xl border border-border bg-muted/40 p-6 backdrop-blur-2xl">
         <div className="flex items-start gap-6">
           <PersonExamplesGallery
             personId={id}
@@ -100,20 +132,20 @@ export default function PersonDetailPage({
             isPending={repPending}
           />
 
-          <div className="flex-1 min-w-0 flex flex-col gap-3">
+          <div className="flex min-w-0 flex-1 flex-col gap-3">
             <div className="flex items-start justify-between gap-4">
-              <div>
+              <div className="min-w-0">
                 <div className="flex items-center gap-2.5">
-                  <h1 className="text-xl font-bold text-white">
+                  <h1 className="truncate text-xl font-bold text-white">
                     {person.name || "Unnamed Person"}
                   </h1>
                   {person.isVerified && (
-                    <Badge className="h-6 bg-primary/10 text-primary border-none gap-1.5 text-xs px-2.5">
+                    <Badge className="h-6 gap-1.5 border-none bg-primary/10 px-2.5 text-xs text-primary">
                       <BadgeCheck size={14} /> Verified
                     </Badge>
                   )}
                 </div>
-                <div className="flex items-center gap-5 mt-2 text-sm text-muted-foreground">
+                <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-muted-foreground">
                   {person.sex && (
                     <span className="capitalize">{person.sex}</span>
                   )}
@@ -126,13 +158,16 @@ export default function PersonDetailPage({
                   {person.aliases.length > 0 && (
                     <span>aka {person.aliases.join(", ")}</span>
                   )}
+                  <span className="capitalize">
+                    {person.source.replace(/_/g, " ")}
+                  </span>
                 </div>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex shrink-0 items-center gap-2">
                 <PersonExampleUploadButton
                   personId={id}
                   atCap={(representativeFaces?.length ?? 0) >= 10}
-                  className="flex items-center gap-2 border border-border/50 bg-muted/40 rounded-md text-muted-foreground hover:text-annotation hover:border-annotation/30 uppercase text-[10px] font-bold tracking-widest h-9 px-3 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+                  className="flex h-9 items-center gap-2 rounded-md border border-border/50 bg-muted/40 px-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground transition-colors hover:border-annotation/30 hover:text-annotation disabled:pointer-events-none disabled:opacity-30"
                 >
                   <ImagePlus size={14} />
                   Upload Exemplar
@@ -141,7 +176,7 @@ export default function PersonDetailPage({
                   variant="outline"
                   size="sm"
                   onClick={() => setIsEditOpen(true)}
-                  className="border-border/50 bg-muted/40 text-muted-foreground hover:text-primary uppercase text-[10px] font-bold tracking-widest gap-2 h-9"
+                  className="h-9 gap-2 border-border/50 bg-muted/40 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary"
                 >
                   <Pencil size={14} />
                   Edit
@@ -150,7 +185,7 @@ export default function PersonDetailPage({
             </div>
 
             {person.notes && (
-              <p className="text-sm text-foreground leading-relaxed">
+              <p className="text-sm leading-relaxed text-foreground">
                 {person.notes}
               </p>
             )}
@@ -161,7 +196,7 @@ export default function PersonDetailPage({
                   <Badge
                     key={tag}
                     variant="outline"
-                    className="h-7 text-sm px-3 bg-muted/40 border-border text-foreground"
+                    className="h-7 border-border bg-muted/40 px-3 text-sm text-foreground"
                   >
                     #{tag}
                   </Badge>
@@ -170,100 +205,146 @@ export default function PersonDetailPage({
             )}
           </div>
         </div>
+
+        {/* Count strip */}
+        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-4">
+          {stats.map((s) => (
+            <a
+              key={s.label}
+              href={s.href}
+              className="group flex items-center gap-3 bg-card px-4 py-3 transition-colors hover:bg-primary/5"
+            >
+              <s.Icon
+                size={18}
+                className="shrink-0 text-primary/60 transition-colors group-hover:text-primary"
+              />
+              <div className="min-w-0">
+                <div className="text-lg font-semibold text-foreground">
+                  {s.value}
+                </div>
+                <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground transition-colors group-hover:text-primary">
+                  {s.label}
+                </div>
+              </div>
+            </a>
+          ))}
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
-        <div className="lg:col-span-2 flex flex-col gap-8">
-          {/* Recent faces */}
-          <Section
-            title="Recent Faces"
-            icon={<ScanFace size={14} className="text-primary" />}
-          >
-            {facesPending ? (
-              <Loader2
-                size={16}
-                className="animate-spin text-muted-foreground"
-              />
-            ) : recentFaces.length ? (
-              <>
-                <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
-                  {recentFaces.map((face) => (
-                    <FaceCard
-                      key={face.id}
-                      face={face}
-                      onExpand={setSelectedFace}
-                      onFindSimilar={(faceId) =>
-                        router.push(`/faces?similar=${faceId}`)
-                      }
-                    />
-                  ))}
-                </div>
-                {hasNextPage && (
-                  <div className="flex justify-center mt-4">
-                    <Button
-                      variant="ghost"
-                      onClick={() => fetchNextPage()}
-                      disabled={isFetchingNextPage}
-                      className="text-[10px] uppercase tracking-widest text-primary"
-                    >
-                      {isFetchingNextPage && (
-                        <Loader2 size={12} className="animate-spin mr-2" />
-                      )}
-                      Load more
-                    </Button>
-                  </div>
-                )}
-              </>
-            ) : (
-              <p className="text-[11px] text-muted-foreground italic">
-                No faces assigned to this person yet.
-              </p>
-            )}
-          </Section>
-
-          {/* Files this person is mentioned in */}
-          {profile && (
-            <Section
-              title="Recent Files"
-              icon={<FileText size={14} className="text-primary" />}
+      {/* Stacked sections */}
+      <div className="mt-8 flex flex-col gap-10">
+        <Section
+          id="selectors"
+          title="Selectors"
+          icon={<Fingerprint size={14} className="text-primary" />}
+          action={
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsAddSelectorOpen(true)}
+              className="h-7 gap-1.5 text-[10px] font-bold uppercase tracking-widest text-primary hover:text-primary"
             >
-              <EntityMentionsByFile
-                entityId={id}
-                emptyLabel="Not mentioned in any files yet."
-              />
-            </Section>
-          )}
+              <Plus size={13} />
+              Add
+            </Button>
+          }
+        >
+          <EntitySelectors
+            entityId={id}
+            selectors={selectors}
+            selectorMentions={profile?.selectorMentions ?? []}
+          />
+        </Section>
 
-          {/* Selectors tied to this person */}
-          {selectors.length > 0 && (
-            <Section
-              title="Selectors"
-              icon={<Fingerprint size={14} className="text-primary" />}
-            >
-              <ul className="flex flex-wrap gap-2">
-                {selectors.map((s) => (
-                  <li key={s.id}>
-                    <Link
-                      href={`/entities/${s.id}`}
-                      className={`rounded-lg border px-2.5 py-1.5 font-mono text-xs hover:brightness-125 ${ENTITY_TYPE_META.selector.borderClass} ${ENTITY_TYPE_META.selector.bgClass} ${ENTITY_TYPE_META.selector.textClass}`}
-                    >
-                      {s.displayName}
-                    </Link>
-                  </li>
+        <Section
+          id="faces"
+          title="Faces"
+          icon={<ScanFace size={14} className="text-primary" />}
+        >
+          {facesPending ? (
+            <Loader2 size={16} className="animate-spin text-muted-foreground" />
+          ) : recentFaces.length ? (
+            <>
+              <div className="grid grid-cols-3 gap-3 sm:grid-cols-5 lg:grid-cols-6">
+                {recentFaces.map((face) => (
+                  <FaceCard
+                    key={face.id}
+                    face={face}
+                    onExpand={setSelectedFace}
+                    onFindSimilar={(faceId) =>
+                      router.push(`/faces?similar=${faceId}`)
+                    }
+                  />
                 ))}
-              </ul>
-            </Section>
+              </div>
+              {hasNextPage && (
+                <div className="mt-4 flex justify-center">
+                  <Button
+                    variant="ghost"
+                    onClick={() => fetchNextPage()}
+                    disabled={isFetchingNextPage}
+                    className="text-[10px] uppercase tracking-widest text-primary"
+                  >
+                    {isFetchingNextPage && (
+                      <Loader2 size={12} className="mr-2 animate-spin" />
+                    )}
+                    Load more
+                  </Button>
+                </div>
+              )}
+            </>
+          ) : (
+            <p className="text-[11px] italic text-muted-foreground">
+              No faces assigned to this person yet.
+            </p>
           )}
+        </Section>
 
-          {/* Entity connections */}
-          {related.length > 0 && (
-            <Section
-              title="Connections"
-              icon={<Network size={14} className="text-primary" />}
+        {profile && (
+          <Section
+            id="files"
+            title="Files"
+            icon={<FileText size={14} className="text-primary" />}
+          >
+            <EntityMentionsByFile
+              entityId={id}
+              emptyLabel="Not mentioned in any files yet."
+            />
+          </Section>
+        )}
+
+        <Section
+          id="connections"
+          title="Connections"
+          icon={<Network size={14} className="text-primary" />}
+          action={
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsAddConnectionOpen(true)}
+              className="h-7 gap-1.5 text-[10px] font-bold uppercase tracking-widest text-primary hover:text-primary"
             >
+              <Plus size={13} />
+              Add
+            </Button>
+          }
+        >
+          {related.length > 0 ? (
+            <>
               <ul className="mb-4 flex flex-wrap gap-2">
                 {related.map((r, i) => {
                   const m = ENTITY_TYPE_META[r.entity.entityType];
+                  const rawRole =
+                    typeof r.attributes?.role === "string"
+                      ? r.attributes.role
+                      : null;
+                  // The stored role is "source is <role> of target"; on an
+                  // incoming edge show the inverse so it reads from here.
+                  const role = rawRole
+                    ? r.direction === "in"
+                      ? (FAMILY_ROLE_INVERSE[rawRole] ?? rawRole)
+                      : rawRole
+                    : null;
                   return (
                     <li key={`${r.entity.id}-${i}`}>
                       <Link
@@ -275,8 +356,7 @@ export default function PersonDetailPage({
                           {r.entity.displayName}
                         </span>
                         <span className="text-[10px] uppercase text-muted-foreground">
-                          {r.direction === "out" ? "" : "← "}
-                          {r.relationshipType.replace(/_/g, " ")}
+                          {role ?? r.relationshipType.replace(/_/g, " ")}
                         </span>
                       </Link>
                     </li>
@@ -284,36 +364,23 @@ export default function PersonDetailPage({
                 })}
               </ul>
               <EntityGraph focusEntityId={id} depth={1} compact />
-            </Section>
+            </>
+          ) : (
+            <p className="text-[11px] italic text-muted-foreground">
+              No connections yet. Link this person to family, associates, or
+              other entities.
+            </p>
           )}
-        </div>
+        </Section>
 
-        {/* Side column */}
-        <div className="flex flex-col gap-6">
-          <div className="rounded-2xl bg-muted/40 backdrop-blur-2xl border border-border p-5 h-fit">
-            <h2 className="mb-3 text-[10px] font-black uppercase tracking-widest text-foreground">
-              Overview
-            </h2>
-            <dl className="space-y-1.5">
-              <Stat label="Faces" value={recentFaces.length} />
-              <Stat label="Mentions" value={totalMentions} />
-              <Stat label="Selectors" value={selectors.length} />
-              <Stat label="Connections" value={related.length} />
-              <Stat label="Source" value={person.source.replace(/_/g, " ")} />
-              {person.sex && <Stat label="Sex" value={person.sex} />}
-              {person.dateOfBirth && (
-                <Stat
-                  label="Date of birth"
-                  value={new Date(person.dateOfBirth).toLocaleDateString()}
-                />
-              )}
-            </dl>
-          </div>
-
-          <div className="rounded-2xl bg-muted/40 backdrop-blur-2xl border border-border p-5 h-fit">
+        <Section
+          title="Comments"
+          icon={<MessageSquare size={14} className="text-primary" />}
+        >
+          <div className="rounded-2xl border border-border bg-muted/40 p-5 backdrop-blur-2xl">
             <CommentSection commentableType="person" commentableId={id} />
           </div>
-        </div>
+        </Section>
       </div>
 
       <EditPersonDialog
@@ -322,35 +389,39 @@ export default function PersonDetailPage({
         onOpenChange={setIsEditOpen}
       />
 
+      <AttachSelectorDialog
+        entityId={id}
+        entityLabel={person.name || "this person"}
+        isOpen={isAddSelectorOpen}
+        onOpenChange={setIsAddSelectorOpen}
+      />
+
+      <AddConnectionDialog
+        entityId={id}
+        entityLabel={person.name || "this person"}
+        isOpen={isAddConnectionOpen}
+        onOpenChange={setIsAddConnectionOpen}
+      />
+
       {selectedFace && selectedIndex >= 0 && (
-        <FaceDetailDialog
-          face={allFacesForNav[selectedIndex]}
+        <ImageViewerDialog
+          imageId={recentFaces[selectedIndex].imageId}
+          focusFaceId={recentFaces[selectedIndex].id}
           isOpen={!!selectedFace}
           onOpenChange={(open) => !open && setSelectedFace(null)}
           onNext={() =>
             setSelectedFace(
-              allFacesForNav[
-                Math.min(selectedIndex + 1, allFacesForNav.length - 1)
-              ]
+              recentFaces[Math.min(selectedIndex + 1, recentFaces.length - 1)]
             )
           }
           onPrev={() =>
-            setSelectedFace(allFacesForNav[Math.max(selectedIndex - 1, 0)])
+            setSelectedFace(recentFaces[Math.max(selectedIndex - 1, 0)])
           }
-          hasMore={selectedIndex < allFacesForNav.length - 1}
+          hasMore={selectedIndex < recentFaces.length - 1}
           hasPrev={selectedIndex > 0}
-          onFindSimilar={(faceId) => router.push(`/faces?similar=${faceId}`)}
+          onFindSimilarFace={(faceId) => router.push(`/faces?similar=${faceId}`)}
         />
       )}
-    </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="flex items-center justify-between gap-4 text-xs">
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className="font-medium capitalize text-foreground">{value}</dd>
     </div>
   );
 }

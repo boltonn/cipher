@@ -5,7 +5,7 @@ from typing import BinaryIO
 from loguru import logger
 from tqdm import tqdm
 
-from cipher.schemas.file import FileCreate
+from cipher.schemas.ingestion.file import FileCreate
 from cipher.utils.io import HashType, compute_hashes, convert_st_time_to_datetime
 from filetyper.models.aiml import MagikaFileTyper
 from filetyper.models.magic import MagicNumberFilterTyper

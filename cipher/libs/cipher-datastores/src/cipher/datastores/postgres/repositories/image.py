@@ -5,8 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cipher.datastores.postgres.tables.file import FileTable
 from cipher.datastores.postgres.tables.image import ImageTable
-from cipher.schemas.common import SortOrder, UriResponse
-from cipher.schemas.image import (
+from cipher.schemas._base.common import SortOrder, UriResponse
+from cipher.schemas.content.image import (
     BaseImageSearchParameters,
     Image,
     ImageCreate,
@@ -18,6 +18,7 @@ from cipher.schemas.image import (
     PaginatedImageSimilarityResponse,
     PaginatedImagesResponse,
 )
+from cipher.schemas.ingestion.file import File
 
 
 def _upsert_set(excluded) -> dict:
@@ -32,6 +33,8 @@ def _upsert_set(excluded) -> dict:
         "aperture": excluded.aperture,
         "iso": excluded.iso,
         "date_taken": excluded.date_taken,
+        "gps_latitude": excluded.gps_latitude,
+        "gps_longitude": excluded.gps_longitude,
         "gps_altitude": excluded.gps_altitude,
         "tags": excluded.tags,
     }
@@ -48,12 +51,28 @@ def _tags_overlap_expr(tags: list[str]):
     return exists(select(literal(1)).select_from(tag_elements).where(tag_elements.c.value.in_(tags)))
 
 
+def _file_scoped_expr(datasets: list[str] | None, filetypes: list[str] | None):
+    """Build an "image belongs to at least one file matching these file-level filters".
+
+    `datasets`/`filetypes` are file attributes, so instead of joining `file` (which
+    fans a row out per file that shares the image's sha256) the search matches on
+    an EXISTS against `file` -- keeping one row per distinct image.
+    """
+    conditions = [FileTable.sha256 == ImageTable.id]
+    if datasets:
+        conditions.append(FileTable.dataset_id.in_(datasets))
+    if filetypes:
+        conditions.append(FileTable.filetype.in_(filetypes))
+    return exists(select(literal(1)).select_from(FileTable).where(*conditions))
+
+
 class PostgresImageRepository:
     """Postgres datastore implementation using SQLAlchemy.
 
     Image content is keyed by sha256 (`ImageTable.id`) and stored once no matter how many
-    files share it -- every join below matches on `FileTable.sha256 == ImageTable.id`
-    rather than a stored foreign key.
+    files share it -- the link to `file` is always `FileTable.sha256 == ImageTable.id`,
+    not a stored foreign key. Search/list methods return one row per distinct image; the
+    set of files an image belongs to is a separate lookup (`get_files_for_image`).
     """
 
     def __init__(self, session: AsyncSession):
@@ -179,6 +198,13 @@ class PostgresImageRepository:
             return None
         return Image.model_validate({**image_table.__dict__, "file_id": file_id})
 
+    async def get_files_for_image(self, image_id: str) -> list[File]:
+        """List every file whose content is this image (matched on sha256)."""
+        result = await self.session.execute(
+            select(FileTable).where(FileTable.sha256 == image_id).order_by(FileTable.id)
+        )
+        return [File.model_validate(f) for f in result.scalars().all()]
+
     async def upsert_image(self, image: ImageCreate, file_id: str) -> Image:
         """Upsert image content -- insert or update if this sha256 already exists.
 
@@ -229,44 +255,41 @@ class PostgresImageRepository:
     async def search_images(
         self, request: BaseImageSearchParameters
     ) -> PaginatedImagesResponse:
-        """Retrieve images with general filtering and sorting, one row per file occurrence."""
-        base_query = select(ImageTable, FileTable.id).join(
-            FileTable, FileTable.sha256 == ImageTable.id
-        )
+        """Retrieve images with general filtering and sorting, one row per distinct image.
 
-        if request.datasets:
-            base_query = base_query.where(FileTable.dataset_id.in_(request.datasets))
-
-        if request.filetypes:
-            base_query = base_query.where(FileTable.filetype.in_(request.filetypes))
-
+        Results are keyed by sha256 (`ImageTable.id`) only -- content is
+        deduplicated across files. `datasets`/`filetypes` are file attributes, so
+        they filter via an EXISTS against `file` (see `_file_scoped_expr`) rather
+        than a join that would fan a row out per file. The files an image belongs
+        to are fetched separately via `get_files_for_image`.
+        """
+        filters = []
+        if request.datasets or request.filetypes:
+            filters.append(_file_scoped_expr(request.datasets, request.filetypes))
         if request.date_from:
-            base_query = base_query.where(ImageTable.date_taken >= request.date_from)
-
+            filters.append(ImageTable.date_taken >= request.date_from)
         if request.date_to:
-            base_query = base_query.where(ImageTable.date_taken <= request.date_to)
-
+            filters.append(ImageTable.date_taken <= request.date_to)
         if request.tags:
-            base_query = base_query.where(_tags_overlap_expr(request.tags))
+            filters.append(_tags_overlap_expr(request.tags))
 
-        count_query = select(func.count()).select_from(base_query.subquery())
-        count_result = await self.session.execute(count_query)
-        total_count = count_result.scalar_one()
+        count_query = select(func.count()).select_from(ImageTable).where(*filters)
+        total_count = (await self.session.execute(count_query)).scalar_one()
 
         sort_column = ImageTable.date_taken
-        if request.sort_order == SortOrder.DESC:
-            base_query = base_query.order_by(sort_column.desc())
-        else:
-            base_query = base_query.order_by(sort_column.asc())
-
-        offset = (request.page - 1) * request.limit
-        paginated_query = base_query.offset(offset).limit(request.limit)
+        direction = sort_column.desc() if request.sort_order == SortOrder.DESC else sort_column.asc()
+        # ImageTable.id is unique -- append it so offset pagination is
+        # deterministic even when date_taken is null or shared.
+        paginated_query = (
+            select(ImageTable)
+            .where(*filters)
+            .order_by(direction, ImageTable.id)
+            .offset((request.page - 1) * request.limit)
+            .limit(request.limit)
+        )
 
         result = await self.session.execute(paginated_query)
-        images = [
-            ImagePublic.model_validate({**img.__dict__, "file_id": file_id})
-            for img, file_id in result.all()
-        ]
+        images = [ImagePublic.model_validate(img.__dict__) for img in result.scalars().all()]
 
         total_pages = (total_count + request.limit - 1) // request.limit
 
@@ -281,21 +304,24 @@ class PostgresImageRepository:
     async def search_similar_images(
         self, request: ImageSimilaritySearchRequest
     ) -> PaginatedImageSimilarityResponse:
-        """Retrieve images by knn similarity search using inner product, one row per file occurrence.
+        """Retrieve images by knn similarity search using inner product, one row per distinct image.
 
         `max_inner_product` (pgvector's `<#>`) is a *distance*: it returns the
         negative inner product, so smaller means more similar. Similarity
         sort therefore always orders ascending on it regardless of
         `sort_order` -- that toggle only applies to the date-sort branch --
         mirroring `PostgresFaceRepository.search_similar_faces`.
+
+        Results are keyed by sha256 (`ImageTable.id`) only -- the embedding lives
+        on the image, so file occurrences are irrelevant to ranking. File-level
+        filters go through an EXISTS against `file` (no join, no fan-out), which
+        also keeps pgvector's index usable for the similarity `ORDER BY`.
         """
         distance_expr = ImageTable.embedding.max_inner_product(request.embedding)
 
         filters = []
-        if request.datasets:
-            filters.append(FileTable.dataset_id.in_(request.datasets))
-        if request.filetypes:
-            filters.append(FileTable.filetype.in_(request.filetypes))
+        if request.datasets or request.filetypes:
+            filters.append(_file_scoped_expr(request.datasets, request.filetypes))
         if request.date_from:
             filters.append(ImageTable.date_taken >= request.date_from)
         if request.date_to:
@@ -305,41 +331,33 @@ class PostgresImageRepository:
         if request.min_similarity is not None:
             filters.append(distance_expr <= -request.min_similarity)
 
-        count_query = (
-            select(func.count(ImageTable.id))
-            .join(FileTable, FileTable.sha256 == ImageTable.id)
-            .where(*filters)
-        )
-        count_result = await self.session.execute(count_query)
-        total_count = count_result.scalar_one()
+        count_query = select(func.count()).select_from(ImageTable).where(*filters)
+        total_count = (await self.session.execute(count_query)).scalar_one()
 
-        base_query = (
-            select(ImageTable, FileTable.id, (-distance_expr).label("similarity_score"))
-            .join(FileTable, FileTable.sha256 == ImageTable.id)
-            .where(*filters)
-        )
+        base_query = select(ImageTable, (-distance_expr).label("similarity_score")).where(*filters)
 
         if request.sort_by == ImageSortField.SIMILARITY:
-            base_query = base_query.order_by(asc(distance_expr))
+            primary_sort = asc(distance_expr)
         else:
             sort_col = ImageTable.date_taken
-            if request.sort_order == SortOrder.DESC:
-                base_query = base_query.order_by(desc(sort_col))
-            else:
-                base_query = base_query.order_by(asc(sort_col))
-
-        offset = (request.page - 1) * request.limit
-        paginated_query = base_query.offset(offset).limit(request.limit)
+            primary_sort = desc(sort_col) if request.sort_order == SortOrder.DESC else asc(sort_col)
+        # ImageTable.id is unique -- append it so offset pagination is
+        # deterministic when the primary sort key has ties.
+        paginated_query = (
+            base_query.order_by(primary_sort, ImageTable.id)
+            .offset((request.page - 1) * request.limit)
+            .limit(request.limit)
+        )
 
         result = await self.session.execute(paginated_query)
         rows = list(result.all())
 
         images = [
             ImageSimilarityResult.model_validate({
-                **ImagePublic.model_validate({**image.__dict__, "file_id": file_id}).model_dump(),
+                **ImagePublic.model_validate(image.__dict__).model_dump(),
                 "similarity_score": max(0.0, min(1.0, similarity_score)),
             })
-            for image, file_id, similarity_score in rows
+            for image, similarity_score in rows
         ]
 
         total_pages = (total_count + request.limit - 1) // request.limit

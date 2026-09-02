@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cipher.datastores.postgres.tables.dataset import DatasetTable
 from cipher.datastores.postgres.tables.user import UserTable
-from cipher.schemas.user import User, UserCreate, UserUpdate
+from cipher.schemas.ingestion.user import User, UserCreate, UserUpdate
 
 
 class PostgresUserRepository:

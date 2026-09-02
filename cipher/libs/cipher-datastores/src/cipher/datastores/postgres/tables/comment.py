@@ -6,7 +6,7 @@ from sqlalchemy import DateTime, Enum, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from cipher.datastores.postgres.tables.base import Base
-from cipher.schemas.comment import CommentableType
+from cipher.schemas.interaction.comment import CommentableType
 
 if TYPE_CHECKING:
     from cipher.datastores.postgres.tables.user import UserTable

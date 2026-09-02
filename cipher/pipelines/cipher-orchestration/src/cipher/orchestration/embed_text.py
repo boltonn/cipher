@@ -35,11 +35,11 @@ from cipher.datastores.postgres.repositories import (
     PostgresFileRepository,
 )
 from cipher.orchestration.extract_documents import DEFAULT_CHUNK_SIZE
-from cipher.schemas.document import DocumentMetadata, DocumentTextChunk
-from cipher.schemas.email import EmailMetadata, EmailState, EmailTextChunk
-from cipher.schemas.enrichment import EnrichableType, EnrichmentBatchItem, EnrichmentType
-from cipher.schemas.extraction import ExtractedText
-from cipher.schemas.search import TextChunk
+from cipher.schemas.content.document import DocumentMetadata, DocumentTextChunk
+from cipher.schemas.content.email import EmailMetadata, EmailState, EmailTextChunk
+from cipher.schemas.content.extraction import ExtractedText
+from cipher.schemas.content.search import TextChunk
+from cipher.schemas.ingestion.enrichment import EnrichableType, EnrichmentBatchItem, EnrichmentType
 
 if TYPE_CHECKING:
     from clir.models.pytorch import TextEmbeddingPytorchModel

@@ -40,7 +40,10 @@ export function useCreatePersonFromImage(onSuccess?: (personId: string) => void)
       personsService.createFromImage(file, payload),
     onSuccess: (person) => {
       queryClient.invalidateQueries({ queryKey: ["persons"] });
+      // the backend runs the similarity sweep inline, so by now other faces
+      // may have flipped to `matched` with a fresh pending candidate
       queryClient.invalidateQueries({ queryKey: ["faces"] });
+      queryClient.invalidateQueries({ queryKey: ["face-matches"] });
       onSuccess?.(person.id);
     },
   });
@@ -49,7 +52,7 @@ export function useCreatePersonFromImage(onSuccess?: (personId: string) => void)
 /**
  * Create a person directly from an already-detected face -- no re-upload or
  * re-detection needed. Goes through the same backend endpoint as the other
- * creation paths, so it also queues the background match-proposal pass
+ * creation paths, so it also runs the same inline match-proposal sweep
  * (composing separate assign/set-representative calls client-side, like the
  * old version of this hook did, would silently skip that).
  */
@@ -61,7 +64,10 @@ export function useCreatePersonFromFace(onSuccess?: (personId: string) => void) 
       personsService.createFromFace(faceId, payload),
     onSuccess: (person) => {
       queryClient.invalidateQueries({ queryKey: ["persons"] });
+      // the backend runs the similarity sweep inline, so by now other faces
+      // may have flipped to `matched` with a fresh pending candidate
       queryClient.invalidateQueries({ queryKey: ["faces"] });
+      queryClient.invalidateQueries({ queryKey: ["face-matches"] });
       onSuccess?.(person.id);
     },
   });
@@ -95,7 +101,11 @@ export function useAddPersonExample(personId: string, onSuccess?: () => void) {
       personsService.addExample(personId, file, faceIndex),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["persons", personId, "representative-faces"] });
-      queryClient.invalidateQueries({ queryKey: ["faces", "by-person", personId] });
+      // the inline similarity sweep can flip any unassigned face to `matched`,
+      // not just this person's -- refresh the whole faces browser and the
+      // pending-match lists, like the other person-creation paths do
+      queryClient.invalidateQueries({ queryKey: ["faces"] });
+      queryClient.invalidateQueries({ queryKey: ["face-matches"] });
       onSuccess?.();
     },
   });

@@ -129,6 +129,8 @@ export const useSearchController = (mode: PaginationModeType = "infinite") => {
 
   const isSimilarityMode = !!(file || id || text);
 
+  const queryLabel = text ?? (file ? file.name : id ? "Similar to image" : undefined);
+
   const currentPage = useMemo(() => {
     if (mode === "infinite") {
       if (!infiniteData) return 1;
@@ -153,6 +155,12 @@ export const useSearchController = (mode: PaginationModeType = "infinite") => {
     handleSimilar: (imageId: string) => {
       setId(imageId);
       setFile(null);
+      setText(null);
+      setPage(1);
+    },
+    clearSearch: () => {
+      setFile(null);
+      setId(null);
       setText(null);
       setPage(1);
     },
@@ -190,5 +198,6 @@ export const useSearchController = (mode: PaginationModeType = "infinite") => {
     setFilters,
     mode,
     isSimilarityMode,
+    queryLabel,
   };
 };

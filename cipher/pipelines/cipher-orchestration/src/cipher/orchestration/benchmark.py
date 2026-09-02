@@ -31,10 +31,10 @@ from cipher.datastores.postgres.repositories import (
 from cipher.orchestration.extract_documents import extract_documents_workflow
 from cipher.orchestration.extract_emails import extract_emails_workflow
 from cipher.orchestration.ingest import load_files
-from cipher.schemas.dataset import DatasetCreate
-from cipher.schemas.document import DocumentMetadata, ExtractedTableInfo
-from cipher.schemas.extraction import ExtractedTextCreate, ExtractionContentFormat, TextExtractor
-from cipher.schemas.file import FileCreate
+from cipher.schemas.content.document import DocumentMetadata, ExtractedTableInfo
+from cipher.schemas.content.extraction import ExtractedTextCreate, ExtractionContentFormat, TextExtractor
+from cipher.schemas.ingestion.dataset import DatasetCreate
+from cipher.schemas.ingestion.file import FileCreate
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession

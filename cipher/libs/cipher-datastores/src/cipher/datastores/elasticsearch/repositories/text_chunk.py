@@ -15,10 +15,10 @@ from tqdm import tqdm
 
 from cipher.datastores.elasticsearch.mappings import AnalyzerName, build_text_chunk_mapping
 from cipher.datastores.elasticsearch.utils import PaginatedResponse, paginate
-from cipher.schemas.base import BaseModel
-from cipher.schemas.document import ScoredDocumentTextChunk
-from cipher.schemas.email import ScoredEmailTextChunk
-from cipher.schemas.search import (
+from cipher.schemas._base.base import BaseModel
+from cipher.schemas.content.document import ScoredDocumentTextChunk
+from cipher.schemas.content.email import ScoredEmailTextChunk
+from cipher.schemas.content.search import (
     ChunkFilters,
     ChunkHybridSearchRequest,
     ChunkSemanticSearchRequest,

@@ -11,9 +11,10 @@ import pandas as pd
 import phonenumbers
 from loguru import logger
 
+from cipher.schemas.content.message import MessageBase, MessageStatus, PhoneNumberType
+
 # These schemas must be defined in your environment
-from cipher.schemas.file import FileBase
-from cipher.schemas.message import MessageBase, MessageStatus, PhoneNumberType
+from cipher.schemas.ingestion.file import FileBase
 from cipher.utils.io import HashType, compute_hash
 
 SMS_TYPE_MAP = {

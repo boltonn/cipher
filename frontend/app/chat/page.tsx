@@ -79,9 +79,15 @@ export default function ChatPage() {
   // Block sending only when nobody has a key for this model.
   const needsClientKey =
     currentProvider !== "local" && !serverHasKeyForModel && !clientKey;
-  // Send the override header only when the user actually set a key.
+  // Send the local key only as a fallback -- when the server has no key for
+  // this model. Sending it while the server *does* have one lets a stale
+  // browser key silently shadow the working server key (confusing
+  // API_KEY_INVALID). Clearing the local key in model settings is the only
+  // way back once that happens, so don't send it unless it's actually needed.
   const outgoingApiKey =
-    currentProvider === "local" ? undefined : keys[currentProvider] || undefined;
+    currentProvider === "local" || serverHasKeyForModel
+      ? undefined
+      : keys[currentProvider] || undefined;
 
   const {
     messages,

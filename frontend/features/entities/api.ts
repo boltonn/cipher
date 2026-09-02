@@ -14,11 +14,20 @@ import type {
   MentionCreatePayload,
   MentionResolvePayload,
   MentionUpdatePayload,
+  Ontology,
   PaginatedEntitiesResponse,
   PaginatedEntityMatchesResponse,
   PaginatedMentionsResponse,
+  PaginatedRelatedEntitiesResponse,
   PaginatedRelationshipsResponse,
+  PaginatedUnresolvedNamesResponse,
+  EntityType,
+  RelatedEntitySort,
   RelationshipType,
+  ResolveNameGroupPayload,
+  SelectorLinkPayload,
+  SelectorMention,
+  SelectorRegion,
   TraversalDirection,
 } from "@/features/entities/types";
 
@@ -74,6 +83,32 @@ export const entitiesService = {
       .patch<EntityDetail>(`${entitiesBaseURL}/${id}/detail`, detail)
       .then((res) => res.data),
 
+  // Entity-layer registry (relationship types, endpoint constraints, roles).
+  getOntology: () =>
+    apiClient
+      .get<Ontology>(`${entitiesBaseURL}/ontology`)
+      .then((res) => res.data),
+
+  // ISO-3166-1 alpha-2 regions the phone normalizer accepts (for the selector form).
+  listSelectorRegions: () =>
+    apiClient
+      .get<SelectorRegion[]>(`${entitiesBaseURL}/selector-regions`)
+      .then((res) => res.data),
+
+  // Create-or-reuse a selector node for `rawValue` and link it to this entity
+  // with a has_selector edge. Returns the selector plus how many mentions already
+  // carry its normalized value.
+  attachSelector: (id: string, payload: SelectorLinkPayload) =>
+    apiClient
+      .post<SelectorMention>(`${entitiesBaseURL}/${id}/selectors`, payload)
+      .then((res) => res.data),
+
+  // Remove the has_selector edge; the selector node itself is left intact.
+  detachSelector: (id: string, selectorId: string) =>
+    apiClient
+      .delete(`${entitiesBaseURL}/${id}/selectors/${selectorId}`)
+      .then((res) => res.data),
+
   delete: (id: string) =>
     apiClient.delete(`${entitiesBaseURL}/${id}`).then((res) => res.data),
 
@@ -112,6 +147,33 @@ export const entitiesService = {
       )
       .then((res) => res.data),
 
+  // Paginated neighbours of an entity, each with its connecting edge; sortable
+  // by edge weight (message count for communicates_with). Powers the entity
+  // dossier's Relationships and Selectors sections.
+  getRelated: (
+    id: string,
+    params?: {
+      direction?: TraversalDirection;
+      relationshipType?: RelationshipType;
+      entityType?: EntityType;
+      sort?: RelatedEntitySort;
+      limit?: number;
+      page?: number;
+    }
+  ) =>
+    apiClient
+      .get<PaginatedRelatedEntitiesResponse>(`${entitiesBaseURL}/${id}/related`, {
+        params: {
+          direction: params?.direction ?? "both",
+          relationship_type: params?.relationshipType,
+          entity_type: params?.entityType,
+          sort: params?.sort ?? "weight",
+          limit: params?.limit ?? 25,
+          page: params?.page ?? 1,
+        },
+      })
+      .then((res) => res.data),
+
   getGraph: (
     id: string,
     params?: {
@@ -119,6 +181,7 @@ export const entitiesService = {
       direction?: TraversalDirection;
       types?: RelationshipType[];
       limit?: number;
+      minWeight?: number;
     }
   ) =>
     apiClient
@@ -127,7 +190,8 @@ export const entitiesService = {
           depth: params?.depth ?? 2,
           direction: params?.direction ?? "both",
           types: params?.types?.length ? params.types.join(",") : undefined,
-          limit: params?.limit ?? 150,
+          limit: params?.limit ?? 500,
+          min_weight: params?.minWeight ?? 0,
         },
       })
       .then((res) => res.data),
@@ -135,9 +199,11 @@ export const entitiesService = {
   createRelationship: (
     srcEntityId: string,
     payload: {
-      datasetId: string;
+      /** Omit for edges between dataset-agnostic nodes; the backend derives it from the endpoints. */
+      datasetId?: string;
       dstEntityId: string;
       relationshipType: RelationshipType;
+      attributes?: Record<string, unknown>;
       source?: string;
     }
   ) =>
@@ -184,6 +250,8 @@ export const mentionsService = {
     entityId?: string;
     resolved?: boolean;
     mentionedType?: string;
+    selectorKind?: string;
+    normalizedValue?: string;
     limit?: number;
     page?: number;
   }) =>
@@ -209,5 +277,35 @@ export const mentionsService = {
   resolve: (id: string, payload: MentionResolvePayload) =>
     apiClient
       .post<Mention>(`${mentionsBaseURL}/${id}/resolve`, payload)
+      .then((res) => res.data),
+
+  /** The review queue, one row per distinct unresolved name. */
+  listUnresolvedNames: (params: {
+    datasetId: string;
+    q?: string;
+    limit?: number;
+    page?: number;
+  }) =>
+    apiClient
+      .get<PaginatedUnresolvedNamesResponse>(
+        `${mentionsBaseURL}/unresolved-names`,
+        {
+          params: { limit: 25, page: 1, ...params },
+        }
+      )
+      .then((res) => res.data),
+
+  resolveNameGroup: (payload: ResolveNameGroupPayload) =>
+    apiClient
+      .post<{
+        entityId: string;
+        mentionsAttached: number;
+        hasSelectorEdges: number;
+      }>(`${mentionsBaseURL}/resolve-names`, payload)
+      .then((res) => res.data),
+
+  dismissNameGroup: (payload: { datasetId: string; normalizedValue: string }) =>
+    apiClient
+      .post<{ deleted: number }>(`${mentionsBaseURL}/dismiss-names`, payload)
       .then((res) => res.data),
 };

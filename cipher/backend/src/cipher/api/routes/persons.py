@@ -3,7 +3,7 @@ from typing import Annotated
 from uuid import uuid4
 
 from face.api.deps import FaceModelDep
-from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
 from filetyper.models.magic import MagicNumberFilterTyper
 from PIL import Image as PILImage
 
@@ -13,13 +13,14 @@ from cipher.api.deps.postgres import (
     FaceDatastoreDep,
     FaceMatchDatastoreDep,
     FileDatastoreDep,
+    GraphDatastoreDep,
     ImageDatastoreDep,
     PersonDatastoreDep,
 )
 from cipher.api.settings import Settings
-from cipher.schemas.dataset import DatasetCreate
-from cipher.schemas.exceptions import ValidationError
-from cipher.schemas.face import (
+from cipher.schemas._base.exceptions import ValidationError
+from cipher.schemas.content.image import ImageCreate
+from cipher.schemas.identity.face import (
     DEFAULT_FACE_MATCH_SIMILARITY,
     Face,
     FaceAssignment,
@@ -28,23 +29,22 @@ from cipher.schemas.face import (
     FaceRepresentativeUpdate,
     face_annotation_to_face_create,
 )
-from cipher.schemas.face_match import FaceMatchCreate, FaceMatchMethod
-from cipher.schemas.file import FileCreate
-from cipher.schemas.image import ImageCreate
-from cipher.schemas.person import (
+from cipher.schemas.identity.face_match import FaceMatchCreate, FaceMatchMethod
+from cipher.schemas.identity.person import (
     PaginatedPersonsResponse,
     Person,
     PersonCreate,
     PersonSearchParameters,
     PersonUpdate,
 )
+from cipher.schemas.ingestion.dataset import DatasetCreate
+from cipher.schemas.ingestion.file import FileCreate
 from cipher.utils.io import HashType, compute_hash
 
 # Same floor the rest of the app treats as "this counts as a match" (the
 # similarity search UI's default threshold) -- candidates below this are not
 # proposed at all, rather than proposed and left for an analyst to reject.
 POTENTIAL_MATCH_MIN_SIMILARITY = DEFAULT_FACE_MATCH_SIMILARITY
-POTENTIAL_MATCH_LIMIT = 20
 
 # Magic-number based (non-ML) file typing, shared with the ingestion CLI's
 # FileTyper -- keeps reference-photo uploads on the same filetype taxonomy
@@ -175,33 +175,38 @@ async def _create_reference_face(
     return await face_datastore.add_face(face_create)
 
 
-async def _queue_potential_matches(
+async def _propose_potential_matches(
     person_id: str,
     reference_face_id: str,
     face_datastore: FaceDatastoreDep,
     face_match_datastore: FaceMatchDatastoreDep,
-) -> None:
+) -> list[str]:
     """Propose candidate matches for a newly added reference face.
 
-    Finds still-unassigned faces that look similar and queues them as
-    candidate matches for an analyst to confirm or reject, rather than
-    auto-assigning them.
+    Runs inline within the create/add-example request so its response
+    already reflects the new `matched` face statuses. Finds still-unassigned
+    faces that look similar and records them as pending candidate matches
+    for an analyst to confirm or reject, rather than auto-assigning them.
+
+    Returns the ids of the faces a candidate match was proposed for, so the
+    caller can refresh their `appears_in_photo_with` edges (a pending match
+    is enough to place two people in a photo together).
     """
     candidates = await face_datastore.get_potential_person_matches(
         face_id=reference_face_id,
         min_similarity=POTENTIAL_MATCH_MIN_SIMILARITY,
-        limit=POTENTIAL_MATCH_LIMIT,
     )
     matches = [
         FaceMatchCreate(
-            face_id=candidate.id,
+            face_id=candidate_face_id,
             person_id=person_id,
-            similarity_score=candidate.similarity_score,
+            similarity_score=similarity_score,
             match_method=FaceMatchMethod.AUTOMATIC_SIMILARITY,
         )
-        for candidate in candidates
+        for candidate_face_id, similarity_score in candidates
     ]
     await face_match_datastore.create_matches_batch(matches)
+    return [candidate_face_id for candidate_face_id, _ in candidates]
 
 
 class PersonFromFaceRequest(PersonCreate):
@@ -218,16 +223,16 @@ class PersonFromFaceRequest(PersonCreate):
 )
 async def create_person_from_face(
     request: PersonFromFaceRequest,
-    background_tasks: BackgroundTasks,
     person_datastore: PersonDatastoreDep,
     face_datastore: FaceDatastoreDep,
     face_match_datastore: FaceMatchDatastoreDep,
     entity_datastore: EntityDatastoreDep,
+    graph_datastore: GraphDatastoreDep,
 ):
     """Create a person from a face that's already been detected and persisted.
 
     Skips re-upload/re-detection (e.g. picked from the faces browser), and
-    still queues the same background matching pass as the other creation paths.
+    runs the same inline similarity sweep as the other creation paths.
     """
     face = await face_datastore.get_face_by_id(face_id=request.face_id)
     if face is None:
@@ -254,14 +259,14 @@ async def create_person_from_face(
         face_id=request.face_id, data=FaceRepresentativeUpdate(is_representative=True, is_primary=True)
     )
 
-    background_tasks.add_task(
-        _queue_potential_matches,
+    candidate_face_ids = await _propose_potential_matches(
         person_id=person.id,
         reference_face_id=request.face_id,
         face_datastore=face_datastore,
         face_match_datastore=face_match_datastore,
     )
 
+    await graph_datastore.recompute_face_cooccurrence_for_faces([request.face_id, *candidate_face_ids])
     return person
 
 
@@ -273,7 +278,6 @@ async def create_person_from_face(
 )
 async def create_person_from_image(
     file: UploadFile,
-    background_tasks: BackgroundTasks,
     person_datastore: PersonDatastoreDep,
     face_datastore: FaceDatastoreDep,
     face_match_datastore: FaceMatchDatastoreDep,
@@ -281,6 +285,7 @@ async def create_person_from_image(
     file_datastore: FileDatastoreDep,
     image_datastore: ImageDatastoreDep,
     entity_datastore: EntityDatastoreDep,
+    graph_datastore: GraphDatastoreDep,
     model: FaceModelDep,
     name: Annotated[str | None, Form()] = None,
     sex: Annotated[str | None, Form()] = None,
@@ -320,14 +325,14 @@ async def create_person_from_image(
         face_id=face.id, data=FaceRepresentativeUpdate(is_representative=True, is_primary=True)
     )
 
-    background_tasks.add_task(
-        _queue_potential_matches,
+    candidate_face_ids = await _propose_potential_matches(
         person_id=person.id,
         reference_face_id=face.id,
         face_datastore=face_datastore,
         face_match_datastore=face_match_datastore,
     )
 
+    await graph_datastore.recompute_face_cooccurrence_for_faces([face.id, *candidate_face_ids])
     return person
 
 
@@ -340,13 +345,13 @@ async def create_person_from_image(
 async def add_person_example(
     id: str,
     file: UploadFile,
-    background_tasks: BackgroundTasks,
     person_datastore: PersonDatastoreDep,
     face_datastore: FaceDatastoreDep,
     face_match_datastore: FaceMatchDatastoreDep,
     dataset_datastore: DatasetDatastoreDep,
     file_datastore: FileDatastoreDep,
     image_datastore: ImageDatastoreDep,
+    graph_datastore: GraphDatastoreDep,
     model: FaceModelDep,
     face_index: Annotated[
         int, Form(ge=0, description="Which detected face to use, ranked by descending confidence")
@@ -375,8 +380,7 @@ async def add_person_example(
     except ValidationError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
-    background_tasks.add_task(
-        _queue_potential_matches,
+    await _propose_potential_matches(
         person_id=id,
         reference_face_id=face.id,
         face_datastore=face_datastore,

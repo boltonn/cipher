@@ -114,29 +114,34 @@ export const useSearchController = (mode: PaginationModeType = "infinite") => {
     return page;
   }, [mode, infiniteData, page]);
 
-  const actions = {
-    handleEmbeddingSelected: (embedding: number[], label?: string) => {
-      setQueryEmbedding(embedding);
-      setQueryLabel(label);
-      setSimilarId(null);
-      setPage(1);
-    },
-    handleSimilar: (faceId: string) => {
-      setSimilarId(faceId);
-      setQueryEmbedding(null);
-      setQueryLabel(undefined);
-      setPage(1);
-    },
-    clearSimilar: () => {
-      setSimilarId(null);
-      setQueryEmbedding(null);
-      setQueryLabel(undefined);
-      setPage(1);
-    },
-    handlePageChange: (newPage: number) => {
-      setPage(newPage);
-    },
-  };
+  // Stable identity: these flow down as props to every memoized FaceCard, so a
+  // fresh object each render would defeat the memo and re-render the whole grid.
+  const actions = useMemo(
+    () => ({
+      handleEmbeddingSelected: (embedding: number[], label?: string) => {
+        setQueryEmbedding(embedding);
+        setQueryLabel(label);
+        setSimilarId(null);
+        setPage(1);
+      },
+      handleSimilar: (faceId: string) => {
+        setSimilarId(faceId);
+        setQueryEmbedding(null);
+        setQueryLabel(undefined);
+        setPage(1);
+      },
+      clearSimilar: () => {
+        setSimilarId(null);
+        setQueryEmbedding(null);
+        setQueryLabel(undefined);
+        setPage(1);
+      },
+      handlePageChange: (newPage: number) => {
+        setPage(newPage);
+      },
+    }),
+    []
+  );
 
   return {
     data: mode === "infinite" ? infiniteData : undefined,

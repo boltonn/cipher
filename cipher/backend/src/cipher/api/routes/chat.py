@@ -34,7 +34,7 @@ from cipher.api.deps.postgres import (
     PersonDatastoreDep,
 )
 from cipher.api.settings import Settings
-from cipher.schemas.llm import AgentConfig
+from cipher.schemas.interaction.llm import AgentConfig
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 

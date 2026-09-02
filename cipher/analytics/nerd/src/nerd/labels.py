@@ -2,7 +2,7 @@
 
 Standard NER checkpoints emit CoNLL tags (`PER`/`PERSON`, `ORG`, `LOC`/`GPE`)
 or the full OntoNotes v5 set (`DATE`, `NORP`, `FAC`, `GPE`, ...). We fold those
-to the label strings `cipher.schemas.ontology.NER_LABEL_TO_TYPE` understands;
+to the label strings `cipher.schemas.graph.ontology.NER_LABEL_TO_TYPE` understands;
 anything unmapped is passed through lowercased so it is still visible.
 """
 

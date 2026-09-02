@@ -37,7 +37,6 @@ import {
 } from "@/components/ai-elements/tool";
 import type { UIMessage, UIMessagePart, UIDataTypes, UITools } from "ai";
 import { SparklesIcon } from "lucide-react";
-import { Fragment } from "react";
 import { describeToolCall } from "../lib/tool-labels";
 import { summarizeToolPayload } from "../lib/summarize-tool-payload";
 import type { ChatCitation } from "../types";
@@ -68,6 +67,25 @@ function isToolPart(
   part: UIMessagePart<UIDataTypes, UITools>
 ): part is ToolPart {
   return part.type === "dynamic-tool" || part.type.startsWith("tool-");
+}
+
+/** Every citation the message's tool calls returned, de-duplicated, in call order. */
+function collectCitations(message: UIMessage): ChatCitation[] {
+  const seen = new Set<string>();
+  const out: ChatCitation[] = [];
+  for (const part of message.parts) {
+    if (!isToolPart(part) || part.state !== "output-available") continue;
+    const list = asCitationList(part.output);
+    if (!list) continue;
+    for (const citation of list) {
+      const key =
+        citation.chunkId ?? citation.targetId ?? `${citation.kind}:${citation.displayName}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(citation);
+    }
+  }
+  return out;
 }
 
 export function ChatMessages({
@@ -101,6 +119,13 @@ export function ChatMessages({
           const isLast = messageIndex === messages.length - 1;
           const isAssistant = message.role === "assistant";
 
+          const assistantText = isAssistant
+            ? message.parts
+                .flatMap((part) => (part.type === "text" ? [part.text] : []))
+                .join("\n\n")
+            : "";
+          const citations = isAssistant ? collectCitations(message) : [];
+
           return (
             <div key={message.id} className="flex w-full items-start gap-3">
               {isAssistant && <AssistantAvatar />}
@@ -132,19 +157,11 @@ export function ChatMessages({
 
                   if (part.type === "text") {
                     return (
-                      <Fragment key={key}>
-                        <Message from={message.role}>
-                          <MessageContent>
-                            <MessageResponse>{part.text}</MessageResponse>
-                          </MessageContent>
-                        </Message>
-                        {message.role === "assistant" && isLast && (
-                          <ChatMessageActions
-                            text={part.text}
-                            onRegenerate={onRegenerate}
-                          />
-                        )}
-                      </Fragment>
+                      <Message key={key} from={message.role}>
+                        <MessageContent>
+                          <MessageResponse>{part.text}</MessageResponse>
+                        </MessageContent>
+                      </Message>
                     );
                   }
 
@@ -170,17 +187,13 @@ export function ChatMessages({
                       );
                     }
 
-                    if (part.state === "output-available") {
-                      const citations = asCitationList(part.output);
-                      if (citations) {
-                        return (
-                          <Citations
-                            key={key}
-                            citations={citations}
-                            onOpen={onOpenCitation}
-                          />
-                        );
-                      }
+                    // Citation-list outputs are collected into the message
+                    // footer (below the answer), not rendered inline here.
+                    if (
+                      part.state === "output-available" &&
+                      asCitationList(part.output)
+                    ) {
+                      return null;
                     }
 
                     const toolTitle = describeToolCall(
@@ -227,15 +240,25 @@ export function ChatMessages({
 
                   return null;
                 })}
+
+                {isAssistant && assistantText && (
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-2 pt-1">
+                    {isLast && (
+                      <ChatMessageActions
+                        text={assistantText}
+                        onRegenerate={onRegenerate}
+                      />
+                    )}
+                    {citations.length > 0 && (
+                      <Citations citations={citations} onOpen={onOpenCitation} />
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           );
         })}
-        {showThinking && (
-          <div className="flex w-full items-start">
-            <ThinkingIndicator />
-          </div>
-        )}
+        {showThinking && <ThinkingIndicator />}
       </ConversationContent>
       <ConversationScrollButton />
     </Conversation>

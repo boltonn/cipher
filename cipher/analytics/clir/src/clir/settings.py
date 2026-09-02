@@ -3,7 +3,7 @@ from pathlib import Path
 from pydantic import Field
 from pydantic_settings import SettingsConfigDict
 
-from cipher.schemas.common import ModelDevice
+from cipher.schemas._base.common import ModelDevice
 from cipher.utils.fastapi.settings import BaseServiceSettings
 
 

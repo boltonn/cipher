@@ -15,7 +15,7 @@ from cipher.datastores.elasticsearch.repositories.message import (
 from cipher.datastores.elasticsearch.repositories.text_chunk import (
     ElasticsearchTextChunkRepository,
 )
-from cipher.schemas.message import Message
+from cipher.schemas.content.message import Message
 
 settings = Settings()
 

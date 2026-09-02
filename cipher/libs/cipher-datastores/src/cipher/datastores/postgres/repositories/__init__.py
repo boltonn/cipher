@@ -14,6 +14,7 @@ from cipher.datastores.postgres.repositories.entity_relationship import (
 from cipher.datastores.postgres.repositories.entity_relationship_candidate import (
     PostgresRelationshipCandidateRepository,
 )
+from cipher.datastores.postgres.repositories.event import PostgresEventRepository
 from cipher.datastores.postgres.repositories.extracted_text import (
     PostgresExtractedTextRepository,
 )
@@ -23,6 +24,7 @@ from cipher.datastores.postgres.repositories.face_match import (
 )
 from cipher.datastores.postgres.repositories.file import PostgresFileRepository
 from cipher.datastores.postgres.repositories.image import PostgresImageRepository
+from cipher.datastores.postgres.repositories.location import PostgresLocationRepository
 from cipher.datastores.postgres.repositories.mention import PostgresMentionRepository
 from cipher.datastores.postgres.repositories.person import PostgresPersonRepository
 from cipher.datastores.postgres.repositories.user import PostgresUserRepository
@@ -36,11 +38,13 @@ __all__ = [
     "PostgresEntityMatchRepository",
     "PostgresGraphRepository",
     "PostgresRelationshipCandidateRepository",
+    "PostgresEventRepository",
     "PostgresExtractedTextRepository",
     "PostgresFaceRepository",
     "PostgresFaceMatchRepository",
     "PostgresFileRepository",
     "PostgresImageRepository",
+    "PostgresLocationRepository",
     "PostgresMentionRepository",
     "PostgresPersonRepository",
     "PostgresUserRepository",

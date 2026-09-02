@@ -3,28 +3,10 @@
 //     https://opensource.org/licenses/Apache-2.0
 "use client";
 import DOMPurify from "dompurify";
-import { useEffect, useMemo, useRef } from "react";
-import { toast } from "sonner";
+import { useMemo } from "react";
 
 interface EmailIframeProps {
   body: string;
-}
-
-interface CspViolation {
-  blockedURI: string;
-  directive: string;
-}
-
-function notifyBlockedImages(violations: CspViolation[]) {
-  const blocked = new Set(
-    violations.filter((v) => v.directive.startsWith("img-src")).map((v) => v.blockedURI)
-  );
-  if (blocked.size === 0) return;
-
-  toast.warning(`Blocked ${blocked.size} image${blocked.size > 1 ? "s" : ""} in this email`, {
-    description: "Insecure or unsupported image sources were not loaded.",
-    duration: 10_000,
-  });
 }
 
 /**
@@ -42,28 +24,10 @@ function notifyBlockedImages(violations: CspViolation[]) {
  *   with no access to the parent page's cookies, DOM, or API.
  * - A strict CSP meta tag blocks external resource loads inside the
  *   iframe as a defense-in-depth layer -- most commonly this blocks
- *   plain-http tracking pixels. Blocked-resource reports from the
- *   iframe's own `securitypolicyviolation` events are relayed to the
- *   parent via `postMessage` and surfaced as a toast, so images being
- *   blocked is visible rather than silent.
+ *   plain-http tracking pixels. Blocked images just don't render;
+ *   the block is silent by design.
  */
 export default function EmailIframe({ body }: EmailIframeProps) {
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-
-  useEffect(() => {
-    const handler = (event: MessageEvent) => {
-      if (event.source !== iframeRef.current?.contentWindow) return;
-      const data = event.data;
-      if (!data || typeof data !== "object") return;
-
-      if (data.__emailIframeCspViolations && Array.isArray(data.violations)) {
-        notifyBlockedImages(data.violations);
-      }
-    };
-    window.addEventListener("message", handler);
-    return () => window.removeEventListener("message", handler);
-  }, []);
-
   // Rendered as a `srcDoc` prop rather than assigned in an effect: the iframe
   // then enters the DOM with its document already set, as a single navigation.
   // Assigning `iframe.srcdoc` post-mount first commits about:blank and then
@@ -88,22 +52,6 @@ export default function EmailIframe({ body }: EmailIframeProps) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data: cid: https:; script-src 'unsafe-inline';">
-<script>
-(function () {
-	// Registered before any <img> in the body parses, so it catches
-	// violations from images that start loading immediately during
-	// HTML parsing -- a listener added after the body would miss them.
-	var violations = [];
-	var timer = null;
-	document.addEventListener("securitypolicyviolation", function (e) {
-		violations.push({ blockedURI: e.blockedURI, directive: e.violatedDirective });
-		if (timer) clearTimeout(timer);
-		timer = setTimeout(function () {
-			parent.postMessage({ __emailIframeCspViolations: true, violations: violations }, "*");
-		}, 300);
-	});
-})();
-<\/script>
 <style>
 * { box-sizing: border-box; }
 html {
@@ -152,7 +100,6 @@ ul, ol { padding-left: 20px; margin: 4px 0; }
 
   return (
     <iframe
-      ref={iframeRef}
       srcDoc={srcDoc}
       className="block w-full border-0 h-full"
       sandbox="allow-scripts allow-popups allow-top-navigation-by-user-activation"

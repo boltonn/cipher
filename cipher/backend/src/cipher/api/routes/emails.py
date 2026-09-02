@@ -3,8 +3,8 @@ from fastapi import APIRouter, HTTPException, UploadFile
 from pyparse.parsers.email import EmlParser
 
 from cipher.api.deps.elasticsearch import TextChunkDatastoreDep
-from cipher.schemas.email import ScoredEmailTextChunk
-from cipher.schemas.search import (
+from cipher.schemas.content.email import ScoredEmailTextChunk
+from cipher.schemas.content.search import (
     ChunkFilters,
     ChunkHybridSearchRequest,
     ChunkSemanticSearchRequest,

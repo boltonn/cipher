@@ -69,12 +69,6 @@ export function EntityTooltipCard({ entityId }: EntityTooltipCardProps) {
         </div>
       </div>
 
-      {entity.aliases.length > 0 && (
-        <p className="truncate text-[11px] text-muted-foreground">
-          aka {entity.aliases.join(", ")}
-        </p>
-      )}
-
       <div className="flex flex-wrap gap-1.5 text-[10px] text-muted-foreground">
         <Stat label="mentions" value={totalMentions} />
         <Stat label="selectors" value={selectors.length} />

@@ -18,7 +18,7 @@ from clir.utils.chunk import MessageChunker
 from pydantic import TypeAdapter
 from tqdm import tqdm
 
-from cipher.schemas.message import ConversationChunk, MessageBase
+from cipher.schemas.content.message import ConversationChunk, MessageBase
 
 app = typer.Typer(
     help="Chunk (and optionally embed) mobile messages from a parquet file."

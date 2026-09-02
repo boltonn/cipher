@@ -3,6 +3,7 @@
 import type { DataTableFilters, DataTableSortOrder } from "@/components/data-table/types";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
+import { ButtonGroup } from "@/components/ui/button-group";
 import {
   Dialog,
   DialogContent,
@@ -84,32 +85,31 @@ export default function DatasetSearchPage() {
         value={`${total.toLocaleString()} ${total === 1 ? "Dataset" : "Datasets"}`}
         actions={
           <>
-            <div className="flex items-center p-1 rounded-lg bg-muted/50 border border-border/50 gap-1">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setViewMode("card")}
-                aria-label="Card view"
-                className={cn(
-                  "h-7 w-7",
-                  viewMode === "card" ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <LayoutGrid size={14} />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setViewMode("table")}
-                aria-label="Table view"
-                className={cn(
-                  "h-7 w-7",
-                  viewMode === "table" ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <Table2 size={14} />
-              </Button>
-            </div>
+            <ButtonGroup>
+              {(
+                [
+                  { mode: "card", label: "Card view", Icon: LayoutGrid },
+                  { mode: "table", label: "Table view", Icon: Table2 },
+                ] as const
+              ).map(({ mode, label, Icon }) => (
+                <Button
+                  key={mode}
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setViewMode(mode)}
+                  aria-label={label}
+                  aria-pressed={viewMode === mode}
+                  className={cn(
+                    "h-9 w-9 border-border bg-muted/40",
+                    viewMode === mode
+                      ? "bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <Icon size={14} />
+                </Button>
+              ))}
+            </ButtonGroup>
 
             <Dialog open={createOpen} onOpenChange={setCreateOpen}>
               <DialogTrigger asChild>
@@ -122,7 +122,7 @@ export default function DatasetSearchPage() {
                   Request Dataset
                 </Button>
               </DialogTrigger>
-              <DialogContent className="p-0 border-border bg-transparent w-fit ring-0">
+              <DialogContent className="border-border bg-transparent p-0 ring-0 sm:max-w-2xl">
                 <DialogTitle className="sr-only">Request Dataset</DialogTitle>
                 <DatasetRequestForm onClose={() => setCreateOpen(false)} />
               </DialogContent>

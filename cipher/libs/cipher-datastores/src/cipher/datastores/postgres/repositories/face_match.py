@@ -6,9 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cipher.datastores.postgres.tables.face import FaceTable
 from cipher.datastores.postgres.tables.face_match import FaceMatchTable
-from cipher.schemas.common import SortOrder
-from cipher.schemas.face import FaceAssignmentMethod
-from cipher.schemas.face_match import (
+from cipher.schemas._base.common import SortOrder
+from cipher.schemas.identity.face import FaceAssignmentMethod
+from cipher.schemas.identity.face_match import (
     FaceMatch,
     FaceMatchCreate,
     FaceMatchReview,

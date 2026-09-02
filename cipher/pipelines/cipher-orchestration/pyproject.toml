@@ -16,7 +16,7 @@ dependencies = [
 
 [project.optional-dependencies]
 messages = ["clir", "numpy", "pandas"]
-cli = ["filetyper", "face", "setfitcv", "pyxberg", "pyparse[email]", "clir"]
+cli = ["filetyper", "face", "setfitcv", "pyxberg", "pyparse[email]", "pyselectors", "clir"]
 
 [project.scripts]
 cipher = "cipher.orchestration.cli:app"
@@ -31,6 +31,7 @@ face = { workspace = true }
 setfitcv = { workspace = true }
 pyxberg = { workspace = true }
 pyparse = { workspace = true }
+pyselectors = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

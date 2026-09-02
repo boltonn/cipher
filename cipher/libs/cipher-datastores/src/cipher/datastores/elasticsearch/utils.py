@@ -2,8 +2,8 @@ import json
 from pathlib import Path
 from typing import Generic, TypeVar
 
-from cipher.schemas.base import BaseModel
-from cipher.schemas.common import PaginatedResponse
+from cipher.schemas._base.base import BaseModel
+from cipher.schemas._base.common import PaginatedResponse
 
 
 def load_mappings(path: Path) -> dict:

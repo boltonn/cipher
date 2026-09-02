@@ -29,7 +29,8 @@ export interface TextImageKnnSearchRequest extends ImageSimilaritySearchParamete
 
 export interface ImagePublic {
   id: string;
-  fileId: string;
+  /** Set only on single-occurrence responses (e.g. GET /files/{id}/image); absent on search rows. */
+  fileId?: string;
   width: number;
   height: number;
   cameraMake?: string;

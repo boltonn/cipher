@@ -7,8 +7,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import text
 
 from cipher.datastores.postgres.tables.base import Base
-from cipher.schemas.mention import MentionedType
-from cipher.schemas.ontology import EntityType, SelectorKind
+from cipher.schemas.graph.mention import MentionedType
+from cipher.schemas.graph.ontology import EntityType, SelectorKind
 
 
 class MentionTable(Base):

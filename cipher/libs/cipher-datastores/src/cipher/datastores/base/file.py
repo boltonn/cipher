@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 
-from cipher.schemas.file import File, FileInstance, FilesRequest
+from cipher.schemas.ingestion.file import File, FileInstance, FilesRequest
 
 
 class FileRepository(ABC):

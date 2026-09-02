@@ -1,13 +1,23 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import type { IconComponent } from "@/types/common";
 import {
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
 } from "lucide-react";
+
+const DEFAULT_PAGE_SIZES = [10, 20, 25, 50, 100];
 
 interface PaginationProps {
   currentPage: number;
@@ -17,6 +27,18 @@ interface PaginationProps {
   isLoading?: boolean;
   siblingCount?: number;
   className?: string;
+  /**
+   * `"pager"` (default) -- numbered page buttons, for card grids and result
+   * lists. `"compact"` -- a single-row footer (rows-per-page, range, arrows)
+   * for dense tables.
+   */
+  variant?: "pager" | "compact";
+  /** compact only: show the "x-y of N" range label. */
+  showRange?: boolean;
+  /** compact only: current page size. Renders a "Rows per page" select when `onPageSizeChange` is also passed. */
+  pageSize?: number;
+  pageSizeOptions?: number[];
+  onPageSizeChange?: (size: number) => void;
 }
 
 const DOTS = "...";
@@ -26,7 +48,7 @@ const range = (start: number, end: number) => {
   return Array.from({ length }, (_, idx) => idx + start);
 };
 
-const usePaginationRange = ({
+const getPaginationRange = ({
   currentPage,
   totalPages,
   siblingCount = 1,
@@ -67,17 +89,147 @@ const usePaginationRange = ({
   return [1, DOTS, ...middleRange, DOTS, totalPages];
 };
 
-export const Pagination = ({
+function NavButton({
+  icon: Icon,
+  label,
+  onClick,
+  disabled,
+}: {
+  icon: IconComponent;
+  label: string;
+  onClick: () => void;
+  disabled: boolean;
+}) {
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      className="h-7 w-7 text-muted-foreground hover:bg-muted/60 hover:text-primary disabled:opacity-30 disabled:hover:text-muted-foreground"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+    >
+      <Icon className="size-3.5" />
+    </Button>
+  );
+}
+
+/** Dense one-line footer: rows-per-page, range, and prev/next arrows. */
+function CompactPagination({
   currentPage,
   totalItems,
   itemsPerPage,
   onPageChange,
   isLoading = false,
-  siblingCount = 1,
   className,
-}: PaginationProps) => {
+  showRange,
+  pageSize,
+  pageSizeOptions,
+  onPageSizeChange,
+}: PaginationProps) {
+  if (totalItems === 0) return null;
+
+  const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
+  const rangeStart = (currentPage - 1) * itemsPerPage + 1;
+  const rangeEnd = Math.min(currentPage * itemsPerPage, totalItems);
+  const canPrev = currentPage > 1;
+  const canNext = currentPage < totalPages;
+
+  return (
+    <nav
+      aria-label="Pagination"
+      className={cn(
+        "flex items-center justify-between gap-4 border-t border-border/50 py-3",
+        className
+      )}
+    >
+      {onPageSizeChange && pageSize !== undefined ? (
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+            Rows per page
+          </span>
+          <Select
+            value={String(pageSize)}
+            onValueChange={(v) => onPageSizeChange(Number(v))}
+          >
+            <SelectTrigger className="h-7 w-16 border-border bg-muted/40 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {(pageSizeOptions ?? DEFAULT_PAGE_SIZES).map((size) => (
+                <SelectItem key={size} value={String(size)}>
+                  {size}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      ) : (
+        <span />
+      )}
+
+      {showRange && (
+        <span className="font-mono text-[10px] text-muted-foreground">
+          {rangeStart}&ndash;{rangeEnd} of {totalItems.toLocaleString()}
+        </span>
+      )}
+
+      <div className="flex items-center gap-1">
+        <NavButton
+          icon={ChevronsLeft}
+          label="Go to first page"
+          onClick={() => onPageChange(1)}
+          disabled={!canPrev || isLoading}
+        />
+        <NavButton
+          icon={ChevronLeft}
+          label="Go to previous page"
+          onClick={() => onPageChange(currentPage - 1)}
+          disabled={!canPrev || isLoading}
+        />
+        <span className="px-2 font-mono text-[10px] text-muted-foreground">
+          {currentPage} / {totalPages}
+        </span>
+        <NavButton
+          icon={ChevronRight}
+          label="Go to next page"
+          onClick={() => onPageChange(currentPage + 1)}
+          disabled={!canNext || isLoading}
+        />
+        <NavButton
+          icon={ChevronsRight}
+          label="Go to last page"
+          onClick={() => onPageChange(totalPages)}
+          disabled={!canNext || isLoading}
+        />
+      </div>
+    </nav>
+  );
+}
+
+/**
+ * The app's one pagination control. `variant="pager"` (default) renders
+ * numbered page buttons for card grids and result lists; `variant="compact"`
+ * renders a dense table footer with an optional rows-per-page select.
+ */
+export const Pagination = (props: PaginationProps) => {
+  const {
+    currentPage,
+    totalItems,
+    itemsPerPage,
+    onPageChange,
+    isLoading = false,
+    siblingCount = 1,
+    className,
+    variant = "pager",
+  } = props;
+
+  if (variant === "compact") {
+    return <CompactPagination {...props} />;
+  }
+
   const totalPages = Math.ceil(totalItems / itemsPerPage);
-  const paginationRange = usePaginationRange({
+  const paginationRange = getPaginationRange({
     currentPage,
     totalPages,
     siblingCount,
@@ -92,7 +244,8 @@ export const Pagination = ({
   const canGoNext = currentPage < totalPages;
 
   return (
-    <div
+    <nav
+      aria-label="Pagination"
       className={cn(
         "flex justify-center items-center gap-2 py-10 border-t border-border/50",
         className
@@ -137,7 +290,7 @@ export const Pagination = ({
                 key={`dots-${index}`}
                 className="h-8 w-8 flex items-center justify-center text-muted-foreground font-mono text-sm"
               >
-                ⋯
+                &#8943;
               </div>
             );
           }
@@ -192,6 +345,6 @@ export const Pagination = ({
       >
         <ChevronsRight size={16} />
       </Button>
-    </div>
+    </nav>
   );
 };

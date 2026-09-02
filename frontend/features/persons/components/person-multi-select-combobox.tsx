@@ -12,7 +12,6 @@ import {
 } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { facesService } from "@/features/faces/api";
-import { getFaceCropStyle } from "@/features/faces/components/face-crop";
 import { usePerson, usePersonRepresentativeFaces, usePersonSearch } from "@/features/persons/hooks/use-persons";
 import { Person } from "@/features/persons/types";
 import { cn } from "@/lib/utils";
@@ -133,18 +132,23 @@ function PersonOptionRow({
 }) {
   const { data: faces } = usePersonRepresentativeFaces(person.id);
   const primaryFace = faces?.[0];
-  const cropStyle = primaryFace
-    ? getFaceCropStyle(primaryFace.boundingBox, facesService.getFaceViewUrl(primaryFace.id))
-    : undefined;
 
   return (
     <CommandItem value={person.id} onSelect={onSelect} className="text-xs gap-2">
       <Check className={cn("h-3 w-3 shrink-0", selected ? "opacity-100" : "opacity-0")} />
-      <div
-        className="h-5 w-5 rounded-full shrink-0 overflow-hidden bg-primary/10 bg-cover bg-center text-primary text-[8px] font-black flex items-center justify-center"
-        style={cropStyle}
-      >
-        {!primaryFace && (person.name ? person.name[0].toUpperCase() : <UserRound size={10} />)}
+      <div className="h-5 w-5 rounded-full shrink-0 overflow-hidden bg-primary/10 text-primary text-[8px] font-black flex items-center justify-center">
+        {primaryFace ? (
+          // eslint-disable-next-line @next/next/no-img-element -- tiny same-origin avatar, server already crops/downscales
+          <img
+            src={facesService.getFaceThumbnailUrl(primaryFace.id)}
+            alt=""
+            className="h-full w-full object-cover"
+          />
+        ) : person.name ? (
+          person.name[0].toUpperCase()
+        ) : (
+          <UserRound size={10} />
+        )}
       </div>
       <span className="truncate flex-1">{person.name || "Unnamed"}</span>
       {person.isVerified && <BadgeCheck size={12} className="text-primary shrink-0" />}

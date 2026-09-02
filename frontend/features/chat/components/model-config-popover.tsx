@@ -135,7 +135,7 @@ export function ModelConfigPopover() {
             />
             <p className="text-xs text-muted-foreground">
               {serverHasKeyForDraft
-                ? "The server already has a key for this model. Set one here only to override it."
+                ? "The server already has a key for this model and uses it automatically. A key saved here is only used for providers the server can't cover."
                 : "Stored locally. Switch model to set a different provider's key."}
             </p>
           </div>

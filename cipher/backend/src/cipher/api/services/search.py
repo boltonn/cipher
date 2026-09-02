@@ -7,7 +7,7 @@ from cipher.datastores.elasticsearch.repositories.text_chunk import (
     FileSearchResult,
 )
 from cipher.datastores.elasticsearch.utils import PaginatedResponse
-from cipher.schemas.search import ChunkHybridSearchRequest, ChunkTextSearchRequest
+from cipher.schemas.content.search import ChunkHybridSearchRequest, ChunkTextSearchRequest
 
 
 async def search_chunks(

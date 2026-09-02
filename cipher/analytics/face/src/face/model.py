@@ -6,9 +6,9 @@ import numpy as np
 from insightface.app import FaceAnalysis
 from PIL import Image
 
-from cipher.schemas.common import ModelDevice
-from cipher.schemas.detection import BoundingBox
-from cipher.schemas.face import FaceAnnotation, FaceLandmarks5
+from cipher.schemas._base.common import ModelDevice
+from cipher.schemas._base.detection import BoundingBox
+from cipher.schemas.identity.face import FaceAnnotation, FaceLandmarks5
 from face.utils.align import is_face_backwards
 from face.utils.detection import normalize
 from face.utils.embedding import normalize as normalize_embedding

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import text
 
 from cipher.datastores.postgres.tables.base import Base
-from cipher.schemas.face_match import FaceMatchMethod, FaceMatchStatus
+from cipher.schemas.identity.face_match import FaceMatchMethod, FaceMatchStatus
 
 if TYPE_CHECKING:
     from cipher.datastores.postgres.tables.face import FaceTable

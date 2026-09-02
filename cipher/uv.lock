@@ -601,6 +601,7 @@ version = "0.0.1"
 source = { editable = "backend" }
 dependencies = [
     { name = "cipher-datastores", extra = ["elasticsearch", "postgres"] },
+    { name = "cipher-orchestration" },
     { name = "cipher-schemas" },
     { name = "cipher-utils", extra = ["fastapi"] },
     { name = "clir" },
@@ -609,12 +610,14 @@ dependencies = [
     { name = "httpx" },
     { name = "pydantic-ai" },
     { name = "pyparse", extra = ["email"] },
+    { name = "pyselectors" },
     { name = "setfitcv" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "cipher-datastores", extras = ["postgres", "elasticsearch"], editable = "libs/cipher-datastores" },
+    { name = "cipher-orchestration", editable = "pipelines/cipher-orchestration" },
     { name = "cipher-schemas", editable = "libs/cipher-schemas" },
     { name = "cipher-utils", extras = ["fastapi"], editable = "libs/cipher-utils" },
     { name = "clir", editable = "analytics/clir" },
@@ -623,6 +626,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27" },
     { name = "pydantic-ai", specifier = ">=2.35.3" },
     { name = "pyparse", extras = ["email"], editable = "analytics/pyparse" },
+    { name = "pyselectors", editable = "analytics/pyselectors" },
     { name = "setfitcv", editable = "analytics/setfitcv" },
 ]
 
@@ -641,8 +645,10 @@ elasticsearch = [
 ]
 postgres = [
     { name = "asyncpg" },
+    { name = "geoalchemy2" },
     { name = "pgvector" },
     { name = "psycopg2-binary" },
+    { name = "shapely" },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "sqlmodel" },
 ]
@@ -652,9 +658,11 @@ requires-dist = [
     { name = "asyncpg", marker = "extra == 'postgres'" },
     { name = "cipher-schemas", editable = "libs/cipher-schemas" },
     { name = "elasticsearch", marker = "extra == 'elasticsearch'", specifier = "==8.16" },
+    { name = "geoalchemy2", marker = "extra == 'postgres'" },
     { name = "pgvector", marker = "extra == 'postgres'" },
     { name = "psycopg2-binary", marker = "extra == 'postgres'" },
     { name = "pydantic-settings" },
+    { name = "shapely", marker = "extra == 'postgres'" },
     { name = "sqlalchemy", extras = ["asyncio"], marker = "extra == 'postgres'" },
     { name = "sqlmodel", marker = "extra == 'postgres'" },
 ]
@@ -680,6 +688,7 @@ cli = [
     { name = "face" },
     { name = "filetyper" },
     { name = "pyparse", extra = ["email"] },
+    { name = "pyselectors" },
     { name = "pyxberg" },
     { name = "setfitcv" },
 ]
@@ -703,6 +712,7 @@ requires-dist = [
     { name = "numpy", marker = "extra == 'messages'" },
     { name = "pandas", marker = "extra == 'messages'" },
     { name = "pyparse", extras = ["email"], marker = "extra == 'cli'", editable = "analytics/pyparse" },
+    { name = "pyselectors", marker = "extra == 'cli'", editable = "analytics/pyselectors" },
     { name = "pyxberg", marker = "extra == 'cli'", editable = "analytics/pyxberg" },
     { name = "setfitcv", marker = "extra == 'cli'", editable = "analytics/setfitcv" },
     { name = "tqdm" },
@@ -715,12 +725,14 @@ name = "cipher-schemas"
 version = "0.0.1"
 source = { editable = "libs/cipher-schemas" }
 dependencies = [
+    { name = "geojson-pydantic" },
     { name = "loguru" },
     { name = "pydantic" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "geojson-pydantic" },
     { name = "loguru" },
     { name = "pydantic", specifier = ">=2" },
 ]
@@ -935,7 +947,7 @@ name = "cuda-bindings"
 version = "12.9.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "cuda-pathfinder" },
+    { name = "cuda-pathfinder", marker = "platform_machine != 'aarch64' or (extra == 'extra-4-clir-cpu' and extra == 'extra-4-clir-cuda') or (extra == 'extra-4-face-cpu' and extra == 'extra-4-face-cuda') or (extra == 'extra-4-nerd-cpu' and extra == 'extra-4-nerd-cuda') or (extra == 'extra-8-pygliner-cpu' and extra == 'extra-8-pygliner-cuda') or (extra == 'extra-8-setfitcv-cpu' and extra == 'extra-8-setfitcv-cuda')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/0c/c2/65bfd79292b8ff18be4dd7f7442cea37bcbc1a228c1886f1dea515c45b67/cuda_bindings-12.9.4-cp312-cp312-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:694ba35023846625ef471257e6b5a4bc8af690f961d197d77d34b1d1db393f56", size = 11760260, upload-time = "2025-10-21T14:51:40.79Z" },
@@ -1425,6 +1437,31 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/1e/e3/23f4be7d5626878a6297c728f5f8db83bd9b135da481935d4c1bb82efc21/genai_prices-0.1.4.tar.gz", hash = "sha256:f3b8a0bf0c21b01f5af3ca42babcab2f17728bf3c602f87f42b72d1d2bf61d98", size = 94678, upload-time = "2026-08-19T23:53:25.527Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e6/54/911961e926a4c4ea30bf1fa0bf9d8ffc5c9ac5ed6a3f77b3d9e0ab5bb9a5/genai_prices-0.1.4-py3-none-any.whl", hash = "sha256:1d1b01cc7ab1adfa17c3a1121f4c13990bd0a4377640ecd37ebfde5836768240", size = 99160, upload-time = "2026-08-19T23:53:24.52Z" },
+]
+
+[[package]]
+name = "geoalchemy2"
+version = "0.20.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "packaging" },
+    { name = "sqlalchemy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/63/74/6cb1ef591bf47d28f41aa770f2f3a91c0a570aee0a4083bed7f8c533d8df/geoalchemy2-0.20.0.tar.gz", hash = "sha256:450f427f4bc3cf2d5ddee0af3763aed0f3eea2384e7c9a99798d8f1508279322", size = 280805, upload-time = "2026-05-12T14:50:26.132Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4e/08/b66ad4239f592e05202e25925c08cdd04cc14c3994000ec70ec61fea202c/geoalchemy2-0.20.0-py3-none-any.whl", hash = "sha256:1489a1d106519542a79c97cd0b4c537d80462c353610ebc2429cf2c43daac717", size = 96467, upload-time = "2026-05-12T14:50:24.998Z" },
+]
+
+[[package]]
+name = "geojson-pydantic"
+version = "2.1.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pydantic" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/7c/03/8fdfbf626f8ec369cc5a0814f856b883ef2b6afb01e6e594181b7b79fb5d/geojson_pydantic-2.1.2.tar.gz", hash = "sha256:94b9f80f9d8ec8b5cad94de9c8feae93d3e0081bf67a4d3929e0e36fb87479f0", size = 8152, upload-time = "2026-08-25T07:03:18.687Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2e/72/73a3b47b861f786c252d1cbdd40e0c1dcc8b1762f7ee4c8ffd638a4f57fc/geojson_pydantic-2.1.2-py3-none-any.whl", hash = "sha256:49aa772b4f4c4d0612595908294a58510c4291848db805a0c99989836ebe4659", size = 9447, upload-time = "2026-08-25T07:03:17.714Z" },
 ]
 
 [[package]]
@@ -2553,7 +2590,7 @@ name = "nvidia-cudnn-cu12"
 version = "9.10.2.21"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-cublas-cu12" },
+    { name = "nvidia-cublas-cu12", marker = "platform_machine != 'aarch64' or extra == 'extra-4-face-cuda' or extra == 'extra-8-setfitcv-cuda' or (extra == 'extra-4-clir-cpu' and extra == 'extra-4-clir-cuda') or (extra == 'extra-4-nerd-cpu' and extra == 'extra-4-nerd-cuda') or (extra == 'extra-8-pygliner-cpu' and extra == 'extra-8-pygliner-cuda')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/fa/41/e79269ce215c857c935fd86bcfe91a451a584dfc27f1e068f568b9ad1ab7/nvidia_cudnn_cu12-9.10.2.21-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:c9132cc3f8958447b4910a1720036d9eff5928cc3179b0a51fb6d167c6cc87d8", size = 705026878, upload-time = "2025-06-06T21:52:51.348Z" },
@@ -2565,7 +2602,7 @@ name = "nvidia-cufft-cu12"
 version = "11.3.3.83"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-nvjitlink-cu12" },
+    { name = "nvidia-nvjitlink-cu12", marker = "platform_machine != 'aarch64' or (extra == 'extra-4-clir-cpu' and extra == 'extra-4-clir-cuda') or (extra == 'extra-4-face-cpu' and extra == 'extra-4-face-cuda') or (extra == 'extra-4-nerd-cpu' and extra == 'extra-4-nerd-cuda') or (extra == 'extra-8-pygliner-cpu' and extra == 'extra-8-pygliner-cuda') or (extra == 'extra-8-setfitcv-cpu' and extra == 'extra-8-setfitcv-cuda')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/60/bc/7771846d3a0272026c416fbb7e5f4c1f146d6d80704534d0b187dd6f4800/nvidia_cufft_cu12-11.3.3.83-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:848ef7224d6305cdb2a4df928759dca7b1201874787083b6e7550dd6765ce69a", size = 193109211, upload-time = "2025-03-07T01:44:56.873Z" },
@@ -2595,9 +2632,9 @@ name = "nvidia-cusolver-cu12"
 version = "11.7.3.90"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-cublas-cu12" },
-    { name = "nvidia-cusparse-cu12" },
-    { name = "nvidia-nvjitlink-cu12" },
+    { name = "nvidia-cublas-cu12", marker = "platform_machine != 'aarch64' or (extra == 'extra-4-clir-cpu' and extra == 'extra-4-clir-cuda') or (extra == 'extra-4-face-cpu' and extra == 'extra-4-face-cuda') or (extra == 'extra-4-nerd-cpu' and extra == 'extra-4-nerd-cuda') or (extra == 'extra-8-pygliner-cpu' and extra == 'extra-8-pygliner-cuda') or (extra == 'extra-8-setfitcv-cpu' and extra == 'extra-8-setfitcv-cuda')" },
+    { name = "nvidia-cusparse-cu12", marker = "platform_machine != 'aarch64' or (extra == 'extra-4-clir-cpu' and extra == 'extra-4-clir-cuda') or (extra == 'extra-4-face-cpu' and extra == 'extra-4-face-cuda') or (extra == 'extra-4-nerd-cpu' and extra == 'extra-4-nerd-cuda') or (extra == 'extra-8-pygliner-cpu' and extra == 'extra-8-pygliner-cuda') or (extra == 'extra-8-setfitcv-cpu' and extra == 'extra-8-setfitcv-cuda')" },
+    { name = "nvidia-nvjitlink-cu12", marker = "platform_machine != 'aarch64' or (extra == 'extra-4-clir-cpu' and extra == 'extra-4-clir-cuda') or (extra == 'extra-4-face-cpu' and extra == 'extra-4-face-cuda') or (extra == 'extra-4-nerd-cpu' and extra == 'extra-4-nerd-cuda') or (extra == 'extra-8-pygliner-cpu' and extra == 'extra-8-pygliner-cuda') or (extra == 'extra-8-setfitcv-cpu' and extra == 'extra-8-setfitcv-cuda')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c8/32/f7cd6ce8a7690544d084ea21c26e910a97e077c9b7f07bf5de623ee19981/nvidia_cusolver_cu12-11.7.3.90-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:db9ed69dbef9715071232caa9b69c52ac7de3a95773c2db65bdba85916e4e5c0", size = 267229841, upload-time = "2025-03-07T01:46:54.356Z" },
@@ -2609,7 +2646,7 @@ name = "nvidia-cusparse-cu12"
 version = "12.5.8.93"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-nvjitlink-cu12" },
+    { name = "nvidia-nvjitlink-cu12", marker = "platform_machine != 'aarch64' or (extra == 'extra-4-clir-cpu' and extra == 'extra-4-clir-cuda') or (extra == 'extra-4-face-cpu' and extra == 'extra-4-face-cuda') or (extra == 'extra-4-nerd-cpu' and extra == 'extra-4-nerd-cuda') or (extra == 'extra-8-pygliner-cpu' and extra == 'extra-8-pygliner-cuda') or (extra == 'extra-8-setfitcv-cpu' and extra == 'extra-8-setfitcv-cuda')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/bc/f7/cd777c4109681367721b00a106f491e0d0d15cfa1fd59672ce580ce42a97/nvidia_cusparse_cu12-12.5.8.93-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:9b6c161cb130be1a07a27ea6923df8141f3c295852f4b260c65f18f3e0a091dc", size = 288117129, upload-time = "2025-03-07T01:47:40.407Z" },

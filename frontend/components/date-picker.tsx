@@ -53,7 +53,7 @@ export function DatePicker({ value, onChange, placeholder = "Pick a date", class
   };
 
   return (
-    <div className={cn("relative flex items-center", className)}>
+    <div className={cn("relative", className)}>
       <Input
         value={inputValue}
         onChange={(e) => setInputValue(e.target.value)}
@@ -73,7 +73,7 @@ export function DatePicker({ value, onChange, placeholder = "Pick a date", class
             type="button"
             variant="ghost"
             size="icon"
-            className="absolute right-0 h-9 w-9 text-muted-foreground hover:text-annotation"
+            className="absolute right-0 top-1/2 h-9 w-9 -translate-y-1/2 text-muted-foreground hover:text-foreground"
             aria-label={placeholder}
           >
             <CalendarIcon size={14} />

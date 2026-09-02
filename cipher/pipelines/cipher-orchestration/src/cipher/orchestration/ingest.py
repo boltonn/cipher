@@ -11,7 +11,7 @@ from cipher.datastores.postgres.repositories import (
     PostgresDatasetRepository,
     PostgresFileRepository,
 )
-from cipher.schemas.dataset import Dataset, DatasetCreate
+from cipher.schemas.ingestion.dataset import Dataset, DatasetCreate
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession

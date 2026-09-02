@@ -1,18 +1,17 @@
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile
+from fastapi import APIRouter, HTTPException, Query, Response, UploadFile
 from loguru import logger
 from setfitcv.api.deps import ImageEmbeddingModelDep, model_lifespan
 
 from cipher.api.deps.postgres import (
-    FileDatastoreDep,
     ImageDatastoreDep,
     ImageSimilaritySearchFormParametersDep,
 )
 from cipher.api.utils import download_uri
-from cipher.schemas.common import SortOrder
-from cipher.schemas.image import (
+from cipher.schemas._base.common import SortOrder
+from cipher.schemas.content.image import (
     BaseImageSearchParameters,
     Image,
     ImagePublic,
@@ -23,6 +22,7 @@ from cipher.schemas.image import (
     PaginatedImagesResponse,
     TextImageKnnSearchRequest,
 )
+from cipher.schemas.ingestion.file import File
 
 router = APIRouter(
     prefix="/images",
@@ -51,6 +51,20 @@ async def get_image_by_id(id: str, datastore: ImageDatastoreDep):
     return image
 
 
+@router.get(
+    "/{id}/files",
+    summary="List the files this image was found in",
+    response_model=list[File],
+    response_model_by_alias=True,
+)
+async def get_image_files(id: str, datastore: ImageDatastoreDep):
+    """List every file whose content is this image (matched on sha256)."""
+    files = await datastore.get_files_for_image(image_id=id)
+    if not files:
+        raise HTTPException(status_code=404, detail=f"Image not found: {id}")
+    return files
+
+
 @router.get("/{id}/view", summary="Download image by ID")
 async def download_image_by_id(id: str, datastore: ImageDatastoreDep):
     """Download a single image by its ID."""
@@ -69,7 +83,9 @@ async def download_image_by_id(id: str, datastore: ImageDatastoreDep):
 )
 async def similarity_search_images_by_id(
     id: str,
-    params: Annotated[ImageSimilaritySearchParameters, Depends()],
+    # Query() (not Depends()) so list-valued filters (datasets, filetypes) are
+    # parsed from repeated query params -- Depends() silently drops them.
+    params: Annotated[ImageSimilaritySearchParameters, Query()],
     datastore: ImageDatastoreDep,
 ):
     """Get all images, optionally filtered by a search query, with pagination."""
@@ -174,7 +190,6 @@ async def delete_image(id: str, datastore: ImageDatastoreDep) -> bool:
 async def test_similarity_search_images_by_upload(
     file: UploadFile,
     image_datastore: ImageDatastoreDep,
-    file_datastore: FileDatastoreDep,
     model: ImageEmbeddingModelDep,
 ):
     """Get all images, optionally filtered by a search query, with pagination."""
@@ -198,18 +213,16 @@ async def test_similarity_search_images_by_upload(
         )
 
     best_img = response.data[0]
-    file_example = await file_datastore.get_file_by_id(
-        file_id=best_img.file_id,
-    )
-    if file_example is None:
+    uri_info = await image_datastore.get_image_uri(image_id=best_img.id)
+    if uri_info is None:
         raise HTTPException(
             status_code=404,
-            detail=f"Failed test. File metadata not found for file ID: {best_img.file_id}",
+            detail=f"Failed test. File metadata not found for image ID: {best_img.id}",
         )
 
-    image_path = file_example.uri.replace("file://", "")
+    image_path = uri_info.uri.replace("file://", "")
     logger.info(f"Test upload best match image path: {image_path}")
     return Response(
         content=Path(image_path).read_bytes(),
-        media_type=file_example.mime_type,
+        media_type=uri_info.mime_type,
     )

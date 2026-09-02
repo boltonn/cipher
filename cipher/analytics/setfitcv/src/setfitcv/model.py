@@ -6,7 +6,7 @@ from loguru import logger
 from PIL import Image
 from transformers import CLIPImageProcessor, CLIPModel, CLIPTokenizer
 
-from cipher.schemas.common import ModelDevice
+from cipher.schemas._base.common import ModelDevice
 
 
 class CLIP:

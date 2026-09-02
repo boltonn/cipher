@@ -3,8 +3,8 @@ from dataclasses import dataclass
 from pydantic import ConfigDict, Field
 from torch import Tensor
 
-from cipher.schemas.base import BaseModel
-from cipher.schemas.message import Message
+from cipher.schemas._base.base import BaseModel
+from cipher.schemas.content.message import Message
 
 
 @dataclass

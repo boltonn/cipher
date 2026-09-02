@@ -8,7 +8,7 @@ from cipher.datastores.postgres.tables.entity_relationship import EntityRelation
 from cipher.datastores.postgres.tables.entity_relationship_candidate import (
     EntityRelationshipCandidateTable,
 )
-from cipher.schemas.entity_relationship import (
+from cipher.schemas.graph.entity_relationship import (
     EntityRelationshipCreate,
     PaginatedRelationshipCandidatesResponse,
     RelationshipCandidate,
@@ -17,7 +17,7 @@ from cipher.schemas.entity_relationship import (
     RelationshipCandidateStatus,
     RelationshipReview,
 )
-from cipher.schemas.ontology import RelationshipSource
+from cipher.schemas.graph.ontology import RelationshipSource
 
 
 class PostgresRelationshipCandidateRepository:

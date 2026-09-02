@@ -6,8 +6,8 @@ from fastapi.concurrency import run_in_threadpool
 from loguru import logger
 from PIL import Image
 
-from cipher.schemas.common import ModelDevice
-from cipher.schemas.face import FaceAnnotation
+from cipher.schemas._base.common import ModelDevice
+from cipher.schemas.identity.face import FaceAnnotation
 from face.model import InsightFaceModel
 from face.settings import Settings
 

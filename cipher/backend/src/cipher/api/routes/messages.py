@@ -6,8 +6,8 @@ from clir.api.deps import TextEmbeddingModelDep, model_lifespan
 from fastapi import APIRouter, Body, Depends, HTTPException, Path
 
 from cipher.api.deps.elasticsearch import MessageDatastoreDep
-from cipher.schemas.common import TagRequest, TranslationUpdate
-from cipher.schemas.message import (
+from cipher.schemas._base.common import TagRequest, TranslationUpdate
+from cipher.schemas.content.message import (
     BaseMessageTextSearchParameters,
     ChunkContextRequestParams,
     ConversationChunkByChunkIdRequest,

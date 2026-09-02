@@ -4,8 +4,8 @@ import re
 
 from loguru import logger
 
-from cipher.schemas.common import ModelDevice
-from cipher.schemas.ontology import default_ner_labels, default_relation_labels
+from cipher.schemas._base.common import ModelDevice
+from cipher.schemas.graph.ontology import default_ner_labels, default_relation_labels
 from pygliner.schemas import EntitySpan, RelationSpan
 
 _TOKEN_RE = re.compile(r"\S+")

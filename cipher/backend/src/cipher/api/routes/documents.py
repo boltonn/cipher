@@ -4,8 +4,8 @@ from clir.api.deps import TextEmbeddingModelDep
 from fastapi import APIRouter, HTTPException
 
 from cipher.api.deps.elasticsearch import TextChunkDatastoreDep
-from cipher.schemas.document import ScoredDocumentTextChunk
-from cipher.schemas.search import (
+from cipher.schemas.content.document import ScoredDocumentTextChunk
+from cipher.schemas.content.search import (
     ChunkFilters,
     ChunkHybridSearchRequest,
     ChunkSemanticSearchRequest,

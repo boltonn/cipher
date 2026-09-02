@@ -6,7 +6,7 @@ from pydantic_settings import SettingsConfigDict
 
 from cipher.datastores.elasticsearch.config import ElasticsearchConfig
 from cipher.datastores.postgres.config import PostgresConfig
-from cipher.schemas.llm import LLMSettings
+from cipher.schemas.interaction.llm import LLMSettings
 from cipher.utils.fastapi.settings import BaseServiceSettings
 
 

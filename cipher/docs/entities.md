@@ -35,12 +35,19 @@ Every entity is a row in **`entity`** (the graph node) plus a 1:1 row in a
 ```
 entity(id, dataset_id, entity_type, display_name, display_name_normalized,
        aliases[], tags[], notes, source, is_verified,
-       name_embedding vector(1024), person_id → person.id, date_*)
+       name_embedding vector(1024), person_id → person.id,
+       location_id → location.id, date_*)
 
   ├─ person        (the EXISTING person table; entity.person_id bridges to it)
   ├─ organization  (entity_id, legal_name, aliases[], org_type, country, notes)
-  ├─ location      (entity_id, address_text, latitude, longitude, geohash,
-  │                 source ∈ named_mention|exif|geocoded|device_gps, precision_m, ...)
+  ├─ location      (STANDALONE, bridged by shared id like person: entity.location_id,
+  │                 location.id == entity.id. Also usable with no entity at all --
+  │                 an EXIF photo point is just a location row with file_id set.
+  │                 geom geometry(4326) NOT NULL, latitude, longitude, altitude,
+  │                 geohash, name, category, address, city, admin_area, country,
+  │                 tags[], attributes, file_id, dataset_id, source_id,
+  │                 source ∈ named_mention|exif|geocoded|device_gps, date_recorded, ...
+  │                 UNIQUE(file_id, source))
   └─ selector      (entity_id, dataset_id, selector_kind, raw_value,
                     normalized_value, region_hint)
                     UNIQUE(dataset_id, selector_kind, normalized_value)
@@ -57,6 +64,10 @@ Why a supertype node instead of independent tables:
   so `person`, `Face.person_id`, and `FaceMatch.person_id` need **no schema
   change**. A `person`‑type entity links to a `person` row; face evidence for an
   entity is reached through that bridge.
+- **Location uses the same bridge.** `entity.location_id` (nullable, unique) and
+  `location.id == entity.id`, so `location` is a standalone geospatial table that
+  can also exist with no entity attached (a photo's EXIF GPS is just a `location`
+  row with `file_id`/`image_id` set). The `/locations` map viewer reads this table.
 
 Files:
 `libs/cipher-schemas/src/cipher/schemas/{entity,organization,location,selector,mention,entity_relationship,entity_match,ontology}.py`,

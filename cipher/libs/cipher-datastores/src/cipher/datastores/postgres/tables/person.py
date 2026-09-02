@@ -7,8 +7,8 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from cipher.datastores.postgres.tables.base import Base
-from cipher.schemas.common import Sex
-from cipher.schemas.person import PersonSource
+from cipher.schemas._base.common import Sex
+from cipher.schemas.identity.person import PersonSource
 
 if TYPE_CHECKING:
     from cipher.datastores.postgres.tables.entity import EntityTable

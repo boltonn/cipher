@@ -16,9 +16,9 @@ from cipher.datastores.postgres.tables.user import UserTable
 from cipher.datastores.postgres.tables.person import PersonTable
 from cipher.datastores.postgres.tables.face import FaceTable
 from cipher.datastores.postgres.tables.face_match import FaceMatchTable
+from cipher.datastores.postgres.tables.location import LocationTable
 from cipher.datastores.postgres.tables.entity import EntityTable
 from cipher.datastores.postgres.tables.organization import OrganizationTable
-from cipher.datastores.postgres.tables.location import LocationTable
 from cipher.datastores.postgres.tables.selector import SelectorTable
 from cipher.datastores.postgres.tables.mention import MentionTable
 from cipher.datastores.postgres.tables.entity_relationship import EntityRelationshipTable
@@ -26,6 +26,9 @@ from cipher.datastores.postgres.tables.entity_relationship_candidate import (
     EntityRelationshipCandidateTable,
 )
 from cipher.datastores.postgres.tables.entity_match import EntityMatchTable
+from cipher.datastores.postgres.tables.event import EventTable
+from cipher.datastores.postgres.tables.event_participant import EventParticipantTable
+from cipher.datastores.postgres.tables.event_place import EventPlaceTable
 
 __all__ = [
     "FileTable",
@@ -48,4 +51,7 @@ __all__ = [
     "EntityRelationshipTable",
     "EntityRelationshipCandidateTable",
     "EntityMatchTable",
+    "EventTable",
+    "EventParticipantTable",
+    "EventPlaceTable",
 ]

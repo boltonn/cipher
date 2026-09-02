@@ -20,17 +20,20 @@ from cipher.api.routes import (
     datasets,
     documents,
     emails,
+    enrichments,
     entities,
+    events,
     faces,
     files,
     images,
+    locations,
     mentions,
     persons,
     search,
     users,
 )
 from cipher.api.settings import Settings
-from cipher.schemas.exceptions import EntityAlreadyExistsError, EntityNotFoundError
+from cipher.schemas._base.exceptions import EntityAlreadyExistsError, EntityNotFoundError
 from cipher.utils.fastapi.health import ServiceHealthStatus, service_health
 from cipher.utils.fastapi.info import ServiceInfo, get_package_info
 from cipher.utils.fastapi.middleware import (
@@ -83,9 +86,10 @@ app.include_router(documents.router)
 app.include_router(emails.router)
 app.include_router(dataset_requests.router)
 app.include_router(datasets.router)
-# app.include_router(enrichments.router)
+app.include_router(enrichments.router)
 app.include_router(files.router)
 app.include_router(images.router)
+app.include_router(locations.router)
 app.include_router(search.router)
 # app.include_router(messages.router)
 app.include_router(users.router)
@@ -93,6 +97,7 @@ app.include_router(faces.router)
 app.include_router(persons.router)
 app.include_router(entities.router)
 app.include_router(mentions.router)
+app.include_router(events.router)
 app.include_router(comments.router)
 static_path = Path(__file__).parent / "assets"
 app.mount(f"/{static_path.name}", StaticFiles(directory=static_path), name="static")

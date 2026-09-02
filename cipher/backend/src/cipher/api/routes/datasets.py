@@ -10,8 +10,7 @@ from cipher.api.deps.postgres import (
     EnrichmentDatastoreDep,
     FileDatastoreDep,
 )
-from cipher.schemas.comment import CommentableType
-from cipher.schemas.dataset import (
+from cipher.schemas.ingestion.dataset import (
     Dataset,
     DatasetCreate,
     DatasetsRequest,
@@ -20,7 +19,8 @@ from cipher.schemas.dataset import (
     DatasetUpdate,
     PaginatedDatasetsResponse,
 )
-from cipher.schemas.file import FileBrowserRequest, FileBrowserResponse
+from cipher.schemas.ingestion.file import FileBrowserRequest, FileBrowserResponse
+from cipher.schemas.interaction.comment import CommentableType
 
 router = APIRouter(
     prefix="/datasets",

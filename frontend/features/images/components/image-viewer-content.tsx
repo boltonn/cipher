@@ -1,5 +1,6 @@
 "use client";
 
+import { FaceImageWithOverlay, type OverlayBox } from "@/features/faces/components/face-image-overlay";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
 import { imagesService } from "../api";
@@ -8,6 +9,8 @@ import type { ImagePublic, ImageSimilarityResult } from "../types";
 interface ImageViewerContentProps {
   image: ImagePublic | ImageSimilarityResult;
   className?: string;
+  /** When set, the photo is rendered with clickable face bounding-box overlays. */
+  overlayBoxes?: OverlayBox[];
 }
 
 /**
@@ -17,7 +20,7 @@ interface ImageViewerContentProps {
  * pipeline gets the same richer-than-a-bare-`<img>` treatment wherever it's
  * previewed, rather than each caller reimplementing it.
  */
-export function ImageViewerContent({ image, className }: ImageViewerContentProps) {
+export function ImageViewerContent({ image, className, overlayBoxes }: ImageViewerContentProps) {
   const chips = [
     [image.cameraMake, image.cameraModel].filter(Boolean).join(" ") || null,
     image.aperture ? `ƒ/${image.aperture}` : null,
@@ -28,14 +31,22 @@ export function ImageViewerContent({ image, className }: ImageViewerContentProps
 
   return (
     <div className={cn("relative flex-1 flex items-center justify-center p-8", className)}>
-      <Image
-        src={imagesService.getImageUrl(image.id)}
-        alt={image.id}
-        fill
-        className="object-contain transition-opacity duration-300"
-        unoptimized
-        sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-      />
+      {overlayBoxes ? (
+        <FaceImageWithOverlay
+          src={imagesService.getImageUrl(image.id)}
+          alt={image.id}
+          boxes={overlayBoxes}
+        />
+      ) : (
+        <Image
+          src={imagesService.getImageUrl(image.id)}
+          alt={image.id}
+          fill
+          className="object-contain transition-opacity duration-300"
+          unoptimized
+          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+        />
+      )}
       {chips.length > 0 && (
         <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 flex-wrap justify-center gap-1.5 px-2">
           {chips.map((chip) => (

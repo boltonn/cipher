@@ -5,15 +5,15 @@ import { Button } from "@/components/ui/button";
 import { CreatePersonDialog } from "@/features/persons/components/create-person-dialog";
 import { cn } from "@/lib/utils";
 import { SlidersHorizontal } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   FacePublic,
   FaceSimilarityResult,
   PaginatedFacesResponse,
   PaginatedFaceSimilarityResponse,
 } from "../types";
+import { ImageViewerDialog } from "@/features/images/components/image-viewer-dialog";
 import { FaceCard } from "./face-card";
-import { FaceDetailDialog } from "./face-detail-dialog";
 
 interface FacesContainerPaginatedProps {
   data: PaginatedFacesResponse | PaginatedFaceSimilarityResponse | undefined;
@@ -41,8 +41,16 @@ export function FacesContainerPaginated({
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [createPersonFace, setCreatePersonFace] = useState<FacePublic | null>(null);
 
-  const faces = (data?.data ?? []) as (FacePublic | FaceSimilarityResult)[];
+  const faces = useMemo(
+    () => (data?.data ?? []) as (FacePublic | FaceSimilarityResult)[],
+    [data]
+  );
   const totalFaces = data?.total ?? 0;
+
+  const handleExpand = useCallback(
+    (face: FacePublic) => setSelectedIndex(faces.indexOf(face)),
+    [faces]
+  );
 
   const handleNext = useCallback(() => {
     setSelectedIndex((prev) => (prev !== null && prev < faces.length - 1 ? prev + 1 : prev));
@@ -92,29 +100,30 @@ export function FacesContainerPaginated({
             : "grid-cols-2 sm:grid-cols-3 xl:grid-cols-4"
         )}
       >
-        {faces.map((face, index) => (
+        {faces.map((face) => (
           <FaceCard
-            key={`${face.id}-${index}`}
+            key={face.id}
             face={face}
             onFindSimilar={onSimilar}
-            onExpand={() => setSelectedIndex(index)}
+            onExpand={handleExpand}
             onCreatePerson={setCreatePersonFace}
           />
         ))}
       </div>
 
-      {selectedIndex !== null && (
-        <FaceDetailDialog
-          face={faces[selectedIndex]}
+      {selectedIndex !== null && faces[selectedIndex] && (
+        <ImageViewerDialog
+          imageId={faces[selectedIndex].imageId}
+          focusFaceId={faces[selectedIndex].id}
           isOpen={selectedIndex !== null}
           onOpenChange={(open) => !open && setSelectedIndex(null)}
           onNext={handleNext}
           onPrev={handlePrev}
           hasMore={selectedIndex < faces.length - 1}
           hasPrev={selectedIndex > 0}
-          onFindSimilar={onSimilar}
-          onCreatePerson={setCreatePersonFace}
-          onDelete={onDelete}
+          onFindSimilarFace={onSimilar}
+          onCreatePersonFromFace={setCreatePersonFace}
+          onDeleteFace={onDelete}
         />
       )}
 

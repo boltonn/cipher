@@ -2,7 +2,7 @@
 
 from loguru import logger
 
-from cipher.schemas.common import ModelDevice
+from cipher.schemas._base.common import ModelDevice
 from nerd.labels import normalize_label
 from nerd.schemas import EntitySpan
 

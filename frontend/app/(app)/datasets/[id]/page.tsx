@@ -3,6 +3,7 @@
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { DateRangePicker } from "@/components/date-range-picker";
 import { PageHeader } from "@/components/page-header";
+import { PageLoading } from "@/components/page-loading";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -14,6 +15,7 @@ import {
 import { useDataset, useDatasetStats, useDeleteDataset } from "@/features/datasets/api";
 import { DatasetFileBrowser } from "@/features/datasets/components/dataset-file-browser";
 import { EditDatasetDialog } from "@/features/datasets/components/edit-dataset-dialog";
+import { EnrichmentPipeline } from "@/features/datasets/components/enrichment-pipeline";
 import { FiletypeBreakdownList } from "@/features/datasets/components/filetype-breakdown-list";
 import { LoadHistogramChart } from "@/features/datasets/components/load-histogram-chart";
 import type { HistogramGranularityType, LoadHistogramBucket } from "@/features/datasets/types";
@@ -91,11 +93,7 @@ export default function DatasetDetailPage({
   };
 
   if (datasetPending || !dataset) {
-    return (
-      <div className="flex items-center justify-center py-48 text-muted-foreground">
-        <Database className="h-8 w-8 animate-pulse text-primary/40" />
-      </div>
-    );
+    return <PageLoading icon={Database} label="Loading dataset…" />;
   }
 
   return (
@@ -162,6 +160,8 @@ export default function DatasetDetailPage({
       </div>
 
       <EditDatasetDialog dataset={dataset} isOpen={isEditOpen} onOpenChange={setIsEditOpen} />
+
+      <EnrichmentPipeline datasetId={id} />
 
       {/* Date range + granularity filter */}
       <div className="mt-6 flex items-center justify-between gap-4">

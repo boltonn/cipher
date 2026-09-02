@@ -14,8 +14,8 @@ from filetyper.models.main import FileTyper
 from loguru import logger
 from lxml import etree, html as lxml_html
 
-from cipher.schemas.base import BaseModel
-from cipher.schemas.file import FileBase
+from cipher.schemas._base.base import BaseModel
+from cipher.schemas.ingestion.file import FileBase
 
 
 class HtmlParseResult(BaseModel):

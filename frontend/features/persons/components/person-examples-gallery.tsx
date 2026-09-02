@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { facesService } from "@/features/faces/api";
-import { getFaceCoverStyle, getFaceCropAspectRatio, getFaceCropStyle } from "@/features/faces/components/face-crop";
+import { getFaceCoverStyle } from "@/features/faces/components/face-crop";
 import { useSetFaceRepresentative } from "@/features/faces/hooks/use-set-representative";
 import { FacePublic } from "@/features/faces/types";
 import { PersonExampleUploadButton } from "@/features/persons/components/person-example-upload-button";
@@ -65,8 +65,8 @@ export function PersonExamplesGallery({ personId, faces, isPending }: PersonExam
             onClick={() => setSelectedIndex(i)}
             style={{
               width: THUMB_SIZE,
-              aspectRatio: getFaceCropAspectRatio(face.boundingBox),
-              ...getFaceCropStyle(face.boundingBox, facesService.getFaceViewUrl(face.id)),
+              height: THUMB_SIZE,
+              ...getFaceCoverStyle(face.boundingBox, facesService.getFaceViewUrl(face.id), 1),
             }}
             className={cn(
               "relative rounded-lg overflow-hidden shrink-0 border-2 bg-muted transition-all bg-cover bg-center",

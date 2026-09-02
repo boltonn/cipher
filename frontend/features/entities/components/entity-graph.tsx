@@ -1,140 +1,189 @@
 "use client";
 
-import "@xyflow/react/dist/style.css";
-
-import {
-  Background,
-  Controls,
-  Handle,
-  Position,
-  ReactFlow,
-  type Edge,
-  type Node,
-  type NodeProps,
-} from "@xyflow/react";
-import {
-  forceCenter,
-  forceCollide,
-  forceLink,
-  forceManyBody,
-  forceSimulation,
-  type SimulationLinkDatum,
-  type SimulationNodeDatum,
-} from "d3-force";
 import { ENTITY_TYPE_META } from "@/features/entities/components/entity-type-meta";
 import { useEntityGraph } from "@/features/entities/hooks/use-entities";
-import { LOW_SIGNAL_RELATIONSHIPS, type EntityType, type RelationshipType } from "@/features/entities/types";
+import { buildGraph } from "@/features/entities/lib/build-graph";
+import {
+  ENTITY_TYPES,
+  type RelationshipType,
+  type TraversalDirection,
+} from "@/features/entities/types";
 import { cn } from "@/lib/utils";
-import { Loader2, TriangleAlert } from "lucide-react";
+import { Loader2, Maximize2, Minus, Plus, TriangleAlert } from "lucide-react";
+import { useTheme } from "next-themes";
 import { useRouter } from "next/navigation";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, type ReactNode } from "react";
+import Sigma from "sigma";
+import type { NodeHoverDrawingFunction } from "sigma/rendering";
 
-const MAX_GRAPH_NODES = 120;
+/** Above this the graph still renders, but a hint nudges the user to filter. */
+const SOFT_WARN_NODES = 400;
+const LABEL_FONT = "Inter, ui-sans-serif, system-ui, sans-serif";
 
 interface EntityGraphProps {
   focusEntityId: string;
   depth?: number;
-  /** compact mode for the identity page sidebar */
+  direction?: TraversalDirection;
+  /** restrict traversal to these relationship types */
+  types?: RelationshipType[];
+  /** drop weighted edges below this (keeps unweighted typed edges) */
+  minWeight?: number;
+  /** compact mode for the identity-page sidebar */
   compact?: boolean;
   className?: string;
 }
 
-type EntityNodeData = {
-  label: string;
-  entityType: EntityType;
-  isFocus: boolean;
-};
-
-function EntityNode({ data }: NodeProps<Node<EntityNodeData>>) {
-  const meta = ENTITY_TYPE_META[data.entityType];
-  return (
-    <div
-      className={cn(
-        "flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs shadow-sm backdrop-blur-sm",
-        meta.bgClass,
-        meta.borderClass,
-        meta.textClass,
-        data.isFocus && "ring-2 ring-primary ring-offset-2 ring-offset-background"
-      )}
-    >
-      <Handle type="target" position={Position.Top} className="!bg-transparent !border-0" />
-      <meta.Icon size={12} className="shrink-0" />
-      <span className="max-w-40 truncate font-medium">{data.label}</span>
-      <Handle type="source" position={Position.Bottom} className="!bg-transparent !border-0" />
-    </div>
-  );
+/** Resolve a CSS custom property to a concrete rgb() string the canvas can use. */
+function resolveColor(varName: string, fallback: string): string {
+  if (typeof window === "undefined") return fallback;
+  const probe = document.createElement("span");
+  probe.style.cssText = `color:var(${varName});position:absolute;visibility:hidden`;
+  document.body.appendChild(probe);
+  const value = getComputedStyle(probe).color;
+  probe.remove();
+  return value || fallback;
 }
 
-const nodeTypes = { entity: EntityNode };
+/**
+ * Themed replacement for sigma's built-in node hover (which paints a hard-coded
+ * white chip — unreadable in dark mode). Draws a ring on the node plus a popover-
+ * coloured label chip.
+ */
+function makeHoverRenderer(colors: {
+  text: string;
+  chip: string;
+  border: string;
+}): NodeHoverDrawingFunction {
+  return (context, data, settings) => {
+    const label = typeof data.label === "string" ? data.label : "";
+    context.beginPath();
+    context.arc(data.x, data.y, data.size + 2, 0, Math.PI * 2);
+    context.strokeStyle = data.color;
+    context.lineWidth = 2;
+    context.stroke();
 
-type SimNode = SimulationNodeDatum & { id: string };
+    if (!label) return;
+    context.font = `${settings.labelWeight} ${settings.labelSize}px ${settings.labelFont}`;
+    const padX = 6;
+    const padY = 4;
+    const textWidth = context.measureText(label).width;
+    const boxH = settings.labelSize + padY * 2;
+    const boxX = data.x + data.size + 4;
+    const boxY = data.y - boxH / 2;
+    const boxW = textWidth + padX * 2;
 
-function layout(
-  rawNodes: { id: string; data: EntityNodeData }[],
-  rawEdges: { source: string; target: string }[]
-): Record<string, { x: number; y: number }> {
-  const simNodes: SimNode[] = rawNodes.map((n) => ({ id: n.id }));
-  const simLinks: SimulationLinkDatum<SimNode>[] = rawEdges.map((e) => ({
-    source: e.source,
-    target: e.target,
-  }));
-  forceSimulation<SimNode>(simNodes)
-    .force(
-      "link",
-      forceLink<SimNode, SimulationLinkDatum<SimNode>>(simLinks)
-        .id((d) => d.id)
-        .distance(110)
-        .strength(0.6)
-    )
-    .force("charge", forceManyBody().strength(-320))
-    .force("collide", forceCollide(52))
-    .force("center", forceCenter(0, 0))
-    .stop()
-    .tick(320);
+    context.beginPath();
+    context.fillStyle = colors.chip;
+    context.strokeStyle = colors.border;
+    context.lineWidth = 1;
+    if (context.roundRect) context.roundRect(boxX, boxY, boxW, boxH, 5);
+    else context.rect(boxX, boxY, boxW, boxH);
+    context.fill();
+    context.stroke();
 
-  const pos: Record<string, { x: number; y: number }> = {};
-  for (const n of simNodes) {
-    pos[n.id] = { x: n.x ?? 0, y: n.y ?? 0 };
-  }
-  return pos;
+    context.fillStyle = colors.text;
+    context.textBaseline = "middle";
+    context.fillText(label, boxX + padX, data.y + 1);
+  };
 }
 
-export function EntityGraph({ focusEntityId, depth = 2, compact, className }: EntityGraphProps) {
+export function EntityGraph({
+  focusEntityId,
+  depth = 2,
+  direction,
+  types,
+  minWeight,
+  compact,
+  className,
+}: EntityGraphProps) {
   const router = useRouter();
-  const { data, isPending, isError } = useEntityGraph(focusEntityId, { depth });
+  const { resolvedTheme } = useTheme();
+  const { data, isPending, isError } = useEntityGraph(focusEntityId, {
+    depth,
+    direction,
+    types,
+    minWeight,
+  });
 
-  const { nodes, edges, tooMany } = useMemo(() => {
-    if (!data) return { nodes: [] as Node[], edges: [] as Edge[], tooMany: false };
-    if (data.nodes.length > MAX_GRAPH_NODES) {
-      return { nodes: [], edges: [], tooMany: true };
-    }
+  const containerRef = useRef<HTMLDivElement>(null);
+  const sigmaRef = useRef<Sigma | null>(null);
+  const hoveredRef = useRef<string | null>(null);
 
-    const rawNodes = data.nodes.map((n) => ({
-      id: n.id,
-      data: { label: n.displayName, entityType: n.entityType, isFocus: n.id === focusEntityId },
-    }));
-    const rawEdges = data.edges
-      .filter((e) => !LOW_SIGNAL_RELATIONSHIPS.includes(e.relationshipType))
-      .map((e) => ({ source: e.srcEntityId, target: e.dstEntityId, label: e.relationshipType }));
+  const built = useMemo(
+    () => (data ? buildGraph(data, focusEntityId) : null),
+    [data, focusEntityId]
+  );
 
-    const pos = layout(rawNodes, rawEdges);
+  useEffect(() => {
+    if (!containerRef.current || !built || built.nodeCount === 0) return;
 
-    const flowNodes: Node<EntityNodeData>[] = rawNodes.map((n) => ({
-      id: n.id,
-      type: "entity",
-      position: pos[n.id] ?? { x: 0, y: 0 },
-      data: n.data,
-    }));
-    const flowEdges: Edge[] = rawEdges.map((e, i) => ({
-      id: `e${i}`,
-      source: e.source,
-      target: e.target,
-      label: (e.label as RelationshipType).replace(/_/g, " "),
-      labelStyle: { fontSize: 9, fill: "var(--muted-foreground)" },
-      style: { stroke: "var(--border)", strokeWidth: 1.5 },
-    }));
-    return { nodes: flowNodes, edges: flowEdges, tooMany: false };
-  }, [data, focusEntityId]);
+    const graph = built.graph;
+    const labelColor = resolveColor("--foreground", "#f5f5f7");
+    const mutedColor = resolveColor("--muted-foreground", "#8a8a94");
+    const edgeColor = resolveColor("--border", "#2c2c31");
+    const chipColor = resolveColor("--popover", "#222226");
+    // Solid (non-translucent) grey for de-emphasised nodes on hover -- --border is
+    // an rgba() whose alpha sigma's node shader ignores, rendering it near-white.
+    const dimColor = resolveColor("--secondary", "#303036");
+
+    const renderer = new Sigma(graph, containerRef.current, {
+      renderLabels: true,
+      renderEdgeLabels: !compact,
+      labelFont: LABEL_FONT,
+      labelSize: 12,
+      labelWeight: "500",
+      labelColor: { color: labelColor },
+      labelDensity: 0.5,
+      labelGridCellSize: 72,
+      labelRenderedSizeThreshold: compact ? 0 : 9,
+      edgeLabelFont: LABEL_FONT,
+      edgeLabelSize: 9,
+      edgeLabelColor: { color: mutedColor },
+      defaultEdgeColor: edgeColor,
+      defaultEdgeType: "arrow",
+      defaultDrawNodeHover: makeHoverRenderer({
+        text: labelColor,
+        chip: chipColor,
+        border: edgeColor,
+      }),
+      enableEdgeEvents: true,
+      zIndex: true,
+      minCameraRatio: 0.08,
+      maxCameraRatio: 10,
+      nodeReducer: (node, attrs) => {
+        const hovered = hoveredRef.current;
+        if (!hovered) return attrs;
+        if (node === hovered || graph.areNeighbors(hovered, node)) {
+          return { ...attrs, forceLabel: true, zIndex: 1 };
+        }
+        return { ...attrs, color: dimColor, label: "", zIndex: 0 };
+      },
+      edgeReducer: (edge, attrs) => {
+        const hovered = hoveredRef.current;
+        if (!hovered) return { ...attrs, label: "" };
+        if (graph.hasExtremity(edge, hovered)) return { ...attrs, forceLabel: true };
+        return { ...attrs, hidden: true };
+      },
+    });
+
+    const rerender = () => renderer.refresh({ skipIndexation: true });
+    renderer.on("enterNode", ({ node }) => {
+      hoveredRef.current = node;
+      rerender();
+    });
+    renderer.on("leaveNode", () => {
+      hoveredRef.current = null;
+      rerender();
+    });
+    renderer.on("clickNode", ({ node }) => router.push(`/entities/${node}`));
+
+    sigmaRef.current = renderer;
+    return () => {
+      renderer.kill();
+      sigmaRef.current = null;
+      hoveredRef.current = null;
+    };
+  }, [built, compact, resolvedTheme, router]);
 
   if (isPending) {
     return (
@@ -150,46 +199,81 @@ export function EntityGraph({ focusEntityId, depth = 2, compact, className }: En
       </p>
     );
   }
-  if (tooMany) {
-    return (
-      <div
-        className={cn(
-          "flex flex-col items-center justify-center gap-2 rounded-lg border border-annotation/30 bg-annotation/5 py-16 text-center",
-          className
-        )}
-      >
-        <TriangleAlert className="h-5 w-5 text-annotation" />
-        <p className="text-xs font-medium text-foreground">
-          {data?.nodes.length} nodes — too dense to render
-        </p>
-        <p className="max-w-xs text-[11px] text-muted-foreground">
-          Reduce the traversal depth or narrow the entity type, then try again.
-        </p>
-      </div>
-    );
-  }
 
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-lg border border-border bg-background",
+        "relative overflow-hidden rounded-lg border border-border bg-background",
         compact ? "h-72" : "h-[70vh]",
         className
       )}
     >
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={nodeTypes}
-        onNodeClick={(_, node) => router.push(`/entities/${node.id}`)}
-        fitView
-        minZoom={0.2}
-        onlyRenderVisibleElements
-        proOptions={{ hideAttribution: true }}
-      >
-        <Background gap={16} color="var(--border)" />
-        {!compact && <Controls showInteractive={false} className="!bg-card !border-border" />}
-      </ReactFlow>
+      <div ref={containerRef} className="absolute inset-0" />
+
+      {built?.nodeCount === 0 && (
+        <p className="absolute inset-0 flex items-center justify-center text-xs italic text-muted-foreground">
+          No connections to graph.
+        </p>
+      )}
+
+      {!compact && built && built.nodeCount > 0 && (
+        <>
+          <div className="pointer-events-none absolute left-3 top-3 flex flex-wrap gap-1.5">
+            {ENTITY_TYPES.map((type) => {
+              const meta = ENTITY_TYPE_META[type];
+              return (
+                <span
+                  key={type}
+                  className="flex items-center gap-1 rounded-md border border-border bg-card/80 px-1.5 py-0.5 text-[10px] text-muted-foreground backdrop-blur-sm"
+                >
+                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: meta.color }} />
+                  {meta.label}
+                </span>
+              );
+            })}
+          </div>
+
+          <div className="absolute bottom-3 right-3 flex flex-col gap-1">
+            <GraphButton label="Zoom in" onClick={() => sigmaRef.current?.getCamera().animatedZoom({ duration: 200 })}>
+              <Plus size={13} />
+            </GraphButton>
+            <GraphButton label="Zoom out" onClick={() => sigmaRef.current?.getCamera().animatedUnzoom({ duration: 200 })}>
+              <Minus size={13} />
+            </GraphButton>
+            <GraphButton label="Fit" onClick={() => sigmaRef.current?.getCamera().animatedReset({ duration: 300 })}>
+              <Maximize2 size={12} />
+            </GraphButton>
+          </div>
+
+          {built.nodeCount >= SOFT_WARN_NODES && (
+            <div className="absolute bottom-3 left-3 flex items-center gap-1.5 rounded-md border border-annotation/30 bg-annotation/5 px-2 py-1 text-[10px] text-muted-foreground">
+              <TriangleAlert className="h-3 w-3 text-annotation" />
+              {built.nodeCount} nodes — narrow the entity type or depth to reduce clutter
+            </div>
+          )}
+        </>
+      )}
     </div>
+  );
+}
+
+function GraphButton({
+  label,
+  onClick,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      onClick={onClick}
+      className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-card/80 text-muted-foreground backdrop-blur-sm transition-colors hover:text-foreground"
+    >
+      {children}
+    </button>
   );
 }

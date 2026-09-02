@@ -2,18 +2,20 @@ import type { ReactNode } from "react";
 
 /** Shared uppercase section header used across the entity and person dossiers. */
 export function Section({
+  id,
   title,
   icon,
   action,
   children,
 }: {
+  id?: string;
   title: string;
   icon?: ReactNode;
   action?: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <section>
+    <section id={id} className="scroll-mt-20">
       <div className="mb-3 flex items-center gap-2">
         {icon}
         <h2 className="text-[10px] font-black uppercase tracking-widest text-foreground">

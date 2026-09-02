@@ -108,16 +108,16 @@ function Calendar({
           defaultClassNames.day
         ),
         range_start: cn(
-          "rounded-l-(--cell-radius) bg-indigo-500/15 relative after:bg-indigo-500/15 after:absolute after:inset-y-0 after:w-4 after:right-0 -z-0 isolate",
+          "rounded-l-(--cell-radius) bg-primary/15 relative after:bg-primary/15 after:absolute after:inset-y-0 after:w-4 after:right-0 -z-0 isolate",
           defaultClassNames.range_start
         ),
-        range_middle: cn("rounded-none bg-indigo-500/10", defaultClassNames.range_middle),
+        range_middle: cn("rounded-none bg-primary/10", defaultClassNames.range_middle),
         range_end: cn(
-          "rounded-r-(--cell-radius) bg-indigo-500/15 relative after:bg-indigo-500/15 after:absolute after:inset-y-0 after:w-4 after:left-0 -z-0 isolate",
+          "rounded-r-(--cell-radius) bg-primary/15 relative after:bg-primary/15 after:absolute after:inset-y-0 after:w-4 after:left-0 -z-0 isolate",
           defaultClassNames.range_end
         ),
         today: cn(
-          "bg-indigo-500/10 text-indigo-300 rounded-(--cell-radius) data-[selected=true]:rounded-none",
+          "bg-primary/10 text-primary rounded-(--cell-radius) data-[selected=true]:rounded-none",
           defaultClassNames.today
         ),
         outside: cn(

@@ -23,6 +23,8 @@ export const filesService = {
     return data;
   },
   getFileUrl: (id: string) => `${baseURL}/files/${id}/view`,
+  /** Browser-displayable JPEG (HEIC transcoded server-side); no Image pipeline row needed. */
+  getPreviewUrl: (id: string, maxDim = 1600) => `${baseURL}/files/${id}/preview?max=${maxDim}`,
   // A 404 here just means "not extracted/indexed yet" -- not an error worth toasting.
   getFileText: async (id: string): Promise<FileText> => {
     const { data } = await apiClient.get<FileText>(`/files/${id}/text`, {

@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from cipher.datastores.postgres.tables.comment import CommentTable
-from cipher.schemas.comment import (
+from cipher.schemas.interaction.comment import (
     Comment,
     CommentableType,
     CommentCreate,

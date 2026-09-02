@@ -8,8 +8,8 @@ from cipher.datastores.postgres.tables.entity import EntityTable
 from cipher.datastores.postgres.tables.entity_match import EntityMatchTable
 from cipher.datastores.postgres.tables.entity_relationship import EntityRelationshipTable
 from cipher.datastores.postgres.tables.mention import MentionTable
-from cipher.schemas.common import SortOrder
-from cipher.schemas.entity_match import (
+from cipher.schemas._base.common import SortOrder
+from cipher.schemas.graph.entity_match import (
     EntityMatch,
     EntityMatchCreate,
     EntityMatchReview,

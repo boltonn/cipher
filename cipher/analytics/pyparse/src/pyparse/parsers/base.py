@@ -1,7 +1,7 @@
 from datetime import datetime
 from pathlib import Path
 
-from cipher.schemas.file import FileBase
+from cipher.schemas.ingestion.file import FileBase
 
 
 def get_file_instance(file: Path | str) -> dict:

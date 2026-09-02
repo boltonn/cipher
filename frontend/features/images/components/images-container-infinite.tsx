@@ -38,7 +38,16 @@ export function ImagesContainerInfinite({
 
   const images = useMemo(() => {
     if (!data) return [];
-    return data.pages.flatMap((page) => page.data) as (ImagePublic | ImageSimilarityResult)[];
+    const flat = data.pages.flatMap((page) => page.data) as (ImagePublic | ImageSimilarityResult)[];
+    // The backend returns one row per distinct image (`id` == sha256), but an
+    // ANN similarity page boundary can still transiently repeat one; drop it so
+    // React keys stay unique.
+    const seen = new Set<string>();
+    return flat.filter((image) => {
+      if (seen.has(image.id)) return false;
+      seen.add(image.id);
+      return true;
+    });
   }, [data]);
 
   const handleNext = useCallback(() => {
@@ -114,7 +123,7 @@ export function ImagesContainerInfinite({
       >
         {images.map((image, index) => (
           <ImageCard
-            key={image.fileId}
+            key={image.id}
             image={image}
             onFindSimilar={onSimilar}
             onExpand={() => setSelectedIndex(index)}

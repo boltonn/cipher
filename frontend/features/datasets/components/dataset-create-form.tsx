@@ -1,5 +1,7 @@
 "use client";
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { GradientButton } from "@/components/ui/gradient-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,6 +12,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Stepper,
+  StepperIndicator,
+  StepperItem,
+  StepperNav,
+  StepperSeparator,
+  StepperTitle,
+  StepperTrigger,
+} from "@/components/ui/stepper";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -25,8 +36,14 @@ import {
   useRequestDataset,
 } from "@/features/datasets/hooks/use-request-dataset";
 import { cn } from "@/lib/utils";
-import { ArrowUpRight, CheckCircle2, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, ArrowUpRight, CheckCircle2, Sparkles } from "lucide-react";
 import { useState } from "react";
+
+const detailsSchema = datasetRequestSchema.pick({
+  datasetId: true,
+  name: true,
+  reason: true,
+});
 
 interface DatasetRequestFormProps {
   /** Called when the user dismisses the form (cancel, or done after success). */
@@ -63,11 +80,40 @@ function buildInitialState(): FormState {
 
 export function DatasetRequestForm({ onClose }: DatasetRequestFormProps) {
   const [form, setForm] = useState<FormState>(buildInitialState);
+  const [step, setStep] = useState<1 | 2>(1);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<{
+    datasetId?: string[];
+    name?: string[];
+    reason?: string[];
+  }>({});
   const [result, setResult] = useState<DatasetRequestResult | null>(null);
 
   const { data: config } = useDatasetRequestConfig();
   const { mutate, isPending } = useRequestDataset(setResult);
+
+  const enabledCount = ANALYTICS.filter((a) => form.analytics[a.type].enabled).length;
+
+  /** Validate the step-1 fields; on failure populate `fieldErrors` and stay put. */
+  const validateDetails = () => {
+    const parsed = detailsSchema.safeParse({
+      datasetId: form.datasetId,
+      name: form.name || undefined,
+      reason: form.reason,
+    });
+    if (parsed.success) {
+      setFieldErrors({});
+      return true;
+    }
+    const fe = parsed.error.flatten().fieldErrors;
+    setFieldErrors({ datasetId: fe.datasetId, name: fe.name, reason: fe.reason });
+    return false;
+  };
+
+  const goToStep = (next: number) => {
+    setError(null);
+    if (next <= step || validateDetails()) setStep(next as 1 | 2);
+  };
 
   const setParam = (type: EnrichmentType, key: string, value: string) =>
     setForm((prev) => ({
@@ -92,6 +138,7 @@ export function DatasetRequestForm({ onClose }: DatasetRequestFormProps) {
 
   const handleSubmit = () => {
     setError(null);
+    setFieldErrors({});
 
     const analytics: {
       enrichmentType: EnrichmentType;
@@ -102,26 +149,33 @@ export function DatasetRequestForm({ onClose }: DatasetRequestFormProps) {
       const selection = form.analytics[def.type];
       if (!selection.enabled) continue;
 
-      const raw: Record<string, unknown> = {};
+      // Params are bucketed by the enrichment they belong to, so a composite
+      // analytic (e.g. Face recognition) can split them across the entries it
+      // emits (face_detection + face_matching).
+      const rawByOwner: Record<string, Record<string, unknown>> = {};
       for (const param of def.params) {
+        const owner = param.owner ?? def.type;
         const value = (selection.params[param.key] ?? "").trim();
         if (value === "") {
           if (param.optional) continue;
           setError(`${def.label}: ${param.label} is required`);
           return;
         }
-        raw[param.key] = param.kind === "number" ? Number(value) : value;
+        const bucket = (rawByOwner[owner] ||= {});
+        bucket[param.key] = param.kind === "number" ? Number(value) : value;
       }
 
-      const parsed = paramSchemas[def.type].safeParse(raw);
-      if (!parsed.success) {
-        setError(`${def.label}: ${parsed.error.issues[0].message}`);
-        return;
+      for (const emitType of def.emits ?? [def.type]) {
+        const parsed = paramSchemas[emitType].safeParse(rawByOwner[emitType] ?? {});
+        if (!parsed.success) {
+          setError(`${def.label}: ${parsed.error.issues[0].message}`);
+          return;
+        }
+        analytics.push({
+          enrichmentType: emitType,
+          parameters: parsed.data as Record<string, unknown>,
+        });
       }
-      analytics.push({
-        enrichmentType: def.type,
-        parameters: parsed.data as Record<string, unknown>,
-      });
     }
 
     const validated = datasetRequestSchema.safeParse({
@@ -131,17 +185,23 @@ export function DatasetRequestForm({ onClose }: DatasetRequestFormProps) {
       analytics,
     });
     if (!validated.success) {
-      setError(validated.error.issues[0].message);
+      const fe = validated.error.flatten().fieldErrors;
+      setFieldErrors({ datasetId: fe.datasetId, name: fe.name, reason: fe.reason });
+      if (fe.datasetId?.length || fe.name?.length || fe.reason?.length) {
+        setStep(1); // a details field is the problem -- surface it where it's shown
+      } else {
+        setError(validated.error.issues[0].message);
+      }
       return;
     }
     mutate(validated.data);
   };
 
   return (
-    <div className="shadow-input mx-auto w-full max-w-lg rounded-none bg-card md:rounded-2xl">
+    <div className="shadow-input mx-auto w-full max-w-2xl rounded-none bg-card md:rounded-2xl">
       <div className="max-h-[80vh] overflow-y-auto p-4 md:p-8">
         <h2 className="text-xl font-bold text-foreground">Request a Dataset</h2>
-        <p className="mt-2 max-w-sm text-sm text-muted-foreground">
+        <p className="mt-2 max-w-md text-sm text-muted-foreground">
           File a request to ingest and process a dataset. This opens a GitHub issue
           {config?.repo ? ` in ${config.repo}` : ""}.
         </p>
@@ -160,23 +220,21 @@ export function DatasetRequestForm({ onClose }: DatasetRequestFormProps) {
 
         {result ? (
           <div className="my-8 space-y-4">
-            <div className="flex items-start gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3">
-              <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-primary" />
-              <div className="text-sm">
-                <p className="font-medium text-foreground">
-                  Request filed as issue #{result.issueNumber}
-                </p>
+            <Alert variant="success">
+              <CheckCircle2 />
+              <AlertTitle>Request filed as issue #{result.issueNumber}</AlertTitle>
+              <AlertDescription>
                 <a
                   href={result.issueUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="mt-1 inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                  className="inline-flex items-center gap-1 hover:underline"
                 >
                   Open the issue
                   <ArrowUpRight size={12} />
                 </a>
-              </div>
-            </div>
+              </AlertDescription>
+            </Alert>
             <GradientButton type="button" onClick={onClose}>
               Done
             </GradientButton>
@@ -186,86 +244,137 @@ export function DatasetRequestForm({ onClose }: DatasetRequestFormProps) {
             className="my-8"
             onSubmit={(event) => {
               event.preventDefault();
-              handleSubmit();
+              if (step === 1) goToStep(2);
+              else handleSubmit();
             }}
           >
-            <div className="mb-4 flex flex-col space-y-2">
-              <Label htmlFor="dr-dataset-id">Dataset ID</Label>
-              <Input
-                id="dr-dataset-id"
-                value={form.datasetId}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, datasetId: event.target.value }))
-                }
-                placeholder="e.g. 2026-q2-comms-dump"
-              />
-            </div>
+            <Stepper value={step} onValueChange={goToStep} className="mb-6">
+              <StepperNav>
+                <StepperItem step={1} completed={step > 1}>
+                  <StepperTrigger>
+                    <StepperIndicator />
+                    <StepperTitle>Details</StepperTitle>
+                  </StepperTrigger>
+                </StepperItem>
+                <StepperSeparator />
+                <StepperItem step={2}>
+                  <StepperTrigger>
+                    <StepperIndicator />
+                    <StepperTitle>Analytics</StepperTitle>
+                  </StepperTrigger>
+                </StepperItem>
+              </StepperNav>
+            </Stepper>
 
-            <div className="mb-4 flex flex-col space-y-2">
-              <Label htmlFor="dr-name">
-                Name <span className="text-muted-foreground">(optional)</span>
-              </Label>
-              <Input
-                id="dr-name"
-                value={form.name}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, name: event.target.value }))
-                }
-                placeholder="Q2 Communications Dump"
-              />
-            </div>
-
-            <div className="mb-6 flex flex-col space-y-2">
-              <Label htmlFor="dr-reason">Reason for request</Label>
-              <Textarea
-                id="dr-reason"
-                value={form.reason}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, reason: event.target.value }))
-                }
-                placeholder="What is this dataset, where does it come from, and why is it needed?"
-                rows={4}
-              />
-            </div>
-
-            <div className="mb-6">
-              <div className="mb-3 flex items-center gap-2">
-                <Sparkles size={14} className="text-annotation" />
-                <span className="text-sm font-medium text-foreground">Analytics to run</span>
-              </div>
-              <div className="space-y-2">
-                {ANALYTICS.map((analytic) => (
-                  <AnalyticRow
-                    key={analytic.type}
-                    analytic={analytic}
-                    enabled={form.analytics[analytic.type].enabled}
-                    values={form.analytics[analytic.type].params}
-                    onToggle={(enabled) => toggleAnalytic(analytic.type, enabled)}
-                    onParamChange={(key, value) => setParam(analytic.type, key, value)}
+            {step === 1 ? (
+              <>
+                <Field className="mb-4" data-invalid={!!fieldErrors.datasetId}>
+                  <FieldLabel htmlFor="dr-dataset-id">Dataset ID</FieldLabel>
+                  <Input
+                    id="dr-dataset-id"
+                    value={form.datasetId}
+                    onChange={(event) =>
+                      setForm((prev) => ({ ...prev, datasetId: event.target.value }))
+                    }
+                    aria-invalid={!!fieldErrors.datasetId}
+                    placeholder="e.g. 2026-q2-comms-dump"
                   />
-                ))}
-              </div>
-            </div>
+                  <FieldError errors={fieldErrors.datasetId?.map((message) => ({ message }))} />
+                </Field>
 
-            {error && (
-              <p className="mb-4 rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-                {error}
-              </p>
+                <Field className="mb-4" data-invalid={!!fieldErrors.name}>
+                  <FieldLabel htmlFor="dr-name">
+                    Name <span className="text-muted-foreground">(optional)</span>
+                  </FieldLabel>
+                  <Input
+                    id="dr-name"
+                    value={form.name}
+                    onChange={(event) =>
+                      setForm((prev) => ({ ...prev, name: event.target.value }))
+                    }
+                    aria-invalid={!!fieldErrors.name}
+                    placeholder="Q2 Communications Dump"
+                  />
+                  <FieldError errors={fieldErrors.name?.map((message) => ({ message }))} />
+                </Field>
+
+                <Field className="mb-2" data-invalid={!!fieldErrors.reason}>
+                  <FieldLabel htmlFor="dr-reason">Reason for request</FieldLabel>
+                  <Textarea
+                    id="dr-reason"
+                    value={form.reason}
+                    onChange={(event) =>
+                      setForm((prev) => ({ ...prev, reason: event.target.value }))
+                    }
+                    aria-invalid={!!fieldErrors.reason}
+                    placeholder="What is this dataset, where does it come from, and why is it needed?"
+                    rows={4}
+                  />
+                  <FieldError errors={fieldErrors.reason?.map((message) => ({ message }))} />
+                </Field>
+              </>
+            ) : (
+              <div>
+                <div className="mb-3 flex items-center gap-2">
+                  <Sparkles size={14} className="text-annotation" />
+                  <span className="text-sm font-medium text-foreground">Analytics to run</span>
+                  <span className="ml-auto text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                    {enabledCount} selected
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {ANALYTICS.map((analytic) => (
+                    <AnalyticRow
+                      key={analytic.type}
+                      analytic={analytic}
+                      enabled={form.analytics[analytic.type].enabled}
+                      values={form.analytics[analytic.type].params}
+                      onToggle={(enabled) => toggleAnalytic(analytic.type, enabled)}
+                      onParamChange={(key, value) => setParam(analytic.type, key, value)}
+                    />
+                  ))}
+                </div>
+              </div>
             )}
 
-            <div className="flex gap-3">
-              {onClose && (
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="h-10 flex-1 rounded-md border border-border text-sm text-muted-foreground hover:text-foreground"
-                >
-                  Cancel
-                </button>
+            {error && (
+              <Alert variant="destructive" className="mt-4">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+
+            <div className="mt-6 flex gap-3">
+              {step === 1 ? (
+                <>
+                  {onClose && (
+                    <button
+                      type="button"
+                      onClick={onClose}
+                      className="h-10 flex-1 rounded-md border border-border text-sm text-muted-foreground hover:text-foreground"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                  <GradientButton type="submit">
+                    Next
+                    <ArrowRight size={14} className="ml-1.5 inline" />
+                  </GradientButton>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => goToStep(1)}
+                    className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-md border border-border text-sm text-muted-foreground hover:text-foreground"
+                  >
+                    <ArrowLeft size={14} />
+                    Back
+                  </button>
+                  <GradientButton type="submit" isLoading={isPending} loadingText="Filing…">
+                    Submit Request →
+                  </GradientButton>
+                </>
               )}
-              <GradientButton type="submit" isLoading={isPending} loadingText="Filing…">
-                Submit Request →
-              </GradientButton>
             </div>
           </form>
         )}

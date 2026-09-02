@@ -1,13 +1,14 @@
 "use client";
 
 import { PageHeader } from "@/components/page-header";
+import { PageLoading } from "@/components/page-loading";
 import { PaginationModeToggle } from "@/components/pagination-mode-toggle";
 import { ImageSearchBar } from "@/features/images/components/image-search-bar";
 import { ImagesContainerInfinite } from "@/features/images/components/images-container-infinite";
 import { ImagesContainerPaginated } from "@/features/images/components/images-container-paginated";
 import { useSearchController } from "@/features/images/hooks/use-search-controller";
 import { PaginationModeType } from "@/types/common";
-import { Loader2, Search } from "lucide-react";
+import { ImageIcon, Search, X } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 
@@ -32,6 +33,7 @@ function ImageSearchPageInner() {
     isFetchingNextPage,
     currentPage,
     isSimilarityMode,
+    queryLabel,
   } = useSearchController(paginationMode);
 
   const totalAssets = data?.pages[0]?.total ?? paginatedData?.total ?? 0;
@@ -51,6 +53,19 @@ function ImageSearchPageInner() {
       <PageHeader
         eyebrow="Images"
         value={`${totalAssets.toLocaleString()} Results`}
+        extra={
+          isSimilarityMode && (
+            <button
+              type="button"
+              onClick={actions.clearSearch}
+              className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-primary bg-primary/10 border border-primary/20 rounded-full px-3 py-1.5 hover:bg-primary/20 transition-colors"
+            >
+              <ImageIcon size={12} />
+              {queryLabel || "Similar to image"}
+              <X size={10} />
+            </button>
+          )
+        }
         actions={
           <PaginationModeToggle
             mode={paginationMode}
@@ -77,15 +92,7 @@ function ImageSearchPageInner() {
       {/* Results */}
       <main className="mt-6">
         {isPending && !data && !paginatedData ? (
-          <div className="flex flex-col items-center justify-center py-48 text-muted-foreground">
-            <div className="relative flex items-center justify-center mb-6">
-              <Loader2 className="h-12 w-12 animate-spin text-primary/20" />
-              <Search className="h-5 w-5 absolute text-primary animate-pulse" />
-            </div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.5em] text-primary/50 italic">
-              Searching images...
-            </p>
-          </div>
+          <PageLoading icon={Search} label="Searching images…" />
         ) : paginationMode === "infinite" ? (
           <ImagesContainerInfinite
             data={data}

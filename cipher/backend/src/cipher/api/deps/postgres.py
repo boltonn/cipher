@@ -19,25 +19,27 @@ from cipher.datastores.postgres.repositories.entity_relationship import Postgres
 from cipher.datastores.postgres.repositories.entity_relationship_candidate import (
     PostgresRelationshipCandidateRepository,
 )
+from cipher.datastores.postgres.repositories.event import PostgresEventRepository
 from cipher.datastores.postgres.repositories.extracted_text import PostgresExtractedTextRepository
 from cipher.datastores.postgres.repositories.face import PostgresFaceRepository
 from cipher.datastores.postgres.repositories.face_match import PostgresFaceMatchRepository
 from cipher.datastores.postgres.repositories.file import PostgresFileRepository
 from cipher.datastores.postgres.repositories.image import PostgresImageRepository
+from cipher.datastores.postgres.repositories.location import PostgresLocationRepository
 from cipher.datastores.postgres.repositories.mention import PostgresMentionRepository
 from cipher.datastores.postgres.repositories.person import PostgresPersonRepository
 from cipher.datastores.postgres.repositories.user import PostgresUserRepository
 from cipher.datastores.postgres.tables.base import Base
-from cipher.schemas.comment import Comment
-from cipher.schemas.common import SortOrder
-from cipher.schemas.dataset import Dataset
-from cipher.schemas.enrichment import Enrichment
-from cipher.schemas.face import Face, FaceSimilaritySearchParameters, FaceSortField
-from cipher.schemas.face_match import FaceMatch
-from cipher.schemas.file import File
-from cipher.schemas.image import Image, ImageSimilaritySearchParameters, ImageSortField
-from cipher.schemas.person import Person
-from cipher.schemas.user import User, UserDatasetAccess
+from cipher.schemas._base.common import SortOrder
+from cipher.schemas.content.image import Image, ImageSimilaritySearchParameters, ImageSortField
+from cipher.schemas.identity.face import Face, FaceSimilaritySearchParameters, FaceSortField
+from cipher.schemas.identity.face_match import FaceMatch
+from cipher.schemas.identity.person import Person
+from cipher.schemas.ingestion.dataset import Dataset
+from cipher.schemas.ingestion.enrichment import Enrichment
+from cipher.schemas.ingestion.file import File
+from cipher.schemas.ingestion.user import User, UserDatasetAccess
+from cipher.schemas.interaction.comment import Comment
 
 settings = Settings()
 
@@ -75,6 +77,7 @@ async def init_db_from_settings():
     async with get_async_engine_from_settings().begin() as conn:
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
         await conn.run_sync(Base.metadata.create_all)
 
 
@@ -84,9 +87,7 @@ async def get_dataset_repository() -> AsyncGenerator[PostgresDatasetRepository, 
         yield PostgresDatasetRepository(session=session)
 
 
-async def get_enrichment_repository() -> AsyncGenerator[
-    PostgresEnrichmentRepository, None
-]:
+async def get_enrichment_repository() -> AsyncGenerator[PostgresEnrichmentRepository, None]:
     """Dependency injector for PostgresEnrichmentRepository."""
     async with get_session() as session:
         yield PostgresEnrichmentRepository(session=session)
@@ -152,15 +153,19 @@ async def get_mention_repository() -> AsyncGenerator[PostgresMentionRepository, 
         yield PostgresMentionRepository(session=session)
 
 
+async def get_location_repository() -> AsyncGenerator[PostgresLocationRepository, None]:
+    """Dependency injector for PostgresLocationRepository."""
+    async with get_session() as session:
+        yield PostgresLocationRepository(session=session)
+
+
 async def get_graph_repository() -> AsyncGenerator[PostgresGraphRepository, None]:
     """Dependency injector for PostgresGraphRepository."""
     async with get_session() as session:
         yield PostgresGraphRepository(session=session)
 
 
-async def get_relationship_candidate_repository() -> AsyncGenerator[
-    PostgresRelationshipCandidateRepository, None
-]:
+async def get_relationship_candidate_repository() -> AsyncGenerator[PostgresRelationshipCandidateRepository, None]:
     """Dependency injector for PostgresRelationshipCandidateRepository."""
     async with get_session() as session:
         yield PostgresRelationshipCandidateRepository(session=session)
@@ -172,37 +177,31 @@ async def get_entity_match_repository() -> AsyncGenerator[PostgresEntityMatchRep
         yield PostgresEntityMatchRepository(session=session)
 
 
-DatasetDatastoreDep = Annotated[
-    PostgresDatasetRepository, Depends(get_dataset_repository)
-]
-EnrichmentDatastoreDep = Annotated[
-    PostgresEnrichmentRepository, Depends(get_enrichment_repository)
-]
+async def get_event_repository() -> AsyncGenerator[PostgresEventRepository, None]:
+    """Dependency injector for PostgresEventRepository."""
+    async with get_session() as session:
+        yield PostgresEventRepository(session=session)
+
+
+DatasetDatastoreDep = Annotated[PostgresDatasetRepository, Depends(get_dataset_repository)]
+EnrichmentDatastoreDep = Annotated[PostgresEnrichmentRepository, Depends(get_enrichment_repository)]
 FileDatastoreDep = Annotated[PostgresFileRepository, Depends(get_file_repository)]
-ExtractedTextDatastoreDep = Annotated[
-    PostgresExtractedTextRepository, Depends(get_extracted_text_repository)
-]
+ExtractedTextDatastoreDep = Annotated[PostgresExtractedTextRepository, Depends(get_extracted_text_repository)]
 ImageDatastoreDep = Annotated[PostgresImageRepository, Depends(get_image_repository)]
 UserDatastoreDep = Annotated[PostgresUserRepository, Depends(get_user_repository)]
 FaceDatastoreDep = Annotated[PostgresFaceRepository, Depends(get_face_repository)]
-PersonDatastoreDep = Annotated[
-    PostgresPersonRepository, Depends(get_person_repository)
-]
-CommentDatastoreDep = Annotated[
-    PostgresCommentRepository, Depends(get_comment_repository)
-]
-FaceMatchDatastoreDep = Annotated[
-    PostgresFaceMatchRepository, Depends(get_face_match_repository)
-]
+PersonDatastoreDep = Annotated[PostgresPersonRepository, Depends(get_person_repository)]
+CommentDatastoreDep = Annotated[PostgresCommentRepository, Depends(get_comment_repository)]
+FaceMatchDatastoreDep = Annotated[PostgresFaceMatchRepository, Depends(get_face_match_repository)]
 EntityDatastoreDep = Annotated[PostgresEntityRepository, Depends(get_entity_repository)]
 MentionDatastoreDep = Annotated[PostgresMentionRepository, Depends(get_mention_repository)]
+LocationDatastoreDep = Annotated[PostgresLocationRepository, Depends(get_location_repository)]
 GraphDatastoreDep = Annotated[PostgresGraphRepository, Depends(get_graph_repository)]
 RelationshipCandidateDatastoreDep = Annotated[
     PostgresRelationshipCandidateRepository, Depends(get_relationship_candidate_repository)
 ]
-EntityMatchDatastoreDep = Annotated[
-    PostgresEntityMatchRepository, Depends(get_entity_match_repository)
-]
+EntityMatchDatastoreDep = Annotated[PostgresEntityMatchRepository, Depends(get_entity_match_repository)]
+EventDatastoreDep = Annotated[PostgresEventRepository, Depends(get_event_repository)]
 
 
 def image_similarity_params_form(
@@ -268,9 +267,7 @@ def face_similarity_params_form(
     )
 
 
-FaceSimilaritySearchFormParametersDep = Annotated[
-    FaceSimilaritySearchParameters, Depends(face_similarity_params_form)
-]
+FaceSimilaritySearchFormParametersDep = Annotated[FaceSimilaritySearchParameters, Depends(face_similarity_params_form)]
 
 
 @asynccontextmanager
@@ -304,9 +301,11 @@ __all__ = [
     "get_face_match_repository",
     "get_entity_repository",
     "get_mention_repository",
+    "get_location_repository",
     "get_graph_repository",
     "get_relationship_candidate_repository",
     "get_entity_match_repository",
+    "get_event_repository",
     "DatasetDatastoreDep",
     "EnrichmentDatastoreDep",
     "FileDatastoreDep",
@@ -319,9 +318,11 @@ __all__ = [
     "FaceMatchDatastoreDep",
     "EntityDatastoreDep",
     "MentionDatastoreDep",
+    "LocationDatastoreDep",
     "GraphDatastoreDep",
     "RelationshipCandidateDatastoreDep",
     "EntityMatchDatastoreDep",
+    "EventDatastoreDep",
     "FaceSimilaritySearchFormParametersDep",
     "postgres_lifespan",
 ]

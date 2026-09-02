@@ -3,7 +3,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cipher.datastores.postgres.tables.file import FileTable
-from cipher.schemas.file import (
+from cipher.schemas.ingestion.file import (
     File,
     FileBrowserItem,
     FileBrowserRequest,

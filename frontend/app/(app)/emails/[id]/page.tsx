@@ -1,9 +1,11 @@
 "use client";
 
+import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
+import { PageLoading } from "@/components/page-loading";
 import { useEmail } from "@/features/emails/api";
 import { EmailViewer } from "@/features/emails/components/email-viewer";
-import { Loader2 } from "lucide-react";
+import { Mail, MailX } from "lucide-react";
 import { use } from "react";
 
 export default function EmailDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -11,17 +13,18 @@ export default function EmailDetailPage({ params }: { params: Promise<{ id: stri
   const { data: email, isPending, error } = useEmail(id);
 
   if (isPending) {
-    return (
-      <div className="flex items-center justify-center py-48 text-muted-foreground">
-        <Loader2 className="h-8 w-8 animate-spin text-primary/40" />
-      </div>
-    );
+    return <PageLoading icon={Mail} label="Loading email…" />;
   }
 
   if (error || !email) {
     return (
-      <div className="flex items-center justify-center py-48 text-muted-foreground text-sm">
-        Failed to load email.
+      <div className="mx-auto max-w-400 px-6">
+        <EmptyState
+          className="mt-24"
+          icon={MailX}
+          title="Couldn’t load this email"
+          body="It may have been removed, or the request failed. Try again from the email list."
+        />
       </div>
     );
   }

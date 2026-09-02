@@ -1,12 +1,12 @@
 """Wire schemas for selector extraction.
 
-`SelectorSpan` is the shared analytics contract from `cipher.schemas.spans`.
+`SelectorSpan` is the shared analytics contract from `cipher.schemas.graph.spans`.
 """
 
 from pydantic import BaseModel, Field
 
-from cipher.schemas.ontology import SelectorKind
-from cipher.schemas.spans import SelectorSpan
+from cipher.schemas.graph.ontology import SelectorKind
+from cipher.schemas.graph.spans import SelectorSpan
 
 __all__ = ["SelectorKind", "SelectorSpan", "SelectorExtractionRequest"]
 

@@ -1,14 +1,14 @@
 """Wire schemas for the pygliner service.
 
 `EntitySpan` / `RelationSpan` are the shared analytics contract from
-`cipher.schemas.spans` -- re-exported here so `pygliner` and `nerd` emit the
+`cipher.schemas.graph.spans` -- re-exported here so `pygliner` and `nerd` emit the
 identical shape the ingestion pipeline consumes.
 """
 
 from pydantic import BaseModel, Field
 
-from cipher.schemas.ontology import default_ner_labels, default_relation_labels
-from cipher.schemas.spans import EntitySpan, RelationSpan
+from cipher.schemas.graph.ontology import default_ner_labels, default_relation_labels
+from cipher.schemas.graph.spans import EntitySpan, RelationSpan
 
 __all__ = ["EntitySpan", "RelationSpan", "NerRequest", "RelationRequest"]
 

@@ -6,15 +6,15 @@ import { CreatePersonDialog } from "@/features/persons/components/create-person-
 import { ColumnBreakpoint } from "@/hooks/use-responsive-columns";
 import type { InfiniteData } from "@tanstack/react-query";
 import { Loader2, SlidersHorizontal } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   FacePublic,
   FaceSimilarityResult,
   PaginatedFacesResponse,
   PaginatedFaceSimilarityResponse,
 } from "../types";
+import { ImageViewerDialog } from "@/features/images/components/image-viewer-dialog";
 import { FaceCard } from "./face-card";
-import { FaceDetailDialog } from "./face-detail-dialog";
 
 // Mirrors this grid's `grid-cols-*` breakpoints as plain numbers for virtualization.
 const FULL_WIDTH_COLUMNS: ColumnBreakpoint[] = [
@@ -58,6 +58,31 @@ export function FacesContainerInfinite({
     if (!data) return [];
     return data.pages.flatMap((page) => page.data) as (FacePublic | FaceSimilarityResult)[];
   }, [data]);
+
+  // `handleExpand`/`renderItem` must keep a stable identity across renders --
+  // they're passed to every memoized FaceCard, so recreating them (e.g. when a
+  // new page appends to `faces`) would re-render the whole grid. Read the
+  // current list through a ref instead of closing over it. (`onSimilar` is
+  // already stable -- it comes from a useMemo'd actions object.)
+  const facesRef = useRef(faces);
+  useEffect(() => {
+    facesRef.current = faces;
+  }, [faces]);
+  const handleExpand = useCallback(
+    (face: FacePublic) => setSelectedIndex(facesRef.current.indexOf(face)),
+    []
+  );
+  const renderItem = useCallback(
+    (face: FacePublic | FaceSimilarityResult) => (
+      <FaceCard
+        face={face}
+        onFindSimilar={onSimilar}
+        onExpand={handleExpand}
+        onCreatePerson={setCreatePersonFace}
+      />
+    ),
+    [onSimilar, handleExpand]
+  );
 
   const handleNext = useCallback(() => {
     setSelectedIndex((prev) => (prev !== null && prev < faces.length - 1 ? prev + 1 : prev));
@@ -117,29 +142,23 @@ export function FacesContainerInfinite({
       <VirtualizedGrid
         items={faces}
         breakpoints={isFullWidth ? FULL_WIDTH_COLUMNS : NARROW_COLUMNS}
-        getKey={(face, index) => `${face.id}-${index}`}
-        renderItem={(face, index) => (
-          <FaceCard
-            face={face}
-            onFindSimilar={onSimilar}
-            onExpand={() => setSelectedIndex(index)}
-            onCreatePerson={setCreatePersonFace}
-          />
-        )}
+        getKey={(face) => face.id}
+        renderItem={renderItem}
       />
 
-      {selectedIndex !== null && (
-        <FaceDetailDialog
-          face={faces[selectedIndex]}
+      {selectedIndex !== null && faces[selectedIndex] && (
+        <ImageViewerDialog
+          imageId={faces[selectedIndex].imageId}
+          focusFaceId={faces[selectedIndex].id}
           isOpen={selectedIndex !== null}
           onOpenChange={(open) => !open && setSelectedIndex(null)}
           onNext={handleNext}
           onPrev={handlePrev}
           hasMore={selectedIndex < faces.length - 1}
           hasPrev={selectedIndex > 0}
-          onFindSimilar={onSimilar}
-          onCreatePerson={setCreatePersonFace}
-          onDelete={onDelete}
+          onFindSimilarFace={onSimilar}
+          onCreatePersonFromFace={setCreatePersonFace}
+          onDeleteFace={onDelete}
         />
       )}
 

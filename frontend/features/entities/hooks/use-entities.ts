@@ -1,19 +1,27 @@
 "use client";
 
-import { entitiesService } from "@/features/entities/api";
+import { entitiesService, mentionsService } from "@/features/entities/api";
 import type {
   EntityCreatePayload,
   EntitySearchParameters,
+  EntityType,
   EntityUpdatePayload,
+  RelatedEntitySort,
   RelationshipType,
+  SelectorLinkPayload,
+  SelectorMention,
   TraversalDirection,
 } from "@/features/entities/types";
 import {
   keepPreviousData,
+  useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { toast } from "sonner";
+
+const SELECTOR_MENTIONS_PAGE_SIZE = 25;
 
 export function useEntityList(params: EntitySearchParameters) {
   return useQuery({
@@ -63,6 +71,7 @@ export function useEntityGraph(
     depth?: number;
     direction?: TraversalDirection;
     types?: RelationshipType[];
+    minWeight?: number;
   }
 ) {
   return useQuery({
@@ -85,11 +94,62 @@ export function useEntityMentions(
   });
 }
 
+const MENTIONS_PAGE_SIZE = 40;
+
+/** Mentions of an entity, paged. Feeds the "load more" list on the dossier. */
+export function useEntityMentionsInfinite(
+  entityId: string | undefined,
+  fileId?: string
+) {
+  return useInfiniteQuery({
+    queryKey: ["entities", entityId, "mentions-infinite", fileId ?? null],
+    enabled: !!entityId,
+    initialPageParam: 1,
+    queryFn: ({ pageParam }) =>
+      entitiesService.getMentions(entityId as string, {
+        fileId,
+        limit: MENTIONS_PAGE_SIZE,
+        page: pageParam,
+      }),
+    getNextPageParam: (last) =>
+      last.page * last.limit < last.total ? last.page + 1 : undefined,
+  });
+}
+
 export function useEntityRelationships(entityId: string | undefined) {
   return useQuery({
     queryKey: ["entities", entityId, "relationships"],
     queryFn: () => entitiesService.getRelationships(entityId as string),
     enabled: !!entityId,
+  });
+}
+
+const RELATED_PAGE_SIZE = 25;
+
+/** Paginated neighbours of an entity with sort/filter controls. */
+export function useEntityRelatedInfinite(
+  entityId: string | undefined,
+  opts: {
+    sort?: RelatedEntitySort;
+    direction?: TraversalDirection;
+    relationshipType?: RelationshipType;
+    entityType?: EntityType;
+    pageSize?: number;
+  } = {}
+) {
+  const { pageSize = RELATED_PAGE_SIZE, ...filters } = opts;
+  return useInfiniteQuery({
+    queryKey: ["entities", entityId, "related", filters, pageSize],
+    enabled: !!entityId,
+    initialPageParam: 1,
+    queryFn: ({ pageParam }) =>
+      entitiesService.getRelated(entityId as string, {
+        ...filters,
+        limit: pageSize,
+        page: pageParam,
+      }),
+    getNextPageParam: (last) =>
+      last.page * last.limit < last.total ? last.page + 1 : undefined,
   });
 }
 
@@ -132,6 +192,85 @@ export function useUpdateEntityDetail(
   });
 }
 
+/** Invalidate every cached view of one entity (profile, graph, relationships, detail). */
+function invalidateEntity(qc: ReturnType<typeof useQueryClient>, entityId: string) {
+  qc.invalidateQueries({ queryKey: ["entities", entityId] });
+}
+
+export function useAttachSelector(
+  entityId: string,
+  onSuccess?: (result: SelectorMention) => void
+) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: SelectorLinkPayload) =>
+      entitiesService.attachSelector(entityId, payload),
+    onSuccess: (result) => {
+      invalidateEntity(qc, entityId);
+      toast.success(
+        result.mentionCount
+          ? `Selector linked · ${result.mentionCount} matching mention${result.mentionCount === 1 ? "" : "s"} found`
+          : "Selector linked"
+      );
+      onSuccess?.(result);
+    },
+  });
+}
+
+/** ISO-3166-1 alpha-2 phone regions the backend normalizer accepts. Cached for the session. */
+export function useSelectorRegions() {
+  return useQuery({
+    queryKey: ["entities", "selector-regions"],
+    queryFn: () => entitiesService.listSelectorRegions(),
+    staleTime: Infinity,
+  });
+}
+
+/** The entity-layer registry (relationship types + endpoint rules + roles). Cached for the session. */
+export function useOntology() {
+  return useQuery({
+    queryKey: ["entities", "ontology"],
+    queryFn: () => entitiesService.getOntology(),
+    staleTime: Infinity,
+  });
+}
+
+/**
+ * Mentions whose normalized value equals a selector's -- across every dataset and
+ * regardless of resolution -- so a linked selector surfaces where it already appears.
+ */
+export function useSelectorMentions(
+  normalizedValue: string | null | undefined,
+  selectorKind?: string | null
+) {
+  return useInfiniteQuery({
+    queryKey: ["mentions", "by-value", normalizedValue, selectorKind ?? null],
+    enabled: !!normalizedValue,
+    initialPageParam: 1,
+    queryFn: ({ pageParam }) =>
+      mentionsService.list({
+        normalizedValue: normalizedValue as string,
+        selectorKind: selectorKind ?? undefined,
+        limit: SELECTOR_MENTIONS_PAGE_SIZE,
+        page: pageParam,
+      }),
+    getNextPageParam: (last) =>
+      last.page * last.limit < last.total ? last.page + 1 : undefined,
+  });
+}
+
+export function useDetachSelector(entityId: string, onSuccess?: () => void) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (selectorId: string) =>
+      entitiesService.detachSelector(entityId, selectorId),
+    onSuccess: () => {
+      invalidateEntity(qc, entityId);
+      onSuccess?.();
+    },
+  });
+}
+
 export function useDeleteEntity(onSuccess?: () => void) {
   const qc = useQueryClient();
   return useMutation({
@@ -150,12 +289,13 @@ export function useCreateRelationship(
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (payload: {
-      datasetId: string;
+      datasetId?: string;
       dstEntityId: string;
       relationshipType: RelationshipType;
+      attributes?: Record<string, unknown>;
     }) => entitiesService.createRelationship(srcEntityId, payload),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["entities", srcEntityId] });
+      invalidateEntity(qc, srcEntityId);
       onSuccess?.();
     },
   });

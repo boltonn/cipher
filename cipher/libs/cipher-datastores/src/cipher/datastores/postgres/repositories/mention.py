@@ -1,16 +1,18 @@
-from sqlalchemy import asc, delete, desc, func, select, update
+from sqlalchemy import asc, delete, desc, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cipher.datastores.postgres.tables.mention import MentionTable
 from cipher.datastores.postgres.utils import strip_null_bytes
-from cipher.schemas.common import SortOrder
-from cipher.schemas.mention import (
+from cipher.schemas._base.common import SortOrder
+from cipher.schemas.graph.mention import (
     Mention,
     MentionCreate,
+    MentionedType,
     MentionSearchParameters,
     MentionUpdate,
     PaginatedMentionsResponse,
 )
+from cipher.schemas.graph.ontology import EntityType
 
 
 class PostgresMentionRepository:
@@ -66,6 +68,10 @@ class PostgresMentionRepository:
             where.append(MentionTable.entity_type == request.entity_type)
         if request.entity_attribute:
             where.append(MentionTable.entity_attribute == request.entity_attribute)
+        if request.selector_kind:
+            where.append(MentionTable.selector_kind == request.selector_kind)
+        if request.normalized_value:
+            where.append(MentionTable.normalized_value == request.normalized_value)
         if request.resolved is True:
             where.append(MentionTable.entity_id.is_not(None))
         elif request.resolved is False:
@@ -105,6 +111,137 @@ class PostgresMentionRepository:
             update(MentionTable).where(MentionTable.id == mention_id).values(entity_id=entity_id)
         )
         await self.session.commit()
+
+    async def attach_many(self, mention_ids: list[str], entity_id: str) -> int:
+        """Resolve a batch of mentions to one entity. Returns rows updated."""
+        if not mention_ids:
+            return 0
+        result = await self.session.execute(
+            update(MentionTable).where(MentionTable.id.in_(mention_ids)).values(entity_id=entity_id)
+        )
+        await self.session.commit()
+        return result.rowcount or 0
+
+    async def unresolved_name_groups(self, *, dataset_id: str, entity_types: list[EntityType]) -> list[dict]:
+        """Group a dataset's unresolved `name` mentions by (entity_type, normalized_value).
+
+        Includes untyped name mentions (`entity_type IS NULL`) -- an email-header
+        display name whose person-vs-organization kind is unknown. The grouping
+        key is the resolution blocking key. `from_structured` flags a group with
+        at least one `structured_field` mention (e.g. an email header). Each
+        dict: `entity_type` (may be None), `normalized_value`, `mention_ids`,
+        `surface_texts`, `from_structured`.
+        """
+        stmt = (
+            select(
+                MentionTable.entity_type,
+                MentionTable.normalized_value,
+                func.array_agg(MentionTable.id).label("mention_ids"),
+                func.array_agg(MentionTable.surface_text).label("surface_texts"),
+                func.bool_or(MentionTable.mentioned_type == MentionedType.STRUCTURED_FIELD).label("from_structured"),
+            )
+            .where(
+                MentionTable.dataset_id == dataset_id,
+                MentionTable.entity_id.is_(None),
+                or_(MentionTable.entity_type.in_(entity_types), MentionTable.entity_type.is_(None)),
+                MentionTable.entity_attribute == "name",
+                MentionTable.normalized_value.is_not(None),
+            )
+            .group_by(MentionTable.entity_type, MentionTable.normalized_value)
+        )
+        rows = (await self.session.execute(stmt)).all()
+        return [
+            {
+                "entity_type": r.entity_type,
+                "normalized_value": r.normalized_value,
+                "mention_ids": list(r.mention_ids),
+                "surface_texts": list(r.surface_texts),
+                "from_structured": bool(r.from_structured),
+            }
+            for r in rows
+        ]
+
+    async def unresolved_name_group_page(
+        self, *, dataset_id: str, query: str | None = None, limit: int = 25, page: int = 1
+    ) -> dict:
+        """Paginated distinct-name view of the review queue.
+
+        One row per `normalized_value` of an unresolved `name` mention, with the
+        most common surface form, how many mentions and files it spans, and one
+        context snippet. Ordered by mention count (noisiest first). Returns
+        `{total, page, limit, data}`.
+        """
+        where = [
+            MentionTable.dataset_id == dataset_id,
+            MentionTable.entity_id.is_(None),
+            MentionTable.entity_attribute == "name",
+            MentionTable.normalized_value.is_not(None),
+        ]
+        if query and query.strip():
+            where.append(MentionTable.normalized_value.ilike(f"%{query.strip().lower()}%"))
+
+        grouped = (
+            select(
+                MentionTable.normalized_value.label("normalized_value"),
+                func.mode().within_group(MentionTable.surface_text).label("surface"),
+                func.count(MentionTable.id).label("mention_count"),
+                func.count(func.distinct(MentionTable.file_id)).label("file_count"),
+                func.min(MentionTable.context).label("sample_context"),
+            )
+            .where(*where)
+            .group_by(MentionTable.normalized_value)
+        )
+
+        total = (await self.session.execute(select(func.count()).select_from(grouped.subquery()))).scalar_one()
+
+        rows = (
+            await self.session.execute(
+                grouped.order_by(desc("mention_count"), asc("normalized_value")).offset((page - 1) * limit).limit(limit)
+            )
+        ).all()
+        return {
+            "total": total,
+            "page": page,
+            "limit": limit,
+            "data": [
+                {
+                    "normalized_value": r.normalized_value,
+                    "surface": r.surface,
+                    "mention_count": r.mention_count,
+                    "file_count": r.file_count,
+                    "sample_context": r.sample_context,
+                }
+                for r in rows
+            ],
+        }
+
+    async def attach_names(self, *, dataset_id: str, normalized_value: str, entity_id: str) -> int:
+        """Resolve every unresolved `name` mention of one normalized value to an entity."""
+        result = await self.session.execute(
+            update(MentionTable)
+            .where(
+                MentionTable.dataset_id == dataset_id,
+                MentionTable.entity_id.is_(None),
+                MentionTable.entity_attribute == "name",
+                MentionTable.normalized_value == normalized_value,
+            )
+            .values(entity_id=entity_id)
+        )
+        await self.session.commit()
+        return result.rowcount or 0
+
+    async def delete_names(self, *, dataset_id: str, normalized_value: str) -> int:
+        """Discard every unresolved `name` mention of one normalized value (analyst says 'not an entity')."""
+        result = await self.session.execute(
+            delete(MentionTable).where(
+                MentionTable.dataset_id == dataset_id,
+                MentionTable.entity_id.is_(None),
+                MentionTable.entity_attribute == "name",
+                MentionTable.normalized_value == normalized_value,
+            )
+        )
+        await self.session.commit()
+        return result.rowcount or 0
 
     async def update_mention(self, mention_id: str, data: MentionUpdate) -> Mention | None:
         """Patch a mention (analyst relabel/correction)."""

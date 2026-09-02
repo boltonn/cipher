@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from cipher.schemas.email import EmailBase
+from cipher.schemas.content.email import EmailBase
 from pyparse.parsers.email.eml import EmlParser
 from pyparse.parsers.email.msg import MsgParser
 

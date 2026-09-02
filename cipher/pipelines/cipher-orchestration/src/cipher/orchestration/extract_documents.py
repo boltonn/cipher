@@ -24,17 +24,17 @@ from cipher.datastores.postgres.repositories import (
     PostgresExtractedTextRepository,
     PostgresFileRepository,
 )
-from cipher.schemas.detection import BoundingBox
-from cipher.schemas.document import DocumentMetadata, DocumentStructureNode, ExtractedTableInfo
-from cipher.schemas.email import EmailMetadata
-from cipher.schemas.enrichment import EnrichableType, EnrichmentType
-from cipher.schemas.extraction import (
+from cipher.schemas._base.detection import BoundingBox
+from cipher.schemas.content.document import DocumentMetadata, DocumentStructureNode, ExtractedTableInfo
+from cipher.schemas.content.email import EmailMetadata
+from cipher.schemas.content.extraction import (
     ExtractedText,
     ExtractedTextCreate,
     ExtractionContentFormat,
     PrechunkedSpan,
     TextExtractor,
 )
+from cipher.schemas.ingestion.enrichment import EnrichableType, EnrichmentType
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession

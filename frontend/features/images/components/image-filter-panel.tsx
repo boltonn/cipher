@@ -1,6 +1,6 @@
 "use client";
 
-import { DatePicker } from "@/components/date-picker";
+import { DateRangePicker } from "@/components/date-range-picker";
 import { TagsInput } from "@/components/tags-input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
@@ -88,18 +88,13 @@ export const ImageFilterPanel: React.FC<ImageFilterPanelProps> = ({
           <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
             Date Taken
           </span>
-          <div className="grid grid-cols-2 gap-3">
-            <DatePicker
-              placeholder="From"
-              value={params.dateFrom}
-              onChange={(iso) => updateParam("dateFrom", iso)}
-            />
-            <DatePicker
-              placeholder="To"
-              value={params.dateTo}
-              onChange={(iso) => updateParam("dateTo", iso)}
-            />
-          </div>
+          <DateRangePicker
+            placeholder="Any date"
+            value={{ from: params.dateFrom, to: params.dateTo }}
+            onChange={({ from, to }) => {
+              setParams((prev) => ({ ...prev, dateFrom: from, dateTo: to }));
+            }}
+          />
         </div>
 
         {/* Datasets */}
@@ -118,7 +113,7 @@ export const ImageFilterPanel: React.FC<ImageFilterPanelProps> = ({
           <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
             File Types
           </span>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex min-h-9 flex-wrap content-start items-center gap-2">
             {(filetypes ?? []).map((ft) => {
               const active = params.filetypes?.includes(ft);
               return (
@@ -131,7 +126,7 @@ export const ImageFilterPanel: React.FC<ImageFilterPanelProps> = ({
                     updateParam("filetypes", next.length ? next : undefined);
                   }}
                   className={cn(
-                    "text-[10px] font-bold uppercase px-2.5 py-1.5 rounded-lg border transition-all",
+                    "h-7 rounded-lg border px-2.5 text-[10px] font-bold uppercase transition-all",
                     active
                       ? "bg-primary/20 border-primary/40 text-primary"
                       : "bg-transparent border-border text-muted-foreground hover:text-foreground hover:border-white/20"
@@ -142,7 +137,9 @@ export const ImageFilterPanel: React.FC<ImageFilterPanelProps> = ({
               );
             })}
             {filetypes?.length === 0 && (
-              <span className="text-[10px] text-muted-foreground italic">No file types found</span>
+              <span className="text-[10px] text-muted-foreground italic self-center">
+                No file types found
+              </span>
             )}
           </div>
         </div>

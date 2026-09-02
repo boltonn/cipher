@@ -7,8 +7,6 @@ export const ENRICHMENT_TYPES = [
   "image_embedding",
   "face_detection",
   "face_matching",
-  "contact_extraction",
-  "message_translation",
 ] as const;
 
 export type EnrichmentType = (typeof ENRICHMENT_TYPES)[number];
@@ -26,13 +24,21 @@ export interface AnalyticParamDef {
   step?: number;
   options?: readonly string[];
   optional?: boolean;
+  /** Which emitted enrichment this param belongs to. Defaults to the def's `type`. */
+  owner?: EnrichmentType;
 }
 
 export interface AnalyticDef {
+  /** UI identity + the default emitted enrichment type. */
   type: EnrichmentType;
   label: string;
   description: string;
   params: readonly AnalyticParamDef[];
+  /**
+   * Enrichment payload entries this one toggle expands to on submit. Defaults
+   * to `[type]`; a composite like "Face recognition" emits several.
+   */
+  emits?: readonly EnrichmentType[];
 }
 
 /** Form metadata for each analytic. Parameter shapes mirror `cipher.schemas.dataset_request`. */
@@ -70,32 +76,13 @@ export const ANALYTICS: readonly AnalyticDef[] = [
   },
   {
     type: "face_detection",
-    label: "Face detection",
-    description: "Detect and embed faces in images.",
-    params: [{ key: "batchSize", label: "Batch size", kind: "number", min: 1, max: 512, step: 1, defaultValue: 25 }],
-  },
-  {
-    type: "face_matching",
-    label: "Face matching",
-    description: "Match detected faces against known persons.",
+    label: "Face recognition",
+    description: "Detect faces in images and match them against known persons.",
+    emits: ["face_detection", "face_matching"],
     params: [
-      { key: "similarityThreshold", label: "Similarity threshold", kind: "number", min: 0, max: 1, step: 0.01, defaultValue: 0.5 },
-      { key: "topK", label: "Top K candidates", kind: "number", min: 1, max: 100, step: 1, defaultValue: 10 },
-    ],
-  },
-  {
-    type: "contact_extraction",
-    label: "Contact extraction",
-    description: "Extract contacts and devices from parsed data.",
-    params: [],
-  },
-  {
-    type: "message_translation",
-    label: "Message translation",
-    description: "Translate messages into a target language.",
-    params: [
-      { key: "targetLanguage", label: "Target language (ISO)", kind: "text", defaultValue: "en" },
-      { key: "batchSize", label: "Batch size", kind: "number", min: 1, max: 256, step: 1, defaultValue: 16 },
+      { key: "batchSize", label: "Batch size", kind: "number", min: 1, max: 512, step: 1, defaultValue: 25, owner: "face_detection" },
+      { key: "similarityThreshold", label: "Match threshold", kind: "number", min: 0, max: 1, step: 0.01, defaultValue: 0.5, owner: "face_matching" },
+      { key: "topK", label: "Top K candidates", kind: "number", min: 1, max: 100, step: 1, defaultValue: 10, owner: "face_matching" },
     ],
   },
 ] as const;
@@ -116,11 +103,6 @@ export const paramSchemas: Record<EnrichmentType, z.ZodType> = {
   face_matching: z.object({
     similarityThreshold: z.number().min(0).max(1),
     topK: z.number().int().min(1).max(100),
-  }),
-  contact_extraction: z.object({}),
-  message_translation: z.object({
-    targetLanguage: z.string().min(2).max(8),
-    batchSize: z.number().int().min(1).max(256),
   }),
 };
 

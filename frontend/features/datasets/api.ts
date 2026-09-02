@@ -1,10 +1,12 @@
 import type {
   Dataset,
+  DatasetEnrichmentFailures,
   DatasetRequest,
   DatasetStatsRequest,
   DatasetStatsResponse,
   DatasetSummary,
   DatasetUpdate,
+  EnrichmentProgress,
 } from "@/features/datasets/types";
 import { apiClient } from "@/lib/api-client";
 import type { PaginatedResponse } from "@/types/common";
@@ -90,6 +92,68 @@ export function useDatasetStats(id: string | undefined, params: DatasetStatsRequ
     queryFn: () => datasetService.getStats(id as string, params),
     enabled: !!id,
     staleTime: 10_000,
+  });
+}
+
+/** Per-analytic enrichment progress for a dataset, in pipeline order. */
+export function useEnrichmentProgress(id: string | undefined) {
+  return useQuery({
+    queryKey: ["datasets", id, "enrichment-progress"],
+    queryFn: async () => {
+      const { data } = await apiClient.get<EnrichmentProgress[]>(
+        "/enrichments/progress/all",
+        { params: { dataset_id: id }, suppressErrorToast: true }
+      );
+      return data;
+    },
+    enabled: !!id,
+    staleTime: 15_000,
+    // Poll while any step still has queued/processing work so the bars animate.
+    refetchInterval: (query) =>
+      (query.state.data ?? []).some(
+        (p) => (p.counts.pending ?? 0) + (p.counts.processing ?? 0) > 0
+      )
+        ? 4000
+        : false,
+  });
+}
+
+/** Trigger a model-free enrichment (e.g. EXIF location extraction) to run in the background. */
+export function useRunEnrichment(datasetId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (enrichmentType: string) => {
+      const { data } = await apiClient.post<{ status: string; detail: string }>("/enrichments/run", {
+        datasetId,
+        enrichmentType,
+      });
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["datasets", datasetId, "enrichment-progress"] });
+    },
+  });
+}
+
+/** Failed enrichments for one analytic in a dataset -- grouped reasons plus per-file detail. */
+export function useEnrichmentFailures(
+  datasetId: string | undefined,
+  enrichmentType: string | null
+) {
+  return useQuery({
+    queryKey: ["datasets", datasetId, "enrichment-failures", enrichmentType],
+    queryFn: async () => {
+      const { data } = await apiClient.get<DatasetEnrichmentFailures>(
+        "/enrichments/failures",
+        {
+          params: { dataset_id: datasetId, enrichment_type: enrichmentType },
+          suppressErrorToast: true,
+        }
+      );
+      return data;
+    },
+    enabled: !!datasetId && !!enrichmentType,
+    staleTime: 15_000,
   });
 }
 

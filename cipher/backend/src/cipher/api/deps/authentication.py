@@ -5,7 +5,7 @@ from fastapi import Depends, Header, HTTPException, status
 from cipher.api.deps.postgres import get_user_repository
 from cipher.api.settings import DevelopmentMode, Settings
 from cipher.datastores.postgres.repositories.user import PostgresUserRepository
-from cipher.schemas.user import User, UserCreate
+from cipher.schemas.ingestion.user import User, UserCreate
 
 settings = Settings()
 

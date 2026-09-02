@@ -19,16 +19,16 @@ from cipher.api.agent.citations import (
 )
 from cipher.api.agent.deps import ChatDeps
 from cipher.api.services.search import search_chunks
-from cipher.schemas.dataset import DatasetsRequest
-from cipher.schemas.entity import Entity
-from cipher.schemas.mention import MentionSearchParameters
-from cipher.schemas.ontology import EntityType, RelationshipType
-from cipher.schemas.person import PersonSearchParameters
-from cipher.schemas.search import (
+from cipher.schemas.content.search import (
     ChunkFilters,
     ChunkSemanticSearchRequest,
     ChunkTextSearchRequest,
 )
+from cipher.schemas.graph.entity import Entity
+from cipher.schemas.graph.mention import MentionSearchParameters
+from cipher.schemas.graph.ontology import EntityType, RelationshipType
+from cipher.schemas.identity.person import PersonSearchParameters
+from cipher.schemas.ingestion.dataset import DatasetsRequest
 
 _MAX_FILE_CHARS = 6000
 

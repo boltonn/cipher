@@ -1,6 +1,9 @@
+import re
 from typing import Annotated
 
+import phonenumbers
 from fastapi import APIRouter, HTTPException, Query
+from pyselectors.normalize import normalize_email, normalize_iban, normalize_imei, normalize_phone
 
 from cipher.api.deps.postgres import (
     EntityDatastoreDep,
@@ -9,7 +12,8 @@ from cipher.api.deps.postgres import (
     MentionDatastoreDep,
     RelationshipCandidateDatastoreDep,
 )
-from cipher.schemas.entity import (
+from cipher.schemas._base.exceptions import EntityNotFoundError
+from cipher.schemas.graph.entity import (
     Entity,
     EntityCreate,
     EntityProfile,
@@ -18,13 +22,17 @@ from cipher.schemas.entity import (
     EntitySummary,
     EntityUpdate,
     PaginatedEntitiesResponse,
+    PaginatedRelatedEntitiesResponse,
+    RelatedEntitySearchParameters,
+    RelatedEntitySort,
+    SelectorMention,
 )
-from cipher.schemas.entity_match import (
+from cipher.schemas.graph.entity_match import (
     EntityMatchReview,
     EntityMatchSearchParameters,
     PaginatedEntityMatchesResponse,
 )
-from cipher.schemas.entity_relationship import (
+from cipher.schemas.graph.entity_relationship import (
     EntityRelationship,
     EntityRelationshipCreate,
     GraphResponse,
@@ -35,16 +43,45 @@ from cipher.schemas.entity_relationship import (
     RelationshipSearchParameters,
     TraversalDirection,
 )
-from cipher.schemas.exceptions import EntityNotFoundError
-from cipher.schemas.location import LocationUpdate
-from cipher.schemas.mention import MentionedType, MentionSearchParameters, PaginatedMentionsResponse
-from cipher.schemas.ontology import EntityType, RelationshipType, validate_relationship
-from cipher.schemas.organization import OrganizationUpdate
-from cipher.schemas.selector import SelectorUpdate
+from cipher.schemas.graph.location import LocationUpdate
+from cipher.schemas.graph.mention import MentionedType, MentionSearchParameters, PaginatedMentionsResponse
+from cipher.schemas.graph.ontology import (
+    RELATIONSHIP_ROLE_ENUM,
+    EntityType,
+    Ontology,
+    RelationshipSource,
+    RelationshipType,
+    SelectorKind,
+    build_ontology,
+    validate_relationship,
+)
+from cipher.schemas.graph.organization import OrganizationUpdate
+from cipher.schemas.graph.selector import SelectorLinkRequest, SelectorRegion, SelectorUpdate
 
 router = APIRouter(prefix="/entities", tags=["entities"])
 
 _BY_ALIAS = {"response_model_by_alias": True}
+
+
+def _normalize_selector_value(kind: SelectorKind, raw: str, region_hint: str | None) -> str | None:
+    """Canonicalize a manually entered selector, mirroring the extraction pipeline.
+
+    Returns None when the value fails validation for its kind (bad phone, IBAN, IMEI).
+    """
+    raw = raw.strip()
+    if not raw:
+        return None
+    if kind == SelectorKind.PHONE:
+        return normalize_phone(raw, region=region_hint.upper() if region_hint else None)
+    if kind == SelectorKind.EMAIL:
+        return normalize_email(raw)
+    if kind == SelectorKind.IBAN:
+        return normalize_iban(raw)
+    if kind == SelectorKind.IMEI:
+        return normalize_imei(raw)
+    if kind == SelectorKind.HANDLE:
+        return raw.lstrip("@").lower()
+    return re.sub(r"\s+", "", raw).upper()
 
 
 @router.post("", summary="Create an entity node", response_model=Entity, **_BY_ALIAS)
@@ -89,6 +126,35 @@ async def search_entities(
     if q:
         results.extend(await datastore.search_by_name(dataset_id=dataset_id, query=q, limit=limit))
     return results[:limit]
+
+
+@router.get(
+    "/ontology", summary="Entity-layer registry (types, relationships, roles)", response_model=Ontology, **_BY_ALIAS
+)
+async def get_ontology() -> Ontology:
+    """The relationship types, endpoint constraints, and role vocabularies the connection UI is built from."""
+    return build_ontology()
+
+
+@router.get(
+    "/selector-regions",
+    summary="Phone regions valid for selector normalization",
+    response_model=list[SelectorRegion],
+    **_BY_ALIAS,
+)
+async def list_selector_regions() -> list[SelectorRegion]:
+    """ISO-3166-1 alpha-2 regions the phone normalizer accepts, each with its calling code.
+
+    This is the exact set `region_hint` may take, so the frontend picker can't offer a
+    value the backend would reject.
+    """
+    return sorted(
+        (
+            SelectorRegion(code=r, calling_code=phonenumbers.country_code_for_region(r))
+            for r in phonenumbers.SUPPORTED_REGIONS
+        ),
+        key=lambda region: region.code,
+    )
 
 
 @router.get(
@@ -210,6 +276,104 @@ async def get_entity_profile(entity_id: str, datastore: EntityDatastoreDep) -> E
 
 
 @router.get(
+    "/{entity_id}/related",
+    summary="Paginated neighbours of an entity",
+    response_model=PaginatedRelatedEntitiesResponse,
+    **_BY_ALIAS,
+)
+async def list_related_entities(
+    entity_id: str,
+    datastore: EntityDatastoreDep,
+    direction: Annotated[TraversalDirection, Query()] = TraversalDirection.BOTH,
+    relationship_type: Annotated[RelationshipType | None, Query()] = None,
+    entity_type: Annotated[EntityType | None, Query(description="Only neighbours of this type")] = None,
+    sort: Annotated[RelatedEntitySort, Query()] = RelatedEntitySort.WEIGHT,
+    limit: Annotated[int, Query(ge=1, le=200)] = 25,
+    page: Annotated[int, Query(ge=1)] = 1,
+) -> PaginatedRelatedEntitiesResponse:
+    """Neighbours of an entity with their connecting edge, sortable by edge weight."""
+    return await datastore.list_related(
+        entity_id,
+        RelatedEntitySearchParameters(
+            direction=direction.value,
+            relationship_type=relationship_type,
+            entity_type=entity_type,
+            sort=sort,
+            limit=limit,
+            page=page,
+        ),
+    )
+
+
+@router.post(
+    "/{entity_id}/selectors",
+    summary="Attach a selector to an actor entity",
+    response_model=SelectorMention,
+    **_BY_ALIAS,
+)
+async def attach_selector(
+    entity_id: str,
+    body: SelectorLinkRequest,
+    datastore: EntityDatastoreDep,
+    graph: GraphDatastoreDep,
+    mentions: MentionDatastoreDep,
+) -> SelectorMention:
+    """Link a selector to the entity and report how many mentions already carry its normalized value."""
+    actor = await datastore.get_entity(entity_id)
+    if actor is None:
+        raise EntityNotFoundError("Entity", entity_id)
+    try:
+        validate_relationship(
+            relationship_type=RelationshipType.HAS_SELECTOR,
+            src_type=actor.entity_type,
+            dst_type=EntityType.SELECTOR,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    normalized = _normalize_selector_value(body.selector_kind, body.raw_value, body.region_hint)
+    if not normalized:
+        raise HTTPException(status_code=422, detail=f"'{body.raw_value}' is not a valid {body.selector_kind} selector")
+
+    selector, _ = await datastore.get_or_create_selector(
+        dataset_id=body.dataset_id,
+        selector_kind=body.selector_kind,
+        raw_value=body.raw_value.strip(),
+        normalized_value=normalized,
+        region_hint=body.region_hint,
+    )
+    await graph.upsert_relationship(
+        EntityRelationshipCreate(
+            dataset_id=body.dataset_id,
+            src_entity_id=entity_id,
+            dst_entity_id=selector.id,
+            relationship_type=RelationshipType.HAS_SELECTOR,
+            source=RelationshipSource.MANUAL,
+        )
+    )
+    matching = await mentions.list_mentions(MentionSearchParameters(normalized_value=normalized, limit=1))
+    return SelectorMention(
+        entity_id=selector.id,
+        selector_kind=body.selector_kind,
+        normalized_value=normalized,
+        mention_count=matching.total,
+    )
+
+
+@router.delete("/{entity_id}/selectors/{selector_id}", summary="Detach a selector from an entity")
+async def detach_selector(entity_id: str, selector_id: str, graph: GraphDatastoreDep) -> dict:
+    """Remove the has_selector edge. The selector node and its detail row are left intact."""
+    removed = await graph.delete_relationship(
+        src_entity_id=entity_id,
+        dst_entity_id=selector_id,
+        relationship_type=RelationshipType.HAS_SELECTOR,
+    )
+    if not removed:
+        raise EntityNotFoundError("Selector link", selector_id)
+    return {"detached": True}
+
+
+@router.get(
     "/{entity_id}/mentions",
     summary="Mentions of an entity",
     response_model=PaginatedMentionsResponse,
@@ -270,6 +434,7 @@ async def traverse_entity_graph(
     direction: Annotated[TraversalDirection, Query()] = TraversalDirection.BOTH,
     types: Annotated[str | None, Query(description="Comma-separated relationship types")] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    min_weight: Annotated[float, Query(ge=0, description="Drop weighted edges below this (keeps unweighted)")] = 0,
 ) -> GraphResponse:
     """Return the subgraph reachable from an entity within `depth` hops."""
     relationship_types = None
@@ -284,6 +449,7 @@ async def traverse_entity_graph(
         relationship_types=relationship_types,
         direction=direction,
         limit=limit,
+        min_weight=min_weight,
     )
 
 
@@ -314,4 +480,18 @@ async def create_entity_relationship(
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    role = relationship.attributes.get("role")
+    if role is not None:
+        role_enum = RELATIONSHIP_ROLE_ENUM.get(relationship.relationship_type)
+        if role_enum is None:
+            raise HTTPException(status_code=422, detail=f"{relationship.relationship_type} edges take no role")
+        try:
+            role_enum(role)
+        except ValueError as exc:
+            valid = ", ".join(r.value for r in role_enum)
+            raise HTTPException(status_code=422, detail=f"role must be one of: {valid}") from exc
+
+    # An edge does not belong to a dataset -- it's just a link between two nodes,
+    # visible whenever both nodes are. Manual edges leave dataset_id NULL.
     return await datastore.upsert_relationship(relationship)

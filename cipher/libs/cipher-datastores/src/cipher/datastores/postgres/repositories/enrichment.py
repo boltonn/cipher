@@ -9,7 +9,7 @@ from cipher.datastores.postgres.tables.enrichment import EnrichmentTable
 from cipher.datastores.postgres.tables.face import FaceTable
 from cipher.datastores.postgres.tables.file import FileTable
 from cipher.datastores.postgres.tables.message import MessageTable
-from cipher.schemas.enrichment import (
+from cipher.schemas.ingestion.enrichment import (
     EnrichableType,
     Enrichment,
     EnrichmentBatchItem,
@@ -226,6 +226,69 @@ class PostgresEnrichmentRepository:
         for enrich_type, status, count in result.all():
             stats[EnrichmentType(enrich_type)][ProcessingStatus(status)] = count
         return dict(stats)
+
+    async def get_failure_reason_summary(
+        self, dataset_id: str, enrichment_type: EnrichmentType
+    ) -> list[tuple[str | None, int]]:
+        """Distinct failure messages for a dataset + analytic, most common first."""
+        count = func.count(EnrichmentTable.id)
+        statement = (
+            select(EnrichmentTable.error_message, count)
+            .join(
+                FileTable,
+                (EnrichmentTable.enrichable_id == FileTable.id)
+                & (EnrichmentTable.enrichable_type == EnrichableType.FILE),
+            )
+            .where(
+                EnrichmentTable.enrichment_type == enrichment_type,
+                EnrichmentTable.status == ProcessingStatus.FAILED,
+                FileTable.dataset_id == dataset_id,
+            )
+            .group_by(EnrichmentTable.error_message)
+            .order_by(count.desc())
+        )
+        result = await self.session.execute(statement)
+        return [(message, n) for message, n in result.all()]
+
+    async def get_failed_enrichments(
+        self,
+        dataset_id: str,
+        enrichment_type: EnrichmentType,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> tuple[int, list[dict]]:
+        """Failed enrichment rows for a dataset + analytic, newest first, with file identity."""
+        join_condition = (EnrichmentTable.enrichable_id == FileTable.id) & (
+            EnrichmentTable.enrichable_type == EnrichableType.FILE
+        )
+        filters = (
+            EnrichmentTable.enrichment_type == enrichment_type,
+            EnrichmentTable.status == ProcessingStatus.FAILED,
+            FileTable.dataset_id == dataset_id,
+        )
+
+        total = await self.session.scalar(
+            select(func.count(EnrichmentTable.id)).join(FileTable, join_condition).where(*filters)
+        )
+
+        statement = (
+            select(EnrichmentTable, FileTable.filename, FileTable.path)
+            .join(FileTable, join_condition)
+            .where(*filters)
+            .order_by(EnrichmentTable.date_updated.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        result = await self.session.execute(statement)
+        items = [
+            {
+                "enrichment": Enrichment.model_validate(enrichment),
+                "filename": filename,
+                "path": path,
+            }
+            for enrichment, filename, path in result.all()
+        ]
+        return total or 0, items
 
     async def retry_failed_enrichments(
         self,

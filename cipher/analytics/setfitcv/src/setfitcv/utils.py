@@ -30,6 +30,9 @@ class ExifMetadata(TypedDict, total=False):
     gps_latitude: float
     gps_longitude: float
     gps_altitude: float
+    gps_bearing: int
+    gps_speed: float
+    gps_h_accuracy: float
 
 
 class ImageMetadataExtractor:
@@ -49,21 +52,13 @@ class ImageMetadataExtractor:
                 with contextlib.suppress(Exception):
                     ifd_data = raw_exif.get_ifd(ifd_id)
                     for tag_id, value in ifd_data.items():
-                        name = (
-                            GPSTAGS.get(tag_id, tag_id)
-                            if ifd_id == IFD.GPSInfo
-                            else TAGS.get(tag_id, tag_id)
-                        )
-                        full_data[str(name)] = ImageMetadataExtractor._ensure_json_safe(
-                            value
-                        )
+                        name = GPSTAGS.get(tag_id, tag_id) if ifd_id == IFD.GPSInfo else TAGS.get(tag_id, tag_id)
+                        full_data[str(name)] = ImageMetadataExtractor._ensure_json_safe(value)
 
             for tag_id, value in raw_exif.items():
                 name = TAGS.get(tag_id, tag_id)
                 if str(name) not in full_data:
-                    full_data[str(name)] = ImageMetadataExtractor._ensure_json_safe(
-                        value
-                    )
+                    full_data[str(name)] = ImageMetadataExtractor._ensure_json_safe(value)
 
         # --- 2. TIFF SOURCE (V1 and V2 Tags) ---
         # tag_v2 is cleaner, img.tag (v1) is more compatible with old scanners
@@ -71,27 +66,19 @@ class ImageMetadataExtractor:
             if hasattr(img, attr):
                 tag_dict = getattr(img, attr)
                 for tag_id, value in tag_dict.items():
-                    tag_info = TiffTags.TAGS_V2.get(tag_id) or TiffTags.TAGS_V1.get(
-                        tag_id
-                    )
+                    tag_info = TiffTags.TAGS_V2.get(tag_id) or TiffTags.TAGS_V1.get(tag_id)
                     name = tag_info.name if tag_info else str(tag_id)
                     if name not in full_data or full_data[name] in [None, "", []]:
-                        full_data[name] = ImageMetadataExtractor._ensure_json_safe(
-                            value
-                        )
+                        full_data[name] = ImageMetadataExtractor._ensure_json_safe(value)
 
         # --- 3. LAST RESORT: INFO DICTIONARY (XMP/IPTC) ---
         # Adobe often hides metadata in XMP strings or raw IPTC blocks
         if hasattr(img, "info"):
             if "xmp" in img.info:
                 # Store raw XMP for possible specialized parsing later
-                full_data["XMP_Block"] = ImageMetadataExtractor._ensure_json_safe(
-                    img.info["xmp"]
-                )
+                full_data["XMP_Block"] = ImageMetadataExtractor._ensure_json_safe(img.info["xmp"])
             if "iptc" in img.info:
-                full_data["IPTC_Block"] = ImageMetadataExtractor._ensure_json_safe(
-                    img.info["iptc"]
-                )
+                full_data["IPTC_Block"] = ImageMetadataExtractor._ensure_json_safe(img.info["iptc"])
 
         if not full_data:
             return None
@@ -116,10 +103,7 @@ class ImageMetadataExtractor:
             return [ImageMetadataExtractor._ensure_json_safe(v) for v in value]
 
         if isinstance(value, dict):
-            return {
-                str(k): ImageMetadataExtractor._ensure_json_safe(v)
-                for k, v in value.items()
-            }
+            return {str(k): ImageMetadataExtractor._ensure_json_safe(v) for k, v in value.items()}
 
         if isinstance(value, bytes):
             try:
@@ -178,9 +162,7 @@ class ImageMetadataExtractor:
 
         # GPS Unification
         if "GPSLatitude" in data and "GPSLatitudeRef" in data:
-            results["gps_latitude"] = ImageMetadataExtractor._parse_coord(
-                data["GPSLatitude"], data["GPSLatitudeRef"]
-            )
+            results["gps_latitude"] = ImageMetadataExtractor._parse_coord(data["GPSLatitude"], data["GPSLatitudeRef"])
         if "GPSLongitude" in data and "GPSLongitudeRef" in data:
             results["gps_longitude"] = ImageMetadataExtractor._parse_coord(
                 data["GPSLongitude"], data["GPSLongitudeRef"]
@@ -195,6 +177,20 @@ class ImageMetadataExtractor:
                 if ref == 1 or ref == b"\x01":
                     alt = -alt
                 results["gps_altitude"] = alt
+
+        # Heading, ground speed, and positional accuracy (kinematics)
+        if "GPSImgDirection" in data:
+            with contextlib.suppress(Exception):
+                results["gps_bearing"] = int(round(float(data["GPSImgDirection"]))) % 360
+        if "GPSSpeed" in data:
+            with contextlib.suppress(Exception):
+                ref = data.get("GPSSpeedRef")
+                # K = km/h (EXIF default), M = mph, N = knots -> m/s
+                factor = {"K": 1 / 3.6, "M": 0.44704, "N": 0.514444}.get(ref, 1 / 3.6)
+                results["gps_speed"] = float(data["GPSSpeed"]) * factor
+        if "GPSHPositioningError" in data:
+            with contextlib.suppress(Exception):
+                results["gps_h_accuracy"] = float(data["GPSHPositioningError"])
 
         return results
 

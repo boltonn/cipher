@@ -7,9 +7,9 @@ from cipher.datastores.postgres.tables.face_match import FaceMatchTable
 from cipher.datastores.postgres.tables.file import FileTable
 from cipher.datastores.postgres.tables.image import ImageTable
 from cipher.datastores.postgres.tables.person import PersonTable
-from cipher.schemas.common import SortOrder, UriResponse
-from cipher.schemas.exceptions import ValidationError
-from cipher.schemas.face import (
+from cipher.schemas._base.common import SortOrder, UriResponse
+from cipher.schemas._base.exceptions import ValidationError
+from cipher.schemas.identity.face import (
     DEFAULT_FACE_MATCH_SIMILARITY,
     BaseFaceSearchParameters,
     Face,
@@ -25,7 +25,7 @@ from cipher.schemas.face import (
     PaginatedFaceSimilarityResponse,
     PaginatedFacesResponse,
 )
-from cipher.schemas.face_match import FaceMatchStatus
+from cipher.schemas.identity.face_match import FaceMatchStatus
 
 MAX_REPRESENTATIVE_FACES_PER_PERSON = 10
 
@@ -84,6 +84,15 @@ class PostgresFaceRepository:
         stmt = self._joined_for_public(select(FaceTable)).options(defer(FaceTable.embedding))
         result = await self.session.execute(stmt.where(FaceTable.image_id == image_id))
         return [self._to_face_public(*row) for row in result.all()]
+
+    async def image_has_faces(self, image_id: str) -> bool:
+        """Whether any face row already exists for this image (content hash).
+
+        Cheap guard for the detection pipeline: `image_id` is the sha256, so a
+        hit means some file sharing this content has already been detected and
+        re-running would only append duplicate rows.
+        """
+        return bool(await self.session.scalar(select(exists().where(FaceTable.image_id == image_id))))
 
     async def get_faces_with_embeddings_by_image(self, image_id: str) -> list[Face]:
         """Retrieve all faces for an image, embeddings included.
@@ -218,6 +227,7 @@ class PostgresFaceRepository:
         face: FaceTable,
         uri: str,
         is_verified: bool | None,
+        person_name: str | None,
         candidate_person_id: str | None,
         candidate_person_name: str | None,
     ) -> FacePublic:
@@ -232,6 +242,9 @@ class PostgresFaceRepository:
             **face.__dict__,
             "uri": uri,
             "status": status,
+            # assigned person's name, denormalized so a grid of cards needn't
+            # fetch it per card
+            "person_name": person_name if face.person_id else None,
             # the candidate is only meaningful when not already assigned
             "candidate_person_id": candidate_person_id if not face.person_id else None,
             "candidate_person_name": candidate_person_name if not face.person_id else None,
@@ -240,7 +253,7 @@ class PostgresFaceRepository:
     def _joined_for_public(self, stmt):
         """Join everything `_to_face_public` needs onto a Face select.
 
-        Adds `(uri, is_verified, candidate_person_id, candidate_person_name)` columns.
+        Adds `(uri, is_verified, person_name, candidate_person_id, candidate_person_name)` columns.
         Joins through Image->File (display uri), Person (assignment
         verification), and each face's single best still-pending FaceMatch
         candidate (for the "matched but not yet confirmed" status and its
@@ -271,7 +284,13 @@ class PostgresFaceRepository:
             .outerjoin(PersonTable, FaceTable.person_id == PersonTable.id)
             .outerjoin(top_match, top_match.c.face_id == FaceTable.id)
             .outerjoin(candidate_person, top_match.c.person_id == candidate_person.id)
-            .add_columns(file_repr.c.uri, PersonTable.is_verified, candidate_person.id, candidate_person.name)
+            .add_columns(
+                file_repr.c.uri,
+                PersonTable.is_verified,
+                PersonTable.name,
+                candidate_person.id,
+                candidate_person.name,
+            )
         )
 
     @staticmethod
@@ -399,44 +418,61 @@ class PostgresFaceRepository:
         result = await self.session.execute(stmt)
         rows = list(result.all())
 
-        faces = [
-            FaceSimilarityResult(
-                **self._to_face_public(
-                    face, uri, is_verified, candidate_person_id, candidate_person_name
-                ).model_dump(),
-                # Similarity is surfaced as a 0-1 "match strength", not a raw
-                # signed cosine value: floor negative cosine similarity to 0,
-                # and cap float32 rounding overshoot (e.g. 1.0000001192...) to 1.
-                similarity_score=max(0.0, min(1.0, similarity_score)),
-            )
-            for face, similarity_score, uri, is_verified, candidate_person_id, candidate_person_name in rows
-        ]
-
         return PaginatedFaceSimilarityResponse(
             total=total_count,
             page=request.page,
             limit=request.limit,
-            data=faces,
+            data=[self._row_to_similarity_result(row) for row in rows],
+        )
+
+    @staticmethod
+    def _row_to_similarity_result(row) -> FaceSimilarityResult:
+        """Map a `(FaceTable, similarity, *public-status cols)` row to a result model."""
+        face, similarity_score, uri, is_verified, person_name, candidate_person_id, candidate_person_name = row
+        return FaceSimilarityResult(
+            **PostgresFaceRepository._to_face_public(
+                face, uri, is_verified, person_name, candidate_person_id, candidate_person_name
+            ).model_dump(),
+            # 0-1 "match strength", not a raw signed cosine value: floor negative
+            # similarity to 0, cap float32 rounding overshoot (1.0000001192...) to 1.
+            similarity_score=max(0.0, min(1.0, similarity_score)),
         )
 
     async def get_potential_person_matches(
         self,
         face_id: str,
         min_similarity: float = DEFAULT_FACE_MATCH_SIMILARITY,
-        limit: int = 20,
-    ) -> list[FaceSimilarityResult]:
-        """KNN-search for still-unassigned faces similar to `face_id`.
+        limit: int = 10_000,
+    ) -> list[tuple[str, float]]:
+        """KNN-search for still-unassigned faces similar to `face_id`, above `min_similarity`.
 
         The one definition of "a potential match" for a face -- proposing
         candidates for analyst review (via `FaceMatch`) after a person gains a
         new reference face, and any future ingestion-time matcher, should both
         call this rather than each constructing their own KNN query.
+
+        Returns `(face_id, similarity_score)` pairs, similarity descending.
+        Deliberately a bare index scan over `face` alone -- no uri/status
+        joins, no result models -- since callers only need the ids and scores
+        to write `FaceMatch` rows, and this runs inline in create-person. The
+        `limit` defaults high enough (10k) to effectively return every real
+        match at the expected scale, so an analyst never sees an unexplained
+        "why didn't this face match?".
         """
-        request = FaceIdKnnSearchRequest(
-            face_id=face_id,
-            unassigned_only=True,
-            min_similarity=min_similarity,
-            limit=limit,
+        embedding = await self.get_embedding_by_face_id(face_id)
+        if embedding is None:
+            return []
+
+        distance_expr = FaceTable.embedding.max_inner_product(embedding)
+        stmt = (
+            select(FaceTable.id, -distance_expr)
+            .where(
+                FaceTable.person_id.is_(None),
+                FaceTable.id != face_id,
+                distance_expr <= -min_similarity,
+            )
+            .order_by(asc(distance_expr))
+            .limit(limit)
         )
-        response = await self.search_similar_faces(request=request)
-        return response.data
+        rows = (await self.session.execute(stmt)).all()
+        return [(face_id_, max(0.0, min(1.0, score))) for face_id_, score in rows]

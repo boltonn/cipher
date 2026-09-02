@@ -21,9 +21,17 @@ interface PersonPickerProps {
   valueName?: string;
   onSelect: (personId: string, personName?: string) => void;
   className?: string;
+  /** Trigger text shown when nothing is picked. */
+  placeholder?: string;
 }
 
-export function PersonPicker({ value, valueName, onSelect, className }: PersonPickerProps) {
+export function PersonPicker({
+  value,
+  valueName,
+  onSelect,
+  className,
+  placeholder = "Select a person…",
+}: PersonPickerProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
 
@@ -51,7 +59,7 @@ export function PersonPicker({ value, valueName, onSelect, className }: PersonPi
         >
           <span className="flex items-center gap-2 truncate">
             <UserRound size={14} className="text-muted-foreground shrink-0" />
-            {valueName ?? value ?? "Assign to person..."}
+            {valueName ?? value ?? placeholder}
           </span>
           <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 text-muted-foreground" />
         </Button>

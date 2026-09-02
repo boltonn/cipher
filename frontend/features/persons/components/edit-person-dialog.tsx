@@ -1,5 +1,6 @@
 "use client";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/date-picker";
 import {
@@ -89,7 +90,7 @@ function EditPersonForm({ person, onDone }: { person: Person; onDone: () => void
           <div className="space-y-1.5">
             <Label className="text-[10px] uppercase tracking-widest text-muted-foreground">Sex</Label>
             <Select value={sex} onValueChange={(v) => setSex(v as SexType)}>
-              <SelectTrigger className="w-full bg-muted/40 border-border text-sm">
+              <SelectTrigger className="w-full bg-muted/40 border-border text-sm data-[size=default]:h-10">
                 <SelectValue placeholder="Unknown" />
               </SelectTrigger>
               <SelectContent>
@@ -131,9 +132,11 @@ function EditPersonForm({ person, onDone }: { person: Person; onDone: () => void
         </div>
 
         {updatePerson.isError && (
-          <p className="text-[11px] text-destructive">
-            {(updatePerson.error as Error)?.message || "Failed to update person"}
-          </p>
+          <Alert variant="destructive">
+            <AlertDescription>
+              {(updatePerson.error as Error)?.message || "Failed to update person"}
+            </AlertDescription>
+          </Alert>
         )}
       </div>
 

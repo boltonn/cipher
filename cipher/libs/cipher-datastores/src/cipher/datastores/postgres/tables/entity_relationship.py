@@ -6,7 +6,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from cipher.datastores.postgres.tables.base import Base
-from cipher.schemas.ontology import RelationshipSource, RelationshipType
+from cipher.schemas.graph.ontology import RelationshipSource, RelationshipType
 
 
 class EntityRelationshipTable(Base):
@@ -16,8 +16,10 @@ class EntityRelationshipTable(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
 
-    dataset_id: Mapped[str] = mapped_column(
-        String, ForeignKey("dataset.id", ondelete="CASCADE"), nullable=False, index=True
+    # NULL when the edge spans datasets -- e.g. family_of between two person
+    # bridge nodes, which are themselves dataset-agnostic.
+    dataset_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("dataset.id", ondelete="CASCADE"), nullable=True, index=True
     )
     src_entity_id: Mapped[str] = mapped_column(
         String, ForeignKey("entity.id", ondelete="CASCADE"), nullable=False, index=True
@@ -49,9 +51,7 @@ class EntityRelationshipTable(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint(
-            "src_entity_id", "dst_entity_id", "relationship_type", name="uq_entity_relationship_triple"
-        ),
+        UniqueConstraint("src_entity_id", "dst_entity_id", "relationship_type", name="uq_entity_relationship_triple"),
         Index("ix_entity_relationship_src", "src_entity_id", "relationship_type"),
         Index("ix_entity_relationship_dst", "dst_entity_id", "relationship_type"),
     )

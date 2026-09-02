@@ -38,6 +38,8 @@ class ImageTable(Base):
 
     date_taken: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    gps_latitude: Mapped[float | None] = mapped_column(nullable=True)
+    gps_longitude: Mapped[float | None] = mapped_column(nullable=True)
     gps_altitude: Mapped[float | None] = mapped_column(nullable=True)
 
     tags: Mapped[list[str]] = mapped_column(JSONB, nullable=False, server_default="[]")

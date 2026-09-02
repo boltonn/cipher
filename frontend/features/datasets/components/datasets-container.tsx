@@ -1,7 +1,7 @@
 "use client";
 
 import type { DataTableFilters, DataTableSortOrder } from "@/components/data-table/types";
-import { DataTablePaginationFooter } from "@/components/data-table/pagination-footer";
+import { Pagination } from "@/components/pagination";
 import { DatasetCard } from "@/features/datasets/components/dataset-card";
 import { DatasetsTable } from "@/features/datasets/components/datasets-table";
 import type { DatasetSummary } from "@/features/datasets/types";
@@ -83,12 +83,15 @@ export function DatasetsContainer({
           <DatasetCard key={dataset.id} dataset={dataset} />
         ))}
       </div>
-      <DataTablePaginationFooter
-        page={page}
-        limit={limit}
-        total={total}
+      <Pagination
+        variant="compact"
+        showRange
+        currentPage={page}
+        totalItems={total}
+        itemsPerPage={limit}
+        pageSize={limit}
         onPageChange={onPageChange}
-        onLimitChange={onLimitChange}
+        onPageSizeChange={onLimitChange}
       />
     </div>
   );

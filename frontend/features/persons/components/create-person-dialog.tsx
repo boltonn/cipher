@@ -1,5 +1,6 @@
 "use client";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/date-picker";
 import {
@@ -10,8 +11,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -34,6 +35,8 @@ import { PersonCreate, SexType } from "@/features/persons/types";
 import { cn } from "@/lib/utils";
 import { BadgeCheck, Loader2, UserRound } from "lucide-react";
 import { useRef, useState } from "react";
+
+const FIELD_LABEL = "text-[10px] uppercase tracking-widest text-muted-foreground";
 
 interface CreatePersonDialogProps {
   isOpen: boolean;
@@ -227,10 +230,10 @@ export function CreatePersonDialog({ isOpen, onOpenChange, sourceFace }: CreateP
               </div>
             )}
 
-            <div className="space-y-1.5">
-              <Label htmlFor="person-name" className="text-[10px] uppercase tracking-widest text-muted-foreground">
+            <Field>
+              <FieldLabel htmlFor="person-name" className={FIELD_LABEL}>
                 Name
-              </Label>
+              </FieldLabel>
               <Input
                 id="person-name"
                 value={name}
@@ -238,13 +241,13 @@ export function CreatePersonDialog({ isOpen, onOpenChange, sourceFace }: CreateP
                 placeholder="Jane Doe"
                 className="bg-muted/40 border-border text-sm"
               />
-            </div>
+            </Field>
 
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label className="text-[10px] uppercase tracking-widest text-muted-foreground">Sex</Label>
+              <Field>
+                <FieldLabel className={FIELD_LABEL}>Sex</FieldLabel>
                 <Select value={sex} onValueChange={(v) => setSex(v as SexType)}>
-                  <SelectTrigger className="w-full bg-muted/40 border-border text-sm">
+                  <SelectTrigger className="w-full bg-muted/40 border-border text-sm data-[size=default]:h-10">
                     <SelectValue placeholder="Unknown" />
                   </SelectTrigger>
                   <SelectContent>
@@ -252,20 +255,18 @@ export function CreatePersonDialog({ isOpen, onOpenChange, sourceFace }: CreateP
                     <SelectItem value="male">Male</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
+              </Field>
 
-              <div className="space-y-1.5">
-                <Label className="text-[10px] uppercase tracking-widest text-muted-foreground">
-                  Date of birth
-                </Label>
+              <Field>
+                <FieldLabel className={FIELD_LABEL}>Date of birth</FieldLabel>
                 <DatePicker value={dateOfBirth} onChange={setDateOfBirth} />
-              </div>
+              </Field>
             </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="person-notes" className="text-[10px] uppercase tracking-widest text-muted-foreground">
+            <Field>
+              <FieldLabel htmlFor="person-notes" className={FIELD_LABEL}>
                 Notes
-              </Label>
+              </FieldLabel>
               <Textarea
                 id="person-notes"
                 value={notes}
@@ -273,12 +274,12 @@ export function CreatePersonDialog({ isOpen, onOpenChange, sourceFace }: CreateP
                 placeholder="Analyst notes..."
                 className="bg-muted/40 border-border text-sm min-h-20"
               />
-            </div>
+            </Field>
 
-            <div className="space-y-1.5">
-              <Label className="text-[10px] uppercase tracking-widest text-muted-foreground">Tags</Label>
+            <Field>
+              <FieldLabel className={FIELD_LABEL}>Tags</FieldLabel>
               <TagsInput value={tags} onChange={setTags} placeholder="person-of-interest, witness..." />
-            </div>
+            </Field>
 
             <div className="flex items-center gap-1.5 text-[11px] text-primary/80">
               <BadgeCheck size={13} />
@@ -286,9 +287,11 @@ export function CreatePersonDialog({ isOpen, onOpenChange, sourceFace }: CreateP
             </div>
 
             {isError && (
-              <p className="text-[11px] text-destructive">
-                {(error as Error)?.message || "Failed to create person"}
-              </p>
+              <Alert variant="destructive">
+                <AlertDescription>
+                  {(error as Error)?.message || "Failed to create person"}
+                </AlertDescription>
+              </Alert>
             )}
           </div>
         )}

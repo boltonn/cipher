@@ -6,8 +6,8 @@ from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from cipher.datastores.postgres.tables.base import Base
-from cipher.schemas.common import PhoneNumberType
-from cipher.schemas.message import MessageStatus
+from cipher.schemas._base.common import PhoneNumberType
+from cipher.schemas.content.message import MessageStatus
 
 if TYPE_CHECKING:
     from cipher.datastores.postgres.tables.device import DeviceTable

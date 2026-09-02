@@ -90,7 +90,7 @@ export function ImagesContainerPaginated({
       >
         {images.map((image, index) => (
           <ImageCard
-            key={image.fileId}
+            key={image.id}
             image={image}
             onFindSimilar={onSimilar}
             onExpand={() => setSelectedIndex(index)}

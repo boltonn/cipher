@@ -6,7 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import text
 
 from cipher.datastores.postgres.tables.base import Base
-from cipher.schemas.enrichment import EnrichableType, EnrichmentType, ProcessingStatus
+from cipher.schemas.ingestion.enrichment import EnrichableType, EnrichmentType, ProcessingStatus
 
 
 class EnrichmentTable(Base):

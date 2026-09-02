@@ -18,6 +18,10 @@ export const apiClient = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
+  // Serialize array query params as repeated keys (`?tag=a&tag=b`), which is what
+  // FastAPI's `list[str]` query fields expect. Axios's default (`tag[]=a&tag[]=b`)
+  // is silently dropped server-side.
+  paramsSerializer: { indexes: null },
 });
 
 apiClient.interceptors.response.use(

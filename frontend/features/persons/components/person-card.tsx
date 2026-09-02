@@ -2,7 +2,6 @@
 
 import { Badge } from "@/components/ui/badge";
 import { facesService } from "@/features/faces/api";
-import { getFaceCropStyle } from "@/features/faces/components/face-crop";
 import { usePersonRepresentativeFaces } from "@/features/persons/hooks/use-persons";
 import { Person } from "@/features/persons/types";
 import { BadgeCheck, UserRound } from "lucide-react";
@@ -15,20 +14,25 @@ interface PersonCardProps {
 export function PersonCard({ person }: PersonCardProps) {
   const { data: faces } = usePersonRepresentativeFaces(person.id);
   const primaryFace = faces?.[0];
-  const cropStyle = primaryFace
-    ? getFaceCropStyle(primaryFace.boundingBox, facesService.getFaceViewUrl(primaryFace.id))
-    : undefined;
 
   return (
     <Link
       href={`/persons/${person.id}`}
       className="group relative rounded-xl overflow-hidden bg-muted/40 border border-border/50 transition-all duration-300 hover:border-primary/40 hover:bg-muted/60 p-4 flex flex-col items-center gap-3 h-full"
     >
-      <div
-        className="h-16 w-16 rounded-full shrink-0 overflow-hidden bg-primary/10 bg-cover bg-center text-primary text-lg font-black flex items-center justify-center group-hover:ring-2 group-hover:ring-primary/40 transition-all"
-        style={cropStyle}
-      >
-        {!primaryFace && (person.name ? person.name[0].toUpperCase() : <UserRound size={24} />)}
+      <div className="h-16 w-16 rounded-full shrink-0 overflow-hidden bg-primary/10 text-primary text-lg font-black flex items-center justify-center group-hover:ring-2 group-hover:ring-primary/40 transition-all">
+        {primaryFace ? (
+          // eslint-disable-next-line @next/next/no-img-element -- tiny same-origin avatar, server already crops/downscales
+          <img
+            src={facesService.getFaceThumbnailUrl(primaryFace.id)}
+            alt=""
+            className="h-full w-full object-cover"
+          />
+        ) : person.name ? (
+          person.name[0].toUpperCase()
+        ) : (
+          <UserRound size={24} />
+        )}
       </div>
 
       <div className="flex flex-col items-center gap-1.5 min-w-0 w-full">

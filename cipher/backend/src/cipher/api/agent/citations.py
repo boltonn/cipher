@@ -6,12 +6,12 @@ shape camelCase to match the frontend's `ChatCitation` type.
 """
 
 from cipher.datastores.elasticsearch.repositories.text_chunk import FileSearchResult, ScoredTextChunk
-from cipher.schemas.chat import ChatCitation
-from cipher.schemas.dataset import Dataset
-from cipher.schemas.document import ScoredDocumentTextChunk
-from cipher.schemas.entity import Entity
-from cipher.schemas.mention import Mention
-from cipher.schemas.person import Person
+from cipher.schemas.content.document import ScoredDocumentTextChunk
+from cipher.schemas.graph.entity import Entity
+from cipher.schemas.graph.mention import Mention
+from cipher.schemas.identity.person import Person
+from cipher.schemas.ingestion.dataset import Dataset
+from cipher.schemas.interaction.chat import ChatCitation
 
 
 def _dump(citation: ChatCitation) -> dict:

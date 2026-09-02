@@ -15,7 +15,7 @@ from cipher.api.agent.tools import (
     search_semantic,
     search_text,
 )
-from cipher.schemas.ontology import ontology_summary_for_llm
+from cipher.schemas.graph.ontology import ontology_summary_for_llm
 
 INSTRUCTIONS = f"""\
 You help an analyst explore a triaged set of documents, emails, people, and the \

@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 
-from cipher.schemas.dataset import Dataset
-from cipher.schemas.user import User, UserCreate, UserDatasetAccess, UserUpdate
+from cipher.schemas.ingestion.dataset import Dataset
+from cipher.schemas.ingestion.user import User, UserCreate, UserDatasetAccess, UserUpdate
 
 
 class UserRepository(ABC):

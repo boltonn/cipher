@@ -21,8 +21,8 @@ from loguru import logger
 from msg_parser.msg_parser import Message
 from olefile import OleFileIO
 
-from cipher.schemas.email import EmailAddress, EmailBase
-from cipher.schemas.file import FileBase
+from cipher.schemas.content.email import EmailAddress, EmailBase
+from cipher.schemas.ingestion.file import FileBase
 from pyparse.parsers.email.eml import EmlParser
 from pyparse.utils.io import safe_open
 

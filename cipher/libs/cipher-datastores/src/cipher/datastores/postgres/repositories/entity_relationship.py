@@ -1,12 +1,16 @@
-from sqlalchemy import asc, delete, desc, func, or_, select
+from sqlalchemy import and_, asc, delete, desc, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cipher.datastores.base.graph import GraphRepository
 from cipher.datastores.postgres.tables.entity import EntityTable
 from cipher.datastores.postgres.tables.entity_relationship import EntityRelationshipTable
-from cipher.schemas.entity import EntitySummary
-from cipher.schemas.entity_relationship import (
+from cipher.datastores.postgres.tables.face import FaceTable
+from cipher.datastores.postgres.tables.face_match import FaceMatchTable
+from cipher.datastores.postgres.tables.mention import MentionTable
+from cipher.schemas._base.review import ReviewStatus
+from cipher.schemas.graph.entity import EntitySummary
+from cipher.schemas.graph.entity_relationship import (
     EntityRelationship,
     EntityRelationshipCreate,
     GraphResponse,
@@ -14,9 +18,16 @@ from cipher.schemas.entity_relationship import (
     RelationshipSearchParameters,
     TraversalDirection,
 )
-from cipher.schemas.ontology import LOW_SIGNAL_RELATIONSHIPS, RelationshipType
+from cipher.schemas.graph.ontology import (
+    LOW_SIGNAL_RELATIONSHIPS,
+    EntityType,
+    RelationshipSource,
+    RelationshipType,
+)
 
 _MAX_DEPTH = 3
+_ACTOR_TYPES = (EntityType.PERSON, EntityType.ORGANIZATION)
+_EDGE_INSERT_CHUNK = 2000
 
 
 class PostgresGraphRepository(GraphRepository):
@@ -54,9 +65,21 @@ class PostgresGraphRepository(GraphRepository):
         await self.session.commit()
         return out
 
-    async def list_relationships(
-        self, request: RelationshipSearchParameters
-    ) -> PaginatedRelationshipsResponse:
+    async def delete_relationship(
+        self, *, src_entity_id: str, dst_entity_id: str, relationship_type: RelationshipType
+    ) -> bool:
+        """Delete a confirmed edge identified by its (src, dst, type) triple."""
+        result = await self.session.execute(
+            delete(EntityRelationshipTable).where(
+                EntityRelationshipTable.src_entity_id == src_entity_id,
+                EntityRelationshipTable.dst_entity_id == dst_entity_id,
+                EntityRelationshipTable.relationship_type == relationship_type,
+            )
+        )
+        await self.session.commit()
+        return bool(result.rowcount)
+
+    async def list_relationships(self, request: RelationshipSearchParameters) -> PaginatedRelationshipsResponse:
         """List confirmed edges, optionally filtered to those touching one entity."""
         where = []
         if request.dataset_id:
@@ -76,9 +99,7 @@ class PostgresGraphRepository(GraphRepository):
                     )
                 )
 
-        count_result = await self.session.execute(
-            select(func.count(EntityRelationshipTable.id)).where(*where)
-        )
+        count_result = await self.session.execute(select(func.count(EntityRelationshipTable.id)).where(*where))
         total = count_result.scalar_one()
 
         stmt = (
@@ -90,9 +111,7 @@ class PostgresGraphRepository(GraphRepository):
         )
         result = await self.session.execute(stmt)
         data = [EntityRelationship.model_validate(r) for r in result.scalars().all()]
-        return PaginatedRelationshipsResponse(
-            total=total, page=request.page, limit=request.limit, data=data
-        )
+        return PaginatedRelationshipsResponse(total=total, page=request.page, limit=request.limit, data=data)
 
     async def neighbors(
         self,
@@ -120,6 +139,7 @@ class PostgresGraphRepository(GraphRepository):
         relationship_types: list[RelationshipType] | None = None,
         direction: TraversalDirection = TraversalDirection.BOTH,
         limit: int = 100,
+        min_weight: float = 0,
     ) -> GraphResponse:
         """Return the bounded subgraph reachable from a starting node."""
         depth = max(1, min(max_depth, _MAX_DEPTH))
@@ -141,6 +161,7 @@ class PostgresGraphRepository(GraphRepository):
                 direction=direction,
                 limit=limit - len(all_edges),
                 excluded=excluded,
+                min_weight=min_weight,
             )
             next_frontier: set[str] = set()
             for e in edges:
@@ -164,6 +185,7 @@ class PostgresGraphRepository(GraphRepository):
         direction: TraversalDirection,
         limit: int,
         excluded: frozenset[RelationshipType] = frozenset(),
+        min_weight: float = 0,
     ) -> list[EntityRelationship]:
         ids = list(frontier)
         where = []
@@ -179,14 +201,24 @@ class PostgresGraphRepository(GraphRepository):
                 )
             )
         if relationship_types:
-            where.append(EntityRelationshipTable.relationship_type.in_([t.value for t in relationship_types]))
+            where.append(EntityRelationshipTable.relationship_type.in_(list(relationship_types)))
         if excluded:
-            where.append(EntityRelationshipTable.relationship_type.notin_([t.value for t in excluded]))
+            where.append(EntityRelationshipTable.relationship_type.notin_(list(excluded)))
+        if min_weight > 0:
+            where.append(
+                or_(
+                    EntityRelationshipTable.weight.is_(None),
+                    EntityRelationshipTable.weight >= min_weight,
+                )
+            )
 
         stmt = (
             select(EntityRelationshipTable)
             .where(*where)
-            .order_by(asc(EntityRelationshipTable.date_created))
+            .order_by(
+                desc(func.coalesce(EntityRelationshipTable.weight, 0.0)),
+                asc(EntityRelationshipTable.date_created),
+            )
             .limit(max(limit, 0))
         )
         result = await self.session.execute(stmt)
@@ -195,9 +227,7 @@ class PostgresGraphRepository(GraphRepository):
     async def _nodes(self, entity_ids: set[str]) -> list[EntitySummary]:
         if not entity_ids:
             return []
-        result = await self.session.execute(
-            select(EntityTable).where(EntityTable.id.in_(list(entity_ids)))
-        )
+        result = await self.session.execute(select(EntityTable).where(EntityTable.id.in_(list(entity_ids))))
         return [EntitySummary.model_validate(r) for r in result.scalars().all()]
 
     async def delete_by_dataset_id(self, dataset_id: str) -> int:
@@ -207,3 +237,278 @@ class PostgresGraphRepository(GraphRepository):
         )
         await self.session.commit()
         return result.rowcount or 0
+
+    async def link_header_selectors(self, dataset_id: str) -> int:
+        """Upsert `has_selector` edges wherever a resolved actor and a resolved selector share a header field.
+
+        Idempotent (`ON CONFLICT DO NOTHING` on the edge triple). Called by the
+        `resolve-entities` sweep and after a Review-queue name resolution, so the
+        person/org a header name resolves to is linked to the address it sat next
+        to. Returns the number of distinct actor->selector pairs considered.
+        """
+        actor = MentionTable.__table__.alias("a")
+        selector = MentionTable.__table__.alias("s")
+        pairs = (
+            select(actor.c.entity_id.label("actor_id"), selector.c.entity_id.label("selector_id"))
+            .select_from(
+                actor.join(
+                    selector,
+                    and_(
+                        selector.c.file_id == actor.c.file_id,
+                        selector.c.field_path == actor.c.field_path,
+                        selector.c.dataset_id == actor.c.dataset_id,
+                    ),
+                ).join(EntityTable, EntityTable.id == actor.c.entity_id)
+            )
+            .where(
+                actor.c.dataset_id == dataset_id,
+                actor.c.entity_attribute == "name",
+                actor.c.entity_id.is_not(None),
+                actor.c.field_path.is_not(None),
+                EntityTable.entity_type.in_(_ACTOR_TYPES),
+                selector.c.entity_type == EntityType.SELECTOR,
+                selector.c.entity_id.is_not(None),
+            )
+            .distinct()
+        )
+        rows = (await self.session.execute(pairs)).all()
+        if not rows:
+            return 0
+
+        values = [
+            {
+                "dataset_id": dataset_id,
+                "src_entity_id": r.actor_id,
+                "dst_entity_id": r.selector_id,
+                "relationship_type": RelationshipType.HAS_SELECTOR,
+                "directed": True,
+                "source": RelationshipSource.SELECTOR_INFERENCE,
+                "attributes": {},
+            }
+            for r in rows
+        ]
+        for start in range(0, len(values), _EDGE_INSERT_CHUNK):
+            insert_stmt = pg_insert(EntityRelationshipTable).values(values[start : start + _EDGE_INSERT_CHUNK])
+            await self.session.execute(insert_stmt.on_conflict_do_nothing(constraint="uq_entity_relationship_triple"))
+        await self.session.commit()
+        return len(rows)
+
+    # --- Face co-occurrence (`appears_in_photo_with`) --------------------------
+    #
+    # An undirected person<->person edge for every pair of people detected in the
+    # same image. "Detected as" is deliberately loose: a face counts towards a
+    # person if it is assigned to them (`face.person_id`) OR merely has a pending
+    # `face_match` to them, so an edge appears before either identification is
+    # confirmed. The edge set is *derived* from current face / face_match state,
+    # so it self-heals: confirming a match keeps the person in the image's set
+    # (now via `person_id`); rejecting one drops them, which prunes that photo
+    # from the pair's evidence and deletes the edge once nothing supports it.
+    #
+    # `dataset_id` is NULL on these edges -- a pair can share photos across
+    # datasets and the person bridge nodes are themselves dataset-agnostic.
+
+    _COOCCURRENCE_VERIFIED = "verified"
+    _COOCCURRENCE_POTENTIAL = "potential"
+
+    async def _cooccurrence_persons_by_image(self, image_ids: list[str] | None) -> dict[str, dict[str, bool]]:
+        """Map `image_id -> {person_id: an_assigned_face_exists}` for identified faces.
+
+        A person is keyed under an image if a face there is assigned to them or
+        has a pending `face_match` to them; the bool is True once some face in
+        that image is actually assigned to them (assignment outranks a pending
+        match when both point at the same person).
+        """
+        pending = (
+            select(FaceMatchTable.face_id, FaceMatchTable.person_id)
+            .where(FaceMatchTable.status == ReviewStatus.PENDING)
+            .subquery()
+        )
+        person_id = func.coalesce(FaceTable.person_id, pending.c.person_id)
+        stmt = (
+            select(
+                FaceTable.image_id,
+                person_id.label("person_id"),
+                FaceTable.person_id.is_not(None).label("assigned"),
+            )
+            .select_from(FaceTable.__table__.outerjoin(pending, pending.c.face_id == FaceTable.id))
+            .where(person_id.is_not(None))
+        )
+        if image_ids is not None:
+            if not image_ids:
+                return {}
+            stmt = stmt.where(FaceTable.image_id.in_(image_ids))
+
+        by_image: dict[str, dict[str, bool]] = {}
+        for image_id, pid, assigned in (await self.session.execute(stmt)).all():
+            bucket = by_image.setdefault(image_id, {})
+            bucket[pid] = bucket.get(pid, False) or bool(assigned)
+        return by_image
+
+    @classmethod
+    def _cooccurrence_pairs(
+        cls, persons_by_image: dict[str, dict[str, bool]]
+    ) -> dict[tuple[str, str], dict[str, str]]:
+        """Canonical `(src < dst)` person pair -> `{image_id: 'verified' | 'potential'}`."""
+        pairs: dict[tuple[str, str], dict[str, str]] = {}
+        for image_id, persons in persons_by_image.items():
+            ordered = sorted(persons)
+            for i, src in enumerate(ordered):
+                for dst in ordered[i + 1 :]:
+                    basis = (
+                        cls._COOCCURRENCE_VERIFIED
+                        if persons[src] and persons[dst]
+                        else cls._COOCCURRENCE_POTENTIAL
+                    )
+                    pairs.setdefault((src, dst), {})[image_id] = basis
+        return pairs
+
+    @classmethod
+    def _cooccurrence_attributes(cls, evidence: dict[str, str]) -> dict:
+        items = sorted(
+            ({"image_id": image_id, "basis": basis} for image_id, basis in evidence.items()),
+            key=lambda item: item["image_id"],
+        )
+        verified = sum(1 for item in items if item["basis"] == cls._COOCCURRENCE_VERIFIED)
+        return {"evidence": items, "photo_count": len(items), "verified_photo_count": verified}
+
+    async def _known_entity_ids(self, ids: set[str]) -> set[str]:
+        if not ids:
+            return set()
+        rows = await self.session.execute(select(EntityTable.id).where(EntityTable.id.in_(list(ids))))
+        return set(rows.scalars().all())
+
+    async def _load_cooccurrence_edges(self) -> dict[tuple[str, str], EntityRelationshipTable]:
+        rows = await self.session.execute(
+            select(EntityRelationshipTable).where(
+                EntityRelationshipTable.relationship_type == RelationshipType.APPEARS_IN_PHOTO_WITH
+            )
+        )
+        return {(row.src_entity_id, row.dst_entity_id): row for row in rows.scalars().all()}
+
+    async def _write_cooccurrence_edge(self, src: str, dst: str, evidence: dict[str, str]) -> None:
+        attributes = self._cooccurrence_attributes(evidence)
+        insert_stmt = pg_insert(EntityRelationshipTable).values(
+            dataset_id=None,
+            src_entity_id=src,
+            dst_entity_id=dst,
+            relationship_type=RelationshipType.APPEARS_IN_PHOTO_WITH,
+            directed=False,
+            weight=float(attributes["photo_count"]),
+            source=RelationshipSource.FACE_COOCCURRENCE,
+            attributes=attributes,
+        )
+        await self.session.execute(
+            insert_stmt.on_conflict_do_update(
+                constraint="uq_entity_relationship_triple",
+                set_={
+                    "weight": insert_stmt.excluded.weight,
+                    "source": insert_stmt.excluded.source,
+                    "attributes": insert_stmt.excluded.attributes,
+                },
+            )
+        )
+
+    async def _drop_cooccurrence_edge(self, src: str, dst: str) -> None:
+        await self.session.execute(
+            delete(EntityRelationshipTable).where(
+                EntityRelationshipTable.src_entity_id == src,
+                EntityRelationshipTable.dst_entity_id == dst,
+                EntityRelationshipTable.relationship_type == RelationshipType.APPEARS_IN_PHOTO_WITH,
+            )
+        )
+
+    async def rebuild_face_cooccurrence(self) -> dict[str, int]:
+        """Rebuild every `appears_in_photo_with` edge from current face state.
+
+        Idempotent full reconciliation: derive the desired person<->person pairs
+        from all faces + assignments + pending `face_match` rows, upsert the
+        survivors, and delete edges no longer supported. Pairs whose person has
+        no `entity` bridge node yet are skipped (and counted).
+        """
+        persons_by_image = await self._cooccurrence_persons_by_image(None)
+        desired = self._cooccurrence_pairs(persons_by_image)
+
+        known = await self._known_entity_ids({person_id for pair in desired for person_id in pair})
+        resolved = {pair: evidence for pair, evidence in desired.items() if pair[0] in known and pair[1] in known}
+
+        existing = await self._load_cooccurrence_edges()
+        for (src, dst), evidence in resolved.items():
+            await self._write_cooccurrence_edge(src, dst, evidence)
+        removed = 0
+        for src, dst in existing.keys() - resolved.keys():
+            await self._drop_cooccurrence_edge(src, dst)
+            removed += 1
+
+        await self.session.commit()
+        return {
+            "edges_written": len(resolved),
+            "edges_removed": removed,
+            "images_considered": len(persons_by_image),
+            "pairs_skipped_no_entity": len(desired) - len(resolved),
+        }
+
+    async def recompute_face_cooccurrence_for_faces(self, face_ids: list[str]) -> dict[str, int]:
+        """Re-derive `appears_in_photo_with` edges for the images these faces sit in.
+
+        Same reconciliation as `rebuild_face_cooccurrence`, scoped to the touched
+        images: each affected edge keeps its evidence from other images and only
+        has these images' contribution rewritten, so confirming or rejecting one
+        match immediately adds or prunes the right photo -- and deletes the edge
+        when nothing supports it any more. Safe to call inline after a face
+        assignment or a match review.
+        """
+        face_ids = [face_id for face_id in dict.fromkeys(face_ids) if face_id]
+        if not face_ids:
+            return {"edges_written": 0, "edges_removed": 0, "images_touched": 0}
+
+        image_rows = await self.session.execute(
+            select(FaceTable.image_id).where(FaceTable.id.in_(face_ids)).distinct()
+        )
+        image_ids = list(image_rows.scalars().all())
+        if not image_ids:
+            return {"edges_written": 0, "edges_removed": 0, "images_touched": 0}
+        touched = set(image_ids)
+
+        desired_local = self._cooccurrence_pairs(await self._cooccurrence_persons_by_image(image_ids))
+        existing = await self._load_cooccurrence_edges()
+
+        affected: set[tuple[str, str]] = set(desired_local)
+        for pair, row in existing.items():
+            if touched & {item["image_id"] for item in row.attributes.get("evidence", [])}:
+                affected.add(pair)
+
+        known = await self._known_entity_ids({person_id for pair in affected for person_id in pair})
+
+        written = removed = 0
+        for pair in affected:
+            row = existing.get(pair)
+            merged: dict[str, str] = {}
+            if row is not None:
+                merged = {
+                    item["image_id"]: item["basis"]
+                    for item in row.attributes.get("evidence", [])
+                    if item["image_id"] not in touched
+                }
+            merged.update(desired_local.get(pair, {}))
+
+            if merged and pair[0] in known and pair[1] in known:
+                await self._write_cooccurrence_edge(pair[0], pair[1], merged)
+                written += 1
+            elif row is not None:
+                await self._drop_cooccurrence_edge(pair[0], pair[1])
+                removed += 1
+
+        await self.session.commit()
+        return {"edges_written": written, "edges_removed": removed, "images_touched": len(touched)}
+
+    async def count_face_cooccurrence(self) -> dict[str, float]:
+        """`(edge count, summed weight)` for `appears_in_photo_with` -- for the stats CLI."""
+        row = (
+            await self.session.execute(
+                select(
+                    func.count(EntityRelationshipTable.id),
+                    func.coalesce(func.sum(EntityRelationshipTable.weight), 0.0),
+                ).where(EntityRelationshipTable.relationship_type == RelationshipType.APPEARS_IN_PHOTO_WITH)
+            )
+        ).one()
+        return {"edges": float(row[0]), "photo_links": float(row[1])}

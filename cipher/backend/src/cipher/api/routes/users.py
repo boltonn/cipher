@@ -2,9 +2,9 @@ from fastapi import APIRouter, HTTPException, status
 
 from cipher.api.deps.authentication import CurrentUserDep
 from cipher.api.deps.postgres import UserDatastoreDep
-from cipher.schemas.dataset import Dataset
-from cipher.schemas.exceptions import EntityAlreadyExistsError, EntityNotFoundError
-from cipher.schemas.user import User, UserCreate, UserUpdate
+from cipher.schemas._base.exceptions import EntityAlreadyExistsError, EntityNotFoundError
+from cipher.schemas.ingestion.dataset import Dataset
+from cipher.schemas.ingestion.user import User, UserCreate, UserUpdate
 
 router = APIRouter(
     prefix="/users",

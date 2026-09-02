@@ -18,7 +18,7 @@ from clir.schemas import ConversationChunkTokenized
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from transformers import AutoTokenizer, PreTrainedTokenizerBase
 
-from cipher.schemas.message import MessageBase
+from cipher.schemas.content.message import MessageBase
 
 
 @lru_cache(maxsize=1)

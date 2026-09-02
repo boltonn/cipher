@@ -30,9 +30,9 @@ from cipher.datastores.postgres.repositories import (
     PostgresFaceRepository,
     PostgresImageRepository,
 )
-from cipher.schemas.enrichment import EnrichableType, EnrichmentType
-from cipher.schemas.face import face_annotation_to_face_create
-from cipher.schemas.image import ImageCreate
+from cipher.schemas.content.image import ImageCreate
+from cipher.schemas.identity.face import face_annotation_to_face_create
+from cipher.schemas.ingestion.enrichment import EnrichableType, EnrichmentType
 from cipher.utils.io import fetch_bytes_from_uri
 
 if TYPE_CHECKING:
@@ -126,6 +126,11 @@ async def _consumer(
     enrichment_repo = PostgresEnrichmentRepository(session=session)
     face_repo = PostgresFaceRepository(session=session)
 
+    # Faces are keyed by content hash (image_id == sha256), not by file. Track
+    # which images this run has already detected so N pending files sharing one
+    # content hash don't each append a full set of faces to the same image row.
+    seen_image_ids: set[str] = set()
+
     total = 0
     while True:
         batch_data = await queue.get()
@@ -141,6 +146,12 @@ async def _consumer(
             file_id = item.resource["id"]
             try:
                 image = await _get_or_create_image(image_repo, file_id, item.resource["sha256"], img)
+                if image.id in seen_image_ids or await face_repo.image_has_faces(image.id):
+                    # Content already detected (this run or a prior one) -- the
+                    # faces are shared, so this file is done with nothing to write.
+                    completed.append(item.enrichment.id)
+                    progress.update(1)
+                    continue
                 annotations = await model.infer_async(img)
                 new_faces.extend(
                     face_annotation_to_face_create(
@@ -150,6 +161,7 @@ async def _consumer(
                     )
                     for annotation in annotations
                 )
+                seen_image_ids.add(image.id)
                 completed.append(item.enrichment.id)
             except Exception:
                 logger.exception(f"Face detection failed for file {file_id}")

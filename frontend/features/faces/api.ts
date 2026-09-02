@@ -20,6 +20,9 @@ export const facesService = {
   // Get uri of the source image a face was detected in
   getFaceViewUrl: (id: string) => `${baseURL}${facesBaseURL}/${id}/view`,
 
+  // Small cached crop of just the face -- use for grids/cards, not the full view
+  getFaceThumbnailUrl: (id: string) => `${baseURL}${facesBaseURL}/${id}/thumbnail`,
+
   // POST /faces - filter/paginate
   search: (params: BaseFaceSearchParameters) =>
     apiClient

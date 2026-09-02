@@ -3,7 +3,7 @@ from io import BytesIO
 from loguru import logger
 from PIL import Image, ImageOps
 
-from cipher.schemas.face import FaceAnnotation
+from cipher.schemas.identity.face import FaceAnnotation
 from cipher.utils.fastapi.health import ServiceHealthStatus, service_health
 from cipher.utils.fastapi.info import ServiceInfo, get_package_info
 from cipher.utils.fastapi.middleware import (

@@ -1,0 +1,187 @@
+"""A mention: evidence that some entity has a particular attribute value.
+
+A mention anchors into exactly one piece of evidence -- a character span in
+`ExtractedText.content`, a box on an image, or a structured field -- and
+asserts `entity.<entity_attribute> = <normalized_value>` (seen as `surface_text`)
+for an entity of `entity_type`. Examples: a phone number is a `selector` whose
+`value` is the E.164 string; a name in text is a `person` whose `name` is the
+folded form; an address is a `location` whose `address` is the cleaned string.
+
+`entity_id` links the mention to a specific entity once it is resolved -- which
+may never happen. A facility named only in prose, with no coordinates, stays an
+unresolved `location` mention until a geolocation pass or an analyst creates the
+entity (see `ontology.ResolutionPolicy`).
+"""
+
+from datetime import datetime
+from enum import StrEnum
+
+from pydantic import Field
+
+from cipher.schemas._base.base import BaseModel
+from cipher.schemas._base.common import PageParams, PaginatedResponse
+from cipher.schemas.graph.ontology import EntityType, SelectorKind
+
+
+class MentionedType(StrEnum):
+    """What kind of evidence a mention is anchored in."""
+
+    EXTRACTED_TEXT = "extracted_text"
+    IMAGE = "image"
+    STRUCTURED_FIELD = "structured_field"
+
+
+class MentionSortField(StrEnum):
+    DATE_CREATED = "date_created"
+
+
+class MentionBase(BaseModel):
+    """Base mention schema."""
+
+    dataset_id: str
+    entity_id: str | None = Field(default=None, description="Resolved entity; null while unresolved")
+    mentioned_type: MentionedType
+    mentioned_id: str = Field(description="id of the extracted_text / image / contact / device row")
+    file_id: str | None = Field(default=None, description="Denormalized owning file, when applicable")
+
+    surface_text: str = Field(description="The literal text of the mention span")
+    entity_type: EntityType | None = Field(default=None, description="Predicted entity type")
+    entity_attribute: str | None = Field(
+        default=None,
+        description="Which attribute of the entity this asserts, e.g. 'name', 'alias', 'address', 'value'",
+    )
+    selector_kind: SelectorKind | None = Field(
+        default=None, description="Selector `.type` (phone/email/...) when entity_type is selector"
+    )
+    normalized_value: str | None = Field(
+        default=None,
+        description="Canonical value of the asserted attribute (E.164 phone, folded name, cleaned address); the resolution blocking key",
+    )
+
+    start_offset: int | None = Field(default=None, ge=0, description="Char offset into ExtractedText.content")
+    end_offset: int | None = Field(default=None, ge=0, description="Char offset into ExtractedText.content")
+    bounding_box: dict | None = Field(default=None, description="Normalized box for image mentions")
+    field_path: str | None = Field(default=None, description="Dotted path for structured_field mentions")
+
+    context: str | None = Field(default=None, description="Windowed snippet around the span")
+    extractor: str | None = Field(default=None, description="Which extractor produced this (selectors, ner, ...)")
+    extraction_model: str | None = Field(default=None, description="Model id/version, if any")
+    extraction_confidence: float | None = Field(default=None, ge=0, le=1)
+
+
+class MentionCreate(MentionBase):
+    """Mention creation schema."""
+
+    pass
+
+
+class MentionUpdate(BaseModel):
+    """Partial update for an existing mention (analyst relabel/correction)."""
+
+    entity_id: str | None = Field(default=None, description="Re-point the mention at this entity")
+    entity_type: EntityType | None = Field(default=None, description="Corrected predicted type")
+    entity_attribute: str | None = Field(default=None, description="Corrected attribute, e.g. name -> alias")
+    selector_kind: SelectorKind | None = Field(default=None)
+    normalized_value: str | None = Field(default=None)
+    surface_text: str | None = Field(default=None)
+    context: str | None = Field(default=None)
+
+
+class MentionResolve(BaseModel):
+    """Resolve an unresolved mention: attach to an existing entity or create a new one.
+
+    Exactly one of `entity_id` or `new_entity` must be provided.
+    """
+
+    entity_id: str | None = Field(default=None, description="Attach the mention to this entity")
+    new_entity: dict | None = Field(
+        default=None,
+        description="An EntityCreate payload (camelCase); creates the entity then attaches the mention",
+    )
+    new_entity_detail: dict | None = Field(
+        default=None, description="Optional type-specific detail row for the new entity (camelCase)"
+    )
+    reviewed_by: str = Field(description="User id/name performing the resolution")
+
+
+class Mention(MentionBase):
+    """Mention model for API responses."""
+
+    id: str
+    date_created: datetime
+    date_updated: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class MentionSearchParameters(PageParams):
+    """Parameters for listing/searching mentions."""
+
+    entity_id: str | None = Field(default=None)
+    file_id: str | None = Field(default=None)
+    dataset_id: str | None = Field(default=None)
+    mentioned_type: MentionedType | None = Field(default=None)
+    entity_type: EntityType | None = Field(default=None)
+    entity_attribute: str | None = Field(default=None, description="e.g. 'name', 'address', 'value'")
+    selector_kind: SelectorKind | None = Field(default=None, description="Filter selector mentions by kind")
+    normalized_value: str | None = Field(
+        default=None, description="Exact match on the resolution blocking key (E.164 phone, folded name, ...)"
+    )
+    resolved: bool | None = Field(default=None, description="True = has entity_id, False = unresolved")
+    # A per-file mention list (extracted-text view) asks for every span at once,
+    # which can run into the hundreds -- hence a higher cap than the usual 200.
+    limit: int = Field(default=25, ge=1, le=500)
+    sort_by: MentionSortField = Field(default=MentionSortField.DATE_CREATED)
+
+
+class PaginatedMentionsResponse(PaginatedResponse):
+    """Paginated response for mentions."""
+
+    data: list[Mention] = Field(description="List of mentions")
+
+
+class UnresolvedNameGroup(BaseModel):
+    """One distinct unresolved `name` value in the review queue, with its footprint."""
+
+    normalized_value: str = Field(description="Folded name -- the resolution blocking key")
+    surface: str = Field(description="Most common surface form seen for this name")
+    mention_count: int = Field(description="Unresolved name mentions sharing this value")
+    file_count: int = Field(description="Distinct files those mentions appear in")
+    sample_context: str | None = Field(default=None, description="One context snippet, for display")
+    suggested_type: EntityType | None = Field(
+        default=None, description="Heuristic person/organization guess; null = undecided"
+    )
+
+
+class PaginatedUnresolvedNamesResponse(PaginatedResponse):
+    """Paginated distinct-name view of the review queue."""
+
+    data: list[UnresolvedNameGroup] = Field(description="Name groups, noisiest first")
+
+
+class ResolveNameGroupRequest(BaseModel):
+    """Resolve every unresolved `name` mention of one value at once."""
+
+    dataset_id: str
+    normalized_value: str
+    entity_type: EntityType = Field(default=EntityType.PERSON, description="Kind of entity to attach to / create")
+    entity_id: str | None = Field(default=None, description="Attach to this existing entity")
+    display_name: str | None = Field(
+        default=None, description="Display name for a new entity (defaults to the surface form)"
+    )
+    reviewed_by: str | None = Field(default=None)
+
+
+class ResolveNameGroupResult(BaseModel):
+    """Outcome of resolving a name group."""
+
+    entity_id: str
+    mentions_attached: int
+    has_selector_edges: int = Field(description="has_selector edges present after linking")
+
+
+class DismissNameGroupRequest(BaseModel):
+    """Discard every unresolved `name` mention of one value (not a real entity)."""
+
+    dataset_id: str
+    normalized_value: str

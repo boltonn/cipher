@@ -9,8 +9,8 @@ from tqdm import tqdm
 
 from cipher.datastores.elasticsearch.mappings import AnalyzerName, build_messages_mapping
 from cipher.datastores.elasticsearch.utils import PaginatedResponse, paginate
-from cipher.schemas.common import ModelTagType
-from cipher.schemas.message import (
+from cipher.schemas._base.common import ModelTagType
+from cipher.schemas.content.message import (
     TEXT_EMBEDDING_DIMENSION,
     ChunkSortField,
     ConversationChunk,

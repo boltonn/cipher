@@ -7,12 +7,12 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Pagination } from "@/components/pagination";
 import { cn } from "@/lib/utils";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowDown, ArrowUp, ListFilter, Settings2, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { DataTableColumnHeader, isFilterActive } from "./column-header";
-import { DataTablePaginationFooter } from "./pagination-footer";
 import type {
   DataTableColumn,
   DataTableFilters,
@@ -265,12 +265,15 @@ export function DataTable<T>({
       )}
 
       <div className="px-3">
-        <DataTablePaginationFooter
-          page={page}
-          limit={limit}
-          total={total}
+        <Pagination
+          variant="compact"
+          showRange
+          currentPage={page}
+          totalItems={total}
+          itemsPerPage={limit}
+          pageSize={limit}
           onPageChange={onPageChange}
-          onLimitChange={onLimitChange}
+          onPageSizeChange={onLimitChange}
         />
       </div>
     </div>

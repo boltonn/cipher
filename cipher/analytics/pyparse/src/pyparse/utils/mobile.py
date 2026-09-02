@@ -1,7 +1,7 @@
 import phonenumbers
 from phonenumbers import NumberParseException
 
-from cipher.schemas.common import PhoneNumberType
+from cipher.schemas._base.common import PhoneNumberType
 
 
 def normalize_phone_number(

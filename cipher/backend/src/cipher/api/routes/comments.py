@@ -4,8 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from cipher.api.deps.authentication import CurrentUserDep
 from cipher.api.deps.postgres import CommentDatastoreDep
-from cipher.schemas.base import BaseModel
-from cipher.schemas.comment import (
+from cipher.schemas._base.base import BaseModel
+from cipher.schemas.interaction.comment import (
     Comment,
     CommentableType,
     CommentBase,

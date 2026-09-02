@@ -80,6 +80,12 @@ function ScrollArea({
         data-slot="scroll-area-viewport"
         className={cn(
           "size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1",
+          // Radix wraps children in a `display:table; min-width:100%` div, which
+          // shrink-wraps to the widest non-wrapping descendant instead of the
+          // viewport -- long unbreakable strings then blow the width out and get
+          // clipped by `overflow-x:hidden`, defeating child `truncate`/`break-*`.
+          // Force a plain block box unless horizontal scrolling is wanted.
+          orientation === "vertical" && "[&>div]:block! [&>div]:min-w-0!",
           scrollFade &&
             "[mask-image:linear-gradient(to_bottom,transparent,black_12px,black_calc(100%-12px),transparent)]",
           viewportClassName

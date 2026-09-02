@@ -1,7 +1,6 @@
 "use client";
 
 import { DatePicker } from "@/components/date-picker";
-import { TagsInput } from "@/components/tags-input";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,43 +11,37 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { SELECTOR_KINDS, type EntityType, type SelectorKind } from "@/features/entities/types";
+import {
+  SELECTOR_KINDS,
+  type EntityType,
+  type SelectorKind,
+} from "@/features/entities/types";
 import { CalendarRange, RotateCcw, X } from "lucide-react";
 import { useState } from "react";
 
 export interface EntityFilters {
   entityType?: EntityType;
   selectorKind?: SelectorKind;
-  isVerified?: boolean;
-  tags: string[];
   country?: string;
   orgType?: string;
   dobFrom?: string;
   dobTo?: string;
-  /** exact selector value lookup -- switches the table into single-lookup mode */
-  selectorValue?: string;
 }
 
-export const EMPTY_ENTITY_FILTERS: EntityFilters = { tags: [] };
+export const EMPTY_ENTITY_FILTERS: EntityFilters = {};
 
 const ALL = "__all__";
 
 /** Filters that only make sense once an entity type is chosen. */
 function hasTypeScopedFilter(f: EntityFilters) {
   return (
-    !!f.selectorKind ||
-    !!f.selectorValue ||
-    !!f.country ||
-    !!f.orgType ||
-    !!f.dobFrom ||
-    !!f.dobTo
+    !!f.selectorKind || !!f.country || !!f.orgType || !!f.dobFrom || !!f.dobTo
   );
 }
 
 /** Any refinement beyond the bare entity-type scope. */
 export function entityRefinementsActive(f: EntityFilters) {
-  return f.isVerified != null || f.tags.length > 0 || hasTypeScopedFilter(f);
+  return hasTypeScopedFilter(f);
 }
 
 export function entityFiltersActive(f: EntityFilters) {
@@ -58,51 +51,52 @@ export function entityFiltersActive(f: EntityFilters) {
 interface EntitySearchFiltersProps {
   value: EntityFilters;
   onChange: (next: EntityFilters) => void;
+  /** true when a text query is also active; makes the Clear button show */
+  queryActive?: boolean;
+  /** clears filters AND the text query */
+  onClear?: () => void;
 }
 
 /**
  * The row of refinements under the search bar. The entity-type scope lives in
- * the search bar itself; this bar shows the shared filters plus whichever
- * type-specific fields apply, so the controls on screen always match what the
- * chosen type can actually be filtered by.
+ * the search bar itself; this bar shows whichever type-specific fields apply,
+ * so the controls on screen always match what the chosen type can be filtered
+ * by. A "Clear filters" action appears only once a query or filter is set.
  */
-export function EntitySearchFilters({ value, onChange }: EntitySearchFiltersProps) {
-  const set = (patch: Partial<EntityFilters>) => onChange({ ...value, ...patch });
+export function EntitySearchFilters({
+  value,
+  onChange,
+  queryActive,
+  onClear,
+}: EntitySearchFiltersProps) {
+  const set = (patch: Partial<EntityFilters>) =>
+    onChange({ ...value, ...patch });
   const type = value.entityType;
+  const showClear = queryActive || entityFiltersActive(value);
+  const hasTypeControls =
+    type === "person" ||
+    type === "organization" ||
+    type === "location" ||
+    type === "selector";
+
+  if (!showClear && !hasTypeControls) return null;
 
   return (
-    <div className="rounded-xl border border-border/60 bg-muted/20 px-4 py-3">
-      <div className="flex flex-wrap items-end gap-x-3 gap-y-3">
-        <Field label="Tags" className="w-56">
-          <TagsInput value={value.tags} onChange={(tags) => set({ tags })} />
-        </Field>
+    <div className="flex flex-wrap items-end gap-x-3 gap-y-3 rounded-xl border border-border/60 bg-muted/20 px-4 py-3">
+      {type === "person" && (
+        <DobField from={value.dobFrom} to={value.dobTo} onChange={set} />
+      )}
 
-        {type === "person" && (
-          <DobField from={value.dobFrom} to={value.dobTo} onChange={set} />
-        )}
-
-        {type === "organization" && (
-          <>
-            <Field label="Org type" className="w-40">
-              <Input
-                value={value.orgType ?? ""}
-                onChange={(e) => set({ orgType: e.target.value || undefined })}
-                placeholder="e.g. company"
-                className="h-9 bg-muted/40 text-xs"
-              />
-            </Field>
-            <Field label="Country" className="w-28">
-              <Input
-                value={value.country ?? ""}
-                onChange={(e) => set({ country: e.target.value || undefined })}
-                placeholder="US"
-                className="h-9 bg-muted/40 text-xs"
-              />
-            </Field>
-          </>
-        )}
-
-        {type === "location" && (
+      {type === "organization" && (
+        <>
+          <Field label="Org type" className="w-40">
+            <Input
+              value={value.orgType ?? ""}
+              onChange={(e) => set({ orgType: e.target.value || undefined })}
+              placeholder="e.g. company"
+              className="h-9 bg-muted/40 text-xs"
+            />
+          </Field>
           <Field label="Country" className="w-28">
             <Input
               value={value.country ?? ""}
@@ -111,63 +105,57 @@ export function EntitySearchFilters({ value, onChange }: EntitySearchFiltersProp
               className="h-9 bg-muted/40 text-xs"
             />
           </Field>
-        )}
+        </>
+      )}
 
-        {type === "selector" && (
-          <>
-            <Field label="Selector kind" className="w-44">
-              <Select
-                value={value.selectorKind ?? ALL}
-                onValueChange={(v) =>
-                  set({ selectorKind: v === ALL ? undefined : (v as SelectorKind) })
-                }
-              >
-                <SelectTrigger className="h-9 w-full bg-muted/40 text-xs">
-                  <SelectValue placeholder="Any kind" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL} className="text-xs">
-                    Any kind
-                  </SelectItem>
-                  {SELECTOR_KINDS.map((k) => (
-                    <SelectItem key={k} value={k} className="text-xs capitalize">
-                      {k.replace(/_/g, " ")}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label="Exact value" className="w-52" hint="jumps straight to the owner">
-              <Input
-                value={value.selectorValue ?? ""}
-                onChange={(e) => set({ selectorValue: e.target.value || undefined })}
-                placeholder="+15551234567"
-                className="h-9 bg-muted/40 text-xs"
-              />
-            </Field>
-          </>
-        )}
+      {type === "location" && (
+        <Field label="Country" className="w-28">
+          <Input
+            value={value.country ?? ""}
+            onChange={(e) => set({ country: e.target.value || undefined })}
+            placeholder="US"
+            className="h-9 bg-muted/40 text-xs"
+          />
+        </Field>
+      )}
 
-        <div className="flex items-center gap-4 self-end pb-1.5 pl-1">
-          <label className="flex cursor-pointer items-center gap-2 whitespace-nowrap">
-            <Switch
-              checked={value.isVerified === true}
-              onCheckedChange={(c) => set({ isVerified: c ? true : undefined })}
-            />
-            <span className="text-[11px] text-muted-foreground">Verified only</span>
-          </label>
-          {entityFiltersActive(value) && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onChange({ ...EMPTY_ENTITY_FILTERS })}
-              className="h-7 gap-1.5 px-2 text-[11px] text-muted-foreground hover:text-foreground"
-            >
-              <RotateCcw size={12} /> Reset
-            </Button>
-          )}
-        </div>
-      </div>
+      {type === "selector" && (
+        <Field label="Selector kind" className="w-44">
+          <Select
+            value={value.selectorKind ?? ALL}
+            onValueChange={(v) =>
+              set({ selectorKind: v === ALL ? undefined : (v as SelectorKind) })
+            }
+          >
+            <SelectTrigger className="h-9 w-full bg-muted/40 text-xs">
+              <SelectValue placeholder="Any kind" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL} className="text-xs">
+                Any kind
+              </SelectItem>
+              {SELECTOR_KINDS.map((k) => (
+                <SelectItem key={k} value={k} className="text-xs capitalize">
+                  {k.replace(/_/g, " ")}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+      )}
+
+      {showClear && (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() =>
+            onClear ? onClear() : onChange({ ...EMPTY_ENTITY_FILTERS })
+          }
+          className="h-9 gap-1.5 self-end px-2 text-[11px] text-muted-foreground hover:text-foreground"
+        >
+          <RotateCcw size={12} /> Clear filters
+        </Button>
+      )}
     </div>
   );
 }

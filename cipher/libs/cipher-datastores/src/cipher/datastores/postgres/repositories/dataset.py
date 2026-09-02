@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cipher.datastores.postgres.tables.dataset import DatasetTable
 from cipher.datastores.postgres.tables.file import FileTable
-from cipher.schemas.dataset import (
+from cipher.schemas.ingestion.dataset import (
     Dataset,
     DatasetCreate,
     DatasetSortField,

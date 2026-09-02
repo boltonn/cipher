@@ -31,10 +31,10 @@ from cipher.datastores.postgres.repositories import (
     PostgresExtractedTextRepository,
     PostgresFileRepository,
 )
-from cipher.schemas.email import EmailBase
-from cipher.schemas.enrichment import EnrichableType, EnrichmentType
-from cipher.schemas.extraction import ExtractedTextCreate, ExtractionContentFormat, TextExtractor
-from cipher.schemas.file import FileBase, FileCreate
+from cipher.schemas.content.email import EmailBase
+from cipher.schemas.content.extraction import ExtractedTextCreate, ExtractionContentFormat, TextExtractor
+from cipher.schemas.ingestion.enrichment import EnrichableType, EnrichmentType
+from cipher.schemas.ingestion.file import FileBase, FileCreate
 from cipher.utils.io import fetch_bytes_from_uri
 
 if TYPE_CHECKING:

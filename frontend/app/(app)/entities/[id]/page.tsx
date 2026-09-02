@@ -1,23 +1,31 @@
 "use client";
 
 import { PageHeader } from "@/components/page-header";
+import { PageLoading } from "@/components/page-loading";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CommentSection } from "@/features/comments/components/comment-section";
 import { EditEntityDialog } from "@/features/entities/components/edit-entity-dialog";
 import { EntityGraph } from "@/features/entities/components/entity-graph";
 import { EntityMentionsByFile } from "@/features/entities/components/entity-mentions-by-file";
+import { EntityRelationships } from "@/features/entities/components/entity-relationships";
+import { EntitySelectorsPanel } from "@/features/entities/components/entity-selectors-panel";
 import { EntityTypeBadge } from "@/features/entities/components/entity-type-badge";
 import { ENTITY_TYPE_META } from "@/features/entities/components/entity-type-meta";
 import { Section } from "@/features/entities/components/section";
 import { useEntityProfile } from "@/features/entities/hooks/use-entities";
 import type { EntityDetail } from "@/features/entities/types";
+import { cn } from "@/lib/utils";
 import {
   BadgeCheck,
   ExternalLink,
-  Loader2,
+  FileText,
+  Fingerprint,
+  type LucideIcon,
+  MessageSquare,
+  Network,
   Pencil,
-  ScanFace,
+  Waypoints,
 } from "lucide-react";
 import Link from "next/link";
 import { use, useState } from "react";
@@ -32,22 +40,39 @@ export default function EntityDetailPage({
   const [isEditOpen, setEditOpen] = useState(false);
 
   if (isPending || !profile) {
-    return (
-      <div className="flex items-center justify-center py-48 text-muted-foreground">
-        <Loader2 className="h-8 w-8 animate-spin text-primary/40" />
-      </div>
-    );
+    return <PageLoading icon={Network} label="Loading entity…" />;
   }
 
-  const { entity, detail, selectors, relatedEntities, mentionCounts } = profile;
+  const { entity, detail, mentionCounts, relatedTotal, selectorTotal } = profile;
   const meta = ENTITY_TYPE_META[entity.entityType];
   const totalMentions = Object.values(mentionCounts ?? {}).reduce(
     (a, b) => a + b,
     0
   );
+  const isSelector = entity.entityType === "selector";
+
+  const stats: { label: string; value: number; href: string; Icon: LucideIcon }[] = [
+    { label: "Mentions", value: totalMentions, href: "#mentions", Icon: FileText },
+    {
+      label: "Relationships",
+      value: relatedTotal,
+      href: "#relationships",
+      Icon: Waypoints,
+    },
+    ...(isSelector
+      ? []
+      : [
+          {
+            label: "Selectors",
+            value: selectorTotal,
+            href: "#selectors",
+            Icon: Fingerprint,
+          } as const,
+        ]),
+  ];
 
   return (
-    <div className="relative mx-auto max-w-400 px-6 pb-20">
+    <div className="relative mx-auto max-w-5xl px-6 pb-24">
       <PageHeader eyebrow="Entity" value={`${totalMentions} mentions`} />
 
       {/* identity header */}
@@ -79,11 +104,6 @@ export default function EntityDetailPage({
                     null
                   }
                 />
-                {entity.aliases.length > 0 && (
-                  <span className="text-xs text-muted-foreground">
-                    aka {entity.aliases.join(", ")}
-                  </span>
-                )}
               </div>
             </div>
           </div>
@@ -122,69 +142,92 @@ export default function EntityDetailPage({
           detail={detail}
           personId={entity.personId}
         />
+
+        {/* count strip */}
+        <div
+          className={cn(
+            "grid gap-px overflow-hidden rounded-xl border border-border bg-border",
+            stats.length === 2 ? "grid-cols-2" : "grid-cols-2 sm:grid-cols-3"
+          )}
+        >
+          {stats.map((s) => (
+            <a
+              key={s.label}
+              href={s.href}
+              className="group flex items-center gap-3 bg-card px-4 py-3 transition-colors hover:bg-primary/5"
+            >
+              <s.Icon
+                size={18}
+                className="shrink-0 text-primary/60 transition-colors group-hover:text-primary"
+              />
+              <div className="min-w-0">
+                <div className="text-lg font-semibold text-foreground">
+                  {s.value.toLocaleString()}
+                </div>
+                <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground transition-colors group-hover:text-primary">
+                  {s.label}
+                </div>
+              </div>
+            </a>
+          ))}
+        </div>
       </div>
 
-      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="flex flex-col gap-8 lg:col-span-2">
-          <Section
-            title="Mentions"
-            icon={<ScanFace size={14} className="text-primary" />}
-          >
-            <EntityMentionsByFile
-              entityId={id}
-              emptyLabel="No mentions recorded for this entity yet."
-            />
-          </Section>
+      <div className="mt-8 flex flex-col gap-10">
+        <Section
+          id="mentions"
+          title="Mentions"
+          icon={<FileText size={14} className="text-primary" />}
+        >
+          <EntityMentionsByFile
+            entityId={id}
+            emptyLabel="No mentions recorded for this entity yet."
+          />
+        </Section>
 
-          {relatedEntities.length > 0 && (
-            <Section title="Related entities">
-              <ul className="mb-4 flex flex-wrap gap-2">
-                {relatedEntities.map((r, i) => {
-                  const m = ENTITY_TYPE_META[r.entity.entityType];
-                  return (
-                    <li key={`${r.entity.id}-${i}`}>
-                      <Link
-                        href={`/entities/${r.entity.id}`}
-                        className="flex items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-2.5 py-1.5 text-xs hover:border-primary/40"
-                      >
-                        <m.Icon size={12} className={m.textClass} />
-                        <span className="font-medium text-foreground">
-                          {r.entity.displayName}
-                        </span>
-                        <span className="text-[10px] uppercase text-muted-foreground">
-                          {r.direction === "out" ? "" : "← "}
-                          {r.relationshipType.replace(/_/g, " ")}
-                        </span>
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
+        <Section
+          id="relationships"
+          title="Relationships"
+          icon={<Waypoints size={14} className="text-primary" />}
+          action={
+            <Button
+              asChild
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1.5 text-[10px] font-bold uppercase tracking-widest text-primary hover:text-primary"
+            >
+              <Link href={`/entities/${id}/graph`}>
+                <Network size={13} /> Full graph
+              </Link>
+            </Button>
+          }
+        >
+          <div className="space-y-4">
+            <EntityRelationships entityId={id} />
+            {relatedTotal > 0 && (
               <EntityGraph focusEntityId={id} depth={1} compact />
-            </Section>
-          )}
+            )}
+          </div>
+        </Section>
 
-          {selectors.length > 0 && (
-            <Section title="Selectors">
-              <ul className="flex flex-wrap gap-2">
-                {selectors.map((s) => (
-                  <li key={s.id}>
-                    <Link
-                      href={`/entities/${s.id}`}
-                      className="rounded-lg border border-pink-500/30 bg-pink-500/10 px-2.5 py-1.5 font-mono text-xs text-pink-300 hover:border-pink-400/60"
-                    >
-                      {s.displayName}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </Section>
-          )}
-        </div>
+        {!isSelector && (
+          <Section
+            id="selectors"
+            title="Selectors"
+            icon={<Fingerprint size={14} className="text-primary" />}
+          >
+            <EntitySelectorsPanel entityId={id} />
+          </Section>
+        )}
 
-        <div className="h-fit rounded-2xl border border-border bg-muted/40 p-5 backdrop-blur-2xl">
-          <CommentSection commentableType="entity" commentableId={id} />
-        </div>
+        <Section
+          title="Comments"
+          icon={<MessageSquare size={14} className="text-primary" />}
+        >
+          <div className="rounded-2xl border border-border bg-muted/40 p-5 backdrop-blur-2xl">
+            <CommentSection commentableType="entity" commentableId={id} />
+          </div>
+        </Section>
       </div>
 
       <EditEntityDialog

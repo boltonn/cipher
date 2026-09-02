@@ -1,12 +1,12 @@
 """Wire schemas for the nerd service.
 
-`EntitySpan` is the shared analytics contract from `cipher.schemas.spans`, so
+`EntitySpan` is the shared analytics contract from `cipher.schemas.graph.spans`, so
 `nerd` output is interchangeable with `pygliner` in the ingestion pipeline.
 """
 
 from pydantic import BaseModel, Field
 
-from cipher.schemas.spans import EntitySpan
+from cipher.schemas.graph.spans import EntitySpan
 
 __all__ = ["EntitySpan", "NerdRequest"]
 

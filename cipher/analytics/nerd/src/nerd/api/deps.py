@@ -5,7 +5,7 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.concurrency import run_in_threadpool
 from loguru import logger
 
-from cipher.schemas.common import ModelDevice
+from cipher.schemas._base.common import ModelDevice
 from nerd.model import NerdModel
 from nerd.schemas import EntitySpan
 from nerd.settings import Settings

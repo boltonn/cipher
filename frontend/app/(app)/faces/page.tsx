@@ -1,13 +1,14 @@
 "use client";
 
 import { PageHeader } from "@/components/page-header";
+import { PageLoading } from "@/components/page-loading";
 import { PaginationModeToggle } from "@/components/pagination-mode-toggle";
 import { FaceUploadSearchBar } from "@/features/faces/components/face-upload-search-bar";
 import { FacesContainerInfinite } from "@/features/faces/components/faces-container-infinite";
 import { FacesContainerPaginated } from "@/features/faces/components/faces-container-paginated";
 import { useSearchController } from "@/features/faces/hooks/use-search-controller";
 import { PaginationModeType } from "@/types/common";
-import { Loader2, ScanFace, X } from "lucide-react";
+import { ScanFace, X } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 
@@ -92,15 +93,7 @@ function FacesPageInner() {
       {/* Results */}
       <main className="mt-6">
         {isPending && !data && !paginatedData ? (
-          <div className="flex flex-col items-center justify-center py-48 text-muted-foreground">
-            <div className="relative flex items-center justify-center mb-6">
-              <Loader2 className="h-12 w-12 animate-spin text-annotation/20" />
-              <ScanFace className="h-5 w-5 absolute text-annotation animate-pulse" />
-            </div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.5em] text-annotation/50 italic">
-              Loading faces...
-            </p>
-          </div>
+          <PageLoading icon={ScanFace} label="Loading faces…" accent="annotation" />
         ) : paginationMode === "infinite" ? (
           <FacesContainerInfinite
             data={data}

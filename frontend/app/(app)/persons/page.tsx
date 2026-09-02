@@ -1,7 +1,9 @@
 "use client";
 
-import { Pagination } from "@/components/pagination";
+import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
+import { PageLoading } from "@/components/page-loading";
+import { Pagination } from "@/components/pagination";
 import { SearchBarShell } from "@/components/search-bar-shell";
 import { SearchInput } from "@/components/search-input";
 import { Button } from "@/components/ui/button";
@@ -9,7 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { CreatePersonDialog } from "@/features/persons/components/create-person-dialog";
 import { PersonCard } from "@/features/persons/components/person-card";
 import { usePersonSearch } from "@/features/persons/hooks/use-persons";
-import { BadgeCheck, Loader2, Plus, Search, UserRound } from "lucide-react";
+import { BadgeCheck, Plus, Search, UserRound } from "lucide-react";
 import { useState } from "react";
 
 const LIMIT = 24;
@@ -76,16 +78,17 @@ export default function PersonsPage() {
 
       <main className="mt-6">
         {isPending ? (
-          <div className="flex flex-col items-center justify-center py-48 text-muted-foreground">
-            <Loader2 className="h-10 w-10 animate-spin text-primary/30 mb-4" />
-          </div>
+          <PageLoading icon={UserRound} label="Loading persons…" />
         ) : persons.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-40 border border-dashed border-border/50 rounded-3xl bg-muted/10">
-            <UserRound size={28} className="text-muted-foreground mb-3" />
-            <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-muted-foreground">
-              No People Found
-            </p>
-          </div>
+          <EmptyState
+            icon={UserRound}
+            title="No people found"
+            body={
+              query || verifiedOnly
+                ? "No people match the current search and filters."
+                : "Cluster faces into people, or create one manually with “New Person”."
+            }
+          />
         ) : (
           <div className="space-y-10">
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">

@@ -3,8 +3,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cipher.datastores.postgres.tables.face import FaceTable
 from cipher.datastores.postgres.tables.person import PersonTable
-from cipher.schemas.common import SortOrder
-from cipher.schemas.person import (
+from cipher.schemas._base.common import SortOrder
+from cipher.schemas.identity.person import (
     PaginatedPersonSimilarityResponse,
     PaginatedPersonsResponse,
     Person,

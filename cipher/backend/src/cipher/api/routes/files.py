@@ -1,15 +1,17 @@
-from fastapi import APIRouter, HTTPException, Response
+from io import BytesIO
+
+from fastapi import APIRouter, HTTPException, Query, Response
 from pyparse.parsers.email import EmlParser
 
 from cipher.api.deps.elasticsearch import TextChunkDatastoreDep
 from cipher.api.deps.postgres import ExtractedTextDatastoreDep, FileDatastoreDep, ImageDatastoreDep
 from cipher.api.utils import download_uri
-from cipher.schemas.base import BaseModel
-from cipher.schemas.document import DocumentMetadata
-from cipher.schemas.email import EmailBase
-from cipher.schemas.file import File
-from cipher.schemas.image import ImagePublic
-from cipher.schemas.search import ChunkFilters
+from cipher.schemas._base.base import BaseModel
+from cipher.schemas.content.document import DocumentMetadata
+from cipher.schemas.content.email import EmailBase
+from cipher.schemas.content.image import ImagePublic
+from cipher.schemas.content.search import ChunkFilters
+from cipher.schemas.ingestion.file import File
 
 router = APIRouter(
     prefix="/files",
@@ -38,6 +40,48 @@ async def download_file_by_id(id: str, datastore: FileDatastoreDep):
         content=file_bytes,
         media_type=file.mime_type,
         headers={"Content-Disposition": f"attachment; filename={file.filename}"},
+    )
+
+
+@router.get("/{id}/preview", summary="Browser-displayable JPEG for an image file")
+async def preview_image_file(
+    id: str,
+    datastore: FileDatastoreDep,
+    max_dim: int = Query(default=1600, ge=64, le=4096, alias="max"),
+):
+    """Return a resized inline JPEG for an image file (HEIC/HEIF included, via pillow-heif).
+
+    Works for any image `File` -- no `Image` pipeline row required -- so the map
+    and file viewer can show a live preview immediately after ingestion.
+    """
+    from PIL import Image, ImageOps
+
+    try:
+        from pillow_heif import register_heif_opener
+
+        register_heif_opener()
+    except ImportError:  # pragma: no cover - HEIC just won't decode
+        pass
+
+    file = await datastore.get_file_by_id(file_id=id)
+    if file is None or file.uri is None:
+        raise HTTPException(status_code=404, detail=f"File not found: {id}")
+    if file.filetype_group != "image":
+        raise HTTPException(status_code=415, detail=f"Not an image file: {file.filetype}")
+
+    try:
+        img = Image.open(BytesIO(download_uri(file.uri)))
+        img = ImageOps.exif_transpose(img).convert("RGB")
+        img.thumbnail((max_dim, max_dim))
+        buf = BytesIO()
+        img.save(buf, format="JPEG", quality=85)
+    except Exception as exc:  # noqa: BLE001 - surface any decode failure as 415
+        raise HTTPException(status_code=415, detail=f"Could not decode image: {exc}") from exc
+
+    return Response(
+        content=buf.getvalue(),
+        media_type="image/jpeg",
+        headers={"Cache-Control": "public, max-age=86400"},
     )
 
 

@@ -6,7 +6,7 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.concurrency import run_in_threadpool
 from loguru import logger
 
-from cipher.schemas.common import ModelDevice
+from cipher.schemas._base.common import ModelDevice
 from pygliner.model import GlinerModel, GlirelModel
 from pygliner.schemas import EntitySpan, RelationSpan
 from pygliner.settings import Settings

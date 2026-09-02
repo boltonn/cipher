@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cipher.datastores.postgres.tables.extracted_text import ExtractedTextTable
 from cipher.datastores.postgres.utils import strip_null_bytes
-from cipher.schemas.extraction import ExtractedText, ExtractedTextCreate
+from cipher.schemas.content.extraction import ExtractedText, ExtractedTextCreate
 
 
 def _to_schema(row: ExtractedTextTable) -> ExtractedText:

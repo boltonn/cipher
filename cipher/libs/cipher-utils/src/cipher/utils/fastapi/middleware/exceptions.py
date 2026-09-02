@@ -3,7 +3,7 @@ import traceback
 
 from loguru import logger
 
-from cipher.schemas.exceptions import EntityAlreadyExistsError, EntityNotFoundError
+from cipher.schemas._base.exceptions import EntityAlreadyExistsError, EntityNotFoundError
 from fastapi import Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse

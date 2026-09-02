@@ -18,7 +18,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import text
 
 from cipher.datastores.postgres.tables.base import Base
-from cipher.schemas.face import FACE_EMBEDDING_DIMENSION, FaceAssignmentMethod
+from cipher.schemas.identity.face import FACE_EMBEDDING_DIMENSION, FaceAssignmentMethod
 
 if TYPE_CHECKING:
     from cipher.datastores.postgres.tables.face_match import FaceMatchTable

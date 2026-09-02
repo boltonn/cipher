@@ -1,3 +1,4 @@
+import type { FileRecord } from "@/features/files/types";
 import {
   BaseImageSearchParameters,
   ImagePublic,
@@ -62,6 +63,10 @@ export const imagesService = {
       .then((res) => res.data);
   },
 
+  // GET /images/{id} - single image record by its content id (sha256)
+  getById: (id: string): Promise<ImagePublic> =>
+    apiClient.get<ImagePublic>(`${imagesBaseURL}/${id}`).then((res) => res.data),
+
   // PATCH /images/{id} - update tags
   updateTags: (id: string, tags: string[]) =>
     apiClient
@@ -73,6 +78,12 @@ export const imagesService = {
     apiClient
       .get<ImagePublic>(`/files/${fileId}/image`, { suppressErrorToast: true })
       .then((res) => res.data),
+
+  // GET /images/{id}/files -- every file whose content is this image (matched on sha256)
+  getFiles: (id: string): Promise<FileRecord[]> =>
+    apiClient
+      .get<FileRecord[]>(`${imagesBaseURL}/${id}/files`)
+      .then((res) => res.data),
 };
 
 export function useImageFiletypes() {
@@ -80,6 +91,16 @@ export function useImageFiletypes() {
     queryKey: ["images", "filetypes"],
     queryFn: imagesService.getFiletypes,
     staleTime: 5 * 60_000,
+  });
+}
+
+/** Resolve a single image record by its content id; React Query dedupes across callers. */
+export function useImage(imageId: string | undefined, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: ["images", imageId],
+    queryFn: () => imagesService.getById(imageId as string),
+    enabled: !!imageId && (options?.enabled ?? true),
+    staleTime: 60_000,
   });
 }
 
@@ -91,6 +112,16 @@ export function useFileImage(fileId: string | undefined) {
     enabled: !!fileId,
     staleTime: 60_000,
     retry: false,
+  });
+}
+
+/** Every file the image's content was found in; shown on the image detail view. */
+export function useImageFiles(imageId: string | undefined) {
+  return useQuery({
+    queryKey: ["images", imageId, "files"],
+    queryFn: () => imagesService.getFiles(imageId as string),
+    enabled: !!imageId,
+    staleTime: 60_000,
   });
 }
 

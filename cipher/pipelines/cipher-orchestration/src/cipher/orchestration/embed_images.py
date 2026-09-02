@@ -13,9 +13,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cipher.datastores.postgres.repositories import (
     PostgresEnrichmentRepository,
     PostgresImageRepository,
+    PostgresLocationRepository,
 )
-from cipher.schemas.enrichment import EnrichableType, EnrichmentType
-from cipher.schemas.image import ImageCreate
+from cipher.orchestration.exif_location import exif_location_create
+from cipher.schemas.content.image import ImageCreate
+from cipher.schemas.ingestion.enrichment import EnrichableType, EnrichmentType
 from cipher.utils.io import fetch_bytes_from_uri
 
 if TYPE_CHECKING:
@@ -102,13 +104,13 @@ async def _consumer(
     stats: dict,
 ):
     """Consumer: run inference and commit results."""
-    pending_imgs, pending_data = [], []
+    pending_imgs, pending_locs, pending_data = [], [], []
 
     while True:
         batch_data = await queue.get()
         if batch_data is None:
             if pending_imgs:
-                await _flush_to_db(session, pending_imgs, pending_data)
+                await _flush_to_db(session, pending_imgs, pending_locs, pending_data)
             queue.task_done()
             break
 
@@ -127,13 +129,19 @@ async def _consumer(
                     **meta,
                 )
             )
+            location = exif_location_create(
+                meta, file_id=item.resource["id"], dataset_id=item.resource.get("dataset_id")
+            )
+            if location is not None:
+                pending_locs.append(location)
 
         pending_data.append({"completed": [i.enrichment.id for i in items], "failed": fails})
         stats["count"] += len(items)
 
         if len(pending_imgs) >= commit_batch_size:
-            await _flush_to_db(session, pending_imgs, pending_data)
+            await _flush_to_db(session, pending_imgs, pending_locs, pending_data)
             pending_imgs.clear()
+            pending_locs.clear()
             pending_data.clear()
             gc.collect()
 
@@ -141,9 +149,10 @@ async def _consumer(
         logger.info(f"Batch: {len(items)} images in {inf_ms}ms (Total: {stats['count']})")
 
 
-async def _flush_to_db(session: "AsyncSession", images, data):
-    """Write embeddings and enrichment status to DB."""
+async def _flush_to_db(session: "AsyncSession", images, locations, data):
+    """Write embeddings, EXIF locations, and enrichment status to DB."""
     img_repo = PostgresImageRepository(session)
+    loc_repo = PostgresLocationRepository(session)
     enr_repo = PostgresEnrichmentRepository(session)
 
     done = [idx for d in data for idx in d["completed"]]
@@ -154,6 +163,8 @@ async def _flush_to_db(session: "AsyncSession", images, data):
     # targets the same conflict key twice, so keep one ImageCreate per id.
     unique_images = list({img.id: img for img in images}.values())
     await img_repo.upsert_image_batch(images=unique_images)
+    if locations:
+        await loc_repo.upsert_file_locations(rows=locations)
     await enr_repo.mark_completed_batch(enrichment_ids=done)
     if fails:
         await enr_repo.mark_failed_batch(enrichment_ids=fails, increment_retry=True)

@@ -12,7 +12,7 @@ mapping tries to solve.
 
 from cipher.datastores.elasticsearch.mappings.analyzers import AnalyzerName, build_analysis
 from cipher.datastores.elasticsearch.mappings.settings import DEFAULT_SETTINGS
-from cipher.schemas.message import TEXT_EMBEDDING_DIMENSION
+from cipher.schemas.content.message import TEXT_EMBEDDING_DIMENSION
 
 _PARTICIPANT_PROPERTIES: dict = {
     "properties": {

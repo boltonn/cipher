@@ -16,6 +16,7 @@ import typer
 from loguru import logger
 
 from cipher.datastores.postgres.repositories import PostgresDatasetRepository, PostgresEnrichmentRepository
+from cipher.orchestration.backfill_exif_locations import backfill_exif_locations
 from cipher.orchestration.benchmark import benchmark_ingest, benchmark_storage
 from cipher.orchestration.detect_faces import (
     detect_faces_workflow,
@@ -30,11 +31,25 @@ from cipher.orchestration.extract_documents import (
     get_extraction_stats,
 )
 from cipher.orchestration.extract_emails import extract_emails_workflow
+from cipher.orchestration.extract_events import extract_events_workflow, get_event_extraction_stats
+from cipher.orchestration.extract_exif_locations import extract_exif_locations_workflow, get_exif_location_stats
+from cipher.orchestration.extract_relationships import (
+    extract_relationships_workflow,
+    get_relationship_extraction_stats,
+)
+from cipher.orchestration.extract_selectors import extract_selectors_workflow, get_selector_extraction_stats
 from cipher.orchestration.ingest import create_dataset, load_files
+from cipher.orchestration.link_face_cooccurrence import (
+    get_face_cooccurrence_stats,
+    link_face_cooccurrence_workflow,
+)
+from cipher.orchestration.reset_entities import reset_entities
+from cipher.orchestration.reset_events import reset_events
+from cipher.orchestration.resolve_entities import resolve_entities_workflow
 from cipher.orchestration.schema import create_tables
 from cipher.orchestration.session import get_elasticsearch_client_context, get_session_context
-from cipher.schemas.common import ModelDevice
-from cipher.schemas.email import EmailState
+from cipher.schemas._base.common import ModelDevice
+from cipher.schemas.content.email import EmailState
 
 app = typer.Typer(help="Test-drive ingestion, embedding, and face detection against a local dataset.")
 
@@ -58,6 +73,24 @@ def create_tables_cmd():
         async with get_session_context() as session:
             await create_tables(session=session)
             logger.success("Tables ready")
+
+    asyncio.run(_run())
+
+
+@app.command("backfill-exif-locations")
+def backfill_exif_locations_cmd(
+    dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
+    dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
+):
+    """Create map points for images that already have EXIF coordinates on their row."""
+
+    async def _run():
+        async with get_session_context() as session:
+            scope = dataset_id
+            if scope is None and dataset_name is not None:
+                scope = await _resolve_dataset_id(session, dataset_id, dataset_name)
+            written = await backfill_exif_locations(session=session, dataset_id=scope)
+            typer.echo(f"{written} locations upserted")
 
     asyncio.run(_run())
 
@@ -128,6 +161,23 @@ def embed_images_cmd(
     asyncio.run(_run())
 
 
+@app.command("extract-locations")
+def extract_locations_cmd(
+    dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
+    dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
+):
+    """Read EXIF GPS from a dataset's image files and write `location` rows (no model)."""
+
+    async def _run():
+        async with get_session_context() as session:
+            resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
+            count = await extract_exif_locations_workflow(session=session, dataset_id=resolved_id)
+            stats = await get_exif_location_stats(session=session, dataset_id=resolved_id)
+            logger.success(f"EXIF locations: processed {count} files; stats={stats}")
+
+    asyncio.run(_run())
+
+
 @app.command("detect-faces")
 def detect_faces_cmd(
     model_dir: Annotated[Path, typer.Option(help="Path to the InsightFace model directory")],
@@ -161,11 +211,14 @@ def extract_text_cmd(
         Chunker, typer.Option(help="Chunker to use for documents (clir always chunks email text)")
     ] = Chunker.CLIR,
     chunk_size: Annotated[
-        int, typer.Option(help="Token budget per chunk when chunker=kreuzberg -- keep equal to embed-text's --chunk-size")
+        int,
+        typer.Option(help="Token budget per chunk when chunker=kreuzberg -- keep equal to embed-text's --chunk-size"),
     ] = DEFAULT_CHUNK_SIZE,
     model_dir: Annotated[
         Path | None,
-        typer.Option(help="Local tokenizer directory for chunker=kreuzberg with token-based sizing (same dir as the embedding model)"),
+        typer.Option(
+            help="Local tokenizer directory for chunker=kreuzberg with token-based sizing (same dir as the embedding model)"
+        ),
     ] = None,
     attachments_dir: Annotated[
         Path | None,
@@ -220,7 +273,10 @@ def embed_text_cmd(
     ] = DEFAULT_CHUNK_SIZE,
     chunk_overlap: Annotated[int, typer.Option(help="Token overlap between consecutive CLIR chunks")] = 0,
     min_chunk_tokens: Annotated[
-        int, typer.Option(help="Merge a final chunk below this many tokens into the previous one instead of embedding it alone")
+        int,
+        typer.Option(
+            help="Merge a final chunk below this many tokens into the previous one instead of embedding it alone"
+        ),
     ] = 0,
     embed_batch_size: Annotated[
         int, typer.Option(help="Max spans per model.encode() call -- caps GPU memory use for heavily-chunked files")
@@ -248,7 +304,7 @@ def embed_text_cmd(
     from clir.models.pytorch import TextEmbeddingPytorchModel
 
     from cipher.datastores.elasticsearch.repositories.text_chunk import ElasticsearchTextChunkRepository
-    from cipher.schemas.message import TEXT_EMBEDDING_DIMENSION
+    from cipher.schemas.content.message import TEXT_EMBEDDING_DIMENSION
 
     async def _run():
         model = TextEmbeddingPytorchModel(model_dir=model_dir, device=device.value)
@@ -280,6 +336,177 @@ def embed_text_cmd(
     asyncio.run(_run())
 
 
+@app.command("extract-selectors")
+def extract_selectors_cmd(
+    dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
+    dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
+):
+    """Extract selectors from a dataset's emails into mentions + selector entities.
+
+    Currently the email-header path only: every `from`/`sender`/`to`/`cc`/`bcc`
+    address becomes an `email` selector entity plus a resolved `structured_field`
+    mention, and each header display name an unresolved `person` mention. Run
+    `extract-text` first -- this reads persisted `ExtractedText` metadata, it
+    does not parse `.eml`/`.msg` files. Requires the `cli` extra (for
+    `pyselectors`).
+    """
+
+    async def _run():
+        async with get_session_context() as session:
+            resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
+            count = await extract_selectors_workflow(session=session, dataset_id=resolved_id)
+            logger.success(f"Extracted selectors for {count} emails")
+
+    asyncio.run(_run())
+
+
+@app.command("extract-relationships")
+def extract_relationships_cmd(
+    dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
+    dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
+):
+    """Build `communicates_with` edges between a dataset's email address selectors.
+
+    Currently the email-header path only: an undirected edge between the `from`
+    selector and each `to`/`cc`/`bcc` selector, `weight` = messages observed,
+    `source = selector_inference`. Run `extract-selectors` first -- the edge
+    endpoints are the selector entities it creates. Person `has_selector` edges
+    wait on `resolve-entities`.
+    """
+
+    async def _run():
+        async with get_session_context() as session:
+            resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
+            count = await extract_relationships_workflow(session=session, dataset_id=resolved_id)
+            logger.success(f"Extracted relationships for {count} emails")
+
+    asyncio.run(_run())
+
+
+@app.command("link-face-cooccurrence")
+def link_face_cooccurrence_cmd():
+    """Rebuild `appears_in_photo_with` edges between people detected in the same image.
+
+    Global (not dataset-scoped): an undirected person<->person edge per pair of
+    people sharing a photo, where a face counts if it is assigned to a person or
+    just has a pending `face_match` to them. `weight` = shared photos. Fully
+    re-derived from current face state each run, so it also prunes edges whose
+    matches were since rejected. Run after `detect-faces` and any face review.
+    """
+
+    async def _run():
+        async with get_session_context() as session:
+            counts = await link_face_cooccurrence_workflow(session=session)
+            typer.echo(json.dumps(counts, indent=2))
+
+    asyncio.run(_run())
+
+
+@app.command("extract-events")
+def extract_events_cmd(
+    dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
+    dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
+):
+    """Parse a dataset's `.ics` / calendar files into `event` rows (deterministic; no model).
+
+    One row per VEVENT (`extractor = ics`), with unresolved participant / place
+    links (`raw_name` / `raw_text`) for a later resolution sweep. LLM extraction
+    over free-text email bodies is a separate future process. Requires the `cli`
+    extra (for `pyparse`).
+    """
+
+    async def _run():
+        async with get_session_context() as session:
+            resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
+            count = await extract_events_workflow(session=session, dataset_id=resolved_id)
+            logger.success(f"Extracted events for {count} calendar files")
+
+    asyncio.run(_run())
+
+
+@app.command("resolve-entities")
+def resolve_entities_cmd(
+    dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
+    dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
+    min_mentions: Annotated[
+        int,
+        typer.Option(
+            help="Create an entity for an unmatched name only if it has at least this many mentions (email-header names are always promoted)"
+        ),
+    ] = 2,
+    no_create: Annotated[bool, typer.Option(help="Attach to existing entities only; never create new ones")] = False,
+    skip_selector_links: Annotated[
+        bool, typer.Option(help="Skip upserting person->selector has_selector edges from headers")
+    ] = False,
+):
+    """Sweep unresolved name mentions -> entities (exact normalized-name match, then promote).
+
+    A dataset-wide pass, not per-file: for each unresolved `name` mention it
+    attaches to an existing entity with the same normalized name, else promotes
+    trustworthy groups (email-header names, or >= --min-mentions) to a new
+    provisional entity, else leaves them for the Review queue. Then links people
+    to the address they sat next to in a header via `has_selector`.
+    """
+
+    async def _run():
+        async with get_session_context() as session:
+            resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
+            counts = await resolve_entities_workflow(
+                session=session,
+                dataset_id=resolved_id,
+                min_mentions=min_mentions,
+                create=not no_create,
+                link_selectors=not skip_selector_links,
+            )
+            typer.echo(json.dumps(counts, indent=2))
+
+    asyncio.run(_run())
+
+
+@app.command("reset-entities")
+def reset_entities_cmd(
+    dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
+    dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
+):
+    """Delete a dataset's extraction-built entity layer -- the undo for `extract-selectors`.
+
+    Drops mentions, the entity-match / relationship-candidate review queues,
+    confirmed relationship edges, and every non-manual `entity` (+ detail),
+    then clears the selector/entity/relationship extraction enrichments so a
+    re-run reprocesses from scratch. Analyst-authored (`source = manual`)
+    entities and standalone EXIF `location` rows are left intact.
+    """
+
+    async def _run():
+        async with get_session_context() as session:
+            resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
+            counts = await reset_entities(session=session, dataset_id=resolved_id)
+            typer.echo(json.dumps(counts, indent=2))
+
+    asyncio.run(_run())
+
+
+@app.command("reset-events")
+def reset_events_cmd(
+    dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
+    dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
+):
+    """Delete a dataset's extraction-built events -- the undo for `extract-events`.
+
+    Drops `event` rows (and cascading participant/place links) except those an
+    analyst authored (`extractor = manual`) or confirmed (`is_verified`), then
+    clears the EVENT_EXTRACTION enrichments so a re-run reprocesses from scratch.
+    """
+
+    async def _run():
+        async with get_session_context() as session:
+            resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
+            counts = await reset_events(session=session, dataset_id=resolved_id)
+            typer.echo(json.dumps(counts, indent=2))
+
+    asyncio.run(_run())
+
+
 @app.command("reset-text")
 def reset_text_cmd(
     dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
@@ -292,7 +519,7 @@ def reset_text_cmd(
     instead of skipping ones already marked complete under the old config.
     """
     from cipher.datastores.elasticsearch.repositories.text_chunk import ElasticsearchTextChunkRepository
-    from cipher.schemas.enrichment import EnrichmentType
+    from cipher.schemas.ingestion.enrichment import EnrichmentType
 
     async def _run():
         async with get_elasticsearch_client_context() as client:
@@ -321,7 +548,7 @@ def stats(
 ):
     """Show file inventory and enrichment status for a dataset."""
     from cipher.datastores.postgres.repositories import PostgresFileRepository
-    from cipher.schemas.enrichment import EnrichmentType
+    from cipher.schemas.ingestion.enrichment import EnrichmentType
 
     async def _run():
         async with get_session_context() as session:
@@ -340,6 +567,10 @@ def stats(
             typer.echo("Face detection:")
             typer.echo(f"  {dict(face_stats.get(EnrichmentType.FACE_DETECTION, {}))}")
 
+            cooccurrence_stats = await get_face_cooccurrence_stats(session=session)
+            typer.echo("Face co-occurrence (global):")
+            typer.echo(f"  {cooccurrence_stats}")
+
             extraction_stats = await get_extraction_stats(session=session, dataset_id=resolved_id)
             typer.echo("Text extraction:")
             typer.echo(f"  {dict(extraction_stats.get(EnrichmentType.TEXT_EXTRACTION, {}))}")
@@ -347,6 +578,18 @@ def stats(
             text_embedding_stats = await get_text_embedding_stats(session=session, dataset_id=resolved_id)
             typer.echo("Text embedding:")
             typer.echo(f"  {dict(text_embedding_stats.get(EnrichmentType.TEXT_EMBEDDING, {}))}")
+
+            selector_stats = await get_selector_extraction_stats(session=session, dataset_id=resolved_id)
+            typer.echo("Selector extraction:")
+            typer.echo(f"  {dict(selector_stats.get(EnrichmentType.SELECTOR_EXTRACTION, {}))}")
+
+            relationship_stats = await get_relationship_extraction_stats(session=session, dataset_id=resolved_id)
+            typer.echo("Relationship extraction:")
+            typer.echo(f"  {dict(relationship_stats.get(EnrichmentType.RELATIONSHIP_EXTRACTION, {}))}")
+
+            event_stats = await get_event_extraction_stats(session=session, dataset_id=resolved_id)
+            typer.echo("Event extraction:")
+            typer.echo(f"  {dict(event_stats.get(EnrichmentType.EVENT_EXTRACTION, {}))}")
 
     asyncio.run(_run())
 

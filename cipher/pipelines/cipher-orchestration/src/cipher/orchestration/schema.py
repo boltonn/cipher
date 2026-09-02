@@ -14,8 +14,9 @@ if TYPE_CHECKING:
 
 
 async def create_tables(session: "AsyncSession") -> None:
-    """Create every registered table (idempotent) and enable pgvector + pg_trgm."""
+    """Create every registered table (idempotent) and enable pgvector + pg_trgm + postgis."""
     async with session.bind.begin() as conn:
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
         await conn.run_sync(Base.metadata.create_all)

@@ -12,12 +12,14 @@ dependencies = [
 
 [project.optional-dependencies]
 elasticsearch = [ "elasticsearch==8.16" ]
-postgres = [ 
-  "asyncpg", 
-  "pgvector", 
-  "psycopg2-binary", 
-  "sqlalchemy[asyncio]", 
-  "sqlmodel" 
+postgres = [
+  "asyncpg",
+  "geoalchemy2",
+  "pgvector",
+  "psycopg2-binary",
+  "shapely",
+  "sqlalchemy[asyncio]",
+  "sqlmodel"
 ]
 
 [build-system]

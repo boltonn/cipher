@@ -32,8 +32,8 @@ from typing import Any
 import chardet
 from filetyper import FileTyper
 
-from cipher.schemas.email import EmailBase, EmailClient, EmailState, NamedParticipantDict
-from cipher.schemas.file import FileBase
+from cipher.schemas.content.email import EmailBase, EmailClient, EmailState, NamedParticipantDict
+from cipher.schemas.ingestion.file import FileBase
 from pyparse.parsers.text.html import HtmlParser
 from pyparse.utils.io import get_encoding_families, map_unsupported_encoding, safe_open
 

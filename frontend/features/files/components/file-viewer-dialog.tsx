@@ -95,8 +95,8 @@ export function FileViewerDialog({
         />
 
         {/* Right: Metadata Sidebar */}
-        <aside className="w-full md:w-100 border-l border-border/50 flex flex-col bg-popover relative">
-          <DialogHeader className="p-12 pb-4">
+        <aside className="w-full md:w-100 border-l border-border/50 flex flex-col min-h-0 bg-popover relative">
+          <DialogHeader className="shrink-0 p-5 pb-4">
             <div className="flex items-center justify-between mb-1">
               <DialogTitle className="text-white tracking-[0.2em] uppercase text-[10px] font-black truncate">
                 {file.filename}
@@ -110,7 +110,7 @@ export function FileViewerDialog({
 
           <Separator className="bg-white/5" />
 
-          <ScrollArea className="flex-1">
+          <ScrollArea className="min-h-0 flex-1">
             <div className="p-4">
               <Tabs defaultValue="details" className="w-full">
                 <TabsList className="w-full bg-muted/50 border border-border/50 h-10 p-1">

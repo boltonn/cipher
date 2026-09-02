@@ -2,7 +2,7 @@
 
 from pydantic_ai.models import Model
 
-from cipher.schemas.llm import LLMProvider, LLMSettings, ModelOption
+from cipher.schemas.interaction.llm import LLMProvider, LLMSettings, ModelOption
 
 # Temporary: the vLLM OpenAI-compatible server in ~/llm (`make start` there).
 # vLLM doesn't check the key, so any non-empty string works.

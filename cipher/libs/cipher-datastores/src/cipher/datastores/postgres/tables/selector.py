@@ -5,7 +5,7 @@ from sqlalchemy import DateTime, Enum, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from cipher.datastores.postgres.tables.base import Base
-from cipher.schemas.ontology import SelectorKind
+from cipher.schemas.graph.ontology import SelectorKind
 
 
 class SelectorTable(Base):

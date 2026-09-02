@@ -3,7 +3,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cipher.datastores.postgres.tables.contact import ContactTable
-from cipher.schemas.contact import Contact, ContactCreate
+from cipher.schemas.content.contact import Contact, ContactCreate
 
 
 class PostgresContactRepository:

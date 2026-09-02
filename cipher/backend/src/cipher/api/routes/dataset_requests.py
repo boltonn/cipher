@@ -8,7 +8,7 @@ from fastapi import APIRouter
 
 from cipher.api.deps.authentication import CurrentUserDep
 from cipher.api.deps.github import GithubClientDep
-from cipher.schemas.dataset_request import (
+from cipher.schemas.ingestion.dataset_request import (
     DatasetRequest,
     DatasetRequestConfig,
     DatasetRequestResult,

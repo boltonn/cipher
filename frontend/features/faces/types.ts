@@ -68,6 +68,8 @@ export interface FacePublic {
   pose?: FacePose;
   embeddingModel?: string;
   personId?: string;
+  /** Assigned person's name, denormalized so a face grid needn't fetch it per card. */
+  personName?: string;
   assignmentMethod?: FaceAssignmentMethodType;
   isRepresentative: boolean;
   isPrimary: boolean;

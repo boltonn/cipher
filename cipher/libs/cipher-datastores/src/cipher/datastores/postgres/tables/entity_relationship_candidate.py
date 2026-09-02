@@ -6,8 +6,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import text
 
 from cipher.datastores.postgres.tables.base import Base
-from cipher.schemas.entity_relationship import RelationshipCandidateMethod, RelationshipCandidateStatus
-from cipher.schemas.ontology import RelationshipType
+from cipher.schemas.graph.entity_relationship import RelationshipCandidateMethod, RelationshipCandidateStatus
+from cipher.schemas.graph.ontology import RelationshipType
 
 
 class EntityRelationshipCandidateTable(Base):

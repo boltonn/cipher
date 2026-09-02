@@ -5,7 +5,7 @@ from cipher.datastores.elasticsearch.mappings.analyzers import (
     build_analysis,
 )
 from cipher.datastores.elasticsearch.mappings.settings import DEFAULT_SETTINGS
-from cipher.schemas.message import TEXT_EMBEDDING_DIMENSION
+from cipher.schemas.content.message import TEXT_EMBEDDING_DIMENSION
 
 # Analyzers used by this index. Passed to build_analysis() so only these
 # are registered — avoids requiring plugins that aren't installed.

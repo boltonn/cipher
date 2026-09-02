@@ -7,7 +7,7 @@ so callers (the API and the chat agent) do not change.
 
 from abc import ABC, abstractmethod
 
-from cipher.schemas.entity_relationship import (
+from cipher.schemas.graph.entity_relationship import (
     EntityRelationship,
     EntityRelationshipCreate,
     GraphResponse,
@@ -15,7 +15,7 @@ from cipher.schemas.entity_relationship import (
     RelationshipSearchParameters,
     TraversalDirection,
 )
-from cipher.schemas.ontology import RelationshipType
+from cipher.schemas.graph.ontology import RelationshipType
 
 
 class GraphRepository(ABC):
@@ -26,9 +26,13 @@ class GraphRepository(ABC):
         """Create or update a confirmed edge, keyed by (src, dst, relationship_type)."""
 
     @abstractmethod
-    async def list_relationships(
-        self, request: RelationshipSearchParameters
-    ) -> PaginatedRelationshipsResponse:
+    async def delete_relationship(
+        self, *, src_entity_id: str, dst_entity_id: str, relationship_type: RelationshipType
+    ) -> bool:
+        """Delete a confirmed edge identified by its (src, dst, type) triple. Returns whether one was removed."""
+
+    @abstractmethod
+    async def list_relationships(self, request: RelationshipSearchParameters) -> PaginatedRelationshipsResponse:
         """List confirmed edges, optionally filtered to those touching one entity."""
 
     @abstractmethod
@@ -51,5 +55,10 @@ class GraphRepository(ABC):
         relationship_types: list[RelationshipType] | None = None,
         direction: TraversalDirection = TraversalDirection.BOTH,
         limit: int = 100,
+        min_weight: float = 0,
     ) -> GraphResponse:
-        """Return the bounded subgraph reachable from a starting node."""
+        """Return the bounded subgraph reachable from a starting node.
+
+        `min_weight` drops weak weighted edges (e.g. low-count `communicates_with`)
+        while always keeping unweighted typed edges.
+        """

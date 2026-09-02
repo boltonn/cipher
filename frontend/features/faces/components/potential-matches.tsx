@@ -2,11 +2,11 @@
 
 import { Button } from "@/components/ui/button";
 import { facesService } from "@/features/faces/api";
-import { getFaceCropStyle } from "@/features/faces/components/face-crop";
 import { usePendingFaceMatches, useResolveFaceMatch } from "@/features/faces/hooks/use-face-matches";
 import { FaceMatch } from "@/features/faces/types";
 import { usePerson, usePersonRepresentativeFaces } from "@/features/persons/hooks/use-persons";
-import { BadgeCheck, Check, Sparkles, UserRound, X } from "lucide-react";
+import { BadgeCheck, Check, ExternalLink, Sparkles, UserRound, X } from "lucide-react";
+import Link from "next/link";
 
 interface PotentialMatchesProps {
   faceId: string;
@@ -47,26 +47,38 @@ function PotentialMatchRow({ match }: { match: FaceMatch }) {
   const primaryFace = faces?.[0];
   const resolve = useResolveFaceMatch();
 
-  const cropStyle = primaryFace
-    ? getFaceCropStyle(primaryFace.boundingBox, facesService.getFaceViewUrl(primaryFace.id))
-    : undefined;
-
   return (
     <div className="flex items-center gap-3 p-2 rounded-lg bg-muted/40 border border-border/50">
-      <div
-        className="h-10 w-10 rounded-full shrink-0 overflow-hidden bg-primary/10 bg-cover bg-center text-primary text-xs font-black flex items-center justify-center"
-        style={cropStyle}
-      >
-        {!primaryFace && (person?.name ? person.name[0].toUpperCase() : <UserRound size={16} />)}
+      <div className="h-10 w-10 rounded-full shrink-0 overflow-hidden bg-primary/10 text-primary text-xs font-black flex items-center justify-center">
+        {primaryFace ? (
+          // eslint-disable-next-line @next/next/no-img-element -- tiny same-origin avatar, server already crops/downscales
+          <img
+            src={facesService.getFaceThumbnailUrl(primaryFace.id)}
+            alt=""
+            className="h-full w-full object-cover"
+          />
+        ) : person?.name ? (
+          person.name[0].toUpperCase()
+        ) : (
+          <UserRound size={16} />
+        )}
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1">
           <p className="text-xs font-bold text-foreground truncate">{person?.name || "Unnamed"}</p>
           {person?.isVerified && <BadgeCheck size={11} className="text-primary shrink-0" />}
         </div>
-        <p className="text-[10px] font-mono text-annotation">
-          {(match.similarityScore * 100).toFixed(0)}% similar
-        </p>
+        <div className="flex items-center gap-2">
+          <p className="text-[10px] font-mono text-annotation">
+            {(match.similarityScore * 100).toFixed(0)}% similar
+          </p>
+          <Link
+            href={`/persons/${match.personId}`}
+            className="flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-widest text-primary/70 hover:text-primary"
+          >
+            Profile <ExternalLink size={9} />
+          </Link>
+        </div>
       </div>
       <div className="flex items-center gap-1">
         <Button

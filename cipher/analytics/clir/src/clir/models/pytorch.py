@@ -13,7 +13,7 @@ from transformers import (
 )
 from transformers.utils import is_flash_attn_2_available
 
-from cipher.schemas.common import ModelDevice
+from cipher.schemas._base.common import ModelDevice
 from clir.models.base import Model
 from clir.models.registry import ModelConfig, get_model_config_from_name
 from clir.schemas import ConversationChunkTokenized

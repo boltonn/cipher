@@ -6,12 +6,14 @@ requires-python = ">=3.12"
 
 dependencies = [
     "cipher-datastores[postgres,elasticsearch]",
+    "cipher-orchestration",
     "cipher-schemas",
     "cipher-utils[fastapi]",
     "clir",
     "face",
     "filetyper",
     "pyparse[email]",
+    "pyselectors",
     "setfitcv",
     "httpx>=0.27",
     "pydantic-ai>=2.35.3",
@@ -23,12 +25,14 @@ build-backend = "hatchling.build"
 
 [tool.uv.sources]
 cipher-datastores = { workspace = true }
+cipher-orchestration = { workspace = true }
 cipher-schemas = { workspace = true }
 cipher-utils = { workspace = true }
 clir = { workspace = true }
 face = { workspace = true }
 filetyper = { workspace = true }
 pyparse = { workspace = true }
+pyselectors = { workspace = true }
 setfitcv = { workspace = true }
 
 [tool.hatch.build.targets.wheel]

@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException
 
 from cipher.api.deps.elasticsearch import TextChunkDatastoreDep
 from cipher.api.services.search import search_chunks
-from cipher.schemas.search import (
+from cipher.schemas.content.search import (
     ChunkSemanticSearchRequest,
     ChunkTextSearchRequest,
 )

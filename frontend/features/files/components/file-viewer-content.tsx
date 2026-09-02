@@ -19,7 +19,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Download, File as FileIcon, Loader2, TriangleAlert } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { BundledLanguage } from "shiki";
-import { useFileTable } from "../api";
+import { filesService, useFileTable } from "../api";
 import { getMaxPreviewBytes } from "../file-preview-limits";
 import type { FileBrowserItem, FileLocationTarget } from "../types";
 
@@ -219,8 +219,11 @@ export function FileViewerContent({
 
   if (file.filetypeGroup === "image") {
     if (image) return <ImageViewerContent image={image} className="h-full" />;
+    // No Image pipeline row yet -- use the server-side preview (transcodes HEIC,
+    // resizes) rather than raw bytes the browser can't render for HEIC.
+    const previewSrc = file.id ? filesService.getPreviewUrl(file.id) : fileUrl;
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={fileUrl} alt={file.filename} className="w-full h-full object-contain" />;
+    return <img src={previewSrc} alt={file.filename} className="w-full h-full object-contain" />;
   }
 
   return <ViewerFallback file={file} fileUrl={fileUrl} />;

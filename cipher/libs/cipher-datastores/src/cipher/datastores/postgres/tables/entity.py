@@ -8,8 +8,8 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from cipher.datastores.postgres.tables.base import Base
-from cipher.schemas.message import TEXT_EMBEDDING_DIMENSION
-from cipher.schemas.ontology import EntitySource, EntityType
+from cipher.schemas.content.message import TEXT_EMBEDDING_DIMENSION
+from cipher.schemas.graph.ontology import EntitySource, EntityType
 
 if TYPE_CHECKING:
     from cipher.datastores.postgres.tables.person import PersonTable
@@ -45,12 +45,13 @@ class EntityTable(Base):
     )
     is_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
 
-    name_embedding: Mapped[list[float] | None] = mapped_column(
-        Vector(ENTITY_NAME_EMBEDDING_DIMENSION), nullable=True
-    )
+    name_embedding: Mapped[list[float] | None] = mapped_column(Vector(ENTITY_NAME_EMBEDDING_DIMENSION), nullable=True)
 
     person_id: Mapped[str | None] = mapped_column(
         String, ForeignKey("person.id", ondelete="SET NULL"), nullable=True, unique=True
+    )
+    location_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("location.id", ondelete="SET NULL"), nullable=True, unique=True
     )
 
     date_created: Mapped[datetime] = mapped_column(
