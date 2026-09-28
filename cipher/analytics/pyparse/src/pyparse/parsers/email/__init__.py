@@ -30,6 +30,4 @@ def parse_email(
         return EmlParser().parse(source, extract_children=extract_children, out_dir=out_dir)
     if filetype == "outlook":
         return MsgParser().parse(source, extract_children=extract_children, out_dir=out_dir)
-    raise ValueError(
-        f"No email parser for filetype {filetype!r}; supported: {sorted(SUPPORTED_FILETYPES)}"
-    )
+    raise ValueError(f"No email parser for filetype {filetype!r}; supported: {sorted(SUPPORTED_FILETYPES)}")

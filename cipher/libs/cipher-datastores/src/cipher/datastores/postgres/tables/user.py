@@ -35,13 +35,9 @@ class UserTable(Base):
 
     __tablename__ = "user"
 
-    id: Mapped[str] = mapped_column(
-        String, primary_key=True, default=lambda: str(uuid4())
-    )
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    email: Mapped[str] = mapped_column(
-        String(255), nullable=False, unique=True, index=True
-    )
+    email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
     date_created: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )

@@ -1,11 +1,12 @@
-import re
 from typing import Annotated
 
 import phonenumbers
 from fastapi import APIRouter, HTTPException, Query
-from pyselectors.normalize import normalize_email, normalize_iban, normalize_imei, normalize_phone
+from loguru import logger
+from pyselectors.normalize import normalize_selector
 
 from cipher.api.deps.postgres import (
+    CommentDatastoreDep,
     EntityDatastoreDep,
     EntityMatchDatastoreDep,
     GraphDatastoreDep,
@@ -15,6 +16,7 @@ from cipher.api.deps.postgres import (
 from cipher.schemas._base.exceptions import EntityNotFoundError
 from cipher.schemas.graph.entity import (
     Entity,
+    EntityBreakdown,
     EntityCreate,
     EntityProfile,
     EntitySearchParameters,
@@ -28,9 +30,15 @@ from cipher.schemas.graph.entity import (
     SelectorMention,
 )
 from cipher.schemas.graph.entity_match import (
+    EntityMatch,
+    EntityMatchBatchReview,
     EntityMatchReview,
     EntityMatchSearchParameters,
+    EntityMergeSearchParameters,
+    NameGroupDismissRequest,
     PaginatedEntityMatchesResponse,
+    PaginatedEntityMatchGroupsResponse,
+    PaginatedEntityMergeGroupsResponse,
 )
 from cipher.schemas.graph.entity_relationship import (
     EntityRelationship,
@@ -44,44 +52,42 @@ from cipher.schemas.graph.entity_relationship import (
     TraversalDirection,
 )
 from cipher.schemas.graph.location import LocationUpdate
-from cipher.schemas.graph.mention import MentionedType, MentionSearchParameters, PaginatedMentionsResponse
+from cipher.schemas.graph.mention import (
+    MentionedType,
+    MentionProvenance,
+    MentionSearchParameters,
+    PaginatedMentionsResponse,
+)
 from cipher.schemas.graph.ontology import (
     RELATIONSHIP_ROLE_ENUM,
     EntityType,
     Ontology,
     RelationshipSource,
     RelationshipType,
-    SelectorKind,
+    SelectorType,
     build_ontology,
     validate_relationship,
 )
 from cipher.schemas.graph.organization import OrganizationUpdate
 from cipher.schemas.graph.selector import SelectorLinkRequest, SelectorRegion, SelectorUpdate
+from cipher.schemas.interaction.comment import CommentableType
 
 router = APIRouter(prefix="/entities", tags=["entities"])
 
 _BY_ALIAS = {"response_model_by_alias": True}
 
 
-def _normalize_selector_value(kind: SelectorKind, raw: str, region_hint: str | None) -> str | None:
-    """Canonicalize a manually entered selector, mirroring the extraction pipeline.
+def _normalize_selector_value(
+    selector_type: SelectorType, raw: str, region_hint: str | None
+) -> tuple[str | None, dict[str, str]]:
+    """Canonicalize + validate a manually entered selector via the extraction pipeline.
 
-    Returns None when the value fails validation for its kind (bad phone, IBAN, IMEI).
+    Returns ``(normalized_value | None, attributes)``; a None value means the
+    input failed validation for its type (bad phone, IBAN checksum, ...).
     """
-    raw = raw.strip()
-    if not raw:
-        return None
-    if kind == SelectorKind.PHONE:
-        return normalize_phone(raw, region=region_hint.upper() if region_hint else None)
-    if kind == SelectorKind.EMAIL:
-        return normalize_email(raw)
-    if kind == SelectorKind.IBAN:
-        return normalize_iban(raw)
-    if kind == SelectorKind.IMEI:
-        return normalize_imei(raw)
-    if kind == SelectorKind.HANDLE:
-        return raw.lstrip("@").lower()
-    return re.sub(r"\s+", "", raw).upper()
+    if not raw.strip():
+        return None, {}
+    return normalize_selector(selector_type, raw, region_hint)
 
 
 @router.post("", summary="Create an entity node", response_model=Entity, **_BY_ALIAS)
@@ -137,6 +143,20 @@ async def get_ontology() -> Ontology:
 
 
 @router.get(
+    "/breakdown",
+    summary="Entity / selector counts for a dataset",
+    response_model=EntityBreakdown,
+    **_BY_ALIAS,
+)
+async def get_entity_breakdown(
+    datastore: EntityDatastoreDep,
+    dataset_id: Annotated[str | None, Query(description="Scope to one dataset; omit for all")] = None,
+) -> EntityBreakdown:
+    """Counts by entity type, selector type, and selector subtype -- feeds the dataset-view chart."""
+    return await datastore.entity_breakdown(dataset_id=dataset_id)
+
+
+@router.get(
     "/selector-regions",
     summary="Phone regions valid for selector normalization",
     response_model=list[SelectorRegion],
@@ -167,6 +187,19 @@ async def list_entity_matches(
     return await datastore.list_matches(params)
 
 
+@router.get(
+    "/matches/groups",
+    summary="Grouped resolution review queue",
+    response_model=PaginatedEntityMatchGroupsResponse,
+    **_BY_ALIAS,
+)
+async def list_entity_match_groups(
+    params: Annotated[EntityMatchSearchParameters, Query()], datastore: EntityMatchDatastoreDep
+) -> PaginatedEntityMatchGroupsResponse:
+    """One card per name group -- top candidate + alternatives -- for fast bulk triage."""
+    return await datastore.list_match_groups(params)
+
+
 @router.post("/matches/{match_id}/resolve", summary="Resolve an entity match", response_model_by_alias=True)
 async def resolve_entity_match(match_id: str, review: EntityMatchReview, datastore: EntityMatchDatastoreDep):
     """Confirm or reject a candidate resolution."""
@@ -174,6 +207,41 @@ async def resolve_entity_match(match_id: str, review: EntityMatchReview, datasto
     if resolved is None:
         raise EntityNotFoundError("EntityMatch", match_id)
     return resolved
+
+
+@router.post("/matches/resolve-batch", summary="Bulk-resolve entity matches")
+async def resolve_entity_matches_batch(body: EntityMatchBatchReview, datastore: EntityMatchDatastoreDep) -> dict:
+    """Apply many confirm/reject decisions in one transaction -- the fast bulk-annotation path."""
+    return await datastore.resolve_matches_batch(reviewed_by=body.reviewed_by, decisions=body.decisions)
+
+
+@router.post("/matches/name-group/dismiss", summary="Dismiss a name group ('none of these')")
+async def dismiss_entity_match_name_group(body: NameGroupDismissRequest, datastore: EntityMatchDatastoreDep) -> dict:
+    """Reject every pending candidate for a name group -- a captured negative for calibration."""
+    rejected = await datastore.dismiss_name_group(
+        dataset_id=body.dataset_id,
+        normalized_value=body.normalized_value,
+        reviewed_by=body.reviewed_by,
+        review_note=body.review_note,
+    )
+    return {"rejected": rejected}
+
+
+@router.get(
+    "/merges",
+    summary="Grouped entity-merge review queue",
+    response_model=PaginatedEntityMergeGroupsResponse,
+    **_BY_ALIAS,
+)
+async def list_entity_merge_groups(
+    params: Annotated[EntityMergeSearchParameters, Query()], datastore: EntityMatchDatastoreDep
+) -> PaginatedEntityMergeGroupsResponse:
+    """One card per provisional entity -- the canonical entities it may duplicate.
+
+    Populate with `cipher dedupe-entities`. Confirm a row via
+    `POST /entities/matches/{id}/resolve` (it runs the merge).
+    """
+    return await datastore.list_merge_groups(params)
 
 
 @router.get(
@@ -258,11 +326,20 @@ async def update_entity_detail(entity_id: str, body: dict, datastore: EntityData
 
 
 @router.delete("/{entity_id}", summary="Delete an entity")
-async def delete_entity(entity_id: str, datastore: EntityDatastoreDep) -> dict:
-    """Delete an entity node and its detail/edges (cascade)."""
+async def delete_entity(entity_id: str, datastore: EntityDatastoreDep, comment_datastore: CommentDatastoreDep) -> dict:
+    """Delete an entity node and its detail/edges (cascade).
+
+    Mentions pointing at it are unresolved (FK ``SET NULL``); relationships and
+    resolution/merge decisions naming it cascade-delete. Comments reference it
+    polymorphically (no real FK), so they're purged explicitly first.
+    """
+    deleted_comments = await comment_datastore.delete_by_commentable(
+        commentable_type=CommentableType.ENTITY, commentable_id=entity_id
+    )
     deleted = await datastore.delete_entity(entity_id)
     if not deleted:
         raise EntityNotFoundError("Entity", entity_id)
+    logger.info(f"Purged {deleted_comments} comments for entity {entity_id} before delete")
     return {"deleted": True}
 
 
@@ -273,6 +350,17 @@ async def get_entity_profile(entity_id: str, datastore: EntityDatastoreDep) -> E
     if profile is None:
         raise EntityNotFoundError("Entity", entity_id)
     return profile
+
+
+@router.get(
+    "/{entity_id}/merge-candidates",
+    summary="Canonical entities this provisional entity may duplicate",
+    response_model=list[EntityMatch],
+    **_BY_ALIAS,
+)
+async def get_entity_merge_candidates(entity_id: str, datastore: EntityMatchDatastoreDep) -> list[EntityMatch]:
+    """Merge proposals filed against this entity by `dedupe-entities` (empty unless it's a stub)."""
+    return await datastore.list_for_provisional(provisional_entity_id=entity_id)
 
 
 @router.get(
@@ -331,20 +419,23 @@ async def attach_selector(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    normalized = _normalize_selector_value(body.selector_kind, body.raw_value, body.region_hint)
+    normalized, attributes = _normalize_selector_value(body.selector_type, body.raw_value, body.region_hint)
     if not normalized:
-        raise HTTPException(status_code=422, detail=f"'{body.raw_value}' is not a valid {body.selector_kind} selector")
+        raise HTTPException(status_code=422, detail=f"'{body.raw_value}' is not a valid {body.selector_type} selector")
 
+    # An analyst link carries no dataset -- the selector node and the edge are
+    # dataset-agnostic (like a person bridge node).
     selector, _ = await datastore.get_or_create_selector(
-        dataset_id=body.dataset_id,
-        selector_kind=body.selector_kind,
+        dataset_id=None,
+        selector_type=body.selector_type,
+        selector_subtype=body.selector_subtype,
         raw_value=body.raw_value.strip(),
         normalized_value=normalized,
         region_hint=body.region_hint,
+        attributes=attributes or None,
     )
     await graph.upsert_relationship(
         EntityRelationshipCreate(
-            dataset_id=body.dataset_id,
             src_entity_id=entity_id,
             dst_entity_id=selector.id,
             relationship_type=RelationshipType.HAS_SELECTOR,
@@ -354,7 +445,8 @@ async def attach_selector(
     matching = await mentions.list_mentions(MentionSearchParameters(normalized_value=normalized, limit=1))
     return SelectorMention(
         entity_id=selector.id,
-        selector_kind=body.selector_kind,
+        selector_type=body.selector_type,
+        selector_subtype=body.selector_subtype,
         normalized_value=normalized,
         mention_count=matching.total,
     )
@@ -383,15 +475,17 @@ async def list_entity_mentions(
     entity_id: str,
     datastore: MentionDatastoreDep,
     mentioned_type: Annotated[MentionedType | None, Query()] = None,
+    provenance: Annotated[MentionProvenance | None, Query()] = None,
     file_id: Annotated[str | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 25,
     page: Annotated[int, Query(ge=1)] = 1,
 ) -> PaginatedMentionsResponse:
-    """List the evidence spans that mention this entity."""
+    """List the evidence spans that mention this entity, optionally one evidence class."""
     return await datastore.list_mentions(
         MentionSearchParameters(
             entity_id=entity_id,
             mentioned_type=mentioned_type,
+            provenance=provenance,
             file_id=file_id,
             resolved=True,
             limit=limit,

@@ -6,6 +6,7 @@ keywords = [ "unstructured" ]
 version = "0.0.1"
 requires-python = ">=3.12"
 dependencies = [
+    "cipher-names",
     "cipher-schemas",
     "pydantic-settings",
 ]
@@ -30,4 +31,5 @@ build-backend = "hatchling.build"
 packages = ["src/cipher"]
 
 [tool.uv.sources]
+cipher-names = { workspace = true }
 cipher-schemas = { workspace = true }

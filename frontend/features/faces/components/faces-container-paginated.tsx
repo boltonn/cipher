@@ -52,6 +52,16 @@ export function FacesContainerPaginated({
     [faces]
   );
 
+  // From inside the viewer, a similarity search replaces the whole grid --
+  // close the dialog so the new results aren't hidden behind it.
+  const handleFindSimilarFromDialog = useCallback(
+    (id: string) => {
+      setSelectedIndex(null);
+      onSimilar(id);
+    },
+    [onSimilar]
+  );
+
   const handleNext = useCallback(() => {
     setSelectedIndex((prev) => (prev !== null && prev < faces.length - 1 ? prev + 1 : prev));
   }, [faces.length]);
@@ -121,7 +131,7 @@ export function FacesContainerPaginated({
           onPrev={handlePrev}
           hasMore={selectedIndex < faces.length - 1}
           hasPrev={selectedIndex > 0}
-          onFindSimilarFace={onSimilar}
+          onFindSimilarFace={handleFindSimilarFromDialog}
           onCreatePersonFromFace={setCreatePersonFace}
           onDeleteFace={onDelete}
         />

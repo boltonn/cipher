@@ -30,7 +30,6 @@ import {
   ImageIcon,
   Mail,
   MessagesSquare,
-  Search,
   Share2,
   Workflow,
 } from "lucide-react";
@@ -422,11 +421,11 @@ const ONTOLOGY_ENTITIES: { name: string; description: string; attributes: string
     name: "selector",
     description:
       "A strong identifier that resolves to one thing. Its own node so it can carry mentions and edges -- one phone shared across three files is one node. Unique per (dataset, kind, normalized_value).",
-    attributes: ["selector_kind", "raw_value", "normalized_value", "region_hint"],
+    attributes: ["selector_type", "raw_value", "normalized_value", "region_hint"],
   },
 ];
 
-const ONTOLOGY_SELECTOR_KINDS = [
+const ONTOLOGY_SELECTOR_TYPES = [
   "phone",
   "email",
   "iban",
@@ -563,11 +562,11 @@ function FlowNode({
 
 export default function DocsPage() {
   return (
-    <div className="max-w-350 mx-auto px-6 relative pb-24">
+    <div className="max-w-400 mx-auto px-6 relative pb-24 pt-5">
       <PageHeader eyebrow="Documentation" value="Platform overview" icon={<Braces size={14} className="text-primary/80" />} />
 
       {/* Masthead */}
-      <div className="pt-4 pb-10">
+      <div className="pb-10">
         <h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl">Cipher</h1>
         <p className="mt-3 max-w-2xl text-base text-muted-foreground">
           A triage platform for unknown data. Point it at a pile of files, mailboxes, images, and message exports --
@@ -847,9 +846,9 @@ export default function DocsPage() {
         </div>
 
         <div className="mt-3 rounded-lg border border-border bg-white/[0.02] px-3.5 py-3">
-          <span className="font-mono text-[13px] text-foreground">selector_kind</span>
+          <span className="font-mono text-[13px] text-foreground">selector_type</span>
           <div className="mt-2 flex flex-wrap gap-1.5">
-            {ONTOLOGY_SELECTOR_KINDS.map((k) => (
+            {ONTOLOGY_SELECTOR_TYPES.map((k) => (
               <span
                 key={k}
                 className="rounded border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-[11px] text-cyan-400"
@@ -954,10 +953,13 @@ export default function DocsPage() {
 
       <div className="flex flex-wrap items-center justify-between gap-2 py-6 font-mono text-[11px] text-muted-foreground">
         <span>cipher/ -- UV workspace monorepo</span>
-        <span className="inline-flex items-center gap-1.5">
-          <Search size={12} />
-          fill in service links above as they&apos;re pinned down
-        </span>
+        <a
+          href="/faq"
+          className="inline-flex items-center gap-1.5 hover:text-primary"
+        >
+          <HelpCircle size={12} />
+          More questions? See the FAQ
+        </a>
       </div>
     </div>
   );

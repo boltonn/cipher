@@ -1,0 +1,95 @@
+{
+  "selector_type": "crypto_address",
+  "priority": 82,
+  "base_confidence": 0.4,
+  "max_confidence": 0.99,
+  "normalizer": "crypto_address",
+  "validator": "crypto_address",
+  "patterns": [
+    {
+      "name": "btc_p2pkh_p2sh",
+      "regex": "(?<![A-Za-z0-9])[13][A-HJ-NP-Za-km-z1-9]{25,34}(?![A-Za-z0-9])",
+      "subtype": "btc_address",
+      "hint": {"currency": "BTC", "network": "bitcoin"}
+    },
+    {
+      "name": "btc_bech32",
+      "regex": "(?<![A-Za-z0-9])bc1[023-9ac-hj-np-z]{11,71}(?![A-Za-z0-9])",
+      "subtype": "btc_address",
+      "hint": {"currency": "BTC", "network": "bitcoin"}
+    },
+    {
+      "name": "eth",
+      "regex": "(?<![A-Za-z0-9])0x[0-9a-fA-F]{40}(?![0-9a-fA-F])",
+      "subtype": "eth_address",
+      "hint": {"currency": "ETH", "network": "evm"}
+    },
+    {
+      "name": "xmr",
+      "regex": "(?<![A-Za-z0-9])4[0-9AB][A-HJ-NP-Za-km-z1-9]{93}(?![A-Za-z0-9])",
+      "subtype": "xmr_address",
+      "hint": {"currency": "XMR", "network": "monero"}
+    },
+    {
+      "name": "tron",
+      "regex": "(?<![A-Za-z0-9])T[A-HJ-NP-Za-km-z1-9]{33}(?![A-Za-z0-9])",
+      "subtype": "tron_address",
+      "hint": {"currency": "TRX", "network": "tron"}
+    }
+  ],
+  "context": {
+    "window_before": 50,
+    "window_after": 20,
+    "terms": {
+      "en": [
+        {"term": "wallet", "weight": 0.3},
+        {"term": "address", "weight": 0.12},
+        {"term": "btc", "weight": 0.25},
+        {"term": "bitcoin", "weight": 0.25},
+        {"term": "eth", "weight": 0.25},
+        {"term": "ethereum", "weight": 0.25},
+        {"term": "usdt", "weight": 0.25},
+        {"term": "tether", "weight": 0.25},
+        {"term": "monero", "weight": 0.25},
+        {"term": "send to", "weight": 0.2},
+        {"term": "deposit", "weight": 0.18},
+        {"term": "pay to", "weight": 0.2},
+        {"term": "tx hash", "weight": -0.5},
+        {"term": "transaction hash", "weight": -0.5},
+        {"term": "txid", "weight": -0.5},
+        {"term": "block hash", "weight": -0.5},
+        {"term": "commit", "weight": -0.4},
+        {"term": "sha256", "weight": -0.45}
+      ],
+      "ru": [
+        {"term": "кошелек", "weight": 0.3},
+        {"term": "кошелёк", "weight": 0.3},
+        {"term": "адрес", "weight": 0.12},
+        {"term": "биткоин", "weight": 0.25},
+        {"term": "эфир", "weight": 0.22},
+        {"term": "перевод", "weight": 0.15},
+        {"term": "хэш транзакции", "weight": -0.5}
+      ],
+      "zh": [
+        {"term": "钱包", "weight": 0.3},
+        {"term": "地址", "weight": 0.12},
+        {"term": "比特币", "weight": 0.25},
+        {"term": "以太坊", "weight": 0.25},
+        {"term": "转账", "weight": 0.18},
+        {"term": "收款", "weight": 0.18},
+        {"term": "交易哈希", "weight": -0.5}
+      ],
+      "fa": [
+        {"term": "کیف پول", "weight": 0.3},
+        {"term": "آدرس", "weight": 0.12},
+        {"term": "بیت کوین", "weight": 0.25},
+        {"term": "تتر", "weight": 0.25}
+      ],
+      "ar": [
+        {"term": "محفظة", "weight": 0.3},
+        {"term": "عنوان", "weight": 0.12},
+        {"term": "بيتكوين", "weight": 0.25}
+      ]
+    }
+  }
+}

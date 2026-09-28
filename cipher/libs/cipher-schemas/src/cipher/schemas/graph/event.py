@@ -55,6 +55,14 @@ class DatePrecision(StrEnum):
     APPROXIMATE = "approximate"
 
 
+class EventSensitivity(StrEnum):
+    """Visibility class carried by a source calendar entry (iCalendar `CLASS`)."""
+
+    PUBLIC = "public"
+    PRIVATE = "private"
+    CONFIDENTIAL = "confidential"
+
+
 class EventSortField(StrEnum):
     DATE_START = "date_start"
     DATE_CREATED = "date_created"
@@ -145,7 +153,11 @@ EventDetails = Annotated[
 class EventBase(BaseModel):
     """Fields shared by every event."""
 
-    dataset_id: str
+    dataset_id: str | None = Field(
+        default=None,
+        description="Ingest the event was found in; null for an analyst-authored or cross-dataset event. "
+        "`file_id` is the real provenance link.",
+    )
     file_id: str | None = Field(default=None, description="Source file the event was extracted from")
 
     event_type: EventType
@@ -160,6 +172,30 @@ class EventBase(BaseModel):
 
     status: EventStatus = Field(default=EventStatus.CONFIRMED)
     details: EventDetails | None = Field(default=None, description="Type-specific fields, discriminated on `kind`")
+
+    url: str | None = Field(default=None, description="Booking / meeting link (iCalendar `URL`)")
+    categories: list[str] = Field(
+        default_factory=list, description="Raw source labels (iCalendar `CATEGORIES`); distinct from analyst `tags`"
+    )
+    sensitivity: EventSensitivity | None = Field(
+        default=None, description="Source visibility class (iCalendar `CLASS`)"
+    )
+
+    uid: str | None = Field(
+        default=None, description="Stable source identifier (iCalendar `UID`); identity key across updates"
+    )
+    recurrence_rule: str | None = Field(
+        default=None, description="Raw iCalendar `RRULE`; stored verbatim, not expanded into instances"
+    )
+    sequence: int | None = Field(
+        default=None, description="Source revision number (iCalendar `SEQUENCE`); higher supersedes for the same `uid`"
+    )
+    source_created: datetime | None = Field(
+        default=None, description="When the source entry was created (iCalendar `CREATED` / `DTSTAMP`)"
+    )
+    source_last_modified: datetime | None = Field(
+        default=None, description="When the source entry was last changed (iCalendar `LAST-MODIFIED`)"
+    )
 
     extractor: str | None = Field(default=None, description="What produced the row: 'ics', 'llm', 'manual'")
     extraction_model: str | None = Field(default=None, description="Model id/version when extractor is an LLM")
@@ -186,6 +222,9 @@ class EventUpdate(BaseModel):
     date_precision: DatePrecision | None = Field(default=None)
     status: EventStatus | None = Field(default=None)
     details: EventDetails | None = Field(default=None)
+    url: str | None = Field(default=None)
+    categories: list[str] | None = Field(default=None)
+    sensitivity: EventSensitivity | None = Field(default=None)
     confidence: float | None = Field(default=None, ge=0, le=1)
     is_verified: bool | None = Field(default=None)
     tags: list[str] | None = Field(default=None)
@@ -222,6 +261,8 @@ class EventSearchParameters(PageParams):
     file_id: str | None = Field(default=None)
     query: str | None = Field(default=None, description="Substring match on title")
     event_type: EventType | None = Field(default=None)
+    category: str | None = Field(default=None, description="Match a raw source label (iCalendar `CATEGORIES`)")
+    uid: str | None = Field(default=None, description="Exact match on the source identifier")
     status: EventStatus | None = Field(default=None)
     participant_entity_id: str | None = Field(default=None, description="Events this entity takes part in")
     location_id: str | None = Field(default=None, description="Events attached to this place")

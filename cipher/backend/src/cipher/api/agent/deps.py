@@ -7,6 +7,7 @@ from clir.api.deps import AsyncTextEmbeddingModel
 from cipher.datastores.elasticsearch.repositories.text_chunk import ElasticsearchTextChunkRepository
 from cipher.datastores.postgres.repositories.dataset import PostgresDatasetRepository
 from cipher.datastores.postgres.repositories.entity import PostgresEntityRepository
+from cipher.datastores.postgres.repositories.entity_match import PostgresEntityMatchRepository
 from cipher.datastores.postgres.repositories.entity_relationship import PostgresGraphRepository
 from cipher.datastores.postgres.repositories.extracted_text import PostgresExtractedTextRepository
 from cipher.datastores.postgres.repositories.mention import PostgresMentionRepository
@@ -27,6 +28,7 @@ class ChatDeps:
     persons: PostgresPersonRepository
     datasets: PostgresDatasetRepository
     entities: PostgresEntityRepository
+    entity_matches: PostgresEntityMatchRepository
     mentions: PostgresMentionRepository
     graph: PostgresGraphRepository
     extracted_text: PostgresExtractedTextRepository

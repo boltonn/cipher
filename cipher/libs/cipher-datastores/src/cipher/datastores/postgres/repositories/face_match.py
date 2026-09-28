@@ -6,11 +6,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cipher.datastores.postgres.tables.face import FaceTable
 from cipher.datastores.postgres.tables.face_match import FaceMatchTable
+from cipher.datastores.postgres.tables.file import FileTable
 from cipher.schemas._base.common import SortOrder
 from cipher.schemas.identity.face import FaceAssignmentMethod
 from cipher.schemas.identity.face_match import (
     FaceMatch,
     FaceMatchCreate,
+    FaceMatchMethod,
     FaceMatchReview,
     FaceMatchSearchParameters,
     FaceMatchSortField,
@@ -167,3 +169,28 @@ class PostgresFaceMatchRepository:
         result = await self.session.execute(delete(FaceMatchTable).where(FaceMatchTable.id == match_id))
         await self.session.commit()
         return bool(result.rowcount)
+
+    async def delete_automatic_pending(self, *, dataset_id: str | None = None) -> int:
+        """Delete still-pending machine-proposed matches -- the undo for the batch matcher.
+
+        Only `pending` `automatic_similarity` / `automatic_clustering` rows are
+        touched; an analyst's confirmed/rejected decisions and manual proposals
+        are left alone. Scoped to a dataset via the candidate face's file.
+        """
+        where = [
+            FaceMatchTable.status == FaceMatchStatus.PENDING,
+            FaceMatchTable.match_method.in_(
+                [FaceMatchMethod.AUTOMATIC_SIMILARITY, FaceMatchMethod.AUTOMATIC_CLUSTERING]
+            ),
+        ]
+        if dataset_id is not None:
+            where.append(
+                FaceMatchTable.face_id.in_(
+                    select(FaceTable.id)
+                    .join(FileTable, FileTable.sha256 == FaceTable.image_id)
+                    .where(FileTable.dataset_id == dataset_id)
+                )
+            )
+        result = await self.session.execute(delete(FaceMatchTable).where(*where))
+        await self.session.commit()
+        return result.rowcount or 0

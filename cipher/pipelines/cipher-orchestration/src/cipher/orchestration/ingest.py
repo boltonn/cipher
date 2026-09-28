@@ -70,5 +70,9 @@ async def load_files(
         total_processed += len(batch)
 
     await session.commit()
+
+    if total_processed:
+        await PostgresDatasetRepository(session=session).mark_staged(dataset_id=dataset_id)
+
     logger.success(f"Loaded {total_processed} files into dataset {dataset_id}")
     return total_processed

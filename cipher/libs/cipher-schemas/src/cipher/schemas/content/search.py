@@ -1,12 +1,33 @@
+import hashlib
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Annotated, Literal
-from uuid import uuid4
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from cipher.schemas._base.base import BaseModel
 from cipher.schemas._base.common import PageParams
+
+
+def chunk_id_for(*, dataset_id: str, sha256: str, chunk_index: int, start_offset: int) -> str:
+    """Deterministic chunk id -- stable across re-embeds so `mention.chunk_id` survives.
+
+    Keyed on `(dataset_id, sha256, chunk_index, start_offset)`, not a random uuid:
+
+    - Re-running embedding with the same chunking reproduces the same ids (a
+      re-embed upserts instead of duplicating).
+    - Within a dataset, content-identical files (same `sha256`) resolve to the
+      same chunk ids -- so they share one chunk record (`duplicate_file_ids`)
+      rather than being processed twice, matching the retrieval store's
+      same-dataset dedup.
+    - `dataset_id` is in the key because chunk storage is per-dataset: a chunk
+      carries denormalized `dataset_id`/`tags`, so the same content in another
+      dataset is a separate record, not a shared one.
+
+    The value doubles as the retrieval store's document id (Elasticsearch `_id`
+    / `chunk.id`).
+    """
+    return hashlib.sha256(f"{dataset_id}:{sha256}:{chunk_index}:{start_offset}".encode()).hexdigest()
 
 
 class TextChunk(BaseModel):
@@ -19,7 +40,12 @@ class TextChunk(BaseModel):
     dataset/file scoping) in one place.
     """
 
-    id: str = Field(default_factory=lambda: str(uuid4()))
+    id: str = Field(
+        default="",
+        description="Deterministic id from `chunk_id_for(dataset_id, sha256, chunk_index, start_offset)`; "
+        "filled on validation when left blank. Passed explicitly only when reconstructing a chunk "
+        "read back from the store.",
+    )
     dataset_id: str
     file_id: str = Field(description="The chunk's representative file -- see `duplicate_file_ids`")
     sha256: str = Field(description="Content hash of the parent file, used to detect duplicate content")
@@ -62,6 +88,42 @@ class TextChunk(BaseModel):
     ]
     date_created: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
+    # Denormalized from `mention` rows by `sync-chunk-entities` (runs after
+    # extract-selectors / extract-entities). Empty until that step runs.
+    entity_ids: list[str] = Field(default_factory=list, description="Resolved entities mentioned in this chunk's span")
+    entity_types: list[str] = Field(default_factory=list, description="Distinct entity types mentioned here")
+    selector_types: list[str] = Field(default_factory=list, description="Distinct selector types mentioned here")
+    selector_subtypes: list[str] = Field(
+        default_factory=list, description="Distinct selector subtypes (telegram, btc_address, ...)"
+    )
+    mention_count: int = Field(default=0, description="Total mentions anchored in this chunk")
+
+    @model_validator(mode="after")
+    def _fill_deterministic_id(self) -> "TextChunk":
+        if not self.id:
+            self.id = chunk_id_for(
+                dataset_id=self.dataset_id,
+                sha256=self.sha256,
+                chunk_index=self.chunk_index,
+                start_offset=self.start_offset,
+            )
+        return self
+
+
+class RetrievalConfigInfo(BaseModel):
+    """What backs chunk search in this deployment right now -- `GET /search/config`.
+
+    `text_ranker_effective` is what will actually run given which Postgres
+    extensions are installed; it may be a downgrade from the configured
+    `text_ranker` (see docs/postgres-extensions.md).
+    """
+
+    backend: str = Field(description="'postgres' | 'elasticsearch'")
+    text_ranker: str = Field(description="Configured keyword ranker (postgres backend)")
+    text_ranker_effective: str = Field(description="Ranker that will actually run given installed extensions")
+    installed_extensions: list[str] = Field(default_factory=list, description="Full-text-relevant extensions present")
+    graph_expand_entity_cap: int = Field(description="Max entities a graph_expand fans out to before truncation")
+
 
 class ChunkSortField(StrEnum):
     DATE = "date_created"
@@ -81,6 +143,17 @@ class ChunkFilters(BaseModel):
         default=None, description="Restrict to one filetype group; omit to search both"
     )
     filetype: str | None = Field(default=None, description="Restrict to one specific filetype, e.g. 'pdf'")
+    # Entity-aware filters (composable with a text/kNN query; require `sync-chunk-entities`).
+    entity_ids: list[str] | None = Field(
+        default=None, description="Only chunks that mention every one of these resolved entities"
+    )
+    entity_types: list[str] | None = Field(default=None, description="Only chunks mentioning one of these entity types")
+    selector_types: list[str] | None = Field(
+        default=None, description="Only chunks mentioning one of these selector types"
+    )
+    selector_subtypes: list[str] | None = Field(
+        default=None, description="Only chunks mentioning one of these subtypes"
+    )
 
 
 class BaseChunkSearchParameters(PageParams):
@@ -133,4 +206,51 @@ class ChunkHybridSearchRequest(ChunkSemanticSearchRequest):
     """Hybrid RRF search combining BM25 text matching and kNN embedding similarity."""
 
     query: str = Field(..., description="Text query for the BM25 leg")
+    sort_by: ChunkSortField = Field(ChunkSortField.SCORE)
+
+
+class RetrievalMode(StrEnum):
+    KEYWORD = "keyword"
+    SEMANTIC = "semantic"
+    HYBRID = "hybrid"
+
+
+class GraphExpand(BaseModel):
+    """Multi-hop graph-RAG expansion spec.
+
+    Walk the entity graph out from a seed, then keep only chunks that mention
+    some entity in that expansion.
+    """
+
+    seed_entity_id: str = Field(description="Entity to expand from")
+    max_depth: int = Field(1, ge=1, le=3, description="Relationship hops out from the seed")
+    min_weight: float = Field(0.0, description="Ignore edges below this weight")
+    relationship_types: list[str] | None = Field(
+        default=None, description="Restrict the walk to these relationship types; None = all"
+    )
+
+
+class RetrievalQuery(BaseChunkSearchParameters):
+    """One query for the unified `ChunkRetrievalRepository.search()`.
+
+    Composes keyword / semantic / entity / graph filtering in a single call
+    (docs/retrieval-architecture.md). Entity restrictions live on `filters`
+    (`entity_ids`, `entity_types`, `selector_types`, `selector_subtypes`). `text`
+    may be empty when an entity or `graph_expand` filter is set -- that's a
+    browse, ranked by recency. The legacy `Chunk{Text,Semantic,Hybrid}SearchRequest`
+    models are thin constructors over this.
+    """
+
+    mode: RetrievalMode = RetrievalMode.HYBRID
+    text: str | None = Field(default=None, description="Keyword / hybrid query string")
+    embedding: list[float] | None = Field(
+        default=None, description="Pre-computed query vector for semantic / hybrid"
+    )
+    query_language: str | None = Field(
+        default=None, description="Language of `text`; picks the FTS config for the `core` keyword ranker"
+    )
+    graph_expand: GraphExpand | None = None
+    min_similarity: float | None = Field(
+        default=None, ge=0.0, le=1.0, description="Semantic / hybrid relevance cutoff for pagination"
+    )
     sort_by: ChunkSortField = Field(ChunkSortField.SCORE)

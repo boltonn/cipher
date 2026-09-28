@@ -18,6 +18,7 @@ from cipher.datastores.postgres.repositories import (
     PostgresEntityMatchRepository,
     PostgresEntityRepository,
     PostgresGraphRepository,
+    PostgresMentionRelationshipRepository,
     PostgresMentionRepository,
     PostgresRelationshipCandidateRepository,
 )
@@ -35,6 +36,7 @@ _ENRICHMENT_TYPES = (
 
 async def reset_entities(session: "AsyncSession", dataset_id: str) -> dict[str, int]:
     """Delete a dataset's extraction-built entity layer. Returns per-table counts."""
+    mention_relations = await PostgresMentionRelationshipRepository(session=session).delete_by_dataset_id(dataset_id)
     mentions = await PostgresMentionRepository(session=session).delete_by_dataset_id(dataset_id)
     matches = await PostgresEntityMatchRepository(session=session).delete_by_dataset_id(dataset_id)
     candidates = await PostgresRelationshipCandidateRepository(session=session).delete_by_dataset_id(dataset_id)
@@ -47,6 +49,7 @@ async def reset_entities(session: "AsyncSession", dataset_id: str) -> dict[str, 
         enrichments += await enrichment_repo.delete_by_type(dataset_id, enrichment_type)
 
     counts = {
+        "mention_relations": mention_relations,
         "mentions": mentions,
         "entities": entity_counts["entities"],
         "locations": entity_counts["locations"],

@@ -1,0 +1,37 @@
+{
+  "selector_type": "iban",
+  "priority": 90,
+  "base_confidence": 0.95,
+  "max_confidence": 0.99,
+  "normalizer": "iban",
+  "validator": "iban",
+  "patterns": [
+    {
+      "name": "grouped",
+      "regex": "(?<![A-Za-z0-9])[A-Z]{2}\\d{2}(?:[ ]?[A-Za-z0-9]{4}){2,7}(?:[ ]?[A-Za-z0-9]{1,4})?(?![A-Za-z0-9])"
+    }
+  ],
+  "context": {
+    "window_before": 24,
+    "window_after": 8,
+    "terms": {
+      "en": [
+        {"term": "iban", "weight": 0.2},
+        {"term": "account", "weight": 0.12},
+        {"term": "bank", "weight": 0.12},
+        {"term": "transfer", "weight": 0.12},
+        {"term": "swift", "weight": 0.1}
+      ],
+      "ru": [
+        {"term": "счёт", "weight": 0.15},
+        {"term": "счет", "weight": 0.15},
+        {"term": "банк", "weight": 0.12},
+        {"term": "перевод", "weight": 0.12}
+      ],
+      "fa": [
+        {"term": "شبا", "weight": 0.25},
+        {"term": "حساب", "weight": 0.12}
+      ]
+    }
+  }
+}

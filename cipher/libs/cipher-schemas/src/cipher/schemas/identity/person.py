@@ -78,6 +78,34 @@ class PersonUpdate(BaseModel):
         return datetime.now(UTC)
 
 
+class PersonMerge(BaseModel):
+    """Fold one person record into another.
+
+    Everything attached to ``source_id`` -- faces, pending face matches,
+    event participations, comments, name mentions, and relationship edges --
+    is repointed onto the person the request is addressed to, then the source
+    record (and its entity bridge node) is deleted. Moved faces lose their
+    representative/primary flags, since exemplar curation is specific to the
+    record it was done on; re-pick them on the survivor.
+    """
+
+    source_id: str = Field(description="ID of the person to merge in and then delete")
+
+
+class PersonMergeResult(BaseModel):
+    """Summary of what a merge moved."""
+
+    person_id: str = Field(description="The surviving person")
+    faces_moved: int = 0
+    matches_moved: int = 0
+    event_participants_moved: int = 0
+    comments_moved: int = 0
+    mentions_moved: int = 0
+    relationships_moved: int = 0
+    relationship_candidates_moved: int = 0
+    entity_matches_moved: int = 0
+
+
 class Person(PersonBase):
     """Person model for API responses."""
 
@@ -111,6 +139,12 @@ class PersonSearchParameters(PageParams):
     query: str | None = Field(default=None, description="Search name/aliases/notes")
     tags: list[str] | None = Field(default=None, description="Tags to filter")
     is_verified: bool | None = Field(default=None, description="Filter by verification status")
+    source: PersonSource | None = Field(
+        default=None, description="Filter by how the record was created (e.g. face_clustering for unnamed clusters)"
+    )
+    unnamed: bool | None = Field(
+        default=None, description="True = only persons with no name yet; False = only named persons"
+    )
     limit: int = Field(default=10, ge=1, le=100)
     sort_by: PersonSortField = Field(default=PersonSortField.DATE_UPDATED)
 
@@ -151,3 +185,16 @@ class PaginatedPersonSimilarityResponse(PaginatedResponse):
     """Paginated response for person similarity search."""
 
     data: list[PersonSimilarityResult] = Field(description="List of persons with similarity scores")
+
+
+class PersonMergeSuggestion(Person):
+    """Another person whose representative faces look like a given person's.
+
+    `similarity_score` is the strongest match between any representative face
+    of this person and any representative face of the reference person -- i.e.
+    how likely they are the same identity and should be merged.
+    """
+
+    similarity_score: float = Field(
+        ge=0, le=1, description="Best representative-face similarity to the reference person"
+    )

@@ -91,6 +91,45 @@ class PostgresEventRepository:
             data=[Event.model_validate(r) for r in rows],
         )
 
+    async def list_category_values(
+        self, *, dataset_id: str | None = None, q: str | None = None, limit: int = 50
+    ) -> list[str]:
+        """Distinct raw source labels (`event.categories`, i.e. iCalendar CATEGORIES) in use.
+
+        Powers the events filter bar's label combobox so an analyst picks from
+        what actually exists rather than guessing. Substring-filtered by `q`.
+        """
+        elem = func.jsonb_array_elements_text(EventTable.categories).label("value")
+        inner = select(elem).select_from(EventTable)
+        if dataset_id:
+            inner = inner.where(EventTable.dataset_id == dataset_id)
+        sub = inner.subquery()
+
+        stmt = select(sub.c.value).distinct().order_by(sub.c.value).limit(limit)
+        if q:
+            stmt = stmt.where(sub.c.value.ilike(f"%{q}%"))
+        return list((await self.session.execute(stmt)).scalars().all())
+
+    async def list_tag_values(
+        self, *, dataset_id: str | None = None, q: str | None = None, limit: int = 50
+    ) -> list[str]:
+        """Distinct analyst `tags` in use, most-used first.
+
+        Powers tag-input suggestions so an analyst reuses an existing tag
+        instead of typing a near-duplicate. Substring-filtered by `q`.
+        """
+        elem = func.jsonb_array_elements_text(EventTable.tags).label("value")
+        inner = select(elem).select_from(EventTable)
+        if dataset_id:
+            inner = inner.where(EventTable.dataset_id == dataset_id)
+        sub = inner.subquery()
+
+        stmt = select(sub.c.value).group_by(sub.c.value)
+        if q:
+            stmt = stmt.where(sub.c.value.ilike(f"%{q}%"))
+        stmt = stmt.order_by(func.count().desc(), sub.c.value.asc()).limit(limit)
+        return list((await self.session.execute(stmt)).scalars().all())
+
     async def calendar_events(
         self, *, date_from: datetime, date_to: datetime, dataset_id: str | None = None
     ) -> list[Event]:
@@ -162,6 +201,52 @@ class PostgresEventRepository:
         await self.session.commit()
         return bool(result.rowcount)
 
+    async def unresolved_participants(self, dataset_id: str) -> list[EventParticipant]:
+        """Every `entity_id IS NULL` participant on the dataset's events, for `resolve-event-links`."""
+        rows = (
+            (
+                await self.session.execute(
+                    select(EventParticipantTable)
+                    .join(EventTable, EventTable.id == EventParticipantTable.event_id)
+                    .where(EventTable.dataset_id == dataset_id, EventParticipantTable.entity_id.is_(None))
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return [EventParticipant.model_validate(r) for r in rows]
+
+    async def set_participant_entity(self, participant_id: str, entity_id: str) -> None:
+        """Point a resolved participant at its `entity`."""
+        await self.session.execute(
+            update(EventParticipantTable).where(EventParticipantTable.id == participant_id).values(entity_id=entity_id)
+        )
+
+    async def unresolved_places(self, dataset_id: str) -> list[EventPlace]:
+        """Every `location_id IS NULL` place on the dataset's events, for `resolve-event-links`."""
+        rows = (
+            (
+                await self.session.execute(
+                    select(EventPlaceTable)
+                    .join(EventTable, EventTable.id == EventPlaceTable.event_id)
+                    .where(
+                        EventTable.dataset_id == dataset_id,
+                        EventPlaceTable.location_id.is_(None),
+                        EventPlaceTable.raw_text.is_not(None),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return [EventPlace.model_validate(r) for r in rows]
+
+    async def set_place_location(self, place_id: str, location_id: str) -> None:
+        """Point a resolved place at its `location`."""
+        await self.session.execute(
+            update(EventPlaceTable).where(EventPlaceTable.id == place_id).values(location_id=location_id)
+        )
+
     async def add_place(self, *, event_id: str, payload: EventPlaceCreate) -> EventPlace:
         """Attach a place to an event."""
         row = EventPlaceTable(event_id=event_id, **strip_null_bytes(payload.model_dump(by_alias=False)))
@@ -203,6 +288,10 @@ class PostgresEventRepository:
             where.append(EventTable.title.ilike(f"%{params.query}%"))
         if params.event_type:
             where.append(EventTable.event_type == params.event_type)
+        if params.category:
+            where.append(EventTable.categories.contains([params.category]))
+        if params.uid:
+            where.append(EventTable.uid == params.uid)
         if params.status:
             where.append(EventTable.status == params.status)
         if params.date_from is not None:

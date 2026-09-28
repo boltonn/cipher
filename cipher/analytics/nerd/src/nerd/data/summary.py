@@ -46,7 +46,6 @@ def _summarize_file(file_path: Path, chunk_size: Optional[int] = 10_000) -> File
         ])
         .collect()
     )
-    # turn to dict
     n_docs = stats["n_docs"][0]
     n_sentences = stats["n_sentences"][0]
 

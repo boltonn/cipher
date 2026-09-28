@@ -14,16 +14,12 @@ class EnrichmentTable(Base):
 
     __tablename__ = "enrichment"
 
-    id: Mapped[str] = mapped_column(
-        String, primary_key=True, default=lambda: str(uuid4())
-    )
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
 
     enrichable_type: Mapped[EnrichableType] = mapped_column(
         Enum(EnrichableType, native_enum=False), nullable=False, index=True
     )
-    enrichable_id: Mapped[str] = mapped_column(
-        String, nullable=False, index=True
-    )
+    enrichable_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
 
     enrichment_type: Mapped[EnrichmentType] = mapped_column(
         Enum(EnrichmentType, native_enum=False), nullable=False, index=True
@@ -36,12 +32,8 @@ class EnrichmentTable(Base):
         index=True,
     )
 
-    date_started: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    date_completed: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    date_started: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    date_completed: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

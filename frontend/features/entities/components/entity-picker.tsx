@@ -13,6 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { ENTITY_TYPE_META } from "@/features/entities/components/entity-type-meta";
 import { useEntityList } from "@/features/entities/hooks/use-entities";
 import type { EntityType } from "@/features/entities/types";
+import { useDebounce } from "@/hooks/use-debounce";
 import { cn } from "@/lib/utils";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { useState } from "react";
@@ -23,6 +24,8 @@ interface EntityPickerProps {
   onSelect: (entityId: string, displayName?: string) => void;
   /** Restrict results to these entity types (e.g. ["organization"]). Empty = any. */
   entityTypes?: EntityType[];
+  /** Scope results to one dataset (e.g. the search page's active dataset). */
+  datasetId?: string;
   placeholder?: string;
   className?: string;
 }
@@ -33,16 +36,19 @@ export function EntityPicker({
   valueName,
   onSelect,
   entityTypes = [],
+  datasetId,
   placeholder = "Search entities…",
   className,
 }: EntityPickerProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const debouncedQuery = useDebounce(query, 250);
 
   const singleType = entityTypes.length === 1 ? entityTypes[0] : undefined;
   const { data, isFetching } = useEntityList({
-    query: query || undefined,
+    query: debouncedQuery || undefined,
     entityType: singleType,
+    datasetId,
     limit: 20,
     page: 1,
   });

@@ -60,6 +60,10 @@ class Dataset(DatasetBase):
     id: str
     date_created: datetime
     date_last_updated: datetime
+    date_staged: datetime | None = Field(
+        None,
+        description="When staging first completed (files loaded + typed). Null until then.",
+    )
 
     model_config = {
         "from_attributes": True,
@@ -70,6 +74,7 @@ class Dataset(DatasetBase):
                 "description": "A sample dataset",
                 "date_created": "2024-01-01T12:00:00Z",
                 "date_last_updated": "2024-01-02T12:00:00Z",
+                "date_staged": "2024-01-01T12:30:00Z",
             }
         },
     }
@@ -146,3 +151,27 @@ class DatasetStatsResponse(BaseModel):
     loaded_over_time: list[LoadHistogramBucket] = Field(
         description="File count per time bucket, ordered chronologically"
     )
+
+
+class FiletypeGroupInventory(BaseModel):
+    """File count + size for one filetype group in a dataset."""
+
+    filetype_group: str
+    count: int
+    size_bytes: int
+
+
+class DatasetStagingSummary(BaseModel):
+    """Whether a dataset has finished staging, plus the inventory that fixes.
+
+    Staging is the milestone that unlocks enrichment planning: every file loaded
+    and typed, so counts and sizes per `filetype_group` are known and rough
+    per-enrichment time estimates can be produced.
+    """
+
+    dataset_id: str
+    is_staged: bool
+    date_staged: datetime | None = None
+    file_count: int = 0
+    total_size_bytes: int = 0
+    by_group: list[FiletypeGroupInventory] = Field(default_factory=list)

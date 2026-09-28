@@ -49,6 +49,28 @@ async def calendar_events(
     return await datastore.calendar_events(date_from=date_from, date_to=date_to, dataset_id=dataset_id)
 
 
+@router.get("/categories", summary="Distinct source labels in use", response_model=list[str])
+async def category_values(
+    datastore: EventDatastoreDep,
+    dataset_id: Annotated[str | None, Query(alias="datasetId")] = None,
+    q: Annotated[str | None, Query(description="Substring filter")] = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+) -> list[str]:
+    """The raw iCalendar `CATEGORIES` values present on events, for the filter combobox."""
+    return await datastore.list_category_values(dataset_id=dataset_id, q=q, limit=limit)
+
+
+@router.get("/tags", summary="Distinct tags in use", response_model=list[str])
+async def tag_values(
+    datastore: EventDatastoreDep,
+    dataset_id: Annotated[str | None, Query(alias="datasetId")] = None,
+    q: Annotated[str | None, Query(description="Substring filter")] = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+) -> list[str]:
+    """Analyst `tags` present on events, most-used first -- powers tag-input suggestions."""
+    return await datastore.list_tag_values(dataset_id=dataset_id, q=q, limit=limit)
+
+
 @router.post("", summary="Create an event", response_model=Event, **_BY_ALIAS)
 async def create_event(payload: EventCreate, datastore: EventDatastoreDep) -> Event:
     """Record an event (analyst-authored, or written by an extraction pass)."""

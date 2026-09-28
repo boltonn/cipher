@@ -220,7 +220,6 @@ def convert_iob2_to_parquet(input_file: Path, out_dir: Path):
                 text = line.replace("# text =", "").strip()
             
             elif re.match(r'^\d+\t', line):  # Line starts with digit followed by tab
-                # Token line
                 parts = line.split('\t')
                 if len(parts) >= 3:
                     token = parts[1]

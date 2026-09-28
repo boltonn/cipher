@@ -87,9 +87,7 @@ class FaceMatchResolution(BaseModel):
     response_model=PaginatedFaceMatchesResponse,
     response_model_by_alias=True,
 )
-async def get_face_matches(
-    params: Annotated[FaceMatchSearchParameters, Depends()], datastore: FaceMatchDatastoreDep
-):
+async def get_face_matches(params: Annotated[FaceMatchSearchParameters, Depends()], datastore: FaceMatchDatastoreDep):
     """List candidate matches, e.g. a face's pending 'potential matches' for review."""
     return await datastore.list_matches(request=params)
 
@@ -110,9 +108,7 @@ async def resolve_face_match(
     """Confirm or reject a candidate match. Confirming assigns the face to the person."""
     match = await datastore.resolve_match(
         match_id=id,
-        review=FaceMatchReview(
-            status=resolution.status, reviewed_by=user.id, review_note=resolution.review_note
-        ),
+        review=FaceMatchReview(status=resolution.status, reviewed_by=user.id, review_note=resolution.review_note),
     )
     if match is None:
         raise HTTPException(status_code=404, detail=f"Face match not found: {id}")
@@ -233,9 +229,7 @@ async def detect_faces_in_upload(file: UploadFile, model: FaceModelDep):
     response_model=PaginatedFaceSimilarityResponse,
     response_model_by_alias=True,
 )
-async def similarity_search_faces_by_embedding(
-    request: FaceSimilaritySearchRequest, datastore: FaceDatastoreDep
-):
+async def similarity_search_faces_by_embedding(request: FaceSimilaritySearchRequest, datastore: FaceDatastoreDep):
     """Find faces similar to an embedding, e.g. one chosen from /faces/detect."""
     return await datastore.search_similar_faces(request=request)
 
@@ -298,6 +292,10 @@ async def set_face_representative(id: str, data: FaceRepresentativeUpdate, datas
 
 
 @router.delete("/{id}", summary="Delete face by ID")
-async def delete_face(id: str, datastore: FaceDatastoreDep) -> bool:
+async def delete_face(id: str, datastore: FaceDatastoreDep, graph_datastore: GraphDatastoreDep) -> bool:
     """Delete a face by its ID."""
-    return await datastore.delete_face(face_id=id)
+    face = await datastore.get_face_by_id(face_id=id)
+    deleted = await datastore.delete_face(face_id=id)
+    if deleted and face is not None:
+        await graph_datastore.recompute_face_cooccurrence_for_images([face.image_id])
+    return deleted

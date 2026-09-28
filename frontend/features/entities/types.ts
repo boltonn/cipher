@@ -8,29 +8,94 @@ export const ENTITY_TYPES = [
 ] as const;
 export type EntityType = (typeof ENTITY_TYPES)[number];
 
-export const SELECTOR_KINDS = [
+export const SELECTOR_TYPES = [
   "phone",
   "email",
+  "ip",
+  "iban",
+  "bank_card",
   "passport",
   "national_id",
   "imei",
-  "iban",
-  "handle",
+  "imsi",
+  "social_handle",
   "crypto_address",
   "license_plate",
 ] as const;
-export type SelectorKind = (typeof SELECTOR_KINDS)[number];
+export type SelectorType = (typeof SELECTOR_TYPES)[number];
 
-export const SELECTOR_KIND_LABELS: Record<SelectorKind, string> = {
+export const SELECTOR_TYPE_LABELS: Record<SelectorType, string> = {
   phone: "Phone",
   email: "Email",
+  ip: "IP address",
+  iban: "IBAN",
+  bank_card: "Bank card",
   passport: "Passport",
   national_id: "National ID",
   imei: "IMEI",
-  iban: "IBAN",
-  handle: "Handle",
+  imsi: "IMSI",
+  social_handle: "Social handle",
   crypto_address: "Crypto address",
   license_plate: "License plate",
+};
+
+/** Specific provider / network / scheme within a selector type. Optional. */
+export const SELECTOR_SUBTYPES = [
+  "telegram",
+  "instagram",
+  "facebook",
+  "whatsapp",
+  "signal",
+  "twitter",
+  "tiktok",
+  "vk",
+  "odnoklassniki",
+  "wechat",
+  "qq",
+  "weibo",
+  "douyin",
+  "soroush",
+  "bale",
+  "rubika",
+  "eitaa",
+  "btc_address",
+  "eth_address",
+  "xmr_address",
+  "tron_address",
+  "ru_inn",
+  "ru_snils",
+  "cn_ric",
+  "ir_code_melli",
+] as const;
+export type SelectorSubtype = (typeof SELECTOR_SUBTYPES)[number];
+
+/** Which broad SelectorType a subtype rolls up to (mirrors backend SELECTOR_SUBTYPES). */
+export const SELECTOR_SUBTYPE_TYPE: Record<SelectorSubtype, SelectorType> = {
+  telegram: "social_handle",
+  instagram: "social_handle",
+  facebook: "social_handle",
+  whatsapp: "social_handle",
+  signal: "social_handle",
+  twitter: "social_handle",
+  tiktok: "social_handle",
+  vk: "social_handle",
+  odnoklassniki: "social_handle",
+  wechat: "social_handle",
+  qq: "social_handle",
+  weibo: "social_handle",
+  douyin: "social_handle",
+  soroush: "social_handle",
+  bale: "social_handle",
+  rubika: "social_handle",
+  eitaa: "social_handle",
+  btc_address: "crypto_address",
+  eth_address: "crypto_address",
+  xmr_address: "crypto_address",
+  tron_address: "crypto_address",
+  ru_inn: "national_id",
+  ru_snils: "national_id",
+  cn_ric: "national_id",
+  ir_code_melli: "national_id",
 };
 
 export const RELATIONSHIP_TYPES = [
@@ -83,12 +148,23 @@ export interface OntologyRelationship {
 
 export interface Ontology {
   entityTypes: EntityType[];
-  selectorKinds: SelectorKind[];
+  selectorTypes: SelectorType[];
+  selectorSubtypes: Partial<Record<SelectorType, SelectorSubtype[]>>;
   relationships: OntologyRelationship[];
 }
 
 export type TraversalDirection = "out" | "in" | "both";
 export type MentionedType = "extracted_text" | "image" | "structured_field";
+
+/** How a mention was found -- its evidence class. Mirrors backend MentionProvenance. */
+export const MENTION_PROVENANCES = [
+  "text",
+  "email_header",
+  "metadata",
+  "image",
+  "pattern",
+] as const;
+export type MentionProvenance = (typeof MENTION_PROVENANCES)[number];
 export type EntitySource =
   | "extraction"
   | "manual"
@@ -108,8 +184,24 @@ export interface Entity {
   source: EntitySource;
   isVerified: boolean;
   personId?: string;
+  /** only set when entityType === "selector" */
+  selectorType?: SelectorType | null;
+  selectorSubtype?: SelectorSubtype | null;
   dateCreated: string;
   dateUpdated: string;
+}
+
+export interface EntityBreakdownItem {
+  key: string;
+  count: number;
+}
+
+/** Entity / selector counts for a dataset -- feeds the dataset-view chart. */
+export interface EntityBreakdown {
+  total: number;
+  byEntityType: EntityBreakdownItem[];
+  bySelectorType: EntityBreakdownItem[];
+  bySelectorSubtype: EntityBreakdownItem[];
 }
 
 export interface EntitySummary {
@@ -133,7 +225,8 @@ export interface RelatedEntity {
   weight?: number | null;
   /** for selector neighbours: mentions carrying the selector's normalized value */
   mentionCount?: number | null;
-  selectorKind?: SelectorKind | null;
+  selectorType?: SelectorType | null;
+  selectorSubtype?: SelectorSubtype | null;
   normalizedValue?: string | null;
 }
 
@@ -153,8 +246,10 @@ export interface EntityDetail {
   longitude?: number;
   adminArea?: string;
   admin_area?: string;
-  selectorKind?: SelectorKind;
-  selector_kind?: SelectorKind;
+  selectorType?: SelectorType;
+  selector_type?: SelectorType;
+  selectorSubtype?: SelectorSubtype | null;
+  selector_subtype?: SelectorSubtype | null;
   rawValue?: string;
   raw_value?: string;
   normalizedValue?: string;
@@ -175,11 +270,14 @@ export interface Mention {
   datasetId: string;
   entityId?: string | null;
   mentionedType: MentionedType;
+  /** derived evidence class, sent by the API */
+  provenance: MentionProvenance;
   mentionedId: string;
   fileId?: string | null;
   surfaceText: string;
   entityType?: EntityType | null;
-  selectorKind?: SelectorKind | null;
+  selectorType?: SelectorType | null;
+  selectorSubtype?: SelectorSubtype | null;
   normalizedValue?: string | null;
   startOffset?: number | null;
   endOffset?: number | null;
@@ -217,9 +315,18 @@ export interface GraphResponse {
 /** A linked selector plus how many mentions carry its normalized value (any dataset, resolved or not). */
 export interface SelectorMention {
   entityId: string;
-  selectorKind: SelectorKind | null;
+  selectorType: SelectorType | null;
+  selectorSubtype?: SelectorSubtype | null;
   normalizedValue: string | null;
   mentionCount: number;
+  /** Distinct files where this address is a From/Sender header (email selectors). */
+  sentCount?: number;
+  /** Distinct files where this address is a To/Cc/Bcc header (email selectors). */
+  receivedCount?: number;
+  /** Body-text mentions of the value produced by NER. */
+  textCount?: number;
+  /** Body-text mentions of the value found by deterministic pattern match. */
+  patternCount?: number;
 }
 
 /** One phone-parsing region the selector normalizer accepts (ISO-3166-1 alpha-2). */
@@ -233,7 +340,10 @@ export interface EntityProfile {
   detail?: EntityDetail | null;
   selectors: EntitySummary[];
   selectorMentions: SelectorMention[];
-  mentionCounts: Record<string, number>;
+  /** mention count keyed by MentionProvenance (text / email_header / metadata / image / pattern) */
+  mentionCounts: Partial<Record<MentionProvenance, number>>;
+  /** distinct files this entity is mentioned in -- the headline number */
+  fileCount: number;
   /** highest-weight neighbours only; full list via GET /entities/{id}/related */
   relatedEntities: RelatedEntity[];
   relatedTotal: number;
@@ -242,14 +352,60 @@ export interface EntityProfile {
   faceIds: string[];
 }
 
+export type ResolutionBand = "auto" | "review" | "provisional";
+
+export type FeatureLevel =
+  | "conflict"
+  | "none"
+  | "weak"
+  | "moderate"
+  | "strong"
+  | "exact";
+
+export interface ResolutionFeature {
+  name: string;
+  level: FeatureLevel;
+  weight: number;
+  contribution: number;
+  detail?: string | null;
+}
+
+export interface ResolutionExplanation {
+  score: number;
+  band: ResolutionBand;
+  autoRule?: string | null;
+  blocking: string[];
+  candidatesConsidered: number;
+  runnerUpScore?: number | null;
+  features: ResolutionFeature[];
+}
+
+export type DecisionSource =
+  | "analyst"
+  | "sibling_auto"
+  | "reconcile"
+  | "system_auto";
+
 export interface EntityMatch {
   id: string;
   datasetId: string;
   entityId: string;
   mentionId?: string | null;
+  /** Name-group key; set (with mentionId null) on group-level rows. */
+  normalizedValue?: string | null;
+  mentionCount?: number | null;
   provisionalEntityId?: string | null;
   similarityScore: number;
   matchMethod: string;
+  decisionSource?: DecisionSource | null;
+  explanation?: ResolutionExplanation | null;
+  /** Display name + type of `entityId`, populated by the grouped queue only. */
+  entityName?: string | null;
+  entityType?: EntityType | null;
+  /** `personId` of `entityId` when it bridges a person record (grouped queue only). */
+  entityPersonId?: string | null;
+  /** Display name of `provisionalEntityId` on a merge proposal (merge queue only). */
+  provisionalName?: string | null;
   status: EntityMatchStatus;
   reviewedBy?: string | null;
   reviewedAt?: string | null;
@@ -257,11 +413,47 @@ export interface EntityMatch {
   dateCreated: string;
 }
 
+/** One card in the grouped resolution review queue. */
+export interface EntityMatchGroup {
+  datasetId: string;
+  normalizedValue: string;
+  surface: string;
+  mentionCount: number;
+  fileCount: number;
+  status: EntityMatchStatus;
+  top: EntityMatch;
+  alternatives: EntityMatch[];
+}
+
+export type PaginatedEntityMatchGroupsResponse =
+  PaginatedResponse<EntityMatchGroup>;
+
+/** One card in the entity-merge review queue: a provisional stub + canonical targets. */
+export interface EntityMergeGroup {
+  datasetId: string;
+  provisionalEntityId: string;
+  provisionalName: string;
+  provisionalEntityType: EntityType;
+  mentionCount: number;
+  status: EntityMatchStatus;
+  candidates: EntityMatch[];
+}
+
+export type PaginatedEntityMergeGroupsResponse =
+  PaginatedResponse<EntityMergeGroup>;
+
+export interface EntityMatchBatchItem {
+  matchId: string;
+  status: EntityMatchStatus;
+  reviewNote?: string;
+}
+
 export interface EntitySearchParameters {
   query?: string;
   datasetId?: string;
   entityType?: EntityType;
-  selectorKind?: SelectorKind;
+  selectorType?: SelectorType;
+  selectorSubtype?: SelectorSubtype;
   tags?: string[];
   isVerified?: boolean;
   country?: string;
@@ -292,8 +484,8 @@ export interface EntityUpdatePayload {
 }
 
 export interface SelectorLinkPayload {
-  datasetId: string;
-  selectorKind: SelectorKind;
+  selectorType: SelectorType;
+  selectorSubtype?: SelectorSubtype | null;
   rawValue: string;
   regionHint?: string | null;
 }
@@ -306,7 +498,8 @@ export interface MentionCreatePayload {
   fileId?: string | null;
   surfaceText: string;
   entityType?: EntityType | null;
-  selectorKind?: SelectorKind | null;
+  selectorType?: SelectorType | null;
+  selectorSubtype?: SelectorSubtype | null;
   startOffset?: number | null;
   endOffset?: number | null;
   context?: string | null;
@@ -316,7 +509,8 @@ export interface MentionCreatePayload {
 export interface MentionUpdatePayload {
   entityId?: string | null;
   entityType?: EntityType | null;
-  selectorKind?: SelectorKind | null;
+  selectorType?: SelectorType | null;
+  selectorSubtype?: SelectorSubtype | null;
   surfaceText?: string;
   context?: string;
 }

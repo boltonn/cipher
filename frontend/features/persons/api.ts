@@ -3,6 +3,8 @@ import {
   PaginatedPersonsResponse,
   Person,
   PersonCreate,
+  PersonMergeResult,
+  PersonMergeSuggestion,
   PersonSearchParameters,
   PersonUpdate,
 } from "@/features/persons/types";
@@ -53,6 +55,21 @@ export const personsService = {
   update: (id: string, payload: PersonUpdate) =>
     apiClient
       .patch<Person>(`${personsBaseURL}/${id}`, payload)
+      .then((res) => res.data),
+
+  // GET /persons/{id}/merge-candidates - other persons whose representative
+  // faces look like this one's, ranked by similarity (merge shortlist).
+  mergeCandidates: (id: string) =>
+    apiClient
+      .get<PersonMergeSuggestion[]>(`${personsBaseURL}/${id}/merge-candidates`)
+      .then((res) => res.data),
+
+  // POST /persons/{id}/merge - fold `sourceId` into this person, then delete it.
+  // Faces, pending matches, event participations, comments, mentions and
+  // relationship edges all move onto {id}; moved faces lose their exemplar flags.
+  merge: (id: string, sourceId: string) =>
+    apiClient
+      .post<PersonMergeResult>(`${personsBaseURL}/${id}/merge`, { sourceId })
       .then((res) => res.data),
 
   // POST /persons/{id}/examples - add an additional reference face to an existing person

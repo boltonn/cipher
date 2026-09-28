@@ -27,17 +27,13 @@ class PostgresUserRepository:
 
     async def get_by_id(self, user_id: str) -> User | None:
         """Get a user by ID."""
-        result = await self.session.execute(
-            select(UserTable).where(UserTable.id == user_id)
-        )
+        result = await self.session.execute(select(UserTable).where(UserTable.id == user_id))
         user_table = result.scalar_one_or_none()
         return User.model_validate(user_table) if user_table else None
 
     async def get_by_email(self, email: str) -> User | None:
         """Get a user by email."""
-        result = await self.session.execute(
-            select(UserTable).where(UserTable.email == email)
-        )
+        result = await self.session.execute(select(UserTable).where(UserTable.email == email))
         user_table = result.scalar_one_or_none()
         return User.model_validate(user_table) if user_table else None
 
@@ -48,12 +44,7 @@ class PostgresUserRepository:
         data = user_data.model_dump(exclude_unset=True)
         data["date_updated"] = datetime.now(UTC)
 
-        stmt = (
-            update(UserTable)
-            .where(UserTable.id == user_id)
-            .values(**data)
-            .returning(UserTable)
-        )
+        stmt = update(UserTable).where(UserTable.id == user_id).values(**data).returning(UserTable)
 
         result = await self.session.execute(stmt)
         await self.session.commit()
@@ -63,9 +54,7 @@ class PostgresUserRepository:
 
     async def delete(self, user_id: str) -> bool:
         """Delete a user by ID. Returns True if deleted, False if not found."""
-        result = await self.session.execute(
-            delete(UserTable).where(UserTable.id == user_id)
-        )
+        result = await self.session.execute(delete(UserTable).where(UserTable.id == user_id))
         await self.session.commit()
         return (result.rowcount or 0) > 0
 
@@ -77,10 +66,7 @@ class PostgresUserRepository:
     ) -> list[User]:
         """List users with pagination."""
         result = await self.session.execute(
-            select(UserTable)
-            .order_by(UserTable.date_created.desc())
-            .limit(limit)
-            .offset(offset)
+            select(UserTable).order_by(UserTable.date_created.desc()).limit(limit).offset(offset)
         )
         return [User.model_validate(user) for user in result.scalars().all()]
 
@@ -91,9 +77,7 @@ class PostgresUserRepository:
 
     async def exists(self, user_id: str) -> bool:
         """Check if a user exists."""
-        result = await self.session.execute(
-            select(func.count(UserTable.id)).where(UserTable.id == user_id)
-        )
+        result = await self.session.execute(select(func.count(UserTable.id)).where(UserTable.id == user_id))
         return result.scalar_one() > 0
 
     # User-Dataset Access Methods (simplified - no roles)

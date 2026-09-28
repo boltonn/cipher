@@ -28,6 +28,7 @@ import type {
   UnresolvedNameGroup,
 } from "@/features/entities/types";
 import { useMe } from "@/features/users/hooks/use-me";
+import { useDebounce } from "@/hooks/use-debounce";
 import { Building2, Loader2, MapPin, User, X } from "lucide-react";
 import { useState } from "react";
 
@@ -35,10 +36,11 @@ const PAGE_SIZE = 25;
 
 export function MentionReviewList({ datasetId }: { datasetId: string }) {
   const [q, setQ] = useState("");
+  const debouncedQ = useDebounce(q, 250);
   const [page, setPage] = useState(1);
   const { data, isPending, isFetching } = useUnresolvedNameGroups(
     datasetId,
-    q,
+    debouncedQ,
     page
   );
 
@@ -218,8 +220,9 @@ function AttachExisting({
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState(surface.trim().slice(0, 80));
+  const debouncedQuery = useDebounce(query, 250);
   const { data: results, isFetching } = useEntitySearch(
-    { datasetId, q: query },
+    { datasetId, q: debouncedQuery },
     open
   );
 

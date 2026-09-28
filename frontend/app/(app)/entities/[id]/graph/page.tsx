@@ -1,7 +1,6 @@
 "use client";
 
 import { PageHeader } from "@/components/page-header";
-import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -20,7 +19,7 @@ import {
   type TraversalDirection,
 } from "@/features/entities/types";
 import { cn } from "@/lib/utils";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { use, useState } from "react";
 
@@ -53,18 +52,41 @@ export default function EntityGraphPage({
     );
 
   return (
-    <div className="mx-auto max-w-6xl px-6 pb-10">
-      <PageHeader
-        eyebrow="Graph"
-        value={entity ? entity.displayName : "…"}
-      />
+    <div className="mx-auto max-w-400 px-6 pb-10 pt-5">
+      <PageHeader>
+        <div className="flex min-w-0 items-center gap-1.5 text-xs">
+          <Link
+            href="/entities"
+            className="font-mono text-muted-foreground hover:text-primary"
+          >
+            Entities
+          </Link>
+          <span className="text-muted-foreground/50">/</span>
+          <Link
+            href={`/entities/${id}`}
+            className="max-w-48 truncate font-mono text-muted-foreground hover:text-primary"
+          >
+            {entity ? entity.displayName : "…"}
+          </Link>
+          <span className="text-muted-foreground/50">/</span>
+          <span className="font-mono text-primary/80">Graph</span>
+        </div>
+      </PageHeader>
 
-      <Link
-        href={`/entities/${id}`}
-        className="mt-2 inline-flex w-fit items-center gap-1.5 text-[11px] font-semibold text-primary hover:underline"
-      >
-        <ArrowLeft size={12} /> Back to entity
-      </Link>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Link
+          href={`/entities/${id}`}
+          className="inline-flex w-fit items-center gap-1.5 text-[11px] font-semibold text-primary hover:underline"
+        >
+          <ArrowLeft size={12} /> Back to entity
+        </Link>
+        <Link
+          href={`/graph?seed=${id}`}
+          className="inline-flex w-fit items-center gap-1.5 text-[11px] font-semibold text-muted-foreground hover:text-primary"
+        >
+          Open in graph viewer <ArrowRight size={12} />
+        </Link>
+      </div>
 
       <div className="mt-4 flex flex-wrap items-end gap-x-6 gap-y-3 rounded-lg border border-border bg-muted/30 p-4">
         <label className="flex flex-col gap-1">
@@ -182,9 +204,6 @@ export default function EntityGraphPage({
         })}
       </div>
 
-      <Button asChild variant="ghost" size="sm" className="mt-2 w-fit">
-        <Link href={`/entities/${id}`}>Done</Link>
-      </Button>
     </div>
   );
 }

@@ -46,9 +46,7 @@ class EntityRelationshipCandidateTable(Base):
         String, ForeignKey("mention.id", ondelete="SET NULL"), nullable=True
     )
 
-    reviewed_by: Mapped[str | None] = mapped_column(
-        String, ForeignKey("user.id", ondelete="SET NULL"), nullable=True
-    )
+    reviewed_by: Mapped[str | None] = mapped_column(String, ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     review_note: Mapped[str | None] = mapped_column(String, nullable=True)
 

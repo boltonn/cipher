@@ -1,0 +1,55 @@
+{
+  "_comment": "hypocorism -> list of formal given names. Keys and values are fold()-ed at load. Coverage is deliberately partial; extend as datasets demand.",
+  "en": {
+    "bob": ["robert"], "rob": ["robert"], "bobby": ["robert"], "robbie": ["robert"],
+    "bill": ["william"], "will": ["william"], "billy": ["william"], "liam": ["william"],
+    "dick": ["richard"], "rick": ["richard"], "ricky": ["richard"], "rich": ["richard"],
+    "jim": ["james"], "jimmy": ["james"], "jamie": ["james"],
+    "jack": ["john"], "johnny": ["john"], "jon": ["john", "jonathan"],
+    "joe": ["joseph"], "joey": ["joseph"],
+    "mike": ["michael"], "mikey": ["michael"], "mick": ["michael"],
+    "tom": ["thomas"], "tommy": ["thomas"],
+    "tony": ["anthony"], "ant": ["anthony"],
+    "chris": ["christopher", "christina", "christine"],
+    "dave": ["david"], "davey": ["david"],
+    "dan": ["daniel"], "danny": ["daniel"],
+    "matt": ["matthew"], "nate": ["nathan", "nathaniel"],
+    "ben": ["benjamin"], "sam": ["samuel", "samantha"], "alex": ["alexander", "alexandra"],
+    "ed": ["edward", "edmund"], "eddie": ["edward", "edmund"], "ned": ["edward"],
+    "ted": ["edward", "theodore"], "teddy": ["edward", "theodore"],
+    "harry": ["harold", "henry"], "hank": ["henry"],
+    "kate": ["katherine"], "katie": ["katherine"], "kathy": ["katherine"], "cathy": ["catherine"],
+    "beth": ["elizabeth"], "liz": ["elizabeth"], "lizzie": ["elizabeth"], "betty": ["elizabeth"], "eliza": ["elizabeth"],
+    "peggy": ["margaret"], "meg": ["margaret"], "maggie": ["margaret"],
+    "sue": ["susan"], "suzie": ["susan"], "sandy": ["sandra"],
+    "jen": ["jennifer"], "jenny": ["jennifer"], "becky": ["rebecca"], "becca": ["rebecca"],
+    "abby": ["abigail"], "gabby": ["gabrielle"], "vicky": ["victoria"], "nikki": ["nicole"],
+    "nick": ["nicholas"], "nic": ["nicholas"], "pat": ["patrick", "patricia"], "trish": ["patricia"],
+    "steve": ["stephen", "steven"], "greg": ["gregory"], "andy": ["andrew"], "drew": ["andrew"],
+    "charlie": ["charles"], "chuck": ["charles"], "art": ["arthur"], "gus": ["august", "gustav"],
+    "fred": ["frederick", "alfred"], "frank": ["francis", "franklin"], "george": ["georgios"],
+    "kim": ["kimberly"], "deb": ["deborah"], "debbie": ["deborah"], "jess": ["jessica"], "jessie": ["jessica"]
+  },
+  "ru": {
+    "sasha": ["aleksandr", "aleksandra"], "shura": ["aleksandr"],
+    "misha": ["mikhail"], "masha": ["mariya"], "dima": ["dmitriy"], "mitya": ["dmitriy"],
+    "vova": ["vladimir"], "volodya": ["vladimir"],
+    "kolya": ["nikolay"], "kostya": ["konstantin"], "seryozha": ["sergey"], "seryoga": ["sergey"],
+    "zhenya": ["evgeniy", "evgeniya"], "vanya": ["ivan"], "petya": ["petr"],
+    "tolya": ["anatoliy"], "yura": ["yuriy"], "lyosha": ["aleksey"], "alyosha": ["aleksey"],
+    "grisha": ["grigoriy"], "borya": ["boris"], "gena": ["gennadiy"], "slava": ["vyacheslav", "svyatoslav"],
+    "tanya": ["tatyana"], "nastya": ["anastasiya"], "katya": ["ekaterina"], "lena": ["elena"],
+    "sveta": ["svetlana"], "ira": ["irina"], "olya": ["olga"], "nadya": ["nadezhda"],
+    "lyuda": ["lyudmila"], "galya": ["galina"], "vera": ["vera"], "vika": ["viktoriya"]
+  },
+  "es": {
+    "pepe": ["jose"], "paco": ["francisco"], "curro": ["francisco"], "kiko": ["francisco"],
+    "chema": ["jose maria"], "nacho": ["ignacio"], "lola": ["dolores"], "loli": ["dolores"],
+    "concha": ["concepcion"], "conchita": ["concepcion"], "charo": ["rosario"],
+    "pili": ["pilar"], "maite": ["maria teresa"], "chelo": ["consuelo"], "tere": ["teresa"]
+  },
+  "de": {
+    "hans": ["johannes"], "hansi": ["johannes"], "sepp": ["josef"], "fritz": ["friedrich"],
+    "heinz": ["heinrich"], "willi": ["wilhelm"], "kurt": ["konrad"], "bert": ["albert", "bertram"]
+  }
+}

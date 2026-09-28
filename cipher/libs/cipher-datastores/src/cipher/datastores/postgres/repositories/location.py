@@ -1,6 +1,6 @@
 from typing import Any
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -72,6 +72,21 @@ class PostgresLocationRepository:
         await self.session.refresh(row)
         return _to_schema(row)
 
+    async def replace_file_locations(self, *, file_id: str, source: str, rows: list[LocationCreate]) -> int:
+        """Delete a file's points for one `source` and re-insert `rows` (many points per file).
+
+        Unlike `upsert_file_locations` (one point per file per source), this
+        supports a document that mentions several coordinates. Idempotent per
+        `(file_id, source)`. Does not commit.
+        """
+        await self.session.execute(
+            delete(LocationTable).where(LocationTable.file_id == file_id, LocationTable.source == source)
+        )
+        payloads = [_row_values(r) for r in rows]
+        if payloads:
+            self.session.add_all(LocationTable(**p) for p in payloads)
+        return len(payloads)
+
     async def upsert_file_locations(self, rows: list[LocationCreate]) -> int:
         """Insert points keyed by their source file, updating on `(file_id, source)`.
 
@@ -86,7 +101,8 @@ class PostgresLocationRepository:
         deduped = {(p["file_id"], p["source"]): p for p in payloads}
         stmt = pg_insert(LocationTable).values(list(deduped.values()))
         stmt = stmt.on_conflict_do_update(
-            constraint="uq_location_file_source",
+            index_elements=["file_id", "source"],
+            index_where=text("source <> 'TEXT_MENTION'"),
             set_={k: getattr(stmt.excluded, k) for k in _UPSERT_KEYS},
         )
         await self.session.execute(stmt)
@@ -158,3 +174,22 @@ class PostgresLocationRepository:
         result = await self.session.execute(delete(LocationTable).where(LocationTable.id == location_id))
         await self.session.commit()
         return bool(result.rowcount)
+
+    async def find_by_name(self, name: str, *, dataset_id: str | None = None) -> Location | None:
+        """Exact (case-insensitive) match on a named location; prefers a dataset-agnostic row.
+
+        Used by `resolve-event-links` to attach an `event_place` to a place that
+        is already on the map. No geocoding -- a miss just leaves `raw_text`.
+        """
+        needle = name.strip().lower()
+        if not needle:
+            return None
+        where = [func.lower(LocationTable.name) == needle]
+        if dataset_id is not None:
+            where.append((LocationTable.dataset_id == dataset_id) | (LocationTable.dataset_id.is_(None)))
+        row = (
+            await self.session.execute(
+                select(LocationTable).where(*where).order_by(LocationTable.dataset_id.is_(None).desc()).limit(1)
+            )
+        ).scalar_one_or_none()
+        return _to_schema(row) if row else None

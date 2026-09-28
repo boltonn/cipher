@@ -14,6 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { facesService } from "@/features/faces/api";
 import { usePerson, usePersonRepresentativeFaces, usePersonSearch } from "@/features/persons/hooks/use-persons";
 import { Person } from "@/features/persons/types";
+import { useDebounce } from "@/hooks/use-debounce";
 import { cn } from "@/lib/utils";
 import { BadgeCheck, Check, ChevronsUpDown, UserRound, X } from "lucide-react";
 import { useState } from "react";
@@ -37,8 +38,13 @@ export function PersonMultiSelectCombobox({
 }: PersonMultiSelectComboboxProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const debouncedQuery = useDebounce(query, 250);
 
-  const { data, isFetching } = usePersonSearch({ query: query || undefined, limit: 20, page: 1 });
+  const { data, isFetching } = usePersonSearch({
+    query: debouncedQuery || undefined,
+    limit: 20,
+    page: 1,
+  });
   const persons = data?.data ?? [];
 
   const toggle = (personId: string) => {

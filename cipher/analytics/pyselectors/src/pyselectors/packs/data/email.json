@@ -1,0 +1,48 @@
+{
+  "selector_type": "email",
+  "priority": 95,
+  "base_confidence": 0.9,
+  "max_confidence": 0.99,
+  "normalizer": "email",
+  "validator": "email",
+  "patterns": [
+    {
+      "name": "plain",
+      "regex": "(?<![\\w.+-])[A-Za-z0-9._%+\\-]+@[A-Za-z0-9.\\-]+\\.(?:[a-z]{2,24}|[A-Z]{2,24})(?![A-Za-z0-9_-])"
+    },
+    {
+      "name": "defanged",
+      "regex": "(?<![\\w.+-])[A-Za-z0-9._%+\\-]+\\s?(?:\\[at\\]|\\(at\\)|\\bat\\b)\\s?[A-Za-z0-9.\\-]+(?:\\s?(?:\\[dot\\]|\\(dot\\)|\\bdot\\b)\\s?[A-Za-z0-9\\-]+)+"
+    }
+  ],
+  "context": {
+    "window_before": 30,
+    "window_after": 10,
+    "terms": {
+      "en": [
+        {"term": "email", "weight": 0.2},
+        {"term": "e-mail", "weight": 0.2},
+        {"term": "contact", "weight": 0.12},
+        {"term": "reach", "weight": 0.1}
+      ],
+      "ru": [
+        {"term": "почта", "weight": 0.2},
+        {"term": "эл. почта", "weight": 0.2},
+        {"term": "адрес", "weight": 0.08}
+      ],
+      "zh": [
+        {"term": "邮箱", "weight": 0.2},
+        {"term": "电子邮件", "weight": 0.2},
+        {"term": "联系", "weight": 0.1}
+      ],
+      "fa": [
+        {"term": "ایمیل", "weight": 0.2},
+        {"term": "پست الکترونیک", "weight": 0.2}
+      ],
+      "ar": [
+        {"term": "بريد", "weight": 0.2},
+        {"term": "البريد الإلكتروني", "weight": 0.2}
+      ]
+    }
+  }
+}

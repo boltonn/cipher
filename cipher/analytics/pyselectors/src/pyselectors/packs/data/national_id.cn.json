@@ -1,0 +1,20 @@
+{
+  "base_confidence": 0.45,
+  "validator": "national_id_cn",
+  "patterns": [
+    {"name": "ric18", "regex": "(?<![\\dA-Za-z])\\d{17}[\\dXx](?![\\dA-Za-z])", "subtype": "cn_ric"}
+  ],
+  "context": {
+    "terms": {
+      "zh": [
+        {"term": "身份证", "weight": 0.4},
+        {"term": "身份证号", "weight": 0.45},
+        {"term": "证件号", "weight": 0.3}
+      ],
+      "en": [
+        {"term": "resident identity", "weight": 0.35},
+        {"term": "id card", "weight": 0.25}
+      ]
+    }
+  }
+}

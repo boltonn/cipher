@@ -31,9 +31,7 @@ class PostgresCommentRepository:
         await self.session.refresh(comment_table)
         return Comment.model_validate(comment_table)
 
-    async def get_comments(
-        self, commentable_type: CommentableType, commentable_id: str
-    ) -> list[CommentPublic]:
+    async def get_comments(self, commentable_type: CommentableType, commentable_id: str) -> list[CommentPublic]:
         """Retrieve all comments on a resource, oldest first."""
         stmt = (
             select(CommentTable)
@@ -46,9 +44,7 @@ class PostgresCommentRepository:
         )
         result = await self.session.execute(stmt)
         comments = result.scalars().all()
-        return [
-            CommentPublic.model_validate({**c.__dict__, "user_name": c.user.name}) for c in comments
-        ]
+        return [CommentPublic.model_validate({**c.__dict__, "user_name": c.user.name}) for c in comments]
 
     async def get_comment_by_id(self, comment_id: str) -> Comment | None:
         """Retrieve a comment by ID."""
@@ -59,12 +55,7 @@ class PostgresCommentRepository:
     async def update_comment(self, comment_id: str, data: CommentUpdate) -> Comment | None:
         """Update a comment's content."""
         update_dict = data.model_dump(exclude_unset=True)
-        stmt = (
-            update(CommentTable)
-            .where(CommentTable.id == comment_id)
-            .values(**update_dict)
-            .returning(CommentTable)
-        )
+        stmt = update(CommentTable).where(CommentTable.id == comment_id).values(**update_dict).returning(CommentTable)
         result = await self.session.execute(stmt)
         comment_table = result.scalar_one_or_none()
         comment = Comment.model_validate(comment_table) if comment_table else None

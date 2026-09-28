@@ -8,9 +8,15 @@ import type {
   DatasetUpdate,
   EnrichmentProgress,
 } from "@/features/datasets/types";
+import type { DatasetEnrichmentEstimates } from "@/features/datasets/request-types";
 import { apiClient } from "@/lib/api-client";
 import type { PaginatedResponse } from "@/types/common";
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 
 const queryKeys = {
   datasets: (filters?: DatasetRequest) => ["datasets", filters] as const,
@@ -40,8 +46,14 @@ const datasetService = {
     const { data } = await apiClient.get<Dataset>(`/datasets/${id}`);
     return data;
   },
-  getStats: async (id: string, params?: DatasetStatsRequest): Promise<DatasetStatsResponse> => {
-    const { data } = await apiClient.get<DatasetStatsResponse>(`/datasets/${id}/stats`, { params });
+  getStats: async (
+    id: string,
+    params?: DatasetStatsRequest
+  ): Promise<DatasetStatsResponse> => {
+    const { data } = await apiClient.get<DatasetStatsResponse>(
+      `/datasets/${id}/stats`,
+      { params }
+    );
     return data;
   },
   update: async (id: string, payload: DatasetUpdate): Promise<Dataset> => {
@@ -86,7 +98,10 @@ export function useDataset(id: string | undefined) {
   });
 }
 
-export function useDatasetStats(id: string | undefined, params: DatasetStatsRequest) {
+export function useDatasetStats(
+  id: string | undefined,
+  params: DatasetStatsRequest
+) {
   return useQuery({
     queryKey: ["datasets", id, "stats", params],
     queryFn: () => datasetService.getStats(id as string, params),
@@ -118,19 +133,44 @@ export function useEnrichmentProgress(id: string | undefined) {
   });
 }
 
+/** Rough per-enrichment time estimates for a dataset, at a chosen device class. */
+export function useEnrichmentEstimates(
+  datasetId: string | undefined,
+  device: "cpu" | "cuda" = "cpu"
+) {
+  return useQuery({
+    queryKey: ["datasets", datasetId, "enrichment-estimates", device],
+    queryFn: async () => {
+      const { data } = await apiClient.get<DatasetEnrichmentEstimates>(
+        `/datasets/${datasetId}/enrichment-estimates`,
+        { params: { device }, suppressErrorToast: true }
+      );
+      return data;
+    },
+    enabled: !!datasetId && datasetId.trim().length > 0,
+    staleTime: 30_000,
+    retry: false,
+  });
+}
+
 /** Trigger a model-free enrichment (e.g. EXIF location extraction) to run in the background. */
 export function useRunEnrichment(datasetId: string | undefined) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (enrichmentType: string) => {
-      const { data } = await apiClient.post<{ status: string; detail: string }>("/enrichments/run", {
-        datasetId,
-        enrichmentType,
-      });
+      const { data } = await apiClient.post<{ status: string; detail: string }>(
+        "/enrichments/run",
+        {
+          datasetId,
+          enrichmentType,
+        }
+      );
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["datasets", datasetId, "enrichment-progress"] });
+      queryClient.invalidateQueries({
+        queryKey: ["datasets", datasetId, "enrichment-progress"],
+      });
     },
   });
 }
@@ -185,7 +225,8 @@ export function useDeleteDataset(onSuccess?: () => void) {
       // leave the id-scoped subtree alone entirely and only invalidate the
       // list queries (a structurally different key: an object, not this id).
       queryClient.invalidateQueries({
-        predicate: (query) => query.queryKey[0] === "datasets" && query.queryKey[1] !== id,
+        predicate: (query) =>
+          query.queryKey[0] === "datasets" && query.queryKey[1] !== id,
       });
       onSuccess?.();
     },

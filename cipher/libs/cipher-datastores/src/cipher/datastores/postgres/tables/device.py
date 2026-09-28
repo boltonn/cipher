@@ -17,16 +17,10 @@ class DeviceTable(Base):
 
     __tablename__ = "device"
 
-    id: Mapped[str] = mapped_column(
-        String, primary_key=True, default=lambda: str(uuid4())
-    )
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
 
-    name: Mapped[str | None] = mapped_column(
-        String, unique=True, nullable=True, index=True
-    )
-    serial_number: Mapped[str | None] = mapped_column(
-        String, unique=True, nullable=True
-    )
+    name: Mapped[str | None] = mapped_column(String, unique=True, nullable=True, index=True)
+    serial_number: Mapped[str | None] = mapped_column(String, unique=True, nullable=True)
     android_id: Mapped[str | None] = mapped_column(String, unique=True, nullable=True)
     manufacturer: Mapped[str | None] = mapped_column(String, nullable=True)
     brand: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -34,9 +28,7 @@ class DeviceTable(Base):
     product_name: Mapped[str | None] = mapped_column(String, nullable=True)
     device_codename: Mapped[str | None] = mapped_column(String, nullable=True)
 
-    phone_numbers: Mapped[list[dict]] = mapped_column(
-        JSONB, nullable=False, default=list
-    )
+    phone_numbers: Mapped[list[dict]] = mapped_column(JSONB, nullable=False, default=list)
 
     os_type: Mapped[str | None] = mapped_column(String, nullable=True)
     version: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -52,18 +44,10 @@ class DeviceTable(Base):
 
     imeis: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
 
-    date_first_seen: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    date_last_seen: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    date_last_synced: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    date_first_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    date_last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    date_last_synced: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     additional_info: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
 
-    contacts: Mapped[list["ContactTable"]] = relationship(
-        back_populates="device", lazy="select"
-    )
+    contacts: Mapped[list["ContactTable"]] = relationship(back_populates="device", lazy="select")

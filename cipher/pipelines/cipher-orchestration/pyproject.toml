@@ -16,7 +16,10 @@ dependencies = [
 
 [project.optional-dependencies]
 messages = ["clir", "numpy", "pandas"]
-cli = ["filetyper", "face", "setfitcv", "pyxberg", "pyparse[email]", "pyselectors", "clir"]
+cli = ["filetyper", "face", "setfitcv", "pyxberg", "pyparse[email]", "pyselectors", "pyprompt", "clir"]
+# Heavy NER model backends for `extract-entities --extractor gliner|nerd`; install
+# alongside `cli` only in an environment that will run that stage.
+ner = ["pygliner[relations]", "nerd"]
 
 [project.scripts]
 cipher = "cipher.orchestration.cli:app"
@@ -32,6 +35,9 @@ setfitcv = { workspace = true }
 pyxberg = { workspace = true }
 pyparse = { workspace = true }
 pyselectors = { workspace = true }
+pyprompt = { workspace = true }
+pygliner = { workspace = true }
+nerd = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

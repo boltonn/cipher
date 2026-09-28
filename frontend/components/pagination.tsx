@@ -127,7 +127,10 @@ function CompactPagination({
   pageSizeOptions,
   onPageSizeChange,
 }: PaginationProps) {
-  if (totalItems === 0) return null;
+  // Nothing to page through: no items, or everything already fits on one
+  // page. A "1-6 of 6" footer with dead arrows and a rows-per-page select is
+  // pure noise for a list that doesn't span pages.
+  if (totalItems === 0 || totalItems <= itemsPerPage) return null;
 
   const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
   const rangeStart = (currentPage - 1) * itemsPerPage + 1;

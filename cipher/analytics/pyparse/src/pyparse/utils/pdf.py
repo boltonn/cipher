@@ -67,9 +67,7 @@ class BMPWriter:
             0,
         )
         assert len(info) == 40, len(info)
-        header = struct.pack(
-            "<ccIHHI", b"B", b"M", header_size + self.image_size, 0, 0, header_size
-        )
+        header = struct.pack("<ccIHHI", b"B", b"M", header_size + self.image_size, 0, 0, header_size)
         assert len(header) == 14, len(header)
         self.fp.write(header + info)
         if self.colors == 2:
@@ -101,9 +99,7 @@ class PDFImageHandler:
         self.i = 0
         self.extract_children = extract_children
         if self.extract_children:
-            assert out_dir is not None, (
-                "Must provide an output directory if extract_children is True"
-            )
+            assert out_dir is not None, "Must provide an output directory if extract_children is True"
             self.out_dir = out_dir
             self.out_dir.mkdir(parents=True, exist_ok=True)
             logger.info(f"Extracting images to {self.out_dir}")

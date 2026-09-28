@@ -1,6 +1,6 @@
 """Job schemas - used by workflows, backend, and CLI."""
 
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import Field
 
@@ -8,7 +8,7 @@ from cipher.schemas._base.base import BaseModel
 from cipher.schemas._base.common import ModelDevice
 
 
-class JobStatus(str, Enum):
+class JobStatus(StrEnum):
     """Job status enumeration."""
 
     PENDING = "pending"

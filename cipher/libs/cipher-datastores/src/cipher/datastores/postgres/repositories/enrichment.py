@@ -137,6 +137,30 @@ class PostgresEnrichmentRepository:
         )
         await self.session.execute(statement)
 
+    async def get_enrichment_ids_for(
+        self,
+        enrichable_ids: list[str],
+        enrichment_type: EnrichmentType,
+        enrichable_type: EnrichableType = EnrichableType.FILE,
+    ) -> dict[str, str]:
+        """`{enrichable_id: enrichment_id}` for the given rows and type.
+
+        Used by the combined LLM pass to complete a second enrichment type's rows
+        for the same files it just processed under the primary type.
+        """
+        if not enrichable_ids:
+            return {}
+        rows = (
+            await self.session.execute(
+                select(EnrichmentTable.enrichable_id, EnrichmentTable.id).where(
+                    EnrichmentTable.enrichable_type == enrichable_type,
+                    EnrichmentTable.enrichment_type == enrichment_type,
+                    EnrichmentTable.enrichable_id.in_(enrichable_ids),
+                )
+            )
+        ).all()
+        return {enrichable_id: enrichment_id for enrichable_id, enrichment_id in rows}
+
     async def mark_completed_batch(self, enrichment_ids: list[str]) -> None:
         """Mark enrichment as COMPLETED."""
         statement = (
@@ -432,7 +456,6 @@ class PostgresEnrichmentRepository:
         result = await self.session.execute(query)
         files = list(result.scalars().all())
 
-        # Create enrichments
         count = 0
         for file in files:
             enrichment = EnrichmentTable(

@@ -2,7 +2,6 @@
 
 from datetime import datetime
 
-# from pprint import pprint
 from elastic_transport import ObjectApiResponse
 from loguru import logger
 from tqdm import tqdm
@@ -51,9 +50,7 @@ def _build_nested_filters(filters: MessageFilters) -> list[dict]:
     if filters.recipient is not None:
         nested_must.append({"term": {"messages.recipient": filters.recipient}})
     if filters.message_status is not None:
-        nested_must.append(
-            {"term": {"messages.message_status": filters.message_status.value}}
-        )
+        nested_must.append({"term": {"messages.message_status": filters.message_status.value}})
     if filters.source_type is not None:
         nested_must.append({"term": {"messages.source_type": filters.source_type}})
     if filters.language is not None:
@@ -145,9 +142,7 @@ def _chunk_from_hit(hit: dict) -> ScoredConversationChunk:
 def _messages_from_hit(hit: dict) -> list[ScoredMessage]:
     """Extract inner_hit messages from a single chunk hit, inheriting the chunk score."""
     chunk_score = hit.get("_score") or hit.get("_knn_score", 1.0)
-    inner = (
-        hit.get("inner_hits", {}).get("messages", {}).get("hits", {}).get("hits", [])
-    )
+    inner = hit.get("inner_hits", {}).get("messages", {}).get("hits", {}).get("hits", [])
     return [
         ScoredMessage(
             **inner_hit["_source"],
@@ -198,16 +193,12 @@ class ElasticsearchMessageRepository:
 
         resp = await self.client.indices.create(
             index=self.index,
-            body=build_messages_mapping(
-                embedding_size=embedding_size, text_analyzer=text_analyzer
-            ),
+            body=build_messages_mapping(embedding_size=embedding_size, text_analyzer=text_analyzer),
         )
         if not resp.get("acknowledged", False):
             logger.error(f"Failed to create Elasticsearch index '{self.index}': {resp}")
             return False
-        logger.success(
-            f"Created Elasticsearch index '{self.index}' with mapping: {resp.get('acknowledged', False)}"
-        )
+        logger.success(f"Created Elasticsearch index '{self.index}' with mapping: {resp.get('acknowledged', False)}")
         return True
 
     async def delete_index(self) -> bool:
@@ -220,9 +211,7 @@ class ElasticsearchMessageRepository:
     async def get_chunk_by_id(self, chunk_id: str) -> ScoredConversationChunk | None:
         """Get a chunk document by its ES document ID."""
         try:
-            resp: ObjectApiResponse = await self.client.get(
-                index=self.index, id=chunk_id
-            )
+            resp: ObjectApiResponse = await self.client.get(index=self.index, id=chunk_id)
         except NotFoundError:
             return None
         return _chunk_from_hit(resp)
@@ -245,13 +234,7 @@ class ElasticsearchMessageRepository:
         hits = resp["hits"]["hits"]
         if not hits:
             return None
-        inner_hits = (
-            hits[0]
-            .get("inner_hits", {})
-            .get("messages", {})
-            .get("hits", {})
-            .get("hits", [])
-        )
+        inner_hits = hits[0].get("inner_hits", {}).get("messages", {}).get("hits", {}).get("hits", [])
         if not inner_hits:
             return None
         return Message.model_validate(inner_hits[0]["_source"])
@@ -303,9 +286,7 @@ class ElasticsearchMessageRepository:
                 "query": {
                     "nested": {
                         "path": "messages",
-                        "query": {
-                            "term": {"messages.meaningful_hash": meaningful_hash}
-                        },
+                        "query": {"term": {"messages.meaningful_hash": meaningful_hash}},
                     }
                 }
             },
@@ -319,15 +300,11 @@ class ElasticsearchMessageRepository:
         resp = await self.client.count(index=self.index, body={"query": query})
         return resp["count"]
 
-    async def list_chunks(
-        self, request: ConversationChunkListRequest
-    ) -> PaginatedConversationChunksResponse:
+    async def list_chunks(self, request: ConversationChunkListRequest) -> PaginatedConversationChunksResponse:
         """List chunk documents with filters and pagination."""
         clauses = _build_nested_filters(request.filters)
         query = {"bool": {"filter": clauses}} if clauses else {"match_all": {}}
-        sort = _sort_clause(request.sort_by, request.sort_order) or [
-            {"date": {"order": request.sort_order}}
-        ]
+        sort = _sort_clause(request.sort_by, request.sort_order) or [{"date": {"order": request.sort_order}}]
         # count_resp = await self.client.count(index=self.index, body={"query": query})
         resp = await self.client.search(
             index=self.index,
@@ -359,9 +336,7 @@ class ElasticsearchMessageRepository:
             raise ValueError(f"Chunk not found: {chunk_id}")
 
         pivot = cursor or chunk.date
-        range_clause = (
-            {"gt": pivot.isoformat()} if is_after else {"lt": pivot.isoformat()}
-        )
+        range_clause = {"gt": pivot.isoformat()} if is_after else {"lt": pivot.isoformat()}
         sort_order = "asc" if is_after else "desc"
 
         resp = await self.client.search(
@@ -383,9 +358,7 @@ class ElasticsearchMessageRepository:
         results = [_chunk_from_hit(hit) for hit in resp["hits"]["hits"]]
         return results if is_after else list(reversed(results))
 
-    async def get_conversation_chunks(
-        self, conversation_id: str, *, limit: int = 10
-    ) -> list[ScoredConversationChunk]:
+    async def get_conversation_chunks(self, conversation_id: str, *, limit: int = 10) -> list[ScoredConversationChunk]:
         """Get all chunks for a conversation sorted chronologically by date."""
         resp = await self.client.search(
             index=self.index,
@@ -397,9 +370,7 @@ class ElasticsearchMessageRepository:
         )
         return [_chunk_from_hit(hit) for hit in resp["hits"]["hits"]]
 
-    async def toggle_chunk_tag(
-        self, chunk_id: str, tag: str, tag_type: ModelTagType
-    ) -> ScoredConversationChunk | None:
+    async def toggle_chunk_tag(self, chunk_id: str, tag: str, tag_type: ModelTagType) -> ScoredConversationChunk | None:
         """Tag a chunk of messages with a positive or negative tag.
 
         If the tag already exists, it will be removed (toggled off).
@@ -493,9 +464,7 @@ class ElasticsearchMessageRepository:
             min_similarity=request.min_similarity,
             filters=clauses,
         )
-        resp = await self.client.search(
-            index=self.index, body={"knn": knn, "size": request.limit}
-        )
+        resp = await self.client.search(index=self.index, body={"knn": knn, "size": request.limit})
         total = resp["hits"]["total"]["value"]
         return _extract(
             resp,
@@ -526,9 +495,7 @@ class ElasticsearchMessageRepository:
             )
         )
 
-    async def search_hybrid(
-        self, request: ConversationChunkHybridSearchRequest
-    ) -> PaginatedConversationChunksResponse:
+    async def search_hybrid(self, request: ConversationChunkHybridSearchRequest) -> PaginatedConversationChunksResponse:
         """Hybrid RRF search combining BM25 text and kNN chunk embedding similarity."""
         clauses = _build_nested_filters(request.filters)
         knn = _knn_clause(
@@ -563,13 +530,9 @@ class ElasticsearchMessageRepository:
                 }
             },
             "knn": knn,
-            "rank": {
-                "rrf": {"window_size": request.num_candidates, "rank_constant": 60}
-            },
+            "rank": {"rrf": {"window_size": request.num_candidates, "rank_constant": 60}},
         }
-        count_resp = await self.client.count(
-            index=self.index, body={"query": body["query"]}
-        )
+        count_resp = await self.client.count(index=self.index, body={"query": body["query"]})
         resp = await self.client.search(index=self.index, body=body)
         return _extract(
             resp,
@@ -586,9 +549,7 @@ class ElasticsearchMessageRepository:
             # Header line
             operations.append({"index": {"_index": self.index, "_id": str(chunk.id)}})
             # Data line
-            operations.append(
-                chunk.model_dump(exclude={"id"}, by_alias=False, mode="json")
-            )
+            operations.append(chunk.model_dump(exclude={"id"}, by_alias=False, mode="json"))
 
         resp = await self.client.bulk(
             operations=operations,
@@ -596,14 +557,10 @@ class ElasticsearchMessageRepository:
             timeout=-1,  # Disable bulk timeout to allow large batches to complete
         )
 
-        indexed = sum(
-            1 for item in resp["items"] if item["index"]["status"] in (200, 201)
-        )
+        indexed = sum(1 for item in resp["items"] if item["index"]["status"] in (200, 201))
         return indexed, len(resp["items"]) - indexed
 
-    async def bulk_index(
-        self, chunks: list[ConversationChunk], batch_size: int = 100
-    ) -> tuple[int, int]:
+    async def bulk_index(self, chunks: list[ConversationChunk], batch_size: int = 100) -> tuple[int, int]:
         """Bulk index records with internal batching and a progress bar.
 
         Returns (total_indexed, total_failed).

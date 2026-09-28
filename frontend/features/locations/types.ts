@@ -1,6 +1,7 @@
-/** Mirrors `cipher.schemas.ontology.LocationSource`. */
+/** Mirrors `cipher.schemas.graph.ontology.LocationSource`. */
 export type LocationSource =
   | "named_mention"
+  | "text_mention"
   | "exif"
   | "geocoded"
   | "device_gps";

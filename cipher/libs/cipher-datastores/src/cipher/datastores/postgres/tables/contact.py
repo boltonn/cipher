@@ -18,23 +18,17 @@ class ContactTable(Base):
 
     __tablename__ = "contact"
 
-    id: Mapped[str] = mapped_column(
-        String, primary_key=True, default=lambda: str(uuid4())
-    )
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
 
     address: Mapped[str | None] = mapped_column(String, nullable=True)
-    date_of_birth: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    date_of_birth: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     emails: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
     first_name: Mapped[str | None] = mapped_column(String, nullable=True)
     full_name: Mapped[str | None] = mapped_column(String, nullable=True)
     last_name: Mapped[str | None] = mapped_column(String, nullable=True)
     note: Mapped[str | None] = mapped_column(String, nullable=True)
     organization: Mapped[str | None] = mapped_column(String, nullable=True)
-    phone_numbers: Mapped[list[dict]] = mapped_column(
-        JSONB, nullable=False, default=list
-    )
+    phone_numbers: Mapped[list[dict]] = mapped_column(JSONB, nullable=False, default=list)
 
     file_id: Mapped[str] = mapped_column(
         String,
@@ -49,13 +43,7 @@ class ContactTable(Base):
         index=True,
     )
 
-    date_created: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    date_created: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    file: Mapped["FileTable | None"] = relationship(
-        back_populates="contacts", lazy="select"
-    )
-    device: Mapped["DeviceTable | None"] = relationship(
-        back_populates="contacts", lazy="select"
-    )
+    file: Mapped["FileTable | None"] = relationship(back_populates="contacts", lazy="select")
+    device: Mapped["DeviceTable | None"] = relationship(back_populates="contacts", lazy="select")

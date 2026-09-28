@@ -7,8 +7,6 @@ from pptx.enum.shapes import MSO_SHAPE_TYPE, PP_MEDIA_TYPE
 
 from pyparse.utils.msoffice import convert_table_to_text, parse_meta
 
-# from pyparse.utils.io import safe_open
-
 
 class PptxParser:
     @staticmethod
@@ -44,27 +42,15 @@ class PptxParser:
                     if table_text:
                         text = f"{text}{page_delimiter}{table_text}"
                 elif shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
-                    child = PptxParser.parse_image(
-                        shape, extract_children=extract_children, out_dir=out_dir
-                    )
+                    child = PptxParser.parse_image(shape, extract_children=extract_children, out_dir=out_dir)
                     if child:
                         children.append(child)
-                elif (
-                    hasattr(shape, "media_type")
-                    and shape.media_type == PP_MEDIA_TYPE.AUDIO
-                ):
-                    logger.error(
-                        "Found a audio file, but we don't support parsing it yet"
-                    )
+                elif hasattr(shape, "media_type") and shape.media_type == PP_MEDIA_TYPE.AUDIO:
+                    logger.error("Found a audio file, but we don't support parsing it yet")
                     continue
-                elif (
-                    hasattr(shape, "media_type")
-                    and shape.media_type == PP_MEDIA_TYPE.MOVIE
-                ):
+                elif hasattr(shape, "media_type") and shape.media_type == PP_MEDIA_TYPE.MOVIE:
                     # save the movie file
-                    logger.error(
-                        "Found a video file, but we don't support parsing it yet"
-                    )
+                    logger.error("Found a video file, but we don't support parsing it yet")
                     continue
                 else:
                     continue
@@ -80,52 +66,6 @@ class PptxParser:
             out["children"] = children
 
         return out
-
-    # @staticmethod
-    # def parse_image(
-    #     shape,
-    #     extract_children: bool = False,
-    #     min_resolution: int = -1,
-    #     out_dir: Path = None,
-    # ) -> Image:
-    #     """Get image from shape."""
-    #     file_name = shape.image.filename
-    #     file_ext = Path(file_name).suffix
-    #     if file_ext.lower() == ".emf":
-    #         return None
-
-    #     child = get_file_instance(shape.image.blob)
-    #     child["file_name"] = file_name
-    #     child["file_extension"] = file_ext
-
-    #     if file_ext.lower() == ".wmf":
-    #         child["mime_type"] = "image/wmf"
-    #         child["file_type"] = "image"
-
-    #     try:
-    #         child |= ImageParser.parse(file=shape.image.blob)
-    #     except UnidentifiedImageError:
-    #         logger.warning(f"Failed to parse image {file_name}")
-    #     except OSError:
-    #         logger.warning(
-    #             f"Failed to parse image {file_name}. Likely wmf image that cannot be parsed on Linux."
-    #         )
-
-    #     above_min_resolution = (
-    #         all(dim > min_resolution for dim in [child["height"], child["width"]])
-    #         if hasattr(child, "height") and hasattr(child, "width")
-    #         else True
-    #     )
-
-    #     if extract_children and above_min_resolution and out_dir is not None:
-    #         out_name = f"{child['hash']['md5']}{child.get('file_extension', '.bin')}"
-    #         out_path = out_dir / out_name
-    #         with safe_open(out_path, "wb") as fb:
-    #             fb.write(shape.image.blob)
-    #         child["path"] = out_path.absolute()
-    #         logger.info(f"Extracted image {out_path}")
-
-    #     return Image(**child)
 
     @staticmethod
     def parse_notes(slide):

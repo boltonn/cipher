@@ -160,7 +160,6 @@ class ImageMetadataExtractor:
             except Exception:
                 results.pop("iso", None)
 
-        # GPS Unification
         if "GPSLatitude" in data and "GPSLatitudeRef" in data:
             results["gps_latitude"] = ImageMetadataExtractor._parse_coord(data["GPSLatitude"], data["GPSLatitudeRef"])
         if "GPSLongitude" in data and "GPSLongitudeRef" in data:

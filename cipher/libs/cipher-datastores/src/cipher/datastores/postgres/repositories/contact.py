@@ -40,9 +40,7 @@ class PostgresContactRepository:
 
     async def get_contact_by_id(self, contact_id: str) -> Contact | None:
         """Retrieve a contact by its ID."""
-        result = await self.session.execute(
-            select(ContactTable).where(ContactTable.id == contact_id)
-        )
+        result = await self.session.execute(select(ContactTable).where(ContactTable.id == contact_id))
         contact_table = result.scalar_one_or_none()
         return Contact.model_validate(contact_table) if contact_table else None
 
@@ -106,25 +104,15 @@ class PostgresContactRepository:
 
         del rows
 
-    async def search_contacts(
-        self, query: str, limit: int = 20, offset: int = 0
-    ) -> list[Contact]:
+    async def search_contacts(self, query: str, limit: int = 20, offset: int = 0) -> list[Contact]:
         """Perform a global BM25 search across all contact fields using ParadeDB."""
-        statement = (
-            select(ContactTable)
-            .where(text("contact @@@ :q"))
-            .params(q=query)
-            .limit(limit)
-            .offset(offset)
-        )
+        statement = select(ContactTable).where(text("contact @@@ :q")).params(q=query).limit(limit).offset(offset)
 
         result = await self.session.execute(statement)
         return [Contact.model_validate(c) for c in result.scalars().all()]
 
     async def delete_contact(self, contact_id: str) -> bool:
         """Delete a contact and commit the transaction."""
-        result = await self.session.execute(
-            delete(ContactTable).where(ContactTable.id == contact_id)
-        )
+        result = await self.session.execute(delete(ContactTable).where(ContactTable.id == contact_id))
         await self.session.commit()
         return bool(result.rowcount)

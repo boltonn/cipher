@@ -3,7 +3,7 @@ from typing import Any
 from uuid import uuid4
 
 from geoalchemy2 import Geometry
-from sqlalchemy import DateTime, Enum, Float, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import DateTime, Enum, Float, ForeignKey, Index, Integer, String, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -77,7 +77,16 @@ class LocationTable(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint("file_id", "source", name="uq_location_file_source"),
+        # One point per (file, source) for single-fix sources (EXIF, device GPS);
+        # `text_mention` is exempt -- a document can name many coordinates. The
+        # column is a non-native Enum, so it stores the member *name*.
+        Index(
+            "uq_location_file_source",
+            "file_id",
+            "source",
+            unique=True,
+            postgresql_where=text("source <> 'TEXT_MENTION'"),
+        ),
         Index("ix_location_geom", "geom", postgresql_using="gist"),
         Index("ix_location_source_source_id", "source", "source_id"),
     )

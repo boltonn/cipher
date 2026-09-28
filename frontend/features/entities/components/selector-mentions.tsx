@@ -13,10 +13,10 @@ import { useMemo } from "react";
  */
 export function SelectorMentions({
   normalizedValue,
-  selectorKind,
+  selectorType,
 }: {
   normalizedValue: string | null;
-  selectorKind?: string | null;
+  selectorType?: string | null;
 }) {
   const {
     data,
@@ -24,7 +24,7 @@ export function SelectorMentions({
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
-  } = useSelectorMentions(normalizedValue, selectorKind);
+  } = useSelectorMentions(normalizedValue, selectorType);
 
   const mentions = useMemo(
     () => data?.pages.flatMap((p) => p.data) ?? [],

@@ -1,0 +1,406 @@
+{
+  "selector_type": "social_handle",
+  "priority": 45,
+  "base_confidence": 0.32,
+  "max_confidence": 0.97,
+  "normalizer": "social_handle",
+  "validator": "social_handle",
+  "patterns": [
+    {
+      "name": "telegram_url",
+      "regex": "(?<![\\w@])(?:https?://)?(?:t\\.me|telegram\\.me|telegram\\.dog)/(?:s/)?[A-Za-z][A-Za-z0-9_]{3,31}",
+      "subtype": "telegram",
+      "hint": {
+        "platform": "telegram"
+      },
+      "base_confidence": 0.9
+    },
+    {
+      "name": "instagram_url",
+      "regex": "(?<![\\w@])(?:https?://)?(?:www\\.)?instagram\\.com/(?!(?:share|intent|home|login|logout|signin|signup|register|account|oauth|search|explore|hashtag|i/|help|about|tos|privacy|settings|download|messages|notifications|p|reel|reels|stories|accounts)[/?])[A-Za-z0-9_.]{2,30}",
+      "subtype": "instagram",
+      "hint": {
+        "platform": "instagram"
+      },
+      "base_confidence": 0.9
+    },
+    {
+      "name": "facebook_url",
+      "regex": "(?<![\\w@])(?:https?://)?(?:www\\.|m\\.)?(?:facebook\\.com|fb\\.com|fb\\.me)/(?!(?:sharer|dialog|plugins|login|help|recover|l\\.php|o\\.php|n\\.php|story\\.php|photo\\.php|permalink\\.php|profile\\.php|find-friends|pages|groups|events|watch|marketplace|gaming|policies|terms|about|privacy|settings|bookmarks|messages|notifications)[/?.&])[A-Za-z0-9.]{3,50}",
+      "subtype": "facebook",
+      "hint": {
+        "platform": "facebook"
+      },
+      "base_confidence": 0.88
+    },
+    {
+      "name": "twitter_url",
+      "regex": "(?<![\\w@])(?:https?://)?(?:www\\.|mobile\\.)?(?:twitter\\.com|x\\.com)/(?!(?:share|intent|home|login|logout|signin|signup|register|account|oauth|search|explore|hashtag|i/|help|about|tos|privacy|settings|download|messages|notifications)[/?]?)[A-Za-z0-9_]{2,15}",
+      "subtype": "twitter",
+      "hint": {
+        "platform": "twitter"
+      },
+      "base_confidence": 0.88
+    },
+    {
+      "name": "tiktok_url",
+      "regex": "(?<![\\w@])(?:https?://)?(?:www\\.)?tiktok\\.com/@[A-Za-z0-9_.]{2,24}",
+      "subtype": "tiktok",
+      "hint": {
+        "platform": "tiktok"
+      },
+      "base_confidence": 0.9
+    },
+    {
+      "name": "whatsapp_url",
+      "regex": "(?<![\\w@])(?:https?://)?(?:wa\\.me|api\\.whatsapp\\.com/send\\?phone=)/?\\+?\\d{7,15}",
+      "subtype": "whatsapp",
+      "hint": {
+        "platform": "whatsapp"
+      },
+      "base_confidence": 0.9
+    },
+    {
+      "name": "vk_url",
+      "regex": "(?<![\\w@])(?:https?://)?(?:www\\.)?vk\\.com/(?!(?:share|away|feed|im|search|video|audio|photo|wall)[/?.])[A-Za-z0-9_.]{2,32}",
+      "subtype": "vk",
+      "hint": {
+        "platform": "vk"
+      },
+      "base_confidence": 0.88
+    },
+    {
+      "name": "odnoklassniki_url",
+      "regex": "(?<![\\w@])(?:https?://)?(?:www\\.)?ok\\.ru/(?:profile/)?[A-Za-z0-9_.]{2,40}",
+      "subtype": "odnoklassniki",
+      "hint": {
+        "platform": "odnoklassniki"
+      },
+      "base_confidence": 0.88
+    },
+    {
+      "name": "weibo_url",
+      "regex": "(?<![\\w@])(?:https?://)?(?:www\\.)?weibo\\.(?:com|cn)/(?:u/)?[A-Za-z0-9_.]{2,40}",
+      "subtype": "weibo",
+      "hint": {
+        "platform": "weibo"
+      },
+      "base_confidence": 0.88
+    },
+    {
+      "name": "douyin_url",
+      "regex": "(?<![\\w@])(?:https?://)?(?:www\\.|v\\.)?douyin\\.com/(?:user/|share/user/)?[A-Za-z0-9_.\\-]{2,64}",
+      "subtype": "douyin",
+      "hint": {
+        "platform": "douyin"
+      },
+      "base_confidence": 0.88
+    },
+    {
+      "name": "soroush_url",
+      "regex": "(?<![\\w@])(?:https?://)?(?:splus\\.ir|sapp\\.ir)/[A-Za-z0-9_.]{3,32}",
+      "subtype": "soroush",
+      "hint": {
+        "platform": "soroush"
+      },
+      "base_confidence": 0.9
+    },
+    {
+      "name": "bale_url",
+      "regex": "(?<![\\w@])(?:https?://)?ble\\.ir/[A-Za-z0-9_.]{3,32}",
+      "subtype": "bale",
+      "hint": {
+        "platform": "bale"
+      },
+      "base_confidence": 0.9
+    },
+    {
+      "name": "rubika_url",
+      "regex": "(?<![\\w@])(?:https?://)?rubika\\.ir/[A-Za-z0-9_.]{3,32}",
+      "subtype": "rubika",
+      "hint": {
+        "platform": "rubika"
+      },
+      "base_confidence": 0.9
+    },
+    {
+      "name": "eitaa_url",
+      "regex": "(?<![\\w@])(?:https?://)?eitaa\\.com/[A-Za-z0-9_.]{3,32}",
+      "subtype": "eitaa",
+      "hint": {
+        "platform": "eitaa"
+      },
+      "base_confidence": 0.9
+    },
+    {
+      "name": "wechat_wxid",
+      "regex": "(?<![\\w-])wxid_[A-Za-z0-9_-]{6,20}(?![\\w-])",
+      "subtype": "wechat",
+      "hint": {
+        "platform": "wechat"
+      },
+      "base_confidence": 0.85
+    },
+    {
+      "name": "wechat_id",
+      "regex": "(?<=(?:wechat|weixin|微信号|微信|vx|v信)[：:]?[ \\t]{0,3})[A-Za-z][-_A-Za-z0-9]{5,19}(?![\\w-])",
+      "subtype": "wechat",
+      "hint": {
+        "platform": "wechat"
+      },
+      "requires_context": true
+    },
+    {
+      "name": "qq_number",
+      "regex": "(?<=(?:QQ|qq号|扣扣|企鹅号)[：:]?[ \\t]{0,3})[1-9]\\d{4,10}(?![\\w.])",
+      "subtype": "qq",
+      "hint": {
+        "platform": "qq"
+      },
+      "requires_context": true
+    },
+    {
+      "name": "bare_handle",
+      "regex": "(?<![\\w@./\\-])@[A-Za-z][A-Za-z0-9_\\-]{1,30}[A-Za-z0-9](?![\\w])",
+      "requires_context": true
+    }
+  ],
+  "context": {
+    "window_before": 40,
+    "window_after": 12,
+    "terms": {
+      "en": [
+        {
+          "term": "telegram",
+          "weight": 0.35
+        },
+        {
+          "term": "instagram",
+          "weight": 0.35
+        },
+        {
+          "term": "insta",
+          "weight": 0.3
+        },
+        {
+          "term": "facebook",
+          "weight": 0.3
+        },
+        {
+          "term": "twitter",
+          "weight": 0.3
+        },
+        {
+          "term": "tiktok",
+          "weight": 0.3
+        },
+        {
+          "term": "whatsapp",
+          "weight": 0.3
+        },
+        {
+          "term": "signal",
+          "weight": 0.25
+        },
+        {
+          "term": "wechat",
+          "weight": 0.4
+        },
+        {
+          "term": "weixin",
+          "weight": 0.4
+        },
+        {
+          "term": "qq",
+          "weight": 0.4
+        },
+        {
+          "term": "handle",
+          "weight": 0.2
+        },
+        {
+          "term": "dm",
+          "weight": 0.15
+        },
+        {
+          "term": "follow",
+          "weight": 0.15
+        },
+        {
+          "term": "email",
+          "weight": -0.3
+        },
+        {
+          "term": "commit",
+          "weight": -0.35
+        },
+        {
+          "term": "order",
+          "weight": -0.35
+        },
+        {
+          "term": "invoice",
+          "weight": -0.35
+        },
+        {
+          "term": "venmo",
+          "weight": 0.22
+        },
+        {
+          "term": "paypal",
+          "weight": 0.22
+        },
+        {
+          "term": "zelle",
+          "weight": 0.22
+        },
+        {
+          "term": "cashapp",
+          "weight": 0.22
+        },
+        {
+          "term": "cash app",
+          "weight": 0.22
+        },
+        {
+          "term": "discord",
+          "weight": 0.22
+        },
+        {
+          "term": "github",
+          "weight": 0.22
+        },
+        {
+          "term": "cc:",
+          "weight": 0.22
+        },
+        {
+          "term": "dm me",
+          "weight": 0.22
+        },
+        {
+          "term": "reach me",
+          "weight": 0.22
+        },
+        {
+          "term": "find me",
+          "weight": 0.22
+        },
+        {
+          "term": "mention",
+          "weight": 0.22
+        }
+      ],
+      "ru": [
+        {
+          "term": "телеграм",
+          "weight": 0.35
+        },
+        {
+          "term": "телега",
+          "weight": 0.3
+        },
+        {
+          "term": "инста",
+          "weight": 0.3
+        },
+        {
+          "term": "вконтакте",
+          "weight": 0.3
+        },
+        {
+          "term": "вк",
+          "weight": 0.2
+        },
+        {
+          "term": "одноклассники",
+          "weight": 0.35
+        },
+        {
+          "term": "ник",
+          "weight": 0.2
+        }
+      ],
+      "fa": [
+        {
+          "term": "تلگرام",
+          "weight": 0.35
+        },
+        {
+          "term": "اینستاگرام",
+          "weight": 0.35
+        },
+        {
+          "term": "واتساپ",
+          "weight": 0.3
+        },
+        {
+          "term": "سروش",
+          "weight": 0.35
+        },
+        {
+          "term": "بله",
+          "weight": 0.3
+        },
+        {
+          "term": "روبیکا",
+          "weight": 0.35
+        },
+        {
+          "term": "ایتا",
+          "weight": 0.35
+        },
+        {
+          "term": "آیدی",
+          "weight": 0.25
+        }
+      ],
+      "zh": [
+        {
+          "term": "电报",
+          "weight": 0.3
+        },
+        {
+          "term": "微信",
+          "weight": 0.45
+        },
+        {
+          "term": "微信号",
+          "weight": 0.45
+        },
+        {
+          "term": "扣扣",
+          "weight": 0.45
+        },
+        {
+          "term": "企鹅号",
+          "weight": 0.45
+        },
+        {
+          "term": "QQ",
+          "weight": 0.45
+        },
+        {
+          "term": "推特",
+          "weight": 0.3
+        },
+        {
+          "term": "微博",
+          "weight": 0.35
+        },
+        {
+          "term": "抖音",
+          "weight": 0.35
+        },
+        {
+          "term": "订单",
+          "weight": -0.4
+        },
+        {
+          "term": "发票",
+          "weight": -0.4
+        }
+      ]
+    }
+  }
+}

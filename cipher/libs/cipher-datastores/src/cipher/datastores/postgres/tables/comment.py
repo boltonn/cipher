@@ -17,22 +17,16 @@ class CommentTable(Base):
 
     __tablename__ = "comment"
 
-    id: Mapped[str] = mapped_column(
-        String, primary_key=True, default=lambda: str(uuid4())
-    )
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
 
     content: Mapped[str] = mapped_column(String(5000), nullable=False)
 
     commentable_type: Mapped[CommentableType] = mapped_column(
         Enum(CommentableType, native_enum=False), nullable=False, index=True
     )
-    commentable_id: Mapped[str] = mapped_column(
-        String, nullable=False, index=True
-    )
+    commentable_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
 
-    user_id: Mapped[str] = mapped_column(
-        String, ForeignKey("user.id", ondelete="CASCADE"), nullable=False
-    )
+    user_id: Mapped[str] = mapped_column(String, ForeignKey("user.id", ondelete="CASCADE"), nullable=False)
 
     date_created: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)

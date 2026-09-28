@@ -3,17 +3,31 @@ import { searchService, toGroupedFileResult } from "@/features/search/api";
 import type { ChunkTextSearchRequest, SearchFilters, SearchMode } from "@/features/search/types";
 import type { PaginationModeType } from "@/types/common";
 import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 
 const DEFAULT_LIMIT = 20;
 
 export const useSearchController = (paginationMode: PaginationModeType = "infinite") => {
+  // Deep links (e.g. from an entity's selectors) seed the field and type
+  // filter once: /search?q=<value>&scope=<document|email>.
+  const params = useSearchParams();
   // "" browses the unfiltered/filtered index instead of requiring a typed
   // query first -- only BM25 text search has a sensible match_all fallback,
   // so semantic/hybrid still wait for real input (see `canSearch` below).
-  const [query, setQuery] = useState<string>("");
+  const [query, setQuery] = useState<string>(() => params.get("q") ?? "");
   const [searchMode, setSearchMode] = useState<SearchMode>("text");
-  const [filters, setFiltersState] = useState<SearchFilters>({});
+  const [filters, setFiltersState] = useState<SearchFilters>(() => {
+    // Deep links from an entity/selector page compose an entity filter with an
+    // empty-query browse: /search?entityId=<id>&datasetId=<id> (also &selectorType=).
+    const next: SearchFilters = {};
+    const scope = params.get("scope");
+    if (scope === "email" || scope === "document") next.filetypeGroup = scope;
+    if (params.get("datasetId")) next.datasetId = params.get("datasetId") ?? undefined;
+    if (params.get("entityId")) next.entityIds = [params.get("entityId") as string];
+    if (params.get("selectorType")) next.selectorTypes = [params.get("selectorType") as string];
+    return next;
+  });
   const [minSimilarity, setMinSimilarity] = useState<number | undefined>(undefined);
   const [page, setPage] = useState(1);
 

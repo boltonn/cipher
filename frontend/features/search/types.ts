@@ -17,6 +17,11 @@ export interface SearchFilters {
   tags?: string[];
   filetypeGroup?: SearchFiletypeGroup;
   filetype?: string;
+  /** Entity-aware filters -- compose with any search mode; require `sync-chunk-entities`. */
+  entityIds?: string[];
+  entityTypes?: string[];
+  selectorTypes?: string[];
+  selectorSubtypes?: string[];
 }
 
 export interface BaseChunkSearchParameters {

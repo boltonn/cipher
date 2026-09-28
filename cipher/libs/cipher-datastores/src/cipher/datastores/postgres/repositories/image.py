@@ -112,9 +112,7 @@ class PostgresImageRepository:
 
     async def delete_image(self, image_id: str) -> bool:
         """Delete image content by ID (sha256) -- removes it for every file that shares it."""
-        result = await self.session.execute(
-            delete(ImageTable).where(ImageTable.id == image_id)
-        )
+        result = await self.session.execute(delete(ImageTable).where(ImageTable.id == image_id))
         await self.session.commit()
         return bool(result.rowcount)
 
@@ -157,9 +155,7 @@ class PostgresImageRepository:
 
     async def update_image(self, image_id: str, data: ImageUpdate) -> Image | None:
         """Partially update image content (e.g. tags) -- applies to every file that shares it."""
-        result = await self.session.execute(
-            select(ImageTable).where(ImageTable.id == image_id)
-        )
+        result = await self.session.execute(select(ImageTable).where(ImageTable.id == image_id))
         image_table = result.scalar_one_or_none()
         if image_table is None:
             return None
@@ -189,9 +185,7 @@ class PostgresImageRepository:
     async def get_image_by_file_id(self, file_id: str) -> Image | None:
         """Retrieve image content for a given file (resolved via the file's sha256)."""
         result = await self.session.execute(
-            select(ImageTable)
-            .join(FileTable, FileTable.sha256 == ImageTable.id)
-            .where(FileTable.id == file_id)
+            select(ImageTable).join(FileTable, FileTable.sha256 == ImageTable.id).where(FileTable.id == file_id)
         )
         image_table = result.scalar_one_or_none()
         if image_table is None:
@@ -211,9 +205,9 @@ class PostgresImageRepository:
         `file_id` is only used to shape the response, not stored.
         """
         stmt = pg_insert(ImageTable).values(**image.model_dump())
-        upsert_stmt = stmt.on_conflict_do_update(
-            index_elements=["id"], set_=_upsert_set(stmt.excluded)
-        ).returning(ImageTable)
+        upsert_stmt = stmt.on_conflict_do_update(index_elements=["id"], set_=_upsert_set(stmt.excluded)).returning(
+            ImageTable
+        )
 
         result = await self.session.execute(upsert_stmt)
         await self.session.commit()
@@ -236,13 +230,9 @@ class PostgresImageRepository:
 
         del rows
 
-    async def get_embedding_by_image_id(
-        self, image_id: str
-    ) -> list[float] | None:
+    async def get_embedding_by_image_id(self, image_id: str) -> list[float] | None:
         """Retrieve embedding vector for a given image ID."""
-        result = await self.session.execute(
-            select(ImageTable.embedding).where(ImageTable.id == image_id)
-        )
+        result = await self.session.execute(select(ImageTable.embedding).where(ImageTable.id == image_id))
         embedding = result.scalar_one_or_none()
 
         if embedding is None:
@@ -252,9 +242,7 @@ class PostgresImageRepository:
             return embedding.tolist()
         return embedding
 
-    async def search_images(
-        self, request: BaseImageSearchParameters
-    ) -> PaginatedImagesResponse:
+    async def search_images(self, request: BaseImageSearchParameters) -> PaginatedImagesResponse:
         """Retrieve images with general filtering and sorting, one row per distinct image.
 
         Results are keyed by sha256 (`ImageTable.id`) only -- content is
@@ -301,9 +289,7 @@ class PostgresImageRepository:
             data=images,
         )
 
-    async def search_similar_images(
-        self, request: ImageSimilaritySearchRequest
-    ) -> PaginatedImageSimilarityResponse:
+    async def search_similar_images(self, request: ImageSimilaritySearchRequest) -> PaginatedImageSimilarityResponse:
         """Retrieve images by knn similarity search using inner product, one row per distinct image.
 
         `max_inner_product` (pgvector's `<#>`) is a *distance*: it returns the
@@ -353,10 +339,12 @@ class PostgresImageRepository:
         rows = list(result.all())
 
         images = [
-            ImageSimilarityResult.model_validate({
-                **ImagePublic.model_validate(image.__dict__).model_dump(),
-                "similarity_score": max(0.0, min(1.0, similarity_score)),
-            })
+            ImageSimilarityResult.model_validate(
+                {
+                    **ImagePublic.model_validate(image.__dict__).model_dump(),
+                    "similarity_score": max(0.0, min(1.0, similarity_score)),
+                }
+            )
             for image, similarity_score in rows
         ]
 

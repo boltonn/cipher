@@ -1,5 +1,25 @@
-import type { EntityType } from "@/features/entities/types";
-import { Building2, Fingerprint, MapPin, User, type LucideIcon } from "lucide-react";
+import {
+  SELECTOR_TYPE_LABELS,
+  type EntityType,
+  type SelectorType,
+} from "@/features/entities/types";
+import {
+  AtSign,
+  Bitcoin,
+  Building2,
+  Car,
+  CreditCard,
+  Fingerprint,
+  IdCard,
+  Landmark,
+  Mail,
+  MapPin,
+  Network,
+  Phone,
+  Smartphone,
+  User,
+  type LucideIcon,
+} from "lucide-react";
 
 /**
  * The four entity types need four visually distinct colors (graph nodes, badges,
@@ -58,3 +78,38 @@ export const ENTITY_TYPE_META: Record<EntityType, EntityTypeMeta> = {
     markClass: "bg-pink-400/25 decoration-pink-400/60",
   },
 };
+
+/**
+ * Per-kind icon for a selector. A selector node/badge is far more legible when
+ * a phone reads as a phone and an email as an envelope, rather than every
+ * selector being the same fingerprint glyph. Colour still comes from
+ * `ENTITY_TYPE_META.selector` -- this only varies the icon and label.
+ */
+export const SELECTOR_TYPE_META: Record<
+  SelectorType,
+  { label: string; Icon: LucideIcon }
+> = {
+  phone: { label: SELECTOR_TYPE_LABELS.phone, Icon: Phone },
+  email: { label: SELECTOR_TYPE_LABELS.email, Icon: Mail },
+  ip: { label: SELECTOR_TYPE_LABELS.ip, Icon: Network },
+  iban: { label: SELECTOR_TYPE_LABELS.iban, Icon: Landmark },
+  bank_card: { label: SELECTOR_TYPE_LABELS.bank_card, Icon: CreditCard },
+  passport: { label: SELECTOR_TYPE_LABELS.passport, Icon: IdCard },
+  national_id: { label: SELECTOR_TYPE_LABELS.national_id, Icon: IdCard },
+  imei: { label: SELECTOR_TYPE_LABELS.imei, Icon: Smartphone },
+  imsi: { label: SELECTOR_TYPE_LABELS.imsi, Icon: Smartphone },
+  social_handle: { label: SELECTOR_TYPE_LABELS.social_handle, Icon: AtSign },
+  crypto_address: { label: SELECTOR_TYPE_LABELS.crypto_address, Icon: Bitcoin },
+  license_plate: { label: SELECTOR_TYPE_LABELS.license_plate, Icon: Car },
+};
+
+/** Icon for an entity, refined by selector kind where one is known. */
+export function entityGlyph(
+  entityType: EntityType,
+  selectorType?: SelectorType | null
+): LucideIcon {
+  if (entityType === "selector" && selectorType) {
+    return SELECTOR_TYPE_META[selectorType]?.Icon ?? Fingerprint;
+  }
+  return ENTITY_TYPE_META[entityType].Icon;
+}

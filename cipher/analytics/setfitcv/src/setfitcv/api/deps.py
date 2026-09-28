@@ -62,7 +62,6 @@ class AsyncImageEmbeddingModel:
         return embedding
 
 
-# Lifespan context manager
 @asynccontextmanager
 async def model_lifespan(app: FastAPI):
     """Fastapi lifespan context manager to load and cleanup the model."""

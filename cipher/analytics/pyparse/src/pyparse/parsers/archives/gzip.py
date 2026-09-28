@@ -23,9 +23,7 @@ class GzipParser:
         """Parse a gzip file."""
         out = {}
         if isinstance(file, bytes):
-            out_file_name = (
-                compute_hash(file, "md5") if file_name is None else file_name
-            )
+            out_file_name = compute_hash(file, "md5") if file_name is None else file_name
             if extract_children:
                 out_path = out_dir / out_file_name
                 with safe_open(out_path, "wb") as fb:

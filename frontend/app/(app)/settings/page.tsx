@@ -16,7 +16,62 @@ import { useChatStore } from "@/features/chat/hooks/use-chat-store";
 import { MODELS, PROVIDER_LABELS } from "@/features/chat/lib/models";
 import { useMe } from "@/features/users/hooks/use-me";
 import { getInitials } from "@/features/users/utils";
-import { Layers, Settings as SettingsIcon, Sparkles, UserRound } from "lucide-react";
+import {
+  Check,
+  Eye,
+  EyeOff,
+  Layers,
+  Settings as SettingsIcon,
+  Sparkles,
+  UserRound,
+} from "lucide-react";
+import { useState } from "react";
+
+function ApiKeyField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (next: string) => void;
+}) {
+  const [revealed, setRevealed] = useState(false);
+  const hasKey = value.trim().length > 0;
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-2">
+        <Label>{label} API key</Label>
+        {hasKey && (
+          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-500">
+            <Check size={11} />
+            Saved in this browser
+          </span>
+        )}
+      </div>
+      <div className="relative max-w-sm">
+        <Input
+          type={revealed ? "text" : "password"}
+          placeholder={`Enter ${label} key…`}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="pr-9"
+        />
+        {hasKey && (
+          <button
+            type="button"
+            onClick={() => setRevealed((v) => !v)}
+            aria-label={revealed ? "Hide key" : "Show key"}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+          >
+            {revealed ? <EyeOff size={14} /> : <Eye size={14} />}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function SectionCard({
   icon: Icon,
@@ -108,16 +163,12 @@ function ModelSection() {
         {Object.entries(PROVIDER_LABELS)
           .filter(([p]) => p !== "local")
           .map(([p, label]) => (
-            <div key={p} className="space-y-1.5">
-              <Label>{label} API key</Label>
-              <Input
-                type="password"
-                placeholder={`Enter ${label} key...`}
-                value={keys[p] ?? ""}
-                onChange={(e) => setKey(p, e.target.value)}
-                className="max-w-sm"
-              />
-            </div>
+            <ApiKeyField
+              key={p}
+              label={label}
+              value={keys[p] ?? ""}
+              onChange={(next) => setKey(p, next)}
+            />
           ))}
         <p className="text-xs text-muted-foreground">
           Keys are stored locally in your browser and only sent with your own
@@ -129,32 +180,52 @@ function ModelSection() {
   );
 }
 
+const PREFERENCE_PREVIEW = [
+  { label: "Pagination", value: "Infinite scroll" },
+  { label: "Annotation visibility", value: "Show AI/ML marks" },
+  { label: "Results density", value: "Comfortable" },
+] as const;
+
 function PreferencesSection() {
   return (
     <SectionCard
       icon={Layers}
       title="Preferences"
-      description="Defaults for browsing and triage. Coming soon."
+      description="Per-viewer defaults for browsing and triage."
     >
-      <p className="text-sm text-muted-foreground">
-        Per-viewer defaults (pagination mode, annotation visibility, results
-        density) will live here once they&apos;re backed by a shared preferences
-        store.
-      </p>
+      <div className="flex items-center gap-2">
+        <span className="rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+          Coming soon
+        </span>
+        <span className="text-xs text-muted-foreground">
+          Preview — these will be editable once a shared preferences store lands.
+        </span>
+      </div>
+      <div className="divide-y divide-border/50 rounded-lg border border-border/60 opacity-60">
+        {PREFERENCE_PREVIEW.map((row) => (
+          <div
+            key={row.label}
+            className="flex items-center justify-between px-3 py-2.5 text-sm"
+          >
+            <span className="text-muted-foreground">{row.label}</span>
+            <span className="font-medium text-foreground">{row.value}</span>
+          </div>
+        ))}
+      </div>
     </SectionCard>
   );
 }
 
 export default function SettingsPage() {
   return (
-    <div className="max-w-3xl mx-auto px-6 relative pb-20">
+    <div className="max-w-400 mx-auto px-6 relative pb-20 pt-5">
       <PageHeader
         eyebrow="Account"
         value="Settings"
         icon={<SettingsIcon className="h-3.5 w-3.5 text-primary/80" />}
       />
 
-      <div className="mt-6 space-y-6">
+      <div className="w-full max-w-2xl space-y-6">
         <ProfileSection />
         <ModelSection />
         <PreferencesSection />

@@ -31,9 +31,7 @@ class PostgresExtractedTextRepository:
 
     async def get_by_file_id(self, file_id: str) -> ExtractedText | None:
         """Retrieve the extracted text for a file, if it's been extracted."""
-        result = await self.session.execute(
-            select(ExtractedTextTable).where(ExtractedTextTable.file_id == file_id)
-        )
+        result = await self.session.execute(select(ExtractedTextTable).where(ExtractedTextTable.file_id == file_id))
         row = result.scalar_one_or_none()
         return _to_schema(row) if row else None
 
@@ -62,9 +60,7 @@ class PostgresExtractedTextRepository:
 
     async def delete_by_file_id(self, file_id: str) -> bool:
         """Delete the extracted text for a file, if present."""
-        result = await self.session.execute(
-            select(ExtractedTextTable).where(ExtractedTextTable.file_id == file_id)
-        )
+        result = await self.session.execute(select(ExtractedTextTable).where(ExtractedTextTable.file_id == file_id))
         row = result.scalar_one_or_none()
         if row is None:
             return False

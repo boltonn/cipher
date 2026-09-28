@@ -1,0 +1,21 @@
+{
+  "base_confidence": 0.4,
+  "validator": "national_id_ru",
+  "patterns": [
+    {"name": "inn", "regex": "(?<![\\d])\\d{10}(?:\\d{2})?(?![\\d])", "subtype": "ru_inn"},
+    {"name": "snils", "regex": "(?<![\\d])\\d{3}[ \\-]?\\d{3}[ \\-]?\\d{3}[ \\-]?\\d{2}(?![\\d])", "subtype": "ru_snils"}
+  ],
+  "context": {
+    "terms": {
+      "ru": [
+        {"term": "инн", "weight": 0.4},
+        {"term": "снилс", "weight": 0.4},
+        {"term": "паспорт", "weight": 0.15}
+      ],
+      "en": [
+        {"term": "inn", "weight": 0.35},
+        {"term": "snils", "weight": 0.35}
+      ]
+    }
+  }
+}

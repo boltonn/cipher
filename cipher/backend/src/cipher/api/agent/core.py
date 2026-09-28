@@ -6,11 +6,13 @@ from cipher.api.agent.deps import ChatDeps
 from cipher.api.agent.tools import (
     entity_mentions,
     entity_profile,
+    explain_entity_resolution,
     find_entity,
     find_person,
     list_datasets,
     read_file,
     related_entities,
+    search_graph,
     search_hybrid,
     search_semantic,
     search_text,
@@ -32,6 +34,13 @@ error strings.
 match ("concerns about the timeline").
 - search_hybrid -- both, fused. The default when you have no specific reason to \
 prefer one.
+- All three take an optional entity_id (from find_entity) or selector_type \
+("phone", "email", "crypto_address", "social_handle", ...) to restrict the passages \
+to ones mentioning that entity / identifier kind; the query may be "" to just browse \
+them. Prefer this over entity_mentions when you also want to constrain by topic.
+- search_graph -- graph-RAG: passages mentioning an entity OR anyone it's connected \
+to (expand `hops` relationships, optionally one relationship_type). Use for "X and \
+their circle" questions, not just direct mentions of X.
 
 People and datasets:
 - find_person -- the analyst-curated Person table (faces, manual identities). Links \
@@ -79,10 +88,12 @@ def build_agent(*, filter_tools: bool = False) -> Agent[ChatDeps, str]:
     agent.tool(list_datasets)
     # Graph/entity/read tools: deferrable behind tool search when filter_tools is on.
     defer = agent.tool(defer_loading=filter_tools)
+    defer(search_graph)
     defer(find_entity)
     defer(entity_profile)
     defer(entity_mentions)
     defer(related_entities)
+    defer(explain_entity_resolution)
     defer(read_file)
 
     return agent

@@ -1,133 +1,152 @@
-"""Find and normalize selectors in a block of text.
+"""Find, normalize, validate, score, and resolve selectors in a block of text.
 
-All matchers report character offsets into the exact input string, so a caller
-can store them directly as `mention.start_offset` / `end_offset` against
-`ExtractedText.content`.
+Five stages: pattern match -> normalize -> validate (+ attributes) -> context
+score -> overlap resolution. All matchers report character offsets into the
+exact input string, so a caller can store them directly as
+``mention.start_offset`` / ``end_offset`` against ``ExtractedText.content``.
+
+The public entrypoint is a pure, synchronous function. Everything it touches is
+precompiled and cached on first use.
 """
 
-import re
-
-import phonenumbers
-from phonenumbers import Leniency, PhoneNumberMatcher
-
-from pyselectors.normalize import (
-    normalize_email,
-    normalize_iban,
-    normalize_imei,
-    region_for,
-)
-from pyselectors.schemas import SelectorKind, SelectorSpan
-
-_EMAIL_RE = re.compile(r"(?<![\w.+-])[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}(?![\w-])")
-# IBAN, tolerating the spaced 4-char grouping it is usually written in. Groups
-# are pinned to 4 chars (last group 1-4) so it can't run on into following words.
-_IBAN_RE = re.compile(
-    r"(?<![A-Za-z0-9])[A-Z]{2}\d{2}(?:[ ]?[A-Za-z0-9]{4}){2,7}(?:[ ]?[A-Za-z0-9]{1,4})?(?![A-Za-z0-9])"
-)
-# Exactly 15 digits (the IMEI length), optionally separated, not inside a longer token.
-_IMEI_RE = re.compile(r"(?<![\w.])(?:\d[ \-]?){14}\d(?![\w.])")
-# Passport machine-readable zone header: "P<" + 3-letter issuing country.
-_MRZ_RE = re.compile(r"P<[A-Z<]{3}[A-Z0-9<]{5,}")
+import pyselectors.normalize as normalize
+import pyselectors.patterns as patterns
+import pyselectors.resolve as _resolve
+import pyselectors.validate as validate
+from cipher.schemas.graph.ontology import SelectorSubtype, SelectorType
+from cipher.schemas.graph.spans import SelectorSpan
+from pyselectors.attributes import coerce
+from pyselectors.context import ContextScorer
+from pyselectors.packs.loader import load_pack
+from pyselectors.packs.registry import ENABLED_TYPES
 
 
 def extract_selectors(
-    text: str, *, language: str | None = None, region: str | None = None
+    text: str,
+    *,
+    language: str | None = None,
+    region: str | None = None,
+    types: set[SelectorType] | None = None,
+    min_confidence: float = 0.0,
 ) -> list[SelectorSpan]:
-    """Extract phone, email, IBAN, IMEI, and MRZ-passport selectors from `text`."""
+    """Extract normalized, validated, context-scored selectors from ``text``.
+
+    Args:
+        text: The text to scan.
+        language: ISO-639-1 hint. Picks the context lexicon and a default phone region.
+        region: Explicit ISO-3166 alpha-2 region (wins over ``language``).
+        types: Restrict to these selector types (default: every enabled type).
+        min_confidence: Drop spans scoring below this.
+
+    Returns:
+        Non-overlapping ``SelectorSpan``s sorted by start offset.
+    """
     if not text:
         return []
 
-    resolved_region = region_for(language=language, region=region)
+    folded = normalize.fold_digits(text)
+    country = normalize.region_for(language=language, region=region)
+    wanted = tuple(types) if types else ENABLED_TYPES
+    scorer = ContextScorer.for_language(language)
+
     spans: list[SelectorSpan] = []
-    spans.extend(_phones(text, resolved_region))
-    spans.extend(_emails(text))
-    spans.extend(_ibans(text))
-    spans.extend(_imeis(text))
-    spans.extend(_passports(text))
-    spans.sort(key=lambda s: (s.start_offset, s.end_offset))
-    return spans
+    for match in patterns.find_all(folded, types=wanted, country=country):
+        pack = _pack_for(match.selector_type, country)
+        normalized = normalize.canonicalize(
+            pack.normalizer,
+            folded[match.start : match.end],
+            country=country,
+            subtype=match.selector_subtype,
+        )
+        if not normalized:
+            continue
 
+        try:
+            attrs = validate.run(match.selector_type, normalized, country=country)
+        except validate.SelectorRejected:
+            continue
 
-def _phones(text: str, region: str | None) -> list[SelectorSpan]:
-    out: list[SelectorSpan] = []
-    for match in PhoneNumberMatcher(text, region or "ZZ", leniency=Leniency.VALID):
-        e164 = phonenumbers.format_number(match.number, phonenumbers.PhoneNumberFormat.E164)
-        out.append(
+        base = match.base_confidence if match.base_confidence is not None else pack.base_confidence
+        confidence = scorer.score(match.selector_type, folded, match.start, match.end, base)
+        if match.requires_context and confidence <= base:
+            continue
+        if confidence < min_confidence:
+            continue
+
+        merged = {**match.hint, **attrs}
+        spans.append(
             SelectorSpan(
-                selector_kind=SelectorKind.PHONE,
-                raw_value=match.raw_string,
-                normalized_value=e164,
+                selector_type=match.selector_type,
+                selector_subtype=match.selector_subtype,
+                raw_value=text[match.start : match.end],
+                normalized_value=normalized,
                 start_offset=match.start,
                 end_offset=match.end,
-                confidence=0.9,
-                region_hint=region,
+                confidence=round(confidence, 4),
+                region_hint=merged.get("region") or country,
+                attributes=coerce(match.selector_type, merged),
             )
         )
-    return out
+
+    return _resolve.resolve(spans)
 
 
-def _emails(text: str) -> list[SelectorSpan]:
+def resolve_selector(
+    value: str,
+    *,
+    selector_type: SelectorType | None = None,
+    selector_subtype: SelectorSubtype | None = None,
+    language: str | None = None,
+    region: str | None = None,
+) -> list[SelectorSpan]:
+    """Normalize + validate + attribute-extract a bare selector value, retroactively.
+
+    Runs the same three stages (normalize / validate / attributes) as the text
+    pass, but over a single value with no surrounding context -- for an analyst
+    who pastes a raw selector, or a backfill over stored rows.
+
+    Args:
+        value: The raw selector string (the whole string is the candidate).
+        selector_type: Force this type (analyst assertion). If omitted, the type
+            is inferred by running every enabled pattern set against ``value``.
+        selector_subtype: Optional specific provider/network when ``selector_type``
+            is forced.
+        language: ISO-639-1 hint for the default phone region / country validators.
+        region: Explicit ISO-3166 alpha-2 region (wins over ``language``).
+
+    Returns:
+        ``[SelectorSpan]`` (offsets span the whole value) when it normalizes and
+        validates, else ``[]``. Inference may return more than one candidate.
+    """
+    text = value.strip()
+    if not text:
+        return []
+
+    country = normalize.region_for(language=language, region=region)
+
+    if selector_type is None:
+        return extract_selectors(text, language=language, region=region)
+
+    normalized, attrs = normalize.normalize_selector(selector_type, text, country)
+    if not normalized:
+        return []
     return [
         SelectorSpan(
-            selector_kind=SelectorKind.EMAIL,
-            raw_value=m.group(0),
-            normalized_value=normalize_email(m.group(0)),
-            start_offset=m.start(),
-            end_offset=m.end(),
-            confidence=0.98,
+            selector_type=selector_type,
+            selector_subtype=selector_subtype,
+            raw_value=value,
+            normalized_value=normalized,
+            start_offset=0,
+            end_offset=len(value),
+            confidence=1.0,
+            region_hint=attrs.get("region") or country,
+            attributes=coerce(selector_type, attrs),
         )
-        for m in _EMAIL_RE.finditer(text)
     ]
 
 
-def _ibans(text: str) -> list[SelectorSpan]:
-    out: list[SelectorSpan] = []
-    for m in _IBAN_RE.finditer(text):
-        normalized = normalize_iban(m.group(0))
-        if normalized:
-            out.append(
-                SelectorSpan(
-                    selector_kind=SelectorKind.IBAN,
-                    raw_value=m.group(0),
-                    normalized_value=normalized,
-                    start_offset=m.start(),
-                    end_offset=m.end(),
-                    confidence=0.97,
-                )
-            )
-    return out
-
-
-def _imeis(text: str) -> list[SelectorSpan]:
-    out: list[SelectorSpan] = []
-    for m in _IMEI_RE.finditer(text):
-        digits = re.sub(r"\D", "", m.group(0))
-        if len(digits) != 15:
-            continue
-        normalized = normalize_imei(digits)
-        if normalized:
-            out.append(
-                SelectorSpan(
-                    selector_kind=SelectorKind.IMEI,
-                    raw_value=m.group(0),
-                    normalized_value=normalized,
-                    start_offset=m.start(),
-                    end_offset=m.end(),
-                    confidence=0.75,
-                )
-            )
-    return out
-
-
-def _passports(text: str) -> list[SelectorSpan]:
-    return [
-        SelectorSpan(
-            selector_kind=SelectorKind.PASSPORT,
-            raw_value=m.group(0),
-            normalized_value=m.group(0).replace("<", "").upper(),
-            start_offset=m.start(),
-            end_offset=m.end(),
-            confidence=0.6,
-        )
-        for m in _MRZ_RE.finditer(text)
-    ]
+def _pack_for(selector_type: SelectorType, country: str | None):
+    try:
+        return load_pack(selector_type.value, country)
+    except FileNotFoundError:  # pragma: no cover - guarded by registry
+        raise

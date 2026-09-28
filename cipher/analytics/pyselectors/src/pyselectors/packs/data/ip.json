@@ -1,0 +1,203 @@
+{
+  "selector_type": "ip",
+  "priority": 88,
+  "base_confidence": 0.55,
+  "max_confidence": 0.99,
+  "normalizer": "ip",
+  "validator": "ip",
+  "patterns": [
+    {
+      "name": "ipv4",
+      "regex": "(?<![\\w.])(?:(?:25[0-5]|2[0-4]\\d|1?\\d?\\d)\\.){3}(?:25[0-5]|2[0-4]\\d|1?\\d?\\d)(?![\\w.])",
+      "requires_context": true
+    },
+    {
+      "name": "ipv6",
+      "regex": "(?<![\\w:])(?:[A-Fa-f0-9]{1,4}:){2,7}[A-Fa-f0-9]{1,4}(?:::[A-Fa-f0-9]{0,4})?(?![\\w:])"
+    },
+    {
+      "name": "ipv6_compressed",
+      "regex": "(?<![\\w:])[A-Fa-f0-9]{0,4}(?:::)(?:[A-Fa-f0-9]{1,4}:){0,6}[A-Fa-f0-9]{1,4}(?![\\w:])"
+    }
+  ],
+  "context": {
+    "window_before": 34,
+    "window_after": 16,
+    "terms": {
+      "en": [
+        {
+          "term": "ip",
+          "weight": 0.3
+        },
+        {
+          "term": "ip address",
+          "weight": 0.4
+        },
+        {
+          "term": "address",
+          "weight": 0.12
+        },
+        {
+          "term": "host",
+          "weight": 0.2
+        },
+        {
+          "term": "server",
+          "weight": 0.18
+        },
+        {
+          "term": "gateway",
+          "weight": 0.25
+        },
+        {
+          "term": "subnet",
+          "weight": 0.25
+        },
+        {
+          "term": "dns",
+          "weight": 0.2
+        },
+        {
+          "term": "firewall",
+          "weight": 0.2
+        },
+        {
+          "term": "proxy",
+          "weight": 0.18
+        },
+        {
+          "term": "ssh",
+          "weight": 0.2
+        },
+        {
+          "term": "rdp",
+          "weight": 0.2
+        },
+        {
+          "term": "vpn",
+          "weight": 0.15
+        },
+        {
+          "term": "login from",
+          "weight": 0.35
+        },
+        {
+          "term": "located at",
+          "weight": 0.3
+        },
+        {
+          "term": "connected from",
+          "weight": 0.3
+        },
+        {
+          "term": "originating",
+          "weight": 0.2
+        },
+        {
+          "term": "version",
+          "weight": -0.6
+        },
+        {
+          "term": "upgrade",
+          "weight": -0.5
+        },
+        {
+          "term": "dependency",
+          "weight": -0.6
+        },
+        {
+          "term": "chrome",
+          "weight": -0.5
+        },
+        {
+          "term": "mozilla",
+          "weight": -0.5
+        },
+        {
+          "term": "webkit",
+          "weight": -0.5
+        },
+        {
+          "term": "safari",
+          "weight": -0.4
+        },
+        {
+          "term": "release",
+          "weight": -0.35
+        },
+        {
+          "term": "e.g.",
+          "weight": -0.5
+        },
+        {
+          "term": "i.e.",
+          "weight": -0.4
+        },
+        {
+          "term": "example",
+          "weight": -0.45
+        },
+        {
+          "term": "for instance",
+          "weight": -0.45
+        },
+        {
+          "term": "such as",
+          "weight": -0.35
+        },
+        {
+          "term": "notation",
+          "weight": -0.4
+        },
+        {
+          "term": "written in",
+          "weight": -0.35
+        }
+      ],
+      "ru": [
+        {
+          "term": "ip",
+          "weight": 0.3
+        },
+        {
+          "term": "адрес",
+          "weight": 0.12
+        },
+        {
+          "term": "сервер",
+          "weight": 0.18
+        },
+        {
+          "term": "вход с",
+          "weight": 0.35
+        },
+        {
+          "term": "версия",
+          "weight": -0.6
+        }
+      ],
+      "zh": [
+        {
+          "term": "地址",
+          "weight": 0.12
+        },
+        {
+          "term": "服务器",
+          "weight": 0.2
+        },
+        {
+          "term": "登录",
+          "weight": 0.25
+        },
+        {
+          "term": "来自",
+          "weight": 0.2
+        },
+        {
+          "term": "版本",
+          "weight": -0.6
+        }
+      ]
+    }
+  }
+}

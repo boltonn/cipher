@@ -78,7 +78,7 @@ export default function DatasetSearchPage() {
   };
 
   return (
-    <div className="max-w-350 mx-auto px-6 relative pb-20">
+    <div className="max-w-400 mx-auto px-6 relative pb-20 pt-5">
       <PageHeader
         eyebrow="Registry"
         icon={<Database size={10} className="text-primary/50" />}

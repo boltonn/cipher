@@ -28,7 +28,7 @@ export function EntitySelectorsPanel({ entityId }: { entityId: string }) {
   const selectors: EntitySummary[] = rows.map((r) => r.entity);
   const selectorMentions: SelectorMention[] = rows.map((r) => ({
     entityId: r.entity.id,
-    selectorKind: r.selectorKind ?? null,
+    selectorType: r.selectorType ?? null,
     normalizedValue: r.normalizedValue ?? null,
     mentionCount: r.mentionCount ?? 0,
   }));

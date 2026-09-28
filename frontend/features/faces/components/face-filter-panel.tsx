@@ -18,6 +18,7 @@ import { Filter, X } from "lucide-react";
 import React, { useState } from "react";
 
 const DEFAULT_MIN_SIZE = 0;
+const DEFAULT_MIN_QUALITY = 0;
 
 export function hasActiveFaceFilters(params: FaceFilters): boolean {
   return !!(
@@ -25,6 +26,7 @@ export function hasActiveFaceFilters(params: FaceFilters): boolean {
     params.representativeOnly ||
     params.personIds?.length ||
     (params.minSize ?? DEFAULT_MIN_SIZE) !== DEFAULT_MIN_SIZE ||
+    (params.minQuality ?? DEFAULT_MIN_QUALITY) !== DEFAULT_MIN_QUALITY ||
     (params.minSimilarity ?? DEFAULT_MIN_SIMILARITY) !== DEFAULT_MIN_SIMILARITY
   );
 }
@@ -59,6 +61,13 @@ export const FaceFilterPanel: React.FC<FaceFilterPanelProps> = ({
     setLocalMinSize(params.minSize ?? DEFAULT_MIN_SIZE);
   }
 
+  const [prevMinQuality, setPrevMinQuality] = useState(params.minQuality);
+  const [localMinQuality, setLocalMinQuality] = useState(params.minQuality ?? DEFAULT_MIN_QUALITY);
+  if (params.minQuality !== prevMinQuality) {
+    setPrevMinQuality(params.minQuality);
+    setLocalMinQuality(params.minQuality ?? DEFAULT_MIN_QUALITY);
+  }
+
   const hasActiveFilters = hasActiveFaceFilters(params);
 
   const updateParam = <K extends keyof FaceFilters>(key: K, value: FaceFilters[K]) => {
@@ -72,6 +81,7 @@ export const FaceFilterPanel: React.FC<FaceFilterPanelProps> = ({
       sortOrder: "desc",
       minSimilarity: DEFAULT_MIN_SIMILARITY,
       minSize: DEFAULT_MIN_SIZE,
+      minQuality: DEFAULT_MIN_QUALITY,
       personIds: undefined,
     });
   };
@@ -239,6 +249,33 @@ export const FaceFilterPanel: React.FC<FaceFilterPanelProps> = ({
               step={10}
               onValueChange={([v]) => setLocalMinSize(v)}
               onValueCommit={([v]) => updateParam("minSize", v || undefined)}
+              className="py-2"
+            />
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between gap-2">
+              <span
+                id="face-min-quality-label"
+                className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground truncate"
+              >
+                Min Quality
+              </span>
+              <span
+                aria-hidden="true"
+                className="text-[11px] font-mono font-bold text-primary tabular-nums shrink-0"
+              >
+                {(localMinQuality * 100).toFixed(0)}%
+              </span>
+            </div>
+            <Slider
+              aria-labelledby="face-min-quality-label"
+              value={[localMinQuality]}
+              min={0}
+              max={1}
+              step={0.05}
+              onValueChange={([v]) => setLocalMinQuality(v)}
+              onValueCommit={([v]) => updateParam("minQuality", v || undefined)}
               className="py-2"
             />
           </div>

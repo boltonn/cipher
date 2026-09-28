@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useDataset, useDatasets } from "@/features/datasets/api";
+import { useDebounce } from "@/hooks/use-debounce";
 import { cn } from "@/lib/utils";
 import { Check, ChevronsUpDown, Database, X } from "lucide-react";
 import { useState } from "react";
@@ -25,8 +26,10 @@ interface DatasetSelectProps {
 export function DatasetSelect({ datasetId, onChange, className }: DatasetSelectProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  // Type-ahead: the field updates instantly, the fetch waits for a pause.
+  const debouncedQuery = useDebounce(query, 250);
 
-  const { data, isFetching } = useDatasets({ query: query || undefined, limit: 20 });
+  const { data, isFetching } = useDatasets({ query: debouncedQuery || undefined, limit: 20 });
   const datasets = data?.pages.flatMap((page) => page.data) ?? [];
   const { data: selected } = useDataset(datasetId);
 

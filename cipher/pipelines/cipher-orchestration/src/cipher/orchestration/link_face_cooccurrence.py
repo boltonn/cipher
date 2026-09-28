@@ -28,9 +28,19 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
 
-async def link_face_cooccurrence_workflow(session: "AsyncSession") -> dict[str, int]:
-    """Full rebuild of `appears_in_photo_with` edges from current face state."""
-    counts = await PostgresGraphRepository(session=session).rebuild_face_cooccurrence()
+async def link_face_cooccurrence_workflow(session: "AsyncSession", min_verified_photos: int = 2) -> dict[str, int]:
+    """Full rebuild of `appears_in_photo_with` edges from current face state.
+
+    Args:
+        session: Async DB session.
+        min_verified_photos: A pair of already-identified people is only linked
+            once they share this many photos; a pair with any pending-match
+            photo (a lead) is linked regardless. Set to 1 to keep every
+            co-occurrence.
+    """
+    counts = await PostgresGraphRepository(session=session).rebuild_face_cooccurrence(
+        min_verified_photos=min_verified_photos
+    )
     logger.success(f"Face co-occurrence linking complete: {counts}")
     return counts
 

@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi_offline import FastAPIOffline
+from loguru import logger
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from cipher.api.deps.elasticsearch import elasticsearch_lifespan
@@ -32,7 +33,7 @@ from cipher.api.routes import (
     search,
     users,
 )
-from cipher.api.settings import Settings
+from cipher.api.settings import RetrievalBackend, Settings
 from cipher.schemas._base.exceptions import EntityAlreadyExistsError, EntityNotFoundError
 from cipher.utils.fastapi.health import ServiceHealthStatus, service_health
 from cipher.utils.fastapi.info import ServiceInfo, get_package_info
@@ -58,6 +59,29 @@ async def lifespan(app: FastAPI):
     it loaded into memory.
     """
     async with postgres_lifespan(app), elasticsearch_lifespan(app), model_lifespan(app):
+        _r = settings.retrieval
+        logger.info(
+            f"retrieval backend: {_r.backend.value}"
+            + (f" (text_ranker={_r.text_ranker.value})" if _r.backend == RetrievalBackend.POSTGRES else "")
+        )
+        from cipher.api.deps.postgres import get_session
+
+        if _r.backend == RetrievalBackend.POSTGRES:
+            from cipher.datastores.postgres.repositories.chunk_retrieval import (
+                PostgresChunkRetrievalRepository,
+            )
+
+            async with get_session() as _s:
+                await PostgresChunkRetrievalRepository(_s, text_ranker=_r.text_ranker.value).ensure_schema()
+        else:
+            from cipher.datastores.elasticsearch.repositories.chunk_retrieval import (
+                ElasticsearchChunkRetrievalRepository,
+            )
+
+            async with get_session() as _s:
+                await ElasticsearchChunkRetrievalRepository(
+                    client=app.state.es_client, session=_s
+                ).ensure_schema()
         yield
 
 

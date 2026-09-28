@@ -61,9 +61,7 @@ class VcardParser:
         value = match.group("value").strip()
         params = {
             k.upper(): v
-            for p in (
-                match.group("params")[1:].split(";") if match.group("params") else []
-            )
+            for p in (match.group("params")[1:].split(";") if match.group("params") else [])
             if "=" in p and (parts := p.split("=", 1))
             for k, v in [parts]
         }
@@ -88,9 +86,7 @@ class VcardParser:
                     logger.warning(f"Birthday with unknown year: {value}")
                     pass
                 try:
-                    contact["date_of_birth"] = date_parser.parse(
-                        value, dayfirst=True, fuzzy=True
-                    )
+                    contact["date_of_birth"] = date_parser.parse(value, dayfirst=True, fuzzy=True)
                 except ParserError as e:
                     logger.warning(f"Failed to parse birthday: {e}")
             case "CATEGORIES":
@@ -133,13 +129,9 @@ class VcardParser:
                     contact["raw_header"][name] = value
 
     @classmethod
-    def stream(
-        cls, stream: BinaryIO, encoding: str = "utf-8"
-    ) -> Generator[Contact, None, None]:
+    def stream(cls, stream: BinaryIO, encoding: str = "utf-8") -> Generator[Contact, None, None]:
         """Stream contacts from a VCF file one at a time, yielding dictionaries."""
-        text_stream = io.TextIOWrapper(
-            stream, encoding=encoding, errors="ignore", newline=""
-        )
+        text_stream = io.TextIOWrapper(stream, encoding=encoding, errors="ignore", newline="")
         current_contact = None
 
         for line in cls._unfold_stream(text_stream):
@@ -150,9 +142,7 @@ class VcardParser:
             if name == "BEGIN" and value == "VCARD":
                 # Initialize with factory functions for specific keys
                 current_contact = defaultdict(lambda: None)
-                current_contact.update(
-                    {"emails": [], "phone_numbers": [], "urls": [], "raw_header": {}}
-                )
+                current_contact.update({"emails": [], "phone_numbers": [], "urls": [], "raw_header": {}})
                 continue
 
             if name == "END" and value == "VCARD":
@@ -163,9 +153,7 @@ class VcardParser:
                 continue
 
             if current_contact is not None:
-                cls._map_field(
-                    current_contact, name, params, value, include_extras=False
-                )
+                cls._map_field(current_contact, name, params, value, include_extras=False)
 
         text_stream.detach()
 

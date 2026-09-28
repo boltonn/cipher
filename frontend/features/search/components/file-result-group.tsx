@@ -2,6 +2,7 @@
 
 import { HighlightedText } from "@/components/ui/highlighted-text";
 import { cn } from "@/lib/utils";
+import { format } from "date-fns";
 import { FileText, Mail, Target } from "lucide-react";
 import { matchTerms, snippetAround } from "../highlight";
 import type { GroupedFileResult, SearchMode } from "../types";
@@ -23,6 +24,18 @@ export function FileResultGroup({ group, isSelected, onSelect, searchMode, query
   const Icon = group.filetypeGroup === "email" ? Mail : FileText;
   const topChunk = group.chunks.find((c) => c.id === group.topChunkId) ?? group.chunks[0];
   const showMatchSignals = searchMode === "semantic" || searchMode === "hybrid";
+
+  const dateLabel = (() => {
+    const raw = topChunk.dateCreated;
+    if (!raw) return null;
+    const d = new Date(raw);
+    return Number.isNaN(d.getTime()) ? null : format(d, "MMM d, yyyy");
+  })();
+  const meta = [
+    group.filetypeGroup === "email" ? "Email" : "Document",
+    topChunk.pageNumber ? `p. ${topChunk.pageNumber}` : null,
+    dateLabel,
+  ].filter(Boolean);
   // A semantic query has no literal words to mark -- the whole snippet is the matched
   // chunk, and the score badge carries the signal instead.
   const terms = searchMode === "semantic" ? [] : matchTerms(topChunk, query);
@@ -38,7 +51,7 @@ export function FileResultGroup({ group, isSelected, onSelect, searchMode, query
           : "border-l-4 border-l-transparent hover:bg-muted/30"
       )}
     >
-      <div className="mb-2 flex items-center gap-1.5 text-[10px] font-bold text-muted-foreground">
+      <div className="mb-1 flex items-center gap-1.5 text-[10px] font-bold text-muted-foreground">
         <Icon className="h-3 w-3 shrink-0" />
         <span className="flex-1 truncate">{group.displayName}</span>
         {showMatchSignals && group.matchCount > 1 && (
@@ -46,6 +59,9 @@ export function FileResultGroup({ group, isSelected, onSelect, searchMode, query
             {group.matchCount} matches
           </span>
         )}
+      </div>
+      <div className="mb-2 truncate font-mono text-[10px] text-muted-foreground/70">
+        {meta.join("  ·  ")}
       </div>
       <p
         className={cn(

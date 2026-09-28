@@ -1,22 +1,13 @@
 "use client";
 
 import { PageHeader } from "@/components/page-header";
+import { DatasetCard } from "@/features/datasets/components/dataset-card";
+import { useDatasetsList } from "@/features/datasets/api";
+import { NAV, type NavItem } from "@/lib/nav";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import type { IconComponent } from "@/types/common";
 import { useReducedMotion } from "motion/react";
-import {
-  BookOpen,
-  ChevronRight,
-  Database,
-  Home,
-  Image as ImageIcon,
-  Mail,
-  MessageSquare,
-  Search,
-  Smile,
-  User,
-} from "lucide-react";
+import { ArrowRight, ChevronRight, Database, Home, Mail } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -77,102 +68,35 @@ function DecodeLine({ text }: { text: string }) {
   );
 }
 
-interface NavTile {
-  title: string;
-  description: string;
-  url: string;
-  icon: IconComponent;
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">
+      {children}
+    </span>
+  );
 }
 
-const WORKSPACE: NavTile[] = [
-  {
-    title: "Datasets",
-    description: "Create and manage the raw ingests everything else is triaged from.",
-    url: "/datasets",
-    icon: Database,
-  },
-  {
-    title: "Search",
-    description: "Text, semantic, and hybrid search across every indexed record.",
-    url: "/search",
-    icon: Search,
-  },
-  {
-    title: "Chat",
-    description: "Ask questions over a dataset and get answers cited back to source.",
-    url: "/chat",
-    icon: MessageSquare,
-  },
-  {
-    title: "Documentation",
-    description: "How a file becomes a record -- pipeline, schemas, and services.",
-    url: "/docs",
-    icon: BookOpen,
-  },
-];
-
-const VIEWERS: NavTile[] = [
-  {
-    title: "Images",
-    description: "Browse and search images by content or visual similarity.",
-    url: "/images",
-    icon: ImageIcon,
-  },
-  {
-    title: "Faces",
-    description: "Detected faces awaiting review or matched to a person.",
-    url: "/faces",
-    icon: Smile,
-  },
-  {
-    title: "Persons",
-    description: "Identities clustered from faces across a dataset.",
-    url: "/persons",
-    icon: User,
-  },
-];
-
-function NavCard({ tile }: { tile: NavTile }) {
+function NavRow({ item }: { item: NavItem }) {
   return (
     <Link
-      href={tile.url}
+      href={item.url}
       className={cn(
-        "group relative flex items-start gap-3 overflow-hidden rounded-lg border border-border bg-white/[0.02] p-4 pl-5",
+        "group flex items-center gap-3 rounded-lg border border-border bg-white/[0.02] px-4 py-3",
         "transition-colors hover:border-primary/40 hover:bg-primary/5"
       )}
     >
-      {/* Echoes the active-item indicator in the sidebar, so a home tile
-          reads as the same destination the sidebar links to, just larger. */}
-      <div
-        className="absolute left-0 top-0 h-full w-0.5 origin-top scale-y-0 bg-primary shadow-[0_0_10px_rgba(99,102,241,0.8)] transition-transform duration-300 group-hover:scale-y-100"
-      />
-      <tile.icon className="mt-0.5 h-4.5 w-4.5 shrink-0 text-primary" />
+      <item.icon className="h-4 w-4 shrink-0 text-primary" />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
-          <span className="text-sm font-semibold text-foreground">{tile.title}</span>
+          <span className="text-sm font-semibold text-foreground">{item.title}</span>
           <ChevronRight
             size={13}
             className="text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary"
           />
         </div>
-        <p className="mt-1 text-xs text-muted-foreground">{tile.description}</p>
+        <p className="mt-0.5 truncate text-xs text-muted-foreground">{item.blurb}</p>
       </div>
     </Link>
-  );
-}
-
-function NavSection({ label, tiles }: { label: string; tiles: NavTile[] }) {
-  return (
-    <section>
-      <span className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">
-        {label}
-      </span>
-      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {tiles.map((tile) => (
-          <NavCard key={tile.title} tile={tile} />
-        ))}
-      </div>
-    </section>
   );
 }
 
@@ -184,80 +108,159 @@ function GithubMark({ className }: { className?: string }) {
   );
 }
 
+function RecentDatasets() {
+  const { data, isPending } = useDatasetsList({
+    sortBy: "dateLastUpdated",
+    sortOrder: "desc",
+    limit: 4,
+    page: 1,
+  });
+  const datasets = data?.data ?? [];
+
+  return (
+    <section>
+      <div className="flex items-center justify-between">
+        <SectionLabel>Pick up where you left off</SectionLabel>
+        <Link
+          href="/datasets"
+          className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline"
+        >
+          All datasets <ArrowRight size={12} />
+        </Link>
+      </div>
+
+      {isPending ? (
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div
+              key={i}
+              className="h-40 animate-pulse rounded-xl border border-border/50 bg-muted/40"
+            />
+          ))}
+        </div>
+      ) : datasets.length === 0 ? (
+        <Link
+          href="/datasets"
+          className="mt-3 flex items-center gap-3 rounded-xl border border-dashed border-border/60 bg-muted/10 px-5 py-6 transition-colors hover:border-primary/40 hover:bg-primary/5"
+        >
+          <Database className="h-4 w-4 text-primary" />
+          <div>
+            <p className="text-sm font-semibold text-foreground">No datasets yet</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Request one from the Datasets page to start triaging.
+            </p>
+          </div>
+        </Link>
+      ) : (
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {datasets.map((dataset) => (
+            <DatasetCard key={dataset.id} dataset={dataset} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function Page() {
   return (
-    <div className="max-w-4xl mx-auto px-6 relative pb-20">
+    <div className="mx-auto max-w-400 px-6 pt-5 pb-20">
       <PageHeader eyebrow="Home" value="Cipher" icon={<Home className="h-3.5 w-3.5 text-primary/80" />} />
 
-      <div className="pt-4 pb-10">
-        <DecodeLine text={DECODE_LINE} />
-        <h1
-          className={cn(
-            "mt-3 max-w-xl text-4xl font-bold tracking-tight text-foreground sm:text-5xl",
-            "animate-in fade-in-0 slide-in-from-bottom-2 duration-700 motion-reduce:animate-none"
-          )}
-        >
-          Turn unknown data into something you can search.
-        </h1>
-        <p
-          className={cn(
-            "mt-3 max-w-xl text-base text-muted-foreground",
-            "animate-in fade-in-0 slide-in-from-bottom-2 duration-700 delay-150 motion-reduce:animate-none"
-          )}
-        >
-          Point Cipher at whatever you&apos;ve got -- files, mail, images, message exports -- and it
-          types, enriches, and indexes it automatically. Pick up where you left off, or jump into a
-          section below.
-        </p>
-      </div>
+      <div className="w-full max-w-5xl">
+        <div className="pt-2 pb-10">
+          <DecodeLine text={DECODE_LINE} />
+          <h1
+            className={cn(
+              "mt-3 max-w-xl text-4xl font-bold tracking-tight text-foreground sm:text-5xl",
+              "animate-in fade-in-0 slide-in-from-bottom-2 duration-700 motion-reduce:animate-none"
+            )}
+          >
+            Turn unknown data into something you can search.
+          </h1>
+          <p
+            className={cn(
+              "mt-3 max-w-xl text-base text-muted-foreground",
+              "animate-in fade-in-0 slide-in-from-bottom-2 duration-700 delay-150 motion-reduce:animate-none"
+            )}
+          >
+            Point Cipher at whatever you&apos;ve got &mdash; files, mail, images, message exports
+            &mdash; and it types, enriches, and indexes it automatically.
+          </p>
+        </div>
 
-      <div
-        className={cn(
-          "flex flex-col gap-8",
-          "animate-in fade-in-0 slide-in-from-bottom-1 duration-700 delay-300 motion-reduce:animate-none"
+        <div
+          className={cn(
+            "flex flex-col gap-10",
+            "animate-in fade-in-0 slide-in-from-bottom-1 duration-700 delay-300 motion-reduce:animate-none"
+          )}
+        >
+          <RecentDatasets />
+
+          <section>
+            <SectionLabel>Workspace</SectionLabel>
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {NAV.workspace.map((item) => (
+                <NavRow key={item.url} item={item} />
+              ))}
+            </div>
+          </section>
+
+          <section>
+            <SectionLabel>Explore</SectionLabel>
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {NAV.explore.map((item) => (
+                <NavRow key={item.url} item={item} />
+              ))}
+            </div>
+          </section>
+
+          <section>
+            <SectionLabel>Media</SectionLabel>
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {NAV.media.map((item) => (
+                <NavRow key={item.url} item={item} />
+              ))}
+            </div>
+          </section>
+        </div>
+
+        {(REPO_URL || CONTACT_EMAIL) && (
+          <>
+            <Separator className="mt-12 mb-5 bg-white/10" />
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <SectionLabel>Get in touch</SectionLabel>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Questions, feedback, or want a walkthrough? Reach out.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {REPO_URL && (
+                  <a
+                    href={REPO_URL}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-primary/50 hover:bg-primary/10 hover:text-primary"
+                  >
+                    <GithubMark className="h-3.5 w-3.5" />
+                    Source
+                  </a>
+                )}
+                {CONTACT_EMAIL && (
+                  <a
+                    href={`mailto:${CONTACT_EMAIL}`}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-primary/50 hover:bg-primary/10 hover:text-primary"
+                  >
+                    <Mail size={13} />
+                    {CONTACT_EMAIL}
+                  </a>
+                )}
+              </div>
+            </div>
+          </>
         )}
-      >
-        <NavSection label="Workspace" tiles={WORKSPACE} />
-        <NavSection label="Viewers" tiles={VIEWERS} />
       </div>
-
-      {(REPO_URL || CONTACT_EMAIL) && (
-        <>
-          <Separator className="mt-12 mb-5 bg-white/10" />
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <span className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">
-                Get in touch
-              </span>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Questions, feedback, or want a walkthrough? Reach out.
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {REPO_URL && (
-                <a
-                  href={REPO_URL}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-primary/50 hover:bg-primary/10 hover:text-primary"
-                >
-                  <GithubMark className="h-3.5 w-3.5" />
-                  Source
-                </a>
-              )}
-              {CONTACT_EMAIL && (
-                <a
-                  href={`mailto:${CONTACT_EMAIL}`}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-primary/50 hover:bg-primary/10 hover:text-primary"
-                >
-                  <Mail size={13} />
-                  {CONTACT_EMAIL}
-                </a>
-              )}
-            </div>
-          </div>
-        </>
-      )}
     </div>
   );
 }

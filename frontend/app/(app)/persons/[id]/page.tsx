@@ -1,5 +1,6 @@
 "use client";
 
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { PageHeader } from "@/components/page-header";
 import { PageLoading } from "@/components/page-loading";
 import { Badge } from "@/components/ui/badge";
@@ -8,20 +9,22 @@ import { CommentSection } from "@/features/comments/components/comment-section";
 import { AddConnectionDialog } from "@/features/entities/components/add-connection-dialog";
 import { AttachSelectorDialog } from "@/features/entities/components/attach-selector-dialog";
 import { EntityGraph } from "@/features/entities/components/entity-graph";
-import { EntityMentionsByFile } from "@/features/entities/components/entity-mentions-by-file";
 import { EntitySelectors } from "@/features/entities/components/entity-selectors";
 import { ENTITY_TYPE_META } from "@/features/entities/components/entity-type-meta";
 import { Section } from "@/features/entities/components/section";
 import { useEntityProfile } from "@/features/entities/hooks/use-entities";
 import { FAMILY_ROLE_INVERSE } from "@/features/entities/types";
+import { PersonEventsSection } from "@/features/events/components/person-events-section";
 import { FaceCard } from "@/features/faces/components/face-card";
 import { usePersonFaces } from "@/features/faces/hooks/use-person-faces";
 import { ImageViewerDialog } from "@/features/images/components/image-viewer-dialog";
 import { FacePublic } from "@/features/faces/types";
 import { EditPersonDialog } from "@/features/persons/components/edit-person-dialog";
+import { MergePersonDialog } from "@/features/persons/components/merge-person-dialog";
 import { PersonExampleUploadButton } from "@/features/persons/components/person-example-upload-button";
 import { PersonExamplesGallery } from "@/features/persons/components/person-examples-gallery";
 import {
+  useDeletePerson,
   usePerson,
   usePersonRepresentativeFaces,
 } from "@/features/persons/hooks/use-persons";
@@ -33,11 +36,14 @@ import {
   ImagePlus,
   Loader2,
   type LucideIcon,
+  Merge,
   MessageSquare,
   Network,
   Pencil,
   Plus,
   ScanFace,
+  Share2,
+  Trash2,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -63,9 +69,13 @@ export default function PersonDetailPage({
     isPending: facesPending,
   } = usePersonFaces(id);
 
+  const deletePerson = useDeletePerson(() => router.push("/persons"));
+
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isMergeOpen, setIsMergeOpen] = useState(false);
   const [isAddSelectorOpen, setIsAddSelectorOpen] = useState(false);
   const [isAddConnectionOpen, setIsAddConnectionOpen] = useState(false);
+  const [showConnGraph, setShowConnGraph] = useState(true);
   const [selectedFace, setSelectedFace] = useState<FacePublic | null>(null);
 
   const recentFaces = useMemo(
@@ -78,8 +88,7 @@ export default function PersonDetailPage({
 
   const selectors = profile?.selectors ?? [];
   const related = profile?.relatedEntities ?? [];
-  const mentionCounts = profile?.mentionCounts ?? {};
-  const totalMentions = Object.values(mentionCounts).reduce((a, b) => a + b, 0);
+  const fileCount = profile?.fileCount ?? 0;
 
   if (isPending || !person) {
     return <PageLoading icon={ScanFace} label="Loading person…" />;
@@ -88,14 +97,13 @@ export default function PersonDetailPage({
   const stats: {
     label: string;
     value: number;
-    href: string;
+    href?: string;
     Icon: LucideIcon;
   }[] = [
     { label: "Faces", value: recentFaces.length, href: "#faces", Icon: ScanFace },
     {
       label: "Mentions",
-      value: totalMentions,
-      href: "#files",
+      value: fileCount,
       Icon: FileText,
     },
     {
@@ -113,18 +121,19 @@ export default function PersonDetailPage({
   ];
 
   return (
-    <div className="relative mx-auto max-w-5xl px-6 pb-24">
+    <div className="relative mx-auto max-w-400 px-6 pb-24 pt-5">
       <PageHeader
         eyebrow="Person"
         value={
-          totalMentions
-            ? `${recentFaces.length} faces · ${totalMentions} mentions`
+          fileCount
+            ? `${recentFaces.length} faces · named in ${fileCount.toLocaleString()} file${fileCount === 1 ? "" : "s"}`
             : `${recentFaces.length} faces`
         }
       />
 
+      <div className="w-full max-w-5xl">
       {/* Identity header */}
-      <div className="mt-4 flex flex-col gap-4 rounded-2xl border border-border bg-muted/40 p-6 backdrop-blur-2xl">
+      <div className="flex flex-col gap-4 rounded-2xl border border-border bg-muted/40 p-6 backdrop-blur-2xl">
         <div className="flex items-start gap-6">
           <PersonExamplesGallery
             personId={id}
@@ -181,6 +190,49 @@ export default function PersonDetailPage({
                   <Pencil size={14} />
                   Edit
                 </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsMergeOpen(true)}
+                  className="h-9 gap-2 border-border/50 bg-muted/40 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary"
+                >
+                  <Merge size={14} />
+                  Merge
+                </Button>
+                <ConfirmDialog
+                  trigger={
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Delete person"
+                      className="h-9 w-9 text-muted-foreground/70 hover:bg-destructive/10 hover:text-destructive"
+                    >
+                      <Trash2 size={14} />
+                    </Button>
+                  }
+                  title="Delete this person?"
+                  description={
+                    <>
+                      This permanently deletes{" "}
+                      <strong className="text-foreground">
+                        {person.name || "Unnamed Person"}
+                      </strong>{" "}
+                      and their entry in the knowledge graph. Their{" "}
+                      {recentFaces.length.toLocaleString()} face
+                      {recentFaces.length === 1 ? "" : "s"} are unlinked, not
+                      deleted, and can be reassigned to someone else; mentions
+                      naming them become unresolved. Their{" "}
+                      {(profile?.relatedTotal ?? 0).toLocaleString()}{" "}
+                      relationship
+                      {(profile?.relatedTotal ?? 0) === 1 ? "" : "s"}, pending
+                      face/resolution matches, and comments are deleted
+                      outright. This can&apos;t be undone.
+                    </>
+                  }
+                  confirmLabel="Delete Person"
+                  isPending={deletePerson.isPending}
+                  onConfirm={() => deletePerson.mutate(id)}
+                />
               </div>
             </div>
 
@@ -208,26 +260,40 @@ export default function PersonDetailPage({
 
         {/* Count strip */}
         <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-4">
-          {stats.map((s) => (
-            <a
-              key={s.label}
-              href={s.href}
-              className="group flex items-center gap-3 bg-card px-4 py-3 transition-colors hover:bg-primary/5"
-            >
-              <s.Icon
-                size={18}
-                className="shrink-0 text-primary/60 transition-colors group-hover:text-primary"
-              />
-              <div className="min-w-0">
-                <div className="text-lg font-semibold text-foreground">
-                  {s.value}
+          {stats.map((s) => {
+            const body = (
+              <>
+                <s.Icon
+                  size={18}
+                  className="shrink-0 text-primary/60 transition-colors group-hover:text-primary"
+                />
+                <div className="min-w-0">
+                  <div className="text-lg font-semibold text-foreground">
+                    {s.value}
+                  </div>
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground transition-colors group-hover:text-primary">
+                    {s.label}
+                  </div>
                 </div>
-                <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground transition-colors group-hover:text-primary">
-                  {s.label}
-                </div>
+              </>
+            );
+            return s.href ? (
+              <a
+                key={s.label}
+                href={s.href}
+                className="group flex items-center gap-3 bg-card px-4 py-3 transition-colors hover:bg-primary/5"
+              >
+                {body}
+              </a>
+            ) : (
+              <div
+                key={s.label}
+                className="group flex items-center gap-3 bg-card px-4 py-3"
+              >
+                {body}
               </div>
-            </a>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -253,6 +319,7 @@ export default function PersonDetailPage({
             entityId={id}
             selectors={selectors}
             selectorMentions={profile?.selectorMentions ?? []}
+            showMentionPreviews={false}
           />
         </Section>
 
@@ -300,33 +367,48 @@ export default function PersonDetailPage({
           )}
         </Section>
 
-        {profile && (
-          <Section
-            id="files"
-            title="Files"
-            icon={<FileText size={14} className="text-primary" />}
-          >
-            <EntityMentionsByFile
-              entityId={id}
-              emptyLabel="Not mentioned in any files yet."
-            />
-          </Section>
-        )}
+        <PersonEventsSection entityId={id} />
 
         <Section
           id="connections"
           title="Connections"
           icon={<Network size={14} className="text-primary" />}
           action={
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setIsAddConnectionOpen(true)}
-              className="h-7 gap-1.5 text-[10px] font-bold uppercase tracking-widest text-primary hover:text-primary"
-            >
-              <Plus size={13} />
-              Add
-            </Button>
+            <div className="flex items-center gap-1">
+              {related.length > 0 && (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowConnGraph((v) => !v)}
+                    className="h-7 gap-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary"
+                  >
+                    <Network size={13} />
+                    {showConnGraph ? "Hide graph" : "Show graph"}
+                  </Button>
+                  <Button
+                    asChild
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 gap-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary"
+                  >
+                    <Link href={`/graph?seed=${id}`}>
+                      <Share2 size={13} />
+                      Open in graph
+                    </Link>
+                  </Button>
+                </>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsAddConnectionOpen(true)}
+                className="h-7 gap-1.5 text-[10px] font-bold uppercase tracking-widest text-primary hover:text-primary"
+              >
+                <Plus size={13} />
+                Add
+              </Button>
+            </div>
           }
         >
           {related.length > 0 ? (
@@ -363,7 +445,7 @@ export default function PersonDetailPage({
                   );
                 })}
               </ul>
-              <EntityGraph focusEntityId={id} depth={1} compact />
+              {showConnGraph && <EntityGraph focusEntityId={id} depth={2} compact />}
             </>
           ) : (
             <p className="text-[11px] italic text-muted-foreground">
@@ -373,20 +455,26 @@ export default function PersonDetailPage({
           )}
         </Section>
 
-        <Section
-          title="Comments"
-          icon={<MessageSquare size={14} className="text-primary" />}
-        >
+        {/* CommentSection renders its own "Comments" header -- no Section
+            wrapper, or the heading shows twice. */}
+        <section id="comments" className="scroll-mt-20">
           <div className="rounded-2xl border border-border bg-muted/40 p-5 backdrop-blur-2xl">
             <CommentSection commentableType="person" commentableId={id} />
           </div>
-        </Section>
+        </section>
+      </div>
       </div>
 
       <EditPersonDialog
         person={person}
         isOpen={isEditOpen}
         onOpenChange={setIsEditOpen}
+      />
+
+      <MergePersonDialog
+        person={person}
+        isOpen={isMergeOpen}
+        onOpenChange={setIsMergeOpen}
       />
 
       <AttachSelectorDialog

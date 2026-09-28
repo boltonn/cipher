@@ -10,12 +10,16 @@ either of them independently can't tell a caller when *all* matching content
 
 from clir.api.deps import TextEmbeddingModelDep
 from fastapi import APIRouter, HTTPException
+from sqlalchemy import text as sa_text
 
 from cipher.api.deps.elasticsearch import TextChunkDatastoreDep
+from cipher.api.deps.postgres import get_session
 from cipher.api.services.search import search_chunks
+from cipher.api.settings import RetrievalBackend, Settings, TextRanker
 from cipher.schemas.content.search import (
     ChunkSemanticSearchRequest,
     ChunkTextSearchRequest,
+    RetrievalConfigInfo,
 )
 
 router = APIRouter(
@@ -23,6 +27,58 @@ router = APIRouter(
     tags=["search"],
     responses={418: {"description": "I'm a teapot"}},
 )
+
+settings = Settings()
+
+# Full-text-relevant extensions the retrieval layer knows how to use.
+_FTS_EXTENSIONS = ("unaccent", "pg_trgm", "pg_bigm", "pgroonga", "pg_search")
+
+
+def _effective_ranker(configured: TextRanker, installed: set[str]) -> str:
+    """The ranker that will actually run -- downgrade if its extension is absent."""
+    if settings.retrieval.backend != RetrievalBackend.POSTGRES:
+        return "n/a"
+    ladder = {
+        TextRanker.PG_SEARCH: ("pg_search", TextRanker.PGROONGA),
+        TextRanker.PGROONGA: ("pgroonga", TextRanker.BIGM),
+        TextRanker.BIGM: ("pg_bigm", TextRanker.CORE),
+        TextRanker.CORE: (None, None),
+    }
+    current = configured
+    while current != TextRanker.CORE:
+        needed, fallback = ladder[current]
+        if needed in installed:
+            return current.value
+        current = fallback
+    return TextRanker.CORE.value
+
+
+@router.get(
+    "/config",
+    summary="Which store and keyword ranker back chunk search right now",
+    response_model_by_alias=True,
+)
+async def search_config() -> RetrievalConfigInfo:
+    """Report the active retrieval backend and full-text ranker.
+
+    Returns the configured vs. effective keyword ranker and which full-text
+    extensions are installed -- so the running configuration is never a guess.
+    See docs/retrieval-workflow.md and docs/postgres-extensions.md.
+    """
+    r = settings.retrieval
+    async with get_session() as session:
+        rows = await session.execute(
+            sa_text("SELECT extname FROM pg_extension WHERE extname = ANY(:names)"),
+            {"names": list(_FTS_EXTENSIONS)},
+        )
+        installed = sorted(row[0] for row in rows)
+    return RetrievalConfigInfo(
+        backend=r.backend.value,
+        text_ranker=r.text_ranker.value,
+        text_ranker_effective=_effective_ranker(r.text_ranker, set(installed)),
+        installed_extensions=installed,
+        graph_expand_entity_cap=r.graph_expand_entity_cap,
+    )
 
 
 @router.post(

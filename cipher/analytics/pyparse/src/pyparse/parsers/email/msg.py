@@ -134,9 +134,7 @@ class MsgParser:
 
         return plain or None, html or None
 
-    def _extract_attachments(
-        self, msg: Message, *, extract_children: bool, out_dir: Path | None
-    ) -> list[FileBase]:
+    def _extract_attachments(self, msg: Message, *, extract_children: bool, out_dir: Path | None) -> list[FileBase]:
         attachments = []
         for attachment in msg.attachments.values():
             payload: bytes | None = attachment.get("AttachDataObject")

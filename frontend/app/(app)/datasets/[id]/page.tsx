@@ -12,22 +12,45 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useDataset, useDatasetStats, useDeleteDataset } from "@/features/datasets/api";
+import {
+  useDataset,
+  useDatasetStats,
+  useDeleteDataset,
+} from "@/features/datasets/api";
 import { DatasetFileBrowser } from "@/features/datasets/components/dataset-file-browser";
 import { EditDatasetDialog } from "@/features/datasets/components/edit-dataset-dialog";
+import { EnrichmentEstimates } from "@/features/datasets/components/enrichment-estimates";
 import { EnrichmentPipeline } from "@/features/datasets/components/enrichment-pipeline";
 import { FiletypeBreakdownList } from "@/features/datasets/components/filetype-breakdown-list";
 import { LoadHistogramChart } from "@/features/datasets/components/load-histogram-chart";
-import type { HistogramGranularityType, LoadHistogramBucket } from "@/features/datasets/types";
+import { DatasetEntityBreakdown } from "@/features/entities/components/dataset-entity-breakdown";
+import type {
+  HistogramGranularityType,
+  LoadHistogramBucket,
+} from "@/features/datasets/types";
 import { formatBytes, formatCompactNumber } from "@/lib/utils";
 import { AnimatePresence, motion } from "motion/react";
-import { BarChart3, Database, Files, FolderOpen, HardDrive, PieChart, Pencil, Trash2, X } from "lucide-react";
+import {
+  BarChart3,
+  Database,
+  Files,
+  Fingerprint,
+  FolderOpen,
+  HardDrive,
+  PieChart,
+  Pencil,
+  Trash2,
+  X,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { use, useState } from "react";
 
 /** End-exclusive window covering the bucket's full day/week/month, for use as a date-range filter. */
-function bucketToRange(dateBucket: string, granularity: HistogramGranularityType) {
+function bucketToRange(
+  dateBucket: string,
+  granularity: HistogramGranularityType
+) {
   const start = new Date(dateBucket);
   const end = new Date(start);
   if (granularity === "day") end.setDate(end.getDate() + 1);
@@ -97,7 +120,7 @@ export default function DatasetDetailPage({
   }
 
   return (
-    <div className="max-w-350 mx-auto px-6 relative pb-20">
+    <div className="max-w-400 mx-auto px-6 relative pb-20 pt-5">
       <PageHeader>
         <div className="flex flex-col">
           <Link
@@ -123,7 +146,7 @@ export default function DatasetDetailPage({
             {dataset.description || "No description"}
           </p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1 shrink-0">
           <Button
             variant="outline"
             size="sm"
@@ -133,23 +156,27 @@ export default function DatasetDetailPage({
             <Pencil size={14} />
             Edit
           </Button>
+          {/* Destructive + irreversible: kept available but visually quiet, so
+              it doesn't read as a peer of Edit. */}
           <ConfirmDialog
             trigger={
               <Button
-                variant="outline"
-                size="sm"
-                className="h-9 bg-muted/40 border-border text-muted-foreground hover:text-destructive hover:border-destructive/30 uppercase text-[10px] font-bold tracking-widest gap-2"
+                variant="ghost"
+                size="icon"
+                aria-label="Delete dataset"
+                className="h-9 w-9 text-muted-foreground/70 hover:bg-destructive/10 hover:text-destructive"
               >
                 <Trash2 size={14} />
-                Delete
               </Button>
             }
             title="Delete this dataset?"
             description={
               <>
-                This permanently deletes <strong className="text-foreground">{dataset.name}</strong> and every
-                file, extracted/embedded text, face, image, and comment scoped to it -- including its entries in
-                the search index. This can&apos;t be undone.
+                This permanently deletes{" "}
+                <strong className="text-foreground">{dataset.name}</strong> and
+                every file, extracted/embedded text, face, image, and comment
+                scoped to it -- including its entries in the search index. This
+                can&apos;t be undone.
               </>
             }
             confirmLabel="Delete Dataset"
@@ -159,9 +186,15 @@ export default function DatasetDetailPage({
         </div>
       </div>
 
-      <EditDatasetDialog dataset={dataset} isOpen={isEditOpen} onOpenChange={setIsEditOpen} />
+      <EditDatasetDialog
+        dataset={dataset}
+        isOpen={isEditOpen}
+        onOpenChange={setIsEditOpen}
+      />
 
       <EnrichmentPipeline datasetId={id} />
+
+      <EnrichmentEstimates datasetId={id} />
 
       {/* Date range + granularity filter */}
       <div className="mt-6 flex items-center justify-between gap-4">
@@ -286,6 +319,25 @@ export default function DatasetDetailPage({
         </div>
       </div>
 
+      {/* Entities / selectors */}
+      <div className="mt-6 rounded-2xl bg-muted/40 backdrop-blur-2xl border border-border p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Fingerprint size={14} className="text-primary" />
+            <h2 className="text-[10px] font-black uppercase tracking-[0.2em]">
+              Entities &amp; Selectors
+            </h2>
+          </div>
+          <Link
+            href={`/entities?datasetId=${id}`}
+            className="text-[11px] font-medium text-primary hover:underline"
+          >
+            View all →
+          </Link>
+        </div>
+        <DatasetEntityBreakdown datasetId={id} />
+      </div>
+
       {/* File browser */}
       <div className="mt-6 rounded-2xl bg-muted/40 backdrop-blur-2xl border border-border p-6">
         <div className="flex items-center gap-2 text-muted-foreground mb-4">
@@ -294,7 +346,11 @@ export default function DatasetDetailPage({
             Files
           </h2>
         </div>
-        <DatasetFileBrowser datasetId={id} filetype={filetype} filetypeGroup={filetypeGroup} />
+        <DatasetFileBrowser
+          datasetId={id}
+          filetype={filetype}
+          filetypeGroup={filetypeGroup}
+        />
       </div>
     </div>
   );

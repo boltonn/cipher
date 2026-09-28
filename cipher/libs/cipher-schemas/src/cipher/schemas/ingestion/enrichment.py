@@ -1,3 +1,4 @@
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
@@ -12,12 +13,73 @@ class EnrichmentType(StrEnum):
     MESSAGE_TRANSLATION = "message_translation"
     FACE_DETECTION = "face_detection"
     FACE_MATCHING = "face_matching"
+    FACE_CLUSTERING = "face_clustering"
     TEXT_EXTRACTION = "text_extraction"
     TEXT_EMBEDDING = "text_embedding"
     SELECTOR_EXTRACTION = "selector_extraction"
     ENTITY_EXTRACTION = "entity_extraction"
     RELATIONSHIP_EXTRACTION = "relationship_extraction"
     EVENT_EXTRACTION = "event_extraction"
+
+
+# Hard prerequisites: an enrichment reads rows a prior enrichment produces and
+# yields nothing without it (e.g. `entity_extraction` reads `ExtractedText`, so
+# `text_extraction` must run first). Detectors that stub their own upstream rows
+# on demand -- `exif_location`, `face_detection`, `image_embedding` -- have none.
+# This map is the single source of truth: `docs/enrichments.md` and
+# `GET /enrichments/config` are derived from it. Types absent from the dict have
+# no prerequisites.
+ENRICHMENT_DEPENDENCIES: dict[EnrichmentType, tuple[EnrichmentType, ...]] = {
+    EnrichmentType.TEXT_EMBEDDING: (EnrichmentType.TEXT_EXTRACTION,),
+    EnrichmentType.SELECTOR_EXTRACTION: (EnrichmentType.TEXT_EXTRACTION,),
+    EnrichmentType.ENTITY_EXTRACTION: (EnrichmentType.TEXT_EXTRACTION,),
+    EnrichmentType.RELATIONSHIP_EXTRACTION: (
+        EnrichmentType.ENTITY_EXTRACTION,
+        EnrichmentType.SELECTOR_EXTRACTION,
+    ),
+    EnrichmentType.FACE_MATCHING: (EnrichmentType.FACE_DETECTION,),
+    EnrichmentType.FACE_CLUSTERING: (EnrichmentType.FACE_DETECTION,),
+}
+
+
+def enrichment_prerequisites(enrichment_type: EnrichmentType) -> list[EnrichmentType]:
+    """Every enrichment that must complete before `enrichment_type`, transitively.
+
+    Dependency-ordered: each entry precedes anything that depends on it. The
+    requested type itself is not included.
+    """
+    ordered: list[EnrichmentType] = []
+    seen: set[EnrichmentType] = set()
+
+    def visit(current: EnrichmentType) -> None:
+        for dep in ENRICHMENT_DEPENDENCIES.get(current, ()):
+            if dep not in seen:
+                seen.add(dep)
+                visit(dep)
+                ordered.append(dep)
+
+    visit(enrichment_type)
+    return ordered
+
+
+def resolve_enrichment_order(types: Iterable[EnrichmentType]) -> list[EnrichmentType]:
+    """`types` plus all their transitive prerequisites, deduped and ordered so
+    every prerequisite precedes the enrichment that needs it.
+    """
+    result: list[EnrichmentType] = []
+    seen: set[EnrichmentType] = set()
+
+    def add(current: EnrichmentType) -> None:
+        if current in seen:
+            return
+        for dep in ENRICHMENT_DEPENDENCIES.get(current, ()):
+            add(dep)
+        seen.add(current)
+        result.append(current)
+
+    for enrichment_type in types:
+        add(enrichment_type)
+    return result
 
 
 class ProcessingStatus(StrEnum):

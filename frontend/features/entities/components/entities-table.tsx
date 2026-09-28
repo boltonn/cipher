@@ -19,6 +19,7 @@ import {
   ChevronUp,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
 
 export type EntitySortKey = "display_name" | "date_updated";
@@ -77,6 +78,8 @@ export function EntitiesTable({
   sortOrder,
   onSortChange,
 }: EntitiesTableProps) {
+  const router = useRouter();
+
   if (entities.length === 0) {
     return (
       <p className="py-16 text-center text-xs italic text-muted-foreground">
@@ -104,10 +107,17 @@ export function EntitiesTable({
         </TableHeader>
         <TableBody>
           {entities.map((e) => (
-            <TableRow key={e.id} className="group cursor-pointer">
+            <TableRow
+              key={e.id}
+              className="group cursor-pointer"
+              onClick={() => router.push(`/entities/${e.id}`)}
+            >
               <TableCell>
                 <Link
                   href={`/entities/${e.id}`}
+                  // Real link for keyboard nav, middle-click and "open in new
+                  // tab"; the row onClick handles the common case.
+                  onClick={(ev) => ev.stopPropagation()}
                   className="flex items-center gap-2 font-medium text-foreground group-hover:text-primary"
                 >
                   {e.displayName}
@@ -119,6 +129,8 @@ export function EntitiesTable({
               <TableCell>
                 <EntityTypeBadge
                   type={e.entityType}
+                  detail={e.selectorType}
+                  subtype={e.selectorSubtype}
                   suggested={!e.isVerified && e.source === "extraction"}
                 />
               </TableCell>

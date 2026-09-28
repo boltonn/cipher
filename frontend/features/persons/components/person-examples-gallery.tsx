@@ -8,7 +8,7 @@ import { useSetFaceRepresentative } from "@/features/faces/hooks/use-set-represe
 import { FacePublic } from "@/features/faces/types";
 import { PersonExampleUploadButton } from "@/features/persons/components/person-example-upload-button";
 import { cn } from "@/lib/utils";
-import { ChevronLeft, ChevronRight, Loader2, Plus, Star } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, Plus, Star, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 const MAX_EXAMPLES = 10;
@@ -165,6 +165,27 @@ export function PersonExamplesGallery({ personId, faces, isPending }: PersonExam
                   </TooltipContent>
                 </Tooltip>
               )}
+
+              <Tooltip delayDuration={200}>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    onClick={() =>
+                      setRepresentative.mutate({
+                        id: selected.id,
+                        data: { isRepresentative: false, isPrimary: false },
+                      })
+                    }
+                    disabled={setRepresentative.isPending}
+                    className="absolute top-2.5 right-2.5 h-7 w-7 rounded-full bg-black/60 border border-border text-foreground hover:bg-destructive/20 hover:text-destructive hover:border-destructive/40"
+                  >
+                    <X size={13} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="text-[10px]">
+                  Remove exemplar
+                </TooltipContent>
+              </Tooltip>
             </TooltipProvider>
           </>
         ) : (

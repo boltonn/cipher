@@ -1,13 +1,14 @@
 "use client";
 
+import { PageError, PageLoading } from "@/components/page-loading";
 import { PageHeader } from "@/components/page-header";
-import { PageLoading } from "@/components/page-loading";
 import { PaginationModeToggle } from "@/components/pagination-mode-toggle";
 import { FaceUploadSearchBar } from "@/features/faces/components/face-upload-search-bar";
 import { FacesContainerInfinite } from "@/features/faces/components/faces-container-infinite";
 import { FacesContainerPaginated } from "@/features/faces/components/faces-container-paginated";
 import { useSearchController } from "@/features/faces/hooks/use-search-controller";
 import { PaginationModeType } from "@/types/common";
+import { useQueryClient } from "@tanstack/react-query";
 import { ScanFace, X } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
@@ -27,6 +28,7 @@ function FacesPageInner() {
     actions,
     isPending,
     isFetching,
+    error,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
@@ -34,6 +36,9 @@ function FacesPageInner() {
     queryLabel,
     isSimilarityMode,
   } = useSearchController(paginationMode);
+
+  const queryClient = useQueryClient();
+  const retry = () => queryClient.invalidateQueries({ queryKey: ["faces"] });
 
   const totalFaces = data?.pages[0]?.total ?? paginatedData?.total ?? 0;
 
@@ -92,8 +97,19 @@ function FacesPageInner() {
 
       {/* Results */}
       <main className="mt-6">
-        {isPending && !data && !paginatedData ? (
-          <PageLoading icon={ScanFace} label="Loading faces…" accent="annotation" />
+        {error && !data && !paginatedData ? (
+          <PageError
+            title="Couldn’t load faces"
+            body="The face index didn’t respond. This is usually temporary — try again."
+            onRetry={retry}
+          />
+        ) : isPending && !data && !paginatedData ? (
+          <PageLoading
+            icon={ScanFace}
+            label="Loading faces…"
+            accent="annotation"
+            onRetry={retry}
+          />
         ) : paginationMode === "infinite" ? (
           <FacesContainerInfinite
             data={data}

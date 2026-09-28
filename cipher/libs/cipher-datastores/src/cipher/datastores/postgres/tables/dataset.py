@@ -17,24 +17,15 @@ class DatasetTable(Base):
 
     __tablename__ = "dataset"
 
-    id: Mapped[str] = mapped_column(
-        String, primary_key=True, default=lambda: str(uuid4())
-    )
-    name: Mapped[str] = mapped_column(
-        String(255), nullable=False, unique=True, index=True
-    )
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
+    name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
     description: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
-    date_created: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-    date_last_updated: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    date_created: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    date_last_updated: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    date_staged: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships
-    files: Mapped[list["FileTable"]] = relationship(
-        back_populates="dataset", cascade="all, delete-orphan"
-    )
+    files: Mapped[list["FileTable"]] = relationship(back_populates="dataset", cascade="all, delete-orphan")
     users: Mapped[list["UserTable"]] = relationship(
         secondary="user_dataset_access",
         back_populates="datasets",

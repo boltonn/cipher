@@ -1,19 +1,61 @@
 import { Badge } from "@/components/ui/badge";
-import { ENTITY_TYPE_META } from "@/features/entities/components/entity-type-meta";
-import type { EntityType } from "@/features/entities/types";
+import {
+  ENTITY_TYPE_META,
+  SELECTOR_TYPE_META,
+} from "@/features/entities/components/entity-type-meta";
+import {
+  SELECTOR_SUBTYPE_TYPE,
+  SELECTOR_SUBTYPES,
+  SELECTOR_TYPES,
+  type EntityType,
+  type SelectorSubtype,
+  type SelectorType,
+} from "@/features/entities/types";
 import { cn } from "@/lib/utils";
 
 interface EntityTypeBadgeProps {
   type: EntityType;
-  /** selector kind, shown in parens for selector entities */
+  /** selector type, shown as the label/icon for selector entities */
   detail?: string | null;
+  /** selector subtype (telegram, btc_address, ...), shown after the label */
+  subtype?: string | null;
   /** unresolved / model-predicted -- rendered with the amber annotation ring */
   suggested?: boolean;
   className?: string;
 }
 
-export function EntityTypeBadge({ type, detail, suggested, className }: EntityTypeBadgeProps) {
+function asSelectorType(value?: string | null): SelectorType | null {
+  return value && (SELECTOR_TYPES as readonly string[]).includes(value)
+    ? (value as SelectorType)
+    : null;
+}
+
+function asSelectorSubtype(value?: string | null): SelectorSubtype | null {
+  return value && (SELECTOR_SUBTYPES as readonly string[]).includes(value)
+    ? (value as SelectorSubtype)
+    : null;
+}
+
+export function EntityTypeBadge({
+  type,
+  detail,
+  subtype,
+  suggested,
+  className,
+}: EntityTypeBadgeProps) {
   const meta = ENTITY_TYPE_META[type];
+
+  const sub = type === "selector" ? asSelectorSubtype(subtype) : null;
+  // Icon + label come from the selector type; fall back to a subtype's parent.
+  const kind =
+    type === "selector"
+      ? (asSelectorType(detail) ?? (sub ? SELECTOR_SUBTYPE_TYPE[sub] : null))
+      : null;
+  const kindMeta = kind ? SELECTOR_TYPE_META[kind] : null;
+  const Icon = kindMeta?.Icon ?? meta.Icon;
+  const label = kindMeta?.label ?? meta.label;
+  const trailing = sub ? sub.replace(/_/g, " ") : kind ? null : detail;
+
   return (
     <Badge
       variant="outline"
@@ -26,9 +68,11 @@ export function EntityTypeBadge({ type, detail, suggested, className }: EntityTy
         className
       )}
     >
-      <meta.Icon size={11} />
-      {meta.label}
-      {detail ? <span className="normal-case tracking-normal opacity-70">· {detail}</span> : null}
+      <Icon size={11} />
+      {label}
+      {trailing ? (
+        <span className="normal-case tracking-normal opacity-70">· {trailing}</span>
+      ) : null}
     </Badge>
   );
 }

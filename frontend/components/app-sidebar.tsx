@@ -13,35 +13,18 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
+  SidebarSeparator,
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useMe } from "@/features/users/hooks/use-me";
 import { getInitials } from "@/features/users/utils";
+import { NAV, type NavItem } from "@/lib/nav";
 import { cn } from "@/lib/utils";
-import type { IconComponent } from "@/types/common";
-import {
-  BookOpen,
-  Database,
-  HelpCircle,
-  Home,
-  Image as ImageIcon,
-  MapPin,
-  MessageSquare,
-  Search,
-  Settings,
-  Smile,
-  User,
-  Waypoints,
-} from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-interface NavigationItem {
-  icon: IconComponent;
-  title: string;
-  url: string;
-}
+type NavigationItem = NavItem;
 
 function isItemActive(pathname: string, itemUrl: string) {
   if (itemUrl === "/") return pathname === "/";
@@ -66,33 +49,33 @@ function MenuItem({
         data-active={isActive}
         tooltip={item.title}
         className={cn(
-          "relative h-12 overflow-hidden transition-all duration-300 ease-out",
-          "group/button cursor-pointer my-0.5",
+          "relative h-9 overflow-hidden transition-colors duration-200 ease-out",
+          "group/button cursor-pointer",
           "text-muted-foreground data-[active=true]:text-primary data-[active=true]:font-medium",
-          !isActive && "hover:border-2 hover:border-primary hover:bg-primary/10",
+          !isActive && "hover:bg-primary/10 hover:text-foreground",
           isActive && !isCollapsed && "bg-transparent!",
           isActive && isCollapsed && "bg-primary/15!",
-          "group-data-[collapsible=icon]:size-12! group-data-[collapsible=icon]:p-0!"
+          "group-data-[collapsible=icon]:size-9! group-data-[collapsible=icon]:p-0!"
         )}
       >
         <a
           href={item.url}
-          className="flex items-center gap-3 px-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
+          className="flex items-center gap-2.5 px-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
         >
           <div
-            className={`
-            absolute left-0 top-0 h-full w-0.5 bg-primary shadow-[0_0_10px_rgba(99,102,241,0.8)]
-            transition-all duration-300 group-data-[collapsible=icon]:hidden
-            ${isActive ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-full"}
-          `}
+            className={cn(
+              "absolute left-0 top-0 h-full w-0.5 bg-primary shadow-[0_0_10px_rgba(99,102,241,0.8)]",
+              "transition-opacity duration-200 group-data-[collapsible=icon]:hidden",
+              isActive ? "opacity-100" : "opacity-0"
+            )}
           />
           <item.icon
-            className={`
-            h-6 w-6 shrink-0 transition-transform duration-300 ml-2 group-data-[collapsible=icon]:ml-0
-            ${isActive ? "text-primary scale-110" : "group-hover/button:text-foreground"}
-          `}
+            className={cn(
+              "h-4.5 w-4.5 shrink-0 ml-1.5 group-data-[collapsible=icon]:ml-0",
+              isActive ? "text-primary" : "group-hover/button:text-foreground"
+            )}
           />
-          <span className="group-data-[collapsible=icon]:hidden">
+          <span className="text-sm group-data-[collapsible=icon]:hidden">
             {item.title}
           </span>
         </a>
@@ -102,30 +85,11 @@ function MenuItem({
 }
 
 const data = {
-  main: [{ title: "Home", url: "/", icon: Home }],
-  workspace: [
-    { title: "Datasets", url: "/datasets", icon: Database },
-    { title: "Search", url: "/search", icon: Search },
-    { title: "Entities", url: "/entities", icon: Waypoints },
-    { title: "Chat", url: "/chat", icon: MessageSquare },
-  ],
-  media: [
-    { title: "Images", url: "/images", icon: ImageIcon },
-    { title: "Locations", url: "/locations", icon: MapPin },
-    // { title: "Documents", url: "/documents", icon: FileText },
-    // { title: "Messages", url: "/messages", icon: MessagesSquare },
-    // { title: "Contacts", url: "/contacts", icon: Users },
-    // { title: "Calendar", url: "/calendar", icon: Calendar },
-    // { title: "Video", url: "/video", icon: Video },
-    // { title: "Email", url: "/email", icon: Mail },
-    { title: "Faces", url: "/faces", icon: Smile },
-    { title: "Persons", url: "/persons", icon: User },
-  ],
-  settings: [
-    { title: "Settings", url: "/settings", icon: Settings },
-    { title: "Documentation", url: "/docs", icon: BookOpen },
-    { title: "FAQ", url: "/faq", icon: HelpCircle },
-  ],
+  main: [NAV.home],
+  workspace: NAV.workspace,
+  explore: NAV.explore,
+  media: NAV.media,
+  settings: NAV.help,
 };
 
 export function AppSidebar() {
@@ -135,24 +99,24 @@ export function AppSidebar() {
   return (
     <Sidebar className="border-r-0" collapsible="icon">
       {/* Header */}
-      <SidebarHeader className="h-24 justify-center border-b border-border px-4 bg-sidebar/85 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:items-center">
+      <SidebarHeader className="h-14 justify-center border-b border-border px-3 bg-sidebar/85 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:items-center">
         <Link
           href="/"
-          className="flex items-center gap-3 group transition-opacity hover:opacity-80"
+          className="flex items-center gap-2.5 group transition-opacity hover:opacity-80"
         >
-          <div className="relative h-16 w-16 shrink-0">
+          <div className="relative h-8 w-8 shrink-0">
             <Image
               src="/android-chrome-512x512.png"
               alt="Cipher.ai logo"
               fill
               className="object-contain"
               priority
-              sizes="(max-width: 64px) 64px, 512px"
+              sizes="32px"
             />
           </div>
           <span
             className="
-        text-lg
+        text-base
         font-semibold
         tracking-[0.18em]
         text-primary
@@ -177,6 +141,8 @@ export function AppSidebar() {
           </SidebarMenu>
         </SidebarGroup>
 
+        <SidebarSeparator className="my-1.5 h-px w-2/3 mx-auto bg-transparent bg-gradient-to-r from-transparent via-primary/25 to-transparent group-data-[collapsible=icon]:w-8" />
+
         {/* Group 2: Workspace */}
         <SidebarGroup>
           <SidebarGroupLabel className="text-muted-foreground">
@@ -191,10 +157,28 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {/* Group 3: Media & Assets */}
+        <SidebarSeparator className="my-1.5 h-px w-2/3 mx-auto bg-transparent bg-gradient-to-r from-transparent via-primary/25 to-transparent group-data-[collapsible=icon]:w-8" />
+
+        {/* Group 3: Explore -- the knowledge graph and its derived layers */}
         <SidebarGroup>
           <SidebarGroupLabel className="text-muted-foreground">
-            Viewers
+            Explore
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {data.explore.map((item) => (
+                <MenuItem key={item.title} item={item} pathname={pathname} />
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarSeparator className="my-1.5 h-px w-2/3 mx-auto bg-transparent bg-gradient-to-r from-transparent via-primary/25 to-transparent group-data-[collapsible=icon]:w-8" />
+
+        {/* Group 4: Media -- raw visual assets */}
+        <SidebarGroup>
+          <SidebarGroupLabel className="text-muted-foreground">
+            Media
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
@@ -205,7 +189,7 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {/* Group 4: Model (quick switcher, mirrors chat's model store) */}
+        {/* Group 5: Model (quick switcher, mirrors chat's model store) */}
         <SidebarGroup className="mt-auto">
           <SidebarGroupContent>
             <SidebarMenu>
@@ -213,6 +197,8 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        <SidebarSeparator className="my-1.5 h-px w-2/3 mx-auto bg-transparent bg-gradient-to-r from-transparent via-primary/25 to-transparent group-data-[collapsible=icon]:w-8" />
 
         {/* Group 5: Config & Help */}
         <SidebarGroup>

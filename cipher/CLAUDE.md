@@ -53,3 +53,7 @@ packages/
 - **cipher-schemas** — source of truth for all Pydantic models (User, Dataset, File, Image, Message, Email, Enrichment, Job) and exception types (`EntityNotFoundError`, `EntityAlreadyExistsError`)
 - **cipher-datastores** — `AsyncEngine`/`AsyncSession` setup, base repository classes with Postgres and Elasticsearch implementations
 - **cipher-utils** — settings base class, FastAPI middleware (structured logging, CORS, exception handlers)
+
+### Terminology
+
+`docs/glossary.md` is the canonical vocabulary — one term, one meaning across schemas, tables, API, CLI, frontend, and docs. Use those words exactly (e.g. `filetype_group`, not "content type"); backend `snake_case` ↔ frontend `camelCase` is the only permitted variation. Add a term there the first time it needs defending.

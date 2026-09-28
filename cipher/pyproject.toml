@@ -6,13 +6,14 @@ readme = "README.md"
 requires-python = ">=3.12"
 
 dependencies = [
+    "cipher-names",
     "cipher-schemas",
     "cipher-utils",
 ]
 
 [project.optional-dependencies]
-analytics-cpu = [ "clir", "face", "filetyper", "nerd", "pygliner", "pyparse[all]", "pyselectors", "pyxberg", "setfitcv" ]
-analytics-cuda = [ "clir[cuda,tables]", "face[cuda]", "filetyper", "nerd[cuda]", "pygliner[cuda]", "pyparse[all]", "pyselectors", "pyxberg", "setfitcv[cuda]" ]
+analytics-cpu = [ "clir", "face", "filetyper", "nerd", "pygliner", "pyprompt", "pyparse[all]", "pyselectors", "pyxberg", "setfitcv" ]
+analytics-cuda = [ "clir[cuda,tables]", "face[cuda]", "filetyper", "nerd[cuda]", "pygliner[cuda]", "pyprompt", "pyparse[all]", "pyselectors", "pyxberg", "setfitcv[cuda]" ]
 elasticsearch = [ "cipher-datastores[elasticsearch]" ]
 postgres = [ "cipher-datastores[postgres]" ]
 backend = [ "cipher-backend" ]
@@ -27,6 +28,7 @@ all-cuda = [
 
 [tool.uv.sources]
 cipher-datastores = { workspace = true }
+cipher-names = { workspace = true }
 cipher-schemas = { workspace = true }
 cipher-utils = { workspace = true }
 cipher-backend = { workspace = true }
@@ -38,12 +40,14 @@ pyparse = { workspace = true }
 pyxberg = { workspace = true }
 pyselectors = { workspace = true }
 pygliner = { workspace = true }
+pyprompt = { workspace = true }
 nerd = { workspace = true }
 clir = { workspace = true }
 
 [tool.uv.workspace]
 members = [
     "libs/cipher-datastores",
+    "libs/cipher-names",
     "libs/cipher-schemas",
     "libs/cipher-utils",
     "pipelines/cipher-orchestration",
@@ -53,6 +57,7 @@ members = [
     "analytics/filetyper",
     "analytics/nerd",
     "analytics/pygliner",
+    "analytics/pyprompt",
     "analytics/pyselectors",
     "analytics/setfitcv",
     "analytics/pyparse",

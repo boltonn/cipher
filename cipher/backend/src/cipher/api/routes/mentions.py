@@ -3,9 +3,15 @@ from typing import Annotated
 from fastapi import APIRouter, Query
 
 from cipher.api.deps.authentication import CurrentUserDep
-from cipher.api.deps.postgres import EntityDatastoreDep, GraphDatastoreDep, MentionDatastoreDep
+from cipher.api.deps.postgres import (
+    EntityDatastoreDep,
+    EntityMatchDatastoreDep,
+    GraphDatastoreDep,
+    MentionDatastoreDep,
+)
 from cipher.schemas._base.exceptions import EntityNotFoundError
 from cipher.schemas.graph.entity import EntityCreate
+from cipher.schemas.graph.entity_resolution import EntityMatchRef, MentionResolution
 from cipher.schemas.graph.location import LocationCreate
 from cipher.schemas.graph.mention import (
     DismissNameGroupRequest,
@@ -124,6 +130,55 @@ async def get_mention(mention_id: str, datastore: MentionDatastoreDep) -> Mentio
     if mention is None:
         raise EntityNotFoundError("Mention", mention_id)
     return mention
+
+
+@router.get(
+    "/{mention_id}/resolution",
+    summary="Why this mention did or didn't resolve",
+    response_model=MentionResolution,
+    **_BY_ALIAS,
+)
+async def get_mention_resolution(
+    mention_id: str, mentions: MentionDatastoreDep, matches: EntityMatchDatastoreDep
+) -> MentionResolution:
+    """The scored candidates + per-feature explanation for a mention's name group.
+
+    Covers the negative case too: an empty `candidates` list means nothing blocked,
+    or nothing cleared the review floor.
+    """
+    mention = await mentions.get_mention(mention_id)
+    if mention is None:
+        raise EntityNotFoundError("Mention", mention_id)
+
+    candidates: list[EntityMatchRef] = []
+    resolved_by = None
+    if mention.normalized_value:
+        rows = await matches.list_for_name_group(
+            dataset_id=mention.dataset_id, normalized_value=mention.normalized_value
+        )
+        candidates = [
+            EntityMatchRef(
+                id=r.id,
+                entity_id=r.entity_id,
+                status=r.status,
+                similarity_score=r.similarity_score,
+                match_method=r.match_method,
+                explanation=r.explanation,
+            )
+            for r in rows
+        ]
+        confirmed = next((r for r in rows if r.status == "confirmed"), None)
+        if confirmed is not None:
+            band = confirmed.explanation.band if confirmed.explanation else None
+            resolved_by = "system" if band == "auto" and confirmed.reviewed_by is None else "analyst"
+
+    return MentionResolution(
+        mention_id=mention_id,
+        normalized_value=mention.normalized_value,
+        resolved_entity_id=mention.entity_id,
+        resolved_by=resolved_by,
+        candidates=candidates,
+    )
 
 
 @router.patch("/{mention_id}", summary="Update a mention", response_model=Mention, **_BY_ALIAS)

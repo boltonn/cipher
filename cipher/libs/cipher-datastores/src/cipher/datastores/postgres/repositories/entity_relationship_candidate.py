@@ -47,9 +47,7 @@ class PostgresRelationshipCandidateRepository:
     async def get_by_id(self, candidate_id: str) -> RelationshipCandidate | None:
         """Retrieve a candidate edge by ID."""
         result = await self.session.execute(
-            select(EntityRelationshipCandidateTable).where(
-                EntityRelationshipCandidateTable.id == candidate_id
-            )
+            select(EntityRelationshipCandidateTable).where(EntityRelationshipCandidateTable.id == candidate_id)
         )
         row = result.scalar_one_or_none()
         return RelationshipCandidate.model_validate(row) if row else None
@@ -68,9 +66,7 @@ class PostgresRelationshipCandidateRepository:
         if request.status:
             where.append(EntityRelationshipCandidateTable.status == request.status)
 
-        count_result = await self.session.execute(
-            select(func.count(EntityRelationshipCandidateTable.id)).where(*where)
-        )
+        count_result = await self.session.execute(select(func.count(EntityRelationshipCandidateTable.id)).where(*where))
         total = count_result.scalar_one()
 
         order = (
@@ -87,9 +83,7 @@ class PostgresRelationshipCandidateRepository:
         )
         result = await self.session.execute(stmt)
         data = [RelationshipCandidate.model_validate(r) for r in result.scalars().all()]
-        return PaginatedRelationshipCandidatesResponse(
-            total=total, page=request.page, limit=request.limit, data=data
-        )
+        return PaginatedRelationshipCandidatesResponse(total=total, page=request.page, limit=request.limit, data=data)
 
     async def resolve(self, candidate_id: str, review: RelationshipReview) -> RelationshipCandidate | None:
         """Record a decision; on confirm, promote the candidate into `entity_relationship`."""
@@ -134,9 +128,7 @@ class PostgresRelationshipCandidateRepository:
     async def delete_by_dataset_id(self, dataset_id: str) -> int:
         """Delete all candidate edges for a dataset (used by reset-entities)."""
         result = await self.session.execute(
-            delete(EntityRelationshipCandidateTable).where(
-                EntityRelationshipCandidateTable.dataset_id == dataset_id
-            )
+            delete(EntityRelationshipCandidateTable).where(EntityRelationshipCandidateTable.dataset_id == dataset_id)
         )
         await self.session.commit()
         return result.rowcount or 0

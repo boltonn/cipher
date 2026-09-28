@@ -1,6 +1,5 @@
 import json
 from pathlib import Path
-from typing import Generic, TypeVar
 
 from cipher.schemas._base.base import BaseModel
 from cipher.schemas._base.common import PaginatedResponse
@@ -12,14 +11,11 @@ def load_mappings(path: Path) -> dict:
         return json.load(f)
 
 
-T = TypeVar("T", bound=BaseModel)
-
-
-class PaginatedResponse(PaginatedResponse, Generic[T]):
+class PaginatedResponse[T: BaseModel](PaginatedResponse):
     data: list[T]
 
 
-def paginate(
+def paginate[T: BaseModel](
     data: list[T | dict],
     total: int,
     page: int,
@@ -28,10 +24,7 @@ def paginate(
 ) -> PaginatedResponse[T]:
     """Helper function to create a paginated response with optional model validation."""
     if model is not None:
-        data = [
-            model.model_validate(item) if isinstance(item, dict) else item
-            for item in data
-        ]
+        data = [model.model_validate(item) if isinstance(item, dict) else item for item in data]
     return PaginatedResponse(
         total=total,
         page=page,

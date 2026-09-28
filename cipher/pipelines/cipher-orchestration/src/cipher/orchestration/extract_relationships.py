@@ -37,7 +37,7 @@ from cipher.datastores.postgres.repositories import (
 from cipher.datastores.postgres.tables.entity_relationship import EntityRelationshipTable
 from cipher.datastores.postgres.tables.selector import SelectorTable
 from cipher.schemas.content.email import EmailMetadata
-from cipher.schemas.graph.ontology import RelationshipSource, RelationshipType, SelectorKind
+from cipher.schemas.graph.ontology import RelationshipSource, RelationshipType, SelectorType
 from cipher.schemas.ingestion.enrichment import EnrichableType, EnrichmentType
 
 if TYPE_CHECKING:
@@ -70,7 +70,7 @@ async def _load_email_selector_index(session: "AsyncSession", dataset_id: str) -
         await session.execute(
             select(SelectorTable.normalized_value, SelectorTable.entity_id).where(
                 SelectorTable.dataset_id == dataset_id,
-                SelectorTable.selector_kind == SelectorKind.EMAIL,
+                SelectorTable.selector_type == SelectorType.EMAIL,
             )
         )
     ).all()

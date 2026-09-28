@@ -4,14 +4,18 @@ from functools import lru_cache
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Form
+from loguru import logger
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 
-from cipher.api.settings import Settings
+from cipher.api.settings import Settings, TextRanker
 from cipher.datastores.postgres.repositories.comment import PostgresCommentRepository
 from cipher.datastores.postgres.repositories.dataset import PostgresDatasetRepository
 from cipher.datastores.postgres.repositories.enrichment import (
     PostgresEnrichmentRepository,
+)
+from cipher.datastores.postgres.repositories.enrichment_run import (
+    PostgresEnrichmentRunRepository,
 )
 from cipher.datastores.postgres.repositories.entity import PostgresEntityRepository
 from cipher.datastores.postgres.repositories.entity_match import PostgresEntityMatchRepository
@@ -72,12 +76,40 @@ async def get_session():
         yield session
 
 
+# The Postgres extension each keyword ranker needs; `core` needs none.
+_RANKER_EXTENSION: dict[TextRanker, str] = {
+    TextRanker.BIGM: "pg_bigm",
+    TextRanker.PGROONGA: "pgroonga",
+    TextRanker.PG_SEARCH: "pg_search",
+}
+
+
 async def init_db_from_settings():
-    """Initialize the database by creating all tables."""
+    """Create all tables and the extensions the running configuration needs.
+
+    The core extensions are required. The one extra extension for the configured
+    keyword ranker (`RETRIEVAL__TEXT_RANKER`) is *attempted*: if its package
+    isn't installed the retrieval layer downgrades one rung
+    (`_effective_ranker`), so it's logged, not fatal. `core` needs nothing extra
+    and is always silent. See docs/postgres-extensions.md.
+    """
+    ranker_ext = _RANKER_EXTENSION.get(settings.retrieval.text_ranker)
     async with get_async_engine_from_settings().begin() as conn:
-        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
-        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
+        for ext in ("vector", "pg_trgm", "postgis", "unaccent"):
+            await conn.execute(text(f"CREATE EXTENSION IF NOT EXISTS {ext}"))
+        if ranker_ext is not None:
+            try:
+                # SAVEPOINT: a missing extension aborts its statement, and in
+                # Postgres that poisons the whole transaction ("current
+                # transaction is aborted") -- isolate it so `create_all` still runs.
+                async with conn.begin_nested():
+                    await conn.execute(text(f"CREATE EXTENSION IF NOT EXISTS {ranker_ext}"))
+            except Exception as exc:  # noqa: BLE001 -- package may not be installed; retrieval downgrades
+                logger.warning(
+                    f"Keyword ranker {settings.retrieval.text_ranker.value!r} needs Postgres extension "
+                    f"{ranker_ext!r}, which is unavailable ({exc.__class__.__name__}); retrieval will "
+                    f"downgrade one rung. See docs/postgres-extensions.md."
+                )
         await conn.run_sync(Base.metadata.create_all)
 
 
@@ -97,6 +129,12 @@ async def get_file_repository() -> AsyncGenerator[PostgresFileRepository, None]:
     """Dependency injector for PostgresFileRepository."""
     async with get_session() as session:
         yield PostgresFileRepository(session=session)
+
+
+async def get_enrichment_run_repository() -> AsyncGenerator[PostgresEnrichmentRunRepository, None]:
+    """Dependency injector for PostgresEnrichmentRunRepository."""
+    async with get_session() as session:
+        yield PostgresEnrichmentRunRepository(session=session)
 
 
 async def get_extracted_text_repository() -> AsyncGenerator[PostgresExtractedTextRepository, None]:
@@ -185,6 +223,7 @@ async def get_event_repository() -> AsyncGenerator[PostgresEventRepository, None
 
 DatasetDatastoreDep = Annotated[PostgresDatasetRepository, Depends(get_dataset_repository)]
 EnrichmentDatastoreDep = Annotated[PostgresEnrichmentRepository, Depends(get_enrichment_repository)]
+EnrichmentRunDatastoreDep = Annotated[PostgresEnrichmentRunRepository, Depends(get_enrichment_run_repository)]
 FileDatastoreDep = Annotated[PostgresFileRepository, Depends(get_file_repository)]
 ExtractedTextDatastoreDep = Annotated[PostgresExtractedTextRepository, Depends(get_extracted_text_repository)]
 ImageDatastoreDep = Annotated[PostgresImageRepository, Depends(get_image_repository)]
@@ -292,6 +331,7 @@ __all__ = [
     "get_async_engine_from_settings",
     "get_dataset_repository",
     "get_enrichment_repository",
+    "get_enrichment_run_repository",
     "get_file_repository",
     "get_extracted_text_repository",
     "get_image_repository",
@@ -308,6 +348,7 @@ __all__ = [
     "get_event_repository",
     "DatasetDatastoreDep",
     "EnrichmentDatastoreDep",
+    "EnrichmentRunDatastoreDep",
     "FileDatastoreDep",
     "ExtractedTextDatastoreDep",
     "ImageDatastoreDep",

@@ -126,6 +126,7 @@ a name in prose → `person.name`; an address → `location.address`.
 | `selector_kind` | selector `.type` when `entity_type` is `selector` |
 | `surface_text` | the literal span text (`"Vladimir P."`, `"+7 495 …"`) |
 | `mentioned_type` | `extracted_text` \| `image` \| `structured_field` |
+| `provenance` | **derived, read-only** evidence class — `text` (NER/prose) \| `email_header` (`field_path` `header.*`) \| `metadata` (other `structured_field`) \| `image` \| `pattern` (`extractor='selectors'`). First match wins; see `mention_provenance()`. The dossier groups and filters on this, not on the raw span count. |
 | `mentioned_id` | polymorphic pointer (no FK) — the `extracted_text.id` / `image.id` / `contact.id` / `device.id` |
 | `file_id` | denormalized owning file, when applicable |
 | `start_offset`, `end_offset` | **char offsets into `ExtractedText.content`** — the exact same contract `TextChunk` uses |
@@ -158,7 +159,7 @@ Two tables, mirroring the `face` / `face_match` split:
 
 - **`entity_relationship`** — a confirmed, asserted edge:
   `src_entity_id`, `dst_entity_id`, `relationship_type`, `directed`, `weight`,
-  `source ∈ manual|extraction|selector_inference|co_mention|import`,
+  `source ∈ manual|extraction|selector_inference|co_mention|face_cooccurrence|import`,
   `attributes` (JSONB, e.g. a role title), `date_observed_start/end`.
   Unique on `(src, dst, relationship_type)`.
 - **`entity_relationship_candidate`** — a proposed edge awaiting analyst review
@@ -176,15 +177,85 @@ allowed source/destination entity types:
 | `located_in` | person\|org\|location → location | |
 | `communicates_with` | person\|org\|selector ↔ same | symmetric; email/call/message links |
 | `family_of`, `associate_of` | actor ↔ actor | symmetric; `associate_of` is co‑mention‑derived |
+| `appears_in_photo_with` | person ↔ person | symmetric; two people whose faces are in the same image (either face may still be a *pending* match). `weight` = shared photos, `attributes.evidence` lists them (`verified`/`potential`). Two already-identified people are linked only once they share ≥ `--min-verified-photos` (default 2); a pair with a pending-match lead is linked from the first photo. Built by `link-face-cooccurrence`; excluded from default traversal |
 | `same_as` | any ↔ any | asserted identity |
 | `owns` | actor → any | |
 
 **Traversal** (`PostgresGraphRepository`, implements the
 `cipher.datastores.base.graph.GraphRepository` interface): breadth‑first with an
 explicit visited set, capped at depth ≤ 3 and a server‑side `limit`, cycle‑safe.
-`associate_of` (co‑mention) is excluded from default traversal to keep multi‑hop
-answers useful. The `GraphRepository` interface exists so a `Neo4jGraphRepository`
-can be swapped in later without touching callers.
+`associate_of` (co‑mention) and `appears_in_photo_with` (face co‑occurrence) are
+excluded from default traversal to keep multi‑hop answers useful. The
+`GraphRepository` interface exists so a `Neo4jGraphRepository` can be swapped in
+later without touching callers.
+
+`appears_in_photo_with` edges are *derived*, never manually curated: they carry
+`dataset_id = NULL` (a pair can share photos across datasets) and are fully
+re‑reconciled from current `face` / `face_match` state on every run of
+`link-face-cooccurrence`. The backend also reconciles the touched images inline
+(`PostgresGraphRepository.recompute_face_cooccurrence_for_images`) whenever a
+face is assigned, a `face_match` is confirmed/rejected, or a face is deleted — so
+confirming an identity keeps the edge (now `verified`), and rejecting a match
+prunes that photo and drops the edge once nothing supports it or it falls back
+below the `min_verified_photos` floor. That floor (default 2, `1` disables it)
+keeps a single shared photo between two already‑known people out of the graph
+while always surfacing a pending‑match co‑occurrence as a lead; the inline hooks
+use the default, so a non‑default `--min-verified-photos` run should be followed
+by sticking with that value or re‑running the global rebuild.
+
+### Batch face matching (`match-faces` / `face_matching` analytic)
+
+Attaches loose faces to **known people**. The sweep counterpart to the reactive
+matcher that already runs inline when an analyst adds a reference face
+(`routes/persons._propose_potential_matches`) — same primitive
+(`PostgresFaceRepository.get_potential_person_matches`), just not gated on a UI
+action. **Person-level**: for each person's representative face(s) it KNN-searches
+still-unassigned faces above `--similarity` and records a **pending `face_match`**
+for analyst review — nothing is auto-assigned. O(representative faces) index
+probes, not O(all faces). Idempotent (`face_match` is `ON CONFLICT DO NOTHING` on
+`(face_id, person_id)`; only `person_id IS NULL` faces are candidates).
+`--verified-only` restricts anchors to analyst-verified people. `match-faces
+--reset` deletes the pending machine-proposed matches. Run it after
+`detect-faces` and **before** `cluster-faces` (attach what belongs to known
+people first, then cluster the genuine remainder) — `PIPELINE_ORDER` already puts
+`face_matching` before `face_clustering`. Both `face_detection` and
+`face_matching` are emitted by the "Face recognition" analytic on a dataset
+request; like clustering, matching writes no per-face `enrichment` row.
+
+### Face clustering (`cluster-faces` / `face_clustering` analytic)
+
+Selectable on a dataset request as the **`face_clustering`** analytic
+(`FaceClusteringParams`: `similarity`, `minImages`, `minFaces`, `k`,
+`mergeIntoExisting`); executed by the `cluster-faces` sweep. It is not a
+per‑face `enrichment` row — like `face_matching` it has no progress bar, only
+the persons it produces.
+
+Unsupervised identity discovery, so a drive of photos yields people without
+seeding each by hand. A dataset‑wide sweep: `PostgresFaceRepository.knn_face_edges`
+pulls a kNN similarity graph over **still‑unassigned** faces off the face HNSW
+index (one correlated `LATERAL` query, not O(n²)), union‑find groups it, and each
+cluster spanning ≥ `--min-images` distinct images (and ≥ `--min-faces` faces)
+becomes one **unnamed, unverified** `person` (`source = face_clustering`) with
+every face in it assigned (`assignment_method = automatic`) and the best‑quality
+face set primary/representative. Smaller clusters and singletons stay unassigned.
+Incremental — a re‑run only sees faces without a `person_id`; a new cluster near
+an existing clustering person merges into it (`--no-merge` to always mint fresh),
+and a cluster that brushes an analyst‑touched identity is left for review. Runs
+`rebuild_face_cooccurrence` afterwards. Filter the results in the Persons UI with
+`?source=face_clustering` / `?unnamed=true`; rename / merge / split there.
+`POST /persons/{id}/merge` (`{ source_id }`) folds one person into another.
+Everything keyed on the source's id or its shared‑id `entity` bridge repoints
+onto `{id}`: `face`, `face_match`, `event_participant`, `comment` (person +
+entity), `mention`, `entity_relationship` **and** the `entity_relationship_candidate`
+/ `entity_match` review queues (self‑loops and rows that would duplicate one the
+target already has are dropped, not repointed). Then the source person and its
+entity bridge node are deleted; moved faces are stripped of their
+representative/primary flags. The response reports a per‑table moved count.
+`GET /persons/{id}/merge-candidates` ranks other persons by the strongest
+representative‑face similarity to `{id}` — the "did you mean to merge these?"
+shortlist the Persons UI shows in the merge dialog.
+`cluster-faces --reset` drops the unverified `face_clustering` persons and unlinks
+their faces.
 
 ---
 
@@ -210,8 +281,12 @@ global view for blocking). For each batch of unresolved mentions:
 `provisional_entity_id`, `entity_id` (canonical target), `similarity_score`,
 `match_method ∈ selector_blocking|name_fuzzy|name_embedding|llm|manual`,
 `status`. Confirming attaches the mention and, if `provisional_entity_id` is set,
-merges that provisional entity into the canonical one (its mentions and edges are
-reassigned, then it is deleted).
+merges that provisional entity into the canonical one via
+`PostgresEntityRepository.merge_entities`, which shares its repointing logic
+(`repositories/_merge.repoint_entity_references`) with the person merge: mentions,
+relationship edges + candidates, `entity_match` rows, event participations and
+comment threads all move onto the canonical id (colliding / self-referential rows
+dropped), then the provisional node is deleted.
 
 ---
 
@@ -234,26 +309,74 @@ reassigned, then it is deleted).
 ```
 load-files → extract-text → embed-text
           → extract-selectors      (SELECTOR_EXTRACTION enrichment, per file — pyselectors)
-          → [extract-entities]     (ENTITY_EXTRACTION — pygliner or nerd — Phase 2)
-          → resolve-entities       (sweep: blocking + scoring + auto-link / candidates)
-          → [extract-relationships](co-mention + pygliner /relations or LLM — Phase 3)
+          → extract-entities --extractor llm|gliner|nerd   (ENTITY_EXTRACTION — NER → name/address
+                                    mentions + mention_relationship rows for every relation reported
+                                    between two of those spans)
+          → resolve-entities       (sweep: blocking + scoring + auto-link / candidates; then promotes
+                                    every mention_relationship whose endpoints both resolved into an
+                                    entity_relationship_candidate, endpoint types validated)
+          → [extract-relationships](email communicates_with edges — selector-only; independent)
 ```
 
-`reset-entities` mirrors `reset-text`: drops `mention` / non‑manual `entity` +
-detail / `entity_relationship*` / `entity_match` for a dataset and clears the
-enrichment rows.
+**`extract-llm` — one call for entities + events.** `cipher extract-llm --tasks
+entities,events [--docs]` runs the `pyprompt` **`extract`** pack once per email
+(and, with `--docs`, document) file, writing `mention` / `mention_relationship`
+**and** `event` rows from a single structured response and completing both the
+`ENTITY_EXTRACTION` and `EVENT_EXTRACTION` enrichments together. It halves the
+model calls versus running `extract-entities --extractor llm` and `extract-events
+--llm` separately, and keeps the entity list and an event's participants
+consistent (they come from the same pass). `--tasks` picks the sections
+(`entities`, `events`, or both). It is **email/document-scoped** — entity
+extraction over *all* file types, and the `gliner` / `nerd` engines, stay with
+`extract-entities`. Follow with `resolve-entities` then `resolve-event-links`.
+
+**Cost / scale.** LLM inference is the bottleneck, so any bulk LLM pass
+(`extract-llm`, `extract-entities --extractor llm`, `extract-events --llm`) is an
+overnight job at best and only with a fast served model. `extract-llm`
+specifically:
+
+- fires `--concurrency` (default 8) calls at once so the server can batch them —
+  the single biggest throughput lever; running one-at-a-time wastes the model
+  server;
+- logs a rolling seconds/file + ETA and warns once the projection passes ~8 h;
+- **refuses** a run over `--max-files` (default **15,000**) unless `--yes`. Do a
+  bounded `--limit N` slice first, eyeball the results, then run the rest;
+- **stops** early if a whole batch fails (server down / wrong model / schema
+  drift) instead of burning the retry budget.
+
+Model guidance: a standard ~7–30B instruct model (vLLM/TGI, or a GGUF via
+llama.cpp) or a cloud model. Avoid tiny models like `gemma-3n-E2B` for bulk
+work — it runs ~20–40× slower than a normal dense model of similar size under
+vLLM (~95 tok/s on a 3090) and over-generates under the schema. Measured on
+`rag`: **Mistral-Small-24B Q5_K_M via llama.cpp**, `--concurrency 4`, ~10–15 s
+per substantive email (172 mentions / 67 relations / 6 events from 40 files in
+~20 min, incl. some 90 s timeouts on long emails → raise
+`PROMPT_REQUEST_TIMEOUT`). Rough rates for ~25k email files: 24B local +
+concurrency ≈ 3–7 days (use `--yes`); a 7–8B model ≈ overnight; cloud
+(flash-lite) ≈ 1–3 h; `gemma-3n-E2B` sequential ≈ never.
+
+`mention_relationship` (`libs/.../tables/mention_relationship.py`) holds a relation
+between two `mention` spans, asserted by the extractor **before** either resolves —
+so it is not lost while resolution catches up. `resolve-entities` promotes it once
+both endpoints carry an `entity_id`.
+
+`reset-entities` mirrors `reset-text`: drops `mention` / `mention_relationship` /
+non‑manual `entity` + detail / `entity_relationship*` / `entity_match` for a dataset
+and clears the enrichment rows.
 
 ### Extraction services
 
-Three pluggable extractors under `analytics/`, all following the standard
-service pattern (`api/deps.py` model lifespan + `api/main.py`) and all emitting
-the shared **`cipher.schemas.spans`** contract (`EntitySpan`, `RelationSpan`,
+Four pluggable extractors under `analytics/`, all following the standard
+service pattern (`api/deps.py` lifespan + `api/main.py`) and all emitting the
+shared **`cipher.schemas.graph.spans`** contract (`EntitySpan`, `RelationSpan`,
 `SelectorSpan`) so the pipeline can swap them. `extract-entities` takes an
-`--extractor` switch (`pygliner` | `nerd`).
+`--extractor` switch; only `llm` (pyprompt) is wired today, `pygliner` / `nerd`
+land in Phase 2.
 
 | service | model style | best at | key bits |
 |---|---|---|---|
 | **`analytics/pyselectors`** | deterministic (regex + checksums) | strong identifiers — `phone` (E.164), `email`, `iban` (mod‑97), `imei` (Luhn), MRZ passports; char offsets into the input | `POST /extract`; 6 tests pass |
+| **`analytics/pyprompt`** | LLM + structured output (`openai` SDK, any OpenAI‑wire endpoint) | free‑text **event** extraction, nuanced relations, and any prompt‑expressible task; repo‑resident prompt packs + a custom‑prompt escape hatch | `POST /entities` · `/events` · `/run`. Same `LLM__*` env as chat. Offsets resolved server‑side by locating each surface string. `app.state.pyprompt_runner` |
 | **`analytics/pygliner`** | zero‑shot (GLiNER + GLiREL) | long‑tail / ad‑hoc entity types **and relations**, multilingual, no training data | `POST /infer` (entities) + `POST /relations` (`relations` extra). Labels from `ontology.default_ner_labels()` / `default_relation_labels()`. `app.state.pygliner_model` |
 | **`analytics/nerd`** | supervised / fine‑tuned (transformers token classification) | high‑precision **standard** types (person / organization / location / date …) where labelled data exists | `POST /infer`. `NERD_MODEL_DIR` → a HF id or a local `nerd-*` checkpoint. HF `entity_group` tags folded to ontology labels by `nerd.labels`. `app.state.nerd_model`. `src/nerd/data/` holds the training dataset processors (`train` extra). Ported from the standalone `nerd` repo |
 
@@ -277,8 +400,8 @@ Router `backend/src/cipher/api/routes/entities.py`, prefix `/entities`:
 | `POST /entities` · `GET /entities` | create / list‑filter entity nodes |
 | `GET /entities/search?dataset_id=&q=&selector=` | fast resolution (exact selector + trigram name) |
 | `GET /entities/{id}` · `PATCH` · `DELETE` | single CRUD |
-| `GET /entities/{id}/profile` | dossier: detail, selectors, mention counts, related entities, linked faces |
-| `GET /entities/{id}/mentions` | evidence spans mentioning the entity |
+| `GET /entities/{id}/profile` | dossier: detail, selectors, `mention_counts` keyed by provenance, `file_count` (**the headline "Mentions" number — distinct files where the entity is named in document text**; header From/To/Cc are relationships, selector hits are selectors), related entities, linked faces. Each `selector_mentions[]` also carries `sent_count`/`received_count` (distinct files with this address in a From/Sender vs To/Cc/Bcc header) and `text_count`/`pattern_count` (NER vs deterministic body-text hits) — the person dossier turns these into links to the selector's page and to `/search?q=&scope=`. |
+| `GET /entities/{id}/mentions?provenance=` | evidence spans mentioning the entity; the dossier passes `provenance=text` |
 | `GET /entities/{id}/relationships` | depth‑1 confirmed edges |
 | `GET /entities/{id}/graph?depth=&types=&direction=` | bounded traversal → `{nodes, edges}` |
 | `POST /entities/{id}/relationships` | assert an edge (validated against the ontology's endpoint rules) |
@@ -350,6 +473,7 @@ which the `POST /entities/{id}/relationships` route calls.
 |---|---|---|
 | **0** | ontology registry, entity/detail/mention/edge tables, repositories, `GraphRepository` interface, `/entities` API, Alembic baseline | **landed** |
 | **1** | `analytics/selectors`, `extract-selectors`, `resolve-entities` (exact blocking), agent tools `find_entity` / `entity_profile` / `entity_mentions` / `read_file` | next |
+| **1b** | `analytics/pyprompt` LLM prompt-runner (`entities` / `events` packs + `/run`), `extract-entities --extractor llm` → name/address mentions | **landed** — opt-in; needs an `LLM__*` config |
 | **2** | `analytics/pygliner` (GLiNER) + `analytics/nerd` wired into `extract-entities` via `--extractor`, name trigram/embedding resolution, provisional entities + merge, ES `entities` index + `entity_ids` on chunks, review UI | |
-| **3** | relationship extraction (co‑mention + `pygliner` `/relations` / GLiREL, optionally an LLM pass), org sub‑unit hierarchy, EXIF locations, frontend `features/entities/` | |
+| **3** | relationship extraction (co‑mention + `pygliner` `/relations` / GLiREL, or `pyprompt` LLM relations), org sub‑unit hierarchy, EXIF locations, frontend `features/entities/` | |
 | **4** | migrate `Face`/`FaceMatch` FKs onto `entity` (optional), cross‑dataset `canonical_entity_id`, optional `Neo4jGraphRepository` | |

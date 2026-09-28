@@ -61,7 +61,15 @@ interface ChatMessagesProps {
   onOpenCitation: (citation: ChatCitation) => void;
   /** Renders the "thinking" indicator at the end of the thread. */
   showThinking?: boolean;
+  /** Send one of the starter prompts shown on the empty thread. */
+  onExamplePrompt?: (text: string) => void;
 }
+
+const EXAMPLE_PROMPTS = [
+  "Summarize what this dataset contains.",
+  "Who are the people mentioned most often?",
+  "Find messages about travel or meetings.",
+];
 
 function isToolPart(
   part: UIMessagePart<UIDataTypes, UITools>
@@ -93,6 +101,7 @@ export function ChatMessages({
   onRegenerate,
   onOpenCitation,
   showThinking = false,
+  onExamplePrompt,
 }: ChatMessagesProps) {
   if (messages.length === 0 && !showThinking) {
     return (
@@ -107,6 +116,20 @@ export function ChatMessages({
             title="Ask Cipher anything"
             description="Ask questions across your datasets in plain language. Answers stay grounded in retrieved sources, with citations you can open."
           />
+          {onExamplePrompt && (
+            <div className="mx-auto mt-5 flex max-w-md flex-wrap justify-center gap-2">
+              {EXAMPLE_PROMPTS.map((prompt) => (
+                <button
+                  key={prompt}
+                  type="button"
+                  onClick={() => onExamplePrompt(prompt)}
+                  className="rounded-full border border-border bg-muted/40 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
+          )}
         </ConversationContent>
       </Conversation>
     );

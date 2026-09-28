@@ -3,13 +3,15 @@ import type { StyleSpecification } from "maplibre-gl";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-/** Glyphs for the raster styles' cluster-count labels (bare raster styles ship none). */
-const GLYPHS = "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf";
-
+/**
+ * Bare raster styles carry no `glyphs` source and no text layers, so MapLibre
+ * never fetches a font atlas -- the map works with nothing but the tile
+ * server. Cluster counts are drawn as HTML markers (see `locations-map.tsx`),
+ * which use the browser's own fonts, so they survive offline too.
+ */
 function raster(tiles: string[], attribution = ""): StyleSpecification {
   return {
     version: 8,
-    glyphs: GLYPHS,
     sources: { base: { type: "raster", tiles, tileSize: 256, attribution } },
     layers: [{ id: "base", type: "raster", source: "base" }],
   };

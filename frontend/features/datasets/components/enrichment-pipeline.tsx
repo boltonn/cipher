@@ -7,8 +7,7 @@ import {
   StepperSeparator,
   StepperTitle,
 } from "@/components/ui/stepper";
-import { Button } from "@/components/ui/button";
-import { useEnrichmentProgress, useRunEnrichment } from "@/features/datasets/api";
+import { useEnrichmentProgress } from "@/features/datasets/api";
 import { EnrichmentFailuresDialog } from "@/features/datasets/components/enrichment-failures-dialog";
 import type { EnrichmentProgress } from "@/features/datasets/types";
 import { formatCompactNumber } from "@/lib/utils";
@@ -24,10 +23,10 @@ import {
   Network,
   ScanFace,
   Users,
+  UsersRound,
   Waypoints,
 } from "lucide-react";
 import { useState } from "react";
-import { toast } from "sonner";
 
 const META: Record<string, { label: string; Icon: IconComponent }> = {
   text_extraction: { label: "Text extraction", Icon: FileText },
@@ -36,6 +35,7 @@ const META: Record<string, { label: string; Icon: IconComponent }> = {
   exif_location: { label: "Photo locations", Icon: MapPin },
   face_detection: { label: "Face detection", Icon: ScanFace },
   face_matching: { label: "Face matching", Icon: Users },
+  face_clustering: { label: "Face clustering", Icon: UsersRound },
   selector_extraction: { label: "Selector extraction", Icon: KeyRound },
   entity_extraction: { label: "Entity extraction", Icon: Network },
   relationship_extraction: { label: "Relationship extraction", Icon: Waypoints },
@@ -53,39 +53,17 @@ function deriveState(p: EnrichmentProgress): StepState {
   return "done";
 }
 
-function Card({ action, children }: { action?: React.ReactNode; children: React.ReactNode }) {
+function Card({ children }: { children: React.ReactNode }) {
   return (
     <div className="mt-6 rounded-2xl border border-border bg-muted/40 p-6 backdrop-blur-2xl">
-      <div className="mb-4 flex items-center justify-between gap-2 text-muted-foreground">
-        <div className="flex items-center gap-2">
-          <ListChecks size={14} className="text-primary" />
-          <h2 className="text-[10px] font-black uppercase tracking-[0.2em]">
-            Enrichment Pipeline
-          </h2>
-        </div>
-        {action}
+      <div className="mb-4 flex items-center gap-2 text-muted-foreground">
+        <ListChecks size={14} className="text-primary" />
+        <h2 className="text-[10px] font-black uppercase tracking-[0.2em]">
+          Enrichment Pipeline
+        </h2>
       </div>
       {children}
     </div>
-  );
-}
-
-function RunExifLocationsButton({ datasetId }: { datasetId: string }) {
-  const { mutate, isPending } = useRunEnrichment(datasetId);
-  return (
-    <Button
-      size="sm"
-      variant="outline"
-      disabled={isPending}
-      onClick={() =>
-        mutate("exif_location", {
-          onSuccess: (r) => toast.success(r.detail),
-        })
-      }
-    >
-      <MapPin className="size-3.5" />
-      {isPending ? "Starting…" : "Extract photo locations"}
-    </Button>
   );
 }
 
@@ -97,11 +75,9 @@ export function EnrichmentPipeline({ datasetId }: { datasetId: string }) {
   // showing a broken section.
   if (isError) return null;
 
-  const runButton = <RunExifLocationsButton datasetId={datasetId} />;
-
   if (isPending) {
     return (
-      <Card action={runButton}>
+      <Card>
         <div className="flex items-center gap-2 py-4 text-xs text-muted-foreground">
           <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading pipeline…
         </div>
@@ -111,7 +87,7 @@ export function EnrichmentPipeline({ datasetId }: { datasetId: string }) {
 
   if (!data || data.length === 0) {
     return (
-      <Card action={runButton}>
+      <Card>
         <p className="py-2 text-xs text-muted-foreground">
           No analytics have run against this dataset yet.
         </p>
@@ -120,7 +96,7 @@ export function EnrichmentPipeline({ datasetId }: { datasetId: string }) {
   }
 
   return (
-    <Card action={runButton}>
+    <Card>
       <Stepper value={-1} orientation="vertical">
         {data.map((p, index) => {
           const meta = META[p.enrichmentType] ?? {

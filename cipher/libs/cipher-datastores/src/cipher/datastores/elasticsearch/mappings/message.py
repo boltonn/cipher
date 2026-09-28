@@ -90,9 +90,7 @@ def build_messages_mapping(
                         "text": {
                             "type": "text",
                             "analyzer": f"{text_analyzer}_analyzer",
-                            "fields": {
-                                "keyword": {"type": "keyword", "ignore_above": 512}
-                            },
+                            "fields": {"keyword": {"type": "keyword", "ignore_above": 512}},
                         },
                         "translation": {
                             "type": "text",

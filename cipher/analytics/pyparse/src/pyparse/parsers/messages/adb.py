@@ -49,9 +49,7 @@ MIME_TO_EXT = {
 def run_adb_cmd(args: list[str], check: bool = True) -> str:
     """Run an ADB command and return the stripped stdout string."""
     try:
-        result = subprocess.run(
-            ["adb", *args], capture_output=True, text=True, check=check
-        )
+        result = subprocess.run(["adb", *args], capture_output=True, text=True, check=check)
         return result.stdout.strip()
     except subprocess.CalledProcessError as e:
         logger.error(f"ADB Error: {e.stderr}")
@@ -72,9 +70,7 @@ def pull_device_data(outdir: Path, pull_media: bool = True) -> str:
     for filename, uri in uris.items():
         logger.info(f"Querying {uri}...")
         with (outdir / filename).open("w", encoding="utf-8") as f:
-            subprocess.run(
-                ["adb", "shell", "content", "query", "--uri", uri], stdout=f, check=True
-            )
+            subprocess.run(["adb", "shell", "content", "query", "--uri", uri], stdout=f, check=True)
 
     if pull_media:
         media_dir = outdir / "media"
@@ -102,9 +98,7 @@ def get_device_id() -> str:
     return f"{model}_{serial}".replace(" ", "_")
 
 
-def normalize_phone_number(
-    phone: str, default_region: str = "US"
-) -> tuple[str, PhoneNumberType]:
+def normalize_phone_number(phone: str, default_region: str = "US") -> tuple[str, PhoneNumberType]:
     """Normalize phone numbers to E.164 format using phonenumbers library."""
     if not phone or phone.lower() in ("null", "unknown", "insert-address-token"):
         return ("unknown", PhoneNumberType.RAW_PHONE_NUMBER)
@@ -120,9 +114,7 @@ def normalize_phone_number(
     return (phone, PhoneNumberType.RAW_PHONE_NUMBER)
 
 
-def generate_meaningful_hash(
-    text: str | None, file_hash: str | None, participants: list[str], timestamp: str
-) -> str:
+def generate_meaningful_hash(text: str | None, file_hash: str | None, participants: list[str], timestamp: str) -> str:
     """Create a SHA256 hash for message deduplication based on content and metadata."""
     participants_sorted = "|".join(sorted(participants))
     content = file_hash or text or ""
@@ -231,9 +223,7 @@ def parse_sms_record(device_phone: str, sms: dict, region: str) -> MessageBase |
     adr_n, adr_t = normalize_phone_number(addr_raw, region)
 
     sender, s_type = (adr_n, adr_t) if status == MessageStatus.INBOX else (dev_n, dev_t)
-    recipient, r_type = (
-        (dev_n, dev_t) if status == MessageStatus.INBOX else (adr_n, adr_t)
-    )
+    recipient, r_type = (dev_n, dev_t) if status == MessageStatus.INBOX else (adr_n, adr_t)
 
     ts_ms = int(sms.get("date", 0))
     dt = datetime.fromtimestamp(ts_ms / 1000) if ts_ms else datetime.now()
@@ -248,9 +238,7 @@ def parse_sms_record(device_phone: str, sms: dict, region: str) -> MessageBase |
         text=body,
         conversation_id=sms.get("thread_id", "0"),
         message_status=status,
-        meaningful_hash=generate_meaningful_hash(
-            body, None, [sender, recipient], dt.isoformat()
-        ),
+        meaningful_hash=generate_meaningful_hash(body, None, [sender, recipient], dt.isoformat()),
         source_type="sms",
     )
 
@@ -277,20 +265,13 @@ def parse_mms_record(
 
     status = MMS_MSG_BOX_MAP.get(mms.get("msg_box", "1"), MessageStatus.INBOX)
     sender, s_type = (rec_n, rec_t) if status == MessageStatus.INBOX else (dev_n, dev_t)
-    recipient, r_type = (
-        (dev_n, dev_t) if status == MessageStatus.INBOX else (rec_n, rec_t)
-    )
+    recipient, r_type = (dev_n, dev_t) if status == MessageStatus.INBOX else (rec_n, rec_t)
 
     ts_s = int(mms.get("date", 0))
     dt = datetime.fromtimestamp(ts_s) if ts_s else datetime.now()
 
     parts = parts_index.get(mid, [])
-    body = (
-        "\n".join(
-            p.get("text", "") for p in parts if p.get("ct") == "text/plain"
-        ).strip()
-        or None
-    )
+    body = "\n".join(p.get("text", "") for p in parts if p.get("ct") == "text/plain").strip() or None
 
     files = []
     for p in parts:
@@ -300,11 +281,7 @@ def parse_mms_record(
 
         part_id = p.get("_id")
         data_path = p.get("_data", "")
-        src_file = (
-            media_dir / Path(data_path).name
-            if data_path
-            else media_dir / f"PART_{part_id}"
-        )
+        src_file = media_dir / Path(data_path).name if data_path else media_dir / f"PART_{part_id}"
 
         if src_file.exists():
             ext = MIME_TO_EXT.get(mime, ".bin")

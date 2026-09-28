@@ -1,0 +1,59 @@
+{
+  "selector_type": "imsi",
+  "priority": 80,
+  "base_confidence": 0.5,
+  "max_confidence": 0.98,
+  "normalizer": "imsi",
+  "validator": "imsi",
+  "patterns": [
+    {
+      "name": "digits15",
+      "regex": "(?<![\\w])\\d{15}(?!\\d)",
+      "requires_context": true
+    }
+  ],
+  "context": {
+    "window_before": 24,
+    "window_after": 8,
+    "terms": {
+      "en": [
+        {
+          "term": "imsi",
+          "weight": 0.4
+        },
+        {
+          "term": "sim",
+          "weight": 0.15
+        },
+        {
+          "term": "subscriber",
+          "weight": 0.15
+        }
+      ],
+      "ru": [
+        {
+          "term": "imsi",
+          "weight": 0.4
+        },
+        {
+          "term": "сим",
+          "weight": 0.15
+        },
+        {
+          "term": "абонент",
+          "weight": 0.15
+        }
+      ],
+      "zh": [
+        {
+          "term": "国际移动用户识别码",
+          "weight": 0.4
+        },
+        {
+          "term": "用户识别",
+          "weight": 0.2
+        }
+      ]
+    }
+  }
+}

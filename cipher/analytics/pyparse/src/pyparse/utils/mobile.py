@@ -4,9 +4,7 @@ from phonenumbers import NumberParseException
 from cipher.schemas._base.common import PhoneNumberType
 
 
-def normalize_phone_number(
-    phone: str, default_region: str | None = None
-) -> tuple[str, PhoneNumberType]:
+def normalize_phone_number(phone: str, default_region: str | None = None) -> tuple[str, PhoneNumberType]:
     """Normalize phone number to E.164 format if possible.
 
     Returns: (normalized_number, number_type)
@@ -17,9 +15,7 @@ def normalize_phone_number(
     try:
         parsed = phonenumbers.parse(phone, default_region)
         if phonenumbers.is_possible_number(parsed):
-            e164 = phonenumbers.format_number(
-                parsed, phonenumbers.PhoneNumberFormat.E164
-            )
+            e164 = phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
             return (e164, PhoneNumberType.ITU_E164)
         else:
             return (phone, PhoneNumberType.RAW_PHONE_NUMBER)

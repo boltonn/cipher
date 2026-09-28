@@ -1,0 +1,25 @@
+{
+  "selector_type": "national_id",
+  "priority": 65,
+  "base_confidence": 0.35,
+  "max_confidence": 0.97,
+  "normalizer": "national_id",
+  "validator": null,
+  "patterns": [
+    {
+      "name": "noop",
+      "regex": "(?!x)x"
+    }
+  ],
+  "context": {
+    "window_before": 30,
+    "window_after": 10,
+    "terms": {
+      "en": [
+        {"term": "national id", "weight": 0.3},
+        {"term": "id number", "weight": 0.25},
+        {"term": "identity", "weight": 0.15}
+      ]
+    }
+  }
+}

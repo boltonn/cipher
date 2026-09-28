@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 from loguru import logger
 from sqlalchemy import asc, delete, desc, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,11 +11,13 @@ from cipher.schemas.ingestion.dataset import (
     DatasetCreate,
     DatasetSortField,
     DatasetsRequest,
+    DatasetStagingSummary,
     DatasetStatsRequest,
     DatasetStatsResponse,
     DatasetSummary,
     DatasetUpdate,
     FiletypeBreakdownItem,
+    FiletypeGroupInventory,
     LoadHistogramBucket,
     PaginatedDatasetsResponse,
     SortOrder,
@@ -43,24 +47,19 @@ class PostgresDatasetRepository:
 
     async def delete_dataset(self, dataset_id: str) -> bool:
         """Delete a dataset by ID. Returns True if deleted, False if not found."""
-        result = await self.session.execute(
-            delete(DatasetTable).where(DatasetTable.id == dataset_id)
-        )
+        result = await self.session.execute(delete(DatasetTable).where(DatasetTable.id == dataset_id))
         await self.session.commit()
         return result.rowcount > 0
 
     async def add_dataset(self, dataset: DatasetCreate) -> Dataset:
         """Add a new dataset if it doesn't exist, otherwise return the existing dataset."""
         # Check if dataset with this name already exists
-        result = await self.session.execute(
-            select(DatasetTable).where(DatasetTable.name == dataset.name)
-        )
+        result = await self.session.execute(select(DatasetTable).where(DatasetTable.name == dataset.name))
         existing = result.scalar_one_or_none()
 
         if existing:
             return Dataset.model_validate(existing)
 
-        # Create new dataset
         data = dataset.model_dump()
         dataset_table = DatasetTable(**data)
 
@@ -70,9 +69,7 @@ class PostgresDatasetRepository:
 
         return Dataset.model_validate(dataset_table)
 
-    async def add_datasets(
-        self, datasets: list[DatasetCreate], refresh: bool = False
-    ) -> list[Dataset]:
+    async def add_datasets(self, datasets: list[DatasetCreate], refresh: bool = False) -> list[Dataset]:
         """Bulk add datasets to the database."""
         # Convert to table models
         dataset_tables = [DatasetTable(**ds.model_dump()) for ds in datasets]
@@ -82,25 +79,19 @@ class PostgresDatasetRepository:
 
         if refresh:
             dataset_ids = [ds.id for ds in dataset_tables]
-            result = await self.session.execute(
-                select(DatasetTable).where(DatasetTable.id.in_(dataset_ids))
-            )
+            result = await self.session.execute(select(DatasetTable).where(DatasetTable.id.in_(dataset_ids)))
             dataset_tables = list(result.scalars().all())
 
         return [Dataset.model_validate(ds) for ds in dataset_tables]
 
     async def get_dataset_by_id(self, dataset_id: str) -> Dataset | None:
         """Retrieve dataset by ID."""
-        result = await self.session.execute(
-            select(DatasetTable).where(DatasetTable.id == dataset_id)
-        )
+        result = await self.session.execute(select(DatasetTable).where(DatasetTable.id == dataset_id))
         dataset_table = result.scalar_one_or_none()
 
         return Dataset.model_validate(dataset_table) if dataset_table else None
 
-    async def get_datasets(
-        self, request: DatasetsRequest | dict | None = None
-    ) -> PaginatedDatasetsResponse:
+    async def get_datasets(self, request: DatasetsRequest | dict | None = None) -> PaginatedDatasetsResponse:
         """Query datasets with filtering, pagination, and sorting.
 
         Each row is enriched with file_count/total_size_bytes/filetype_count
@@ -149,9 +140,8 @@ class PostgresDatasetRepository:
         count_result = await self.session.execute(count_stmt)
         total_count = count_result.scalar_one()
 
-        data_stmt = (
-            select(DatasetTable, file_count_expr, total_size_expr, filetype_count_expr)
-            .outerjoin(file_stats, DatasetTable.id == file_stats.c.dataset_id)
+        data_stmt = select(DatasetTable, file_count_expr, total_size_expr, filetype_count_expr).outerjoin(
+            file_stats, DatasetTable.id == file_stats.c.dataset_id
         )
         if where_clause:
             data_stmt = data_stmt.where(*where_clause)
@@ -164,22 +154,20 @@ class PostgresDatasetRepository:
             DatasetSortField.TOTAL_SIZE_BYTES: total_size_expr,
             DatasetSortField.FILETYPE_COUNT: filetype_count_expr,
         }[DatasetSortField(request.sort_by)]
-        data_stmt = data_stmt.order_by(
-            desc(sort_column) if request.sort_order == SortOrder.DESC else asc(sort_column)
-        )
+        data_stmt = data_stmt.order_by(desc(sort_column) if request.sort_order == SortOrder.DESC else asc(sort_column))
 
-        data_stmt = data_stmt.offset((request.page - 1) * request.limit).limit(
-            request.limit
-        )
+        data_stmt = data_stmt.offset((request.page - 1) * request.limit).limit(request.limit)
 
         data_result = await self.session.execute(data_stmt)
         datasets = [
-            DatasetSummary.model_validate({
-                **Dataset.model_validate(dataset_table).model_dump(),
-                "file_count": file_count,
-                "total_size_bytes": total_size_bytes,
-                "filetype_count": filetype_count,
-            })
+            DatasetSummary.model_validate(
+                {
+                    **Dataset.model_validate(dataset_table).model_dump(),
+                    "file_count": file_count,
+                    "total_size_bytes": total_size_bytes,
+                    "filetype_count": filetype_count,
+                }
+            )
             for dataset_table, file_count, total_size_bytes, filetype_count in data_result.all()
         ]
 
@@ -193,9 +181,7 @@ class PostgresDatasetRepository:
             data=datasets,
         )
 
-    async def get_dataset_stats(
-        self, dataset_id: str, request: DatasetStatsRequest
-    ) -> DatasetStatsResponse:
+    async def get_dataset_stats(self, dataset_id: str, request: DatasetStatsRequest) -> DatasetStatsResponse:
         """Aggregate a dataset's files by filetype, group, and load time bucket.
 
         All three breakdowns are scoped to the same requested date range.
@@ -225,10 +211,7 @@ class PostgresDatasetRepository:
             .group_by(FileTable.filetype)
             .order_by(desc(func.count(FileTable.id)))
         )
-        by_filetype = [
-            FiletypeBreakdownItem(filetype=filetype, count=count)
-            for filetype, count in filetype_rows.all()
-        ]
+        by_filetype = [FiletypeBreakdownItem(filetype=filetype, count=count) for filetype, count in filetype_rows.all()]
 
         filetype_group_rows = await self.session.execute(
             select(FileTable.filetype_group, func.count(FileTable.id))
@@ -249,8 +232,7 @@ class PostgresDatasetRepository:
             .order_by(bucket_expr)
         )
         loaded_over_time = [
-            LoadHistogramBucket(date_bucket=bucket, count=count)
-            for bucket, count in histogram_rows.all()
+            LoadHistogramBucket(date_bucket=bucket, count=count) for bucket, count in histogram_rows.all()
         ]
 
         return DatasetStatsResponse(
@@ -261,19 +243,60 @@ class PostgresDatasetRepository:
             loaded_over_time=loaded_over_time,
         )
 
-    async def update_dataset(
-        self, dataset_id: str, data: DatasetUpdate
-    ) -> Dataset:
+    async def mark_staged(self, dataset_id: str) -> None:
+        """Stamp `date_staged` the first time staging completes; a no-op after."""
+        await self.session.execute(
+            update(DatasetTable)
+            .where(DatasetTable.id == dataset_id, DatasetTable.date_staged.is_(None))
+            .values(date_staged=datetime.now(UTC))
+        )
+        await self.session.commit()
+
+    async def get_staging_summary(self, dataset_id: str) -> DatasetStagingSummary:
+        """Per-`filetype_group` counts + sizes and whether staging has completed.
+
+        `is_staged` is true once the dataset has at least one file (staging is
+        stamped on load); `date_staged` carries the actual milestone time.
+        """
+        dataset = (
+            await self.session.execute(select(DatasetTable).where(DatasetTable.id == dataset_id))
+        ).scalar_one_or_none()
+
+        rows = (
+            await self.session.execute(
+                select(
+                    FileTable.filetype_group,
+                    func.count(FileTable.id),
+                    func.coalesce(func.sum(FileTable.size), 0),
+                )
+                .where(FileTable.dataset_id == dataset_id)
+                .group_by(FileTable.filetype_group)
+                .order_by(desc(func.count(FileTable.id)))
+            )
+        ).all()
+
+        by_group = [
+            FiletypeGroupInventory(filetype_group=group or "unknown", count=count, size_bytes=int(size or 0))
+            for group, count, size in rows
+        ]
+        file_count = sum(g.count for g in by_group)
+        date_staged = getattr(dataset, "date_staged", None) if dataset is not None else None
+
+        return DatasetStagingSummary(
+            dataset_id=dataset_id,
+            is_staged=file_count > 0,
+            date_staged=date_staged,
+            file_count=file_count,
+            total_size_bytes=sum(g.size_bytes for g in by_group),
+            by_group=by_group,
+        )
+
+    async def update_dataset(self, dataset_id: str, data: DatasetUpdate) -> Dataset:
         """Update a dataset by ID."""
         update_dict = data.model_dump(exclude_unset=True, by_alias=False)
         logger.info(f"Updating dataset {dataset_id} with: {update_dict}")
 
-        stmt = (
-            update(DatasetTable)
-            .where(DatasetTable.id == dataset_id)
-            .values(**update_dict)
-            .returning(DatasetTable)
-        )
+        stmt = update(DatasetTable).where(DatasetTable.id == dataset_id).values(**update_dict).returning(DatasetTable)
 
         result = await self.session.execute(stmt)
         await self.session.commit()
@@ -287,15 +310,11 @@ class PostgresDatasetRepository:
 
     async def exists(self, dataset_id: str) -> bool:
         """Check if a dataset exists."""
-        result = await self.session.execute(
-            select(func.count(DatasetTable.id)).where(DatasetTable.id == dataset_id)
-        )
+        result = await self.session.execute(select(func.count(DatasetTable.id)).where(DatasetTable.id == dataset_id))
         return result.scalar_one() > 0
 
     async def get_by_name(self, name: str) -> Dataset | None:
         """Get a dataset by name."""
-        result = await self.session.execute(
-            select(DatasetTable).where(DatasetTable.name == name)
-        )
+        result = await self.session.execute(select(DatasetTable).where(DatasetTable.name == name))
         dataset_table = result.scalar_one_or_none()
         return Dataset.model_validate(dataset_table) if dataset_table else None

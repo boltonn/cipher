@@ -76,7 +76,9 @@ def _stats(times_ms: list[float]) -> dict:
     return {
         "mean_ms": round(statistics.mean(times_ms), 3),
         "median_ms": round(statistics.median(times_ms), 3),
-        "p95_ms": round(statistics.quantiles(times_ms, n=20)[18], 3) if len(times_ms) >= 20 else round(max(times_ms), 3),
+        "p95_ms": round(statistics.quantiles(times_ms, n=20)[18], 3)
+        if len(times_ms) >= 20
+        else round(max(times_ms), 3),
         "min_ms": round(min(times_ms), 3),
         "max_ms": round(max(times_ms), 3),
     }

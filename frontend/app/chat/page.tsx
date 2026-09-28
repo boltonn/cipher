@@ -189,11 +189,12 @@ export default function ChatPage() {
             onRegenerate={handleRegenerate}
             onOpenCitation={handleOpenCitation}
             showThinking={showLoadingIndicator}
+            onExamplePrompt={(text) => handleSubmit({ text, files: [] })}
           />
         </div>
       </div>
 
-      <div className="mx-auto w-full max-w-3xl shrink-0 px-4 pb-6">
+      <div className="mx-auto w-full max-w-3xl shrink-0 px-4 pb-4">
         {/* Reusable hook guards this to ensure zero flashes */}
         {isStoreHydrated && needsClientKey && (
           <Alert variant="destructive" className="mb-2 mt-4">

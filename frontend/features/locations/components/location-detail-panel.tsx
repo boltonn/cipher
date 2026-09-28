@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { filesService, useFile } from "@/features/files/api";
 import { FileViewerDialog } from "@/features/files/components/file-viewer-dialog";
 import type { FileBrowserItem } from "@/features/files/types";
+import { MarkerIcon } from "@/features/locations/lib/category-icons";
 import { colorForValue, type MarkerPalette } from "@/features/locations/lib/marker-style";
 import type { LocationProperties } from "@/features/locations/types";
 import { format } from "date-fns";
@@ -56,9 +57,11 @@ export function LocationDetailPanel({
               Location
             </p>
             <p className="flex items-center gap-2 truncate text-sm font-semibold">
-              <span
-                className="size-2.5 shrink-0 rounded-full"
-                style={{ background: colorForValue(palette, "source", feature.source) }}
+              <MarkerIcon
+                field="source"
+                value={feature.source}
+                className="size-4 shrink-0"
+                style={{ color: colorForValue(palette, "source", feature.source) }}
               />
               {feature.name ?? "Photo location"}
             </p>

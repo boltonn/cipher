@@ -1,21 +1,28 @@
-"""Calendar-event extraction workflow (EVENT_EXTRACTION enrichment).
+"""Calendar-event extraction workflows (EVENT_EXTRACTION enrichment).
 
-Deterministic only: parses a dataset's `.ics` / `text/calendar` files
-(`pyparse.parsers.calendar.ics`) into `event` rows. Each `VEVENT` becomes one
-event (`extractor = "ics"`, `file_id` set) plus *unresolved*
-`event_participant` rows (`raw_name` from ORGANIZER / ATTENDEE) and an
-`event_place` row (`raw_text` from LOCATION). A later sweep resolves those to
-entities / locations.
+Two producers, both writing `event` rows plus *unresolved* `event_participant`
+(`raw_name` / `raw_email`) and `event_place` (`raw_text`) links that
+`resolve-event-links` later resolves:
 
-LLM extraction over free-text email bodies is intentionally **not** here -- it
-belongs to a separate prompt-runner service, enabled later.
+* **`.ics` (deterministic)** -- `extract_events_workflow`. Parses a dataset's
+  `text/calendar` files (`pyparse.parsers.calendar.ics`); one `VEVENT` -> one
+  event (`extractor = "ics"`), carrying the iCalendar fields losslessly (`uid`,
+  `recurrence_rule`, `categories`, `sequence`, `url`, `sensitivity`, source
+  timestamps; `GEO` -> a geocoded `event_place`). No model.
+* **free text (LLM)** -- `extract_text_events_workflow`. Runs `pyprompt` over a
+  dataset's email (and, with `--docs`, document) bodies anchored to the file's
+  authored date; each event it finds -> one row (`extractor = "llm"`,
+  `extraction_model` set), with typed `details` / `url` / `confidence`, deduped
+  against existing rows on `uid` then `(title, start date)` /
+  `(type, start date, place)`. Opt-in (`cipher extract-events --llm`).
 
 Re-runnable: a file with a completed EVENT_EXTRACTION row is skipped until
-`reset-events` clears it.
+`reset-events` clears it (which drops both `ics` and `llm` rows).
 """
 
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from loguru import logger
 from sqlalchemy import select
@@ -24,27 +31,58 @@ from tqdm import tqdm
 from cipher.datastores.postgres.repositories import (
     PostgresEnrichmentRepository,
     PostgresEventRepository,
+    PostgresExtractedTextRepository,
+    PostgresLocationRepository,
 )
 from cipher.datastores.postgres.tables.enrichment import EnrichmentTable
+from cipher.datastores.postgres.tables.event import EventTable
+from cipher.datastores.postgres.tables.event_place import EventPlaceTable
 from cipher.datastores.postgres.tables.file import FileTable
-from cipher.schemas.graph.event import DatePrecision, EventCreate, EventStatus, EventType
-from cipher.schemas.graph.event_participant import EventParticipantCreate, EventParticipantRole
-from cipher.schemas.graph.event_place import EventPlaceCreate
+from cipher.datastores.postgres.utils import normalize_name
+from cipher.schemas.graph.event import DatePrecision, EventCreate, EventSensitivity, EventStatus, EventType
+from cipher.schemas.graph.event_participant import EventParticipantCreate, EventParticipantRole, RsvpStatus
+from cipher.schemas.graph.event_place import EventPlaceCreate, EventPlaceRole
+from cipher.schemas.graph.location import LocationCreate
+from cipher.schemas.graph.ontology import LocationSource
 from cipher.schemas.ingestion.enrichment import EnrichableType, EnrichmentType, ProcessingStatus
 from cipher.utils.io import fetch_bytes_from_uri
 
 if TYPE_CHECKING:
-    from pyparse.parsers.calendar.ics import ParsedCalendarEvent
+    from pyparse.parsers.calendar.ics import ParsedCalendarEvent, ParsedCalendarPerson
+    from pyprompt.schemas import ParsedEvent
     from sqlalchemy.ext.asyncio import AsyncSession
 
 _EXTRACTOR = "ics"
+_LLM_EXTRACTOR = "llm"
+_EMAIL_FILETYPE_GROUP = "email"
+_DOCUMENT_FILETYPE_GROUP = "document"
 _CALENDAR_MIME = "text/calendar"
+
+# The filetype groups the LLM event pass scans, in order.
+TEXT_EVENT_GROUPS_EMAIL: tuple[str, ...] = (_EMAIL_FILETYPE_GROUP,)
+TEXT_EVENT_GROUPS_ALL: tuple[str, ...] = (_EMAIL_FILETYPE_GROUP, _DOCUMENT_FILETYPE_GROUP)
 
 _STATUS_MAP = {
     "CONFIRMED": EventStatus.CONFIRMED,
     "TENTATIVE": EventStatus.TENTATIVE,
     "CANCELLED": EventStatus.CANCELLED,
 }
+
+_SENSITIVITY_MAP = {
+    "PUBLIC": EventSensitivity.PUBLIC,
+    "PRIVATE": EventSensitivity.PRIVATE,
+    "CONFIDENTIAL": EventSensitivity.CONFIDENTIAL,
+}
+
+_PARTSTAT_MAP = {
+    "NEEDS-ACTION": RsvpStatus.NEEDS_ACTION,
+    "ACCEPTED": RsvpStatus.ACCEPTED,
+    "DECLINED": RsvpStatus.DECLINED,
+    "TENTATIVE": RsvpStatus.TENTATIVE,
+    "DELEGATED": RsvpStatus.DELEGATED,
+}
+
+_RESOURCE_CUTYPES = {"ROOM", "RESOURCE"}
 
 _TYPE_KEYWORDS: tuple[tuple[EventType, tuple[str, ...]], ...] = (
     (EventType.TRAVEL, ("flight", "train", "airline", "rail", "boarding", "rental car", "car rental")),
@@ -88,13 +126,36 @@ def _to_event_create(parsed: "ParsedCalendarEvent", *, dataset_id: str, file_id:
         is_all_day=parsed.is_all_day,
         date_precision=DatePrecision.DAY if parsed.is_all_day else DatePrecision.EXACT,
         status=_STATUS_MAP.get(parsed.status or "", EventStatus.CONFIRMED),
+        categories=parsed.categories,
+        sensitivity=_SENSITIVITY_MAP.get(parsed.event_class or ""),
+        uid=parsed.uid,
+        recurrence_rule=parsed.recurrence_rule,
+        sequence=parsed.sequence,
+        source_created=_aware(parsed.date_source_created or parsed.date_stamp),
+        source_last_modified=_aware(parsed.date_source_modified),
         extractor=_EXTRACTOR,
+    )
+
+
+def _cal_participant(person: "ParsedCalendarPerson", role: EventParticipantRole) -> EventParticipantCreate | None:
+    """Map an `.ics` ORGANIZER/ATTENDEE to an unresolved `EventParticipantCreate`."""
+    name = (person.name or "").strip() or None
+    email = (person.email or "").strip().lower() or None
+    if not name and not email:
+        return None
+    return EventParticipantCreate(
+        raw_name=name,
+        raw_email=email,
+        role=role,
+        rsvp_status=_PARTSTAT_MAP.get(person.partstat or ""),
+        is_resource=(person.cutype or "") in _RESOURCE_CUTYPES,
     )
 
 
 async def _extract_calendar_file(
     file_resource: dict,
     event_repo: PostgresEventRepository,
+    location_repo: PostgresLocationRepository,
 ) -> int:
     """Parse one `.ics` file into event rows (+ unresolved participant/place links). Returns events written."""
     from pyparse.parsers.calendar.ics import IcsParser
@@ -110,18 +171,54 @@ async def _extract_calendar_file(
             continue
         event = await event_repo.add_event(create)
 
-        names = [(parsed.organizer, EventParticipantRole.ORGANIZER)] if parsed.organizer else []
-        names += [(name, EventParticipantRole.ATTENDEE) for name in parsed.attendees]
-        for name, role in names:
-            if name and name.strip():
-                await event_repo.add_participant(
-                    event_id=event.id,
-                    payload=EventParticipantCreate(raw_name=name.strip(), role=role),
-                )
-        if parsed.location and parsed.location.strip():
-            await event_repo.add_place(event_id=event.id, payload=EventPlaceCreate(raw_text=parsed.location.strip()))
+        people = [(parsed.organizer, EventParticipantRole.ORGANIZER)] if parsed.organizer else []
+        people += [(person, EventParticipantRole.ATTENDEE) for person in parsed.attendees]
+        for person, role in people:
+            payload = _cal_participant(person, role)
+            if payload is not None:
+                await event_repo.add_participant(event_id=event.id, payload=payload)
+
+        await _attach_calendar_place(
+            parsed,
+            event_id=event.id,
+            dataset_id=dataset_id,
+            file_id=file_id,
+            event_repo=event_repo,
+            location_repo=location_repo,
+        )
         written += 1
     return written
+
+
+async def _attach_calendar_place(
+    parsed: "ParsedCalendarEvent",
+    *,
+    event_id: str,
+    dataset_id: str,
+    file_id: str,
+    event_repo: PostgresEventRepository,
+    location_repo: PostgresLocationRepository,
+) -> None:
+    """Attach the VEVENT's place: a geocoded `location` when `GEO` is present, else raw `LOCATION` text."""
+    venue = (parsed.location or "").strip() or None
+    if parsed.geo is not None:
+        latitude, longitude = parsed.geo
+        location = await location_repo.add_location(
+            LocationCreate(
+                dataset_id=dataset_id,
+                file_id=file_id,
+                latitude=latitude,
+                longitude=longitude,
+                name=venue,
+                source=LocationSource.NAMED_MENTION,
+            )
+        )
+        await event_repo.add_place(
+            event_id=event_id,
+            payload=EventPlaceCreate(location_id=location.id, raw_text=venue, role=EventPlaceRole.VENUE),
+        )
+    elif venue:
+        await event_repo.add_place(event_id=event_id, payload=EventPlaceCreate(raw_text=venue))
 
 
 async def queue_event_extraction_enrichments(session: "AsyncSession", dataset_id: str) -> int:
@@ -164,6 +261,7 @@ async def extract_events_workflow(
 
     enrichment_repo = PostgresEnrichmentRepository(session=session)
     event_repo = PostgresEventRepository(session=session)
+    location_repo = PostgresLocationRepository(session=session)
 
     total = await enrichment_repo.count_pending(
         enrichment_type=EnrichmentType.EVENT_EXTRACTION,
@@ -192,7 +290,9 @@ async def extract_events_workflow(
                     completed.append(item.enrichment.id)
                     continue
                 try:
-                    event_count += await _extract_calendar_file(file_resource=item.resource, event_repo=event_repo)
+                    event_count += await _extract_calendar_file(
+                        file_resource=item.resource, event_repo=event_repo, location_repo=location_repo
+                    )
                     completed.append(item.enrichment.id)
                 except Exception as e:
                     logger.error(f"Calendar extraction failed for file {item.resource['id']}: {e}")
@@ -222,3 +322,320 @@ async def get_event_extraction_stats(session: "AsyncSession", dataset_id: str | 
         dataset_id=dataset_id,
         enrichment_type=EnrichmentType.EVENT_EXTRACTION,
     )
+
+
+# --------------------------------------------------------------------------- #
+# LLM path: free-text event extraction over email / document bodies           #
+# --------------------------------------------------------------------------- #
+_PARTICIPANT_ROLES = {r.value for r in EventParticipantRole}
+_PLACE_ROLES = {r.value for r in EventPlaceRole}
+
+
+def _parse_iso(value: str | None, *, tz: str | None = None) -> datetime | None:
+    """Best-effort ISO 8601 -> aware datetime (date-only allowed); None on failure.
+
+    A naive result is localized to `tz` (an IANA name) when given, else to UTC.
+    """
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        try:
+            parsed = datetime.strptime(value.strip()[:10], "%Y-%m-%d")
+        except ValueError:
+            return None
+    if parsed.tzinfo is not None:
+        return parsed
+    if tz:
+        try:
+            return parsed.replace(tzinfo=ZoneInfo(tz))
+        except (ZoneInfoNotFoundError, ValueError):
+            pass
+    return parsed.replace(tzinfo=UTC)
+
+
+def _place_text(place) -> str:
+    """Surface text of a place, whether it is an LLM `LlmEventPlace` or an `event_place` row."""
+    return (getattr(place, "text", None) or getattr(place, "raw_text", None) or "").strip()
+
+
+def _primary_place(places) -> str | None:
+    """The place text to key dedup on: a `destination` if there is one, else the first non-empty."""
+    ordered = sorted(places or [], key=lambda p: str(getattr(p, "role", "")).lower() != "destination")
+    for place in ordered:
+        text = _place_text(place)
+        if text:
+            return text
+    return None
+
+
+def _dedup_keys(
+    *, title: str, date_start: datetime, event_type: EventType | str, place: str | None, uid: str | None
+) -> set[str]:
+    """The set of keys an event matches on. Two events collide if any key is shared."""
+    day = date_start.date().isoformat()
+    keys = {
+        f"td:{normalize_name(title)}|{day}",
+        f"tp:{event_type}|{day}|{normalize_name(place or title)}",
+    }
+    if uid:
+        keys.add(f"uid:{uid.strip()}")
+    return keys
+
+
+def _llm_event_to_create(
+    parsed: "ParsedEvent", *, dataset_id: str, file_id: str, model: str | None
+) -> EventCreate | None:
+    """Map one LLM `ParsedEvent` to an `EventCreate`; None when it has no usable start."""
+    date_start = _parse_iso(parsed.date_start, tz=parsed.timezone)
+    if date_start is None:
+        return None
+    return EventCreate(
+        dataset_id=dataset_id,
+        file_id=file_id,
+        event_type=parsed.event_type,
+        title=(parsed.title or "Untitled event")[:512],
+        summary=parsed.summary,
+        date_start=date_start,
+        date_end=_parse_iso(parsed.date_end, tz=parsed.timezone),
+        timezone=parsed.timezone,
+        is_all_day=parsed.is_all_day,
+        date_precision=parsed.date_precision,
+        status=parsed.status,
+        details=parsed.details,
+        confidence=parsed.confidence,
+        extractor=_LLM_EXTRACTOR,
+        extraction_model=model,
+    )
+
+
+async def persist_llm_events(
+    events: "list[ParsedEvent]",
+    *,
+    dataset_id: str,
+    file_id: str,
+    model: str | None,
+    seen: set[str],
+    event_repo: PostgresEventRepository,
+) -> int:
+    """Write one file's LLM `ParsedEvent`s as `event` (+ participant/place) rows.
+
+    Skips an event whose dedup keys are already in `seen` (mutated in place).
+    Returns events written. Shared by `extract_text_events_workflow` and the
+    combined `extract_llm_workflow`.
+    """
+    written = 0
+    for parsed in events:
+        create = _llm_event_to_create(parsed, dataset_id=dataset_id, file_id=file_id, model=model)
+        if create is None:
+            continue
+        keys = _dedup_keys(
+            title=create.title,
+            date_start=create.date_start,
+            event_type=create.event_type,
+            place=_primary_place(parsed.places),
+            uid=None,
+        )
+        if keys & seen:
+            continue
+        seen |= keys
+
+        event = await event_repo.add_event(create)
+        for participant in parsed.participants:
+            name = participant.name.strip()
+            if not name:
+                continue
+            role = participant.role.strip().lower()
+            await event_repo.add_participant(
+                event_id=event.id,
+                payload=EventParticipantCreate(
+                    raw_name=name,
+                    role=role if role in _PARTICIPANT_ROLES else EventParticipantRole.ATTENDEE,
+                ),
+            )
+        for place in parsed.places:
+            text = place.text.strip()
+            if not text:
+                continue
+            role = place.role.strip().lower()
+            await event_repo.add_place(
+                event_id=event.id,
+                payload=EventPlaceCreate(
+                    raw_text=text,
+                    role=role if role in _PLACE_ROLES else EventPlaceRole.VENUE,
+                ),
+            )
+        written += 1
+    return written
+
+
+async def _extract_text_events_file(
+    file_resource: dict,
+    *,
+    extracted_text_repo: PostgresExtractedTextRepository,
+    event_repo: PostgresEventRepository,
+    runner,
+    model: str | None,
+    seen: set[str],
+) -> int:
+    """Run the LLM events pack over one file's extracted text. Returns events written."""
+    file_id = file_resource["id"]
+    dataset_id = file_resource["dataset_id"]
+
+    extracted = await extracted_text_repo.get_by_file_id(file_id)
+    if extracted is None or not (extracted.content or "").strip():
+        return 0
+
+    result = await runner.extract_events(extracted.content, reference_date=_reference_date(extracted))
+    return await persist_llm_events(
+        result.events, dataset_id=dataset_id, file_id=file_id, model=model, seen=seen, event_repo=event_repo
+    )
+
+
+def _reference_date(extracted) -> str | None:
+    """ISO date the source was authored, to anchor relative dates in the LLM pass."""
+    metadata = getattr(extracted, "metadata", None)
+    if metadata is None:
+        return None
+    authored = getattr(metadata, "date_sent", None) or getattr(metadata, "date_content_created", None)
+    return authored.date().isoformat() if authored is not None else None
+
+
+async def _load_event_dedup_keys(session: "AsyncSession", dataset_id: str) -> set[str]:
+    """Every dedup key for the dataset's existing events, so the LLM pass never re-adds one."""
+    rows = (
+        await session.execute(
+            select(EventTable.id, EventTable.title, EventTable.date_start, EventTable.event_type, EventTable.uid).where(
+                EventTable.dataset_id == dataset_id
+            )
+        )
+    ).all()
+    if not rows:
+        return set()
+
+    place_rows = (
+        await session.execute(
+            select(EventPlaceTable.event_id, EventPlaceTable.raw_text, EventPlaceTable.role).where(
+                EventPlaceTable.event_id.in_([r.id for r in rows])
+            )
+        )
+    ).all()
+    places_by_event: dict[str, list] = {}
+    for place in place_rows:
+        places_by_event.setdefault(place.event_id, []).append(place)
+
+    keys: set[str] = set()
+    for row in rows:
+        keys |= _dedup_keys(
+            title=row.title,
+            date_start=row.date_start,
+            event_type=row.event_type,
+            place=_primary_place(places_by_event.get(row.id, [])),
+            uid=row.uid,
+        )
+    return keys
+
+
+async def queue_text_event_extraction_enrichments(
+    session: "AsyncSession", dataset_id: str, *, filetype_groups: "tuple[str, ...]" = TEXT_EVENT_GROUPS_EMAIL
+) -> int:
+    """Queue EVENT_EXTRACTION enrichments for a dataset's files in the given filetype groups."""
+    enrichment_repo = PostgresEnrichmentRepository(session=session)
+    count = 0
+    for group in filetype_groups:
+        count += await enrichment_repo.queue_enrichments_by_filter(
+            dataset_id=dataset_id,
+            enrichment_type=EnrichmentType.EVENT_EXTRACTION,
+            filetype_group=group,
+        )
+    await session.commit()
+    return count
+
+
+async def extract_text_events_workflow(
+    session: "AsyncSession",
+    dataset_id: str,
+    batch_size: int = 20,
+    model: str | None = None,
+    filetype_groups: tuple[str, ...] = TEXT_EVENT_GROUPS_EMAIL,
+) -> int:
+    """Run `pyprompt` over a dataset's email (and optionally document) bodies into `event` rows.
+
+    Returns files processed. Each file's text is anchored to its authored date so
+    relative dates ("next Friday") resolve; events are deduped against every
+    existing row in the dataset (`.ics` included).
+    """
+    from pyprompt import PromptRunner, Settings
+
+    await queue_text_event_extraction_enrichments(
+        session=session, dataset_id=dataset_id, filetype_groups=filetype_groups
+    )
+
+    settings = Settings()
+    enrichment_repo = PostgresEnrichmentRepository(session=session)
+    extracted_text_repo = PostgresExtractedTextRepository(session=session)
+    event_repo = PostgresEventRepository(session=session)
+    runner = PromptRunner(settings)
+    resolved_model = model or settings.llm.model
+    seen = await _load_event_dedup_keys(session, dataset_id)
+
+    total = 0
+    for group in filetype_groups:
+        total += await enrichment_repo.count_pending(
+            enrichment_type=EnrichmentType.EVENT_EXTRACTION,
+            enrichable_type=EnrichableType.FILE,
+            dataset_id=dataset_id,
+            filetype_group_filter=group,
+        )
+    count = failed_count = event_count = 0
+
+    with tqdm(total=total, desc="Extracting events (llm)", unit=" file") as pbar:
+        for group in filetype_groups:
+            while True:
+                batch = await enrichment_repo.get_pending_batch(
+                    enrichment_type=EnrichmentType.EVENT_EXTRACTION,
+                    enrichable_type=EnrichableType.FILE,
+                    batch_size=batch_size,
+                    dataset_id=dataset_id,
+                    filetype_group_filter=group,
+                )
+                if not batch:
+                    break
+
+                await enrichment_repo.mark_processing(enrichment_ids=[item.enrichment.id for item in batch])
+                await session.commit()
+
+                completed, failed = [], []
+                for item in batch:
+                    if item.resource.get("mime_type") == _CALENDAR_MIME:
+                        completed.append(item.enrichment.id)
+                        continue
+                    try:
+                        event_count += await _extract_text_events_file(
+                            item.resource,
+                            extracted_text_repo=extracted_text_repo,
+                            event_repo=event_repo,
+                            runner=runner,
+                            model=resolved_model,
+                            seen=seen,
+                        )
+                        completed.append(item.enrichment.id)
+                    except Exception as e:
+                        logger.error(f"LLM event extraction failed for file {item.resource['id']}: {e}")
+                        await session.rollback()
+                        failed.append(item.enrichment.id)
+
+                if completed:
+                    await enrichment_repo.mark_completed_batch(completed)
+                if failed:
+                    await enrichment_repo.mark_failed_batch(failed, increment_retry=True)
+                await session.commit()
+
+                count += len(completed)
+                failed_count += len(failed)
+                pbar.set_postfix(failed=failed_count, events=event_count)
+                pbar.update(len(completed) + len(failed))
+
+    logger.success(f"Extracted {event_count} events from {count} text files ({failed_count} failed)")
+    return count

@@ -12,16 +12,19 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  SELECTOR_KINDS,
+  SELECTOR_TYPES,
   type EntityType,
-  type SelectorKind,
+  type SelectorSubtype,
+  type SelectorType,
 } from "@/features/entities/types";
 import { CalendarRange, RotateCcw, X } from "lucide-react";
 import { useState } from "react";
 
 export interface EntityFilters {
   entityType?: EntityType;
-  selectorKind?: SelectorKind;
+  selectorType?: SelectorType;
+  /** set via a deep link from the dataset breakdown; no dropdown for it yet */
+  selectorSubtype?: SelectorSubtype;
   country?: string;
   orgType?: string;
   dobFrom?: string;
@@ -35,7 +38,12 @@ const ALL = "__all__";
 /** Filters that only make sense once an entity type is chosen. */
 function hasTypeScopedFilter(f: EntityFilters) {
   return (
-    !!f.selectorKind || !!f.country || !!f.orgType || !!f.dobFrom || !!f.dobTo
+    !!f.selectorType ||
+    !!f.selectorSubtype ||
+    !!f.country ||
+    !!f.orgType ||
+    !!f.dobFrom ||
+    !!f.dobTo
   );
 }
 
@@ -122,9 +130,9 @@ export function EntitySearchFilters({
       {type === "selector" && (
         <Field label="Selector kind" className="w-44">
           <Select
-            value={value.selectorKind ?? ALL}
+            value={value.selectorType ?? ALL}
             onValueChange={(v) =>
-              set({ selectorKind: v === ALL ? undefined : (v as SelectorKind) })
+              set({ selectorType: v === ALL ? undefined : (v as SelectorType) })
             }
           >
             <SelectTrigger className="h-9 w-full bg-muted/40 text-xs">
@@ -134,7 +142,7 @@ export function EntitySearchFilters({
               <SelectItem value={ALL} className="text-xs">
                 Any kind
               </SelectItem>
-              {SELECTOR_KINDS.map((k) => (
+              {SELECTOR_TYPES.map((k) => (
                 <SelectItem key={k} value={k} className="text-xs capitalize">
                   {k.replace(/_/g, " ")}
                 </SelectItem>

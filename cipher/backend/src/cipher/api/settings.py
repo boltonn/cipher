@@ -8,6 +8,9 @@ from cipher.datastores.elasticsearch.config import ElasticsearchConfig
 from cipher.datastores.postgres.config import PostgresConfig
 from cipher.schemas.interaction.llm import LLMSettings
 from cipher.utils.fastapi.settings import BaseServiceSettings
+from cipher.utils.retrieval import RetrievalBackend, RetrievalConfig, TextRanker
+
+__all__ = ["Settings", "DevelopmentMode", "RetrievalBackend", "RetrievalConfig", "TextRanker"]
 
 
 class DevelopmentMode(StrEnum):
@@ -41,6 +44,7 @@ class Settings(BaseServiceSettings):
 
     elasticsearch: ElasticsearchConfig | None = Field(None, description="Elasticsearch configuration object")
     postgres: PostgresConfig | None = Field(None, description="Postgres configuration object")
+    retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig, description="Chunk-search backend selection")
     mode: DevelopmentMode = Field(DevelopmentMode.DEV, description="Development mode")
     person_reference_dir: Path = Field(
         ...,

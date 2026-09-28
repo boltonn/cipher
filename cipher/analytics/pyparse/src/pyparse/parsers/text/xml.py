@@ -37,9 +37,7 @@ class XmlParser:
                 ]
                 text = delimiter.join(leaf_elements)
                 if cleaned:
-                    text = clean_text(
-                        text, extra_whitespace=True, trailing_punctuation=True
-                    )
+                    text = clean_text(text, extra_whitespace=True, trailing_punctuation=True)
                 if text:
                     out["text"] = {"source": text}
         return out

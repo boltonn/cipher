@@ -49,9 +49,46 @@ def test_parses_utc_event_with_participants_and_categories():
     assert event.date_end == datetime(2026, 9, 5, 22, 0, tzinfo=UTC)
     assert event.is_all_day is False
     assert event.status == "CONFIRMED"
-    assert event.organizer == "United Airlines"
-    assert event.attendees == ["Nick Bolton"]
+    assert event.organizer.name == "United Airlines"
+    assert event.organizer.email == "noreply@united.com"
+    assert [a.name for a in event.attendees] == ["Nick Bolton"]
+    assert event.attendees[0].email == "nick@example.com"
     assert event.categories == ["Travel", "Personal"]
+
+
+_ICAL_RICH = """BEGIN:VCALENDAR
+BEGIN:VEVENT
+UID:sync-42@example.com
+SUMMARY:Weekly sync
+DTSTART:20260915T100000Z
+DTEND:20260915T110000Z
+CLASS:PRIVATE
+URL:https://example.com/meet/xyz
+SEQUENCE:3
+GEO:52.5200;13.4050
+RRULE:FREQ=WEEKLY;BYDAY=MO
+DTSTAMP:20260901T090000Z
+LAST-MODIFIED:20260902T120000Z
+ORGANIZER;CN=Jane Doe:mailto:jane@example.com
+ATTENDEE;CN=Mark Reilly;PARTSTAT=ACCEPTED;CUTYPE=INDIVIDUAL:mailto:mark@example.com
+ATTENDEE;CN=Room 4;CUTYPE=ROOM:mailto:room4@example.com
+END:VEVENT
+END:VCALENDAR
+"""
+
+
+def test_parses_ical_native_fields():
+    (event,) = IcsParser.parse(_ICAL_RICH.encode())
+    assert event.event_class == "PRIVATE"
+    assert event.url == "https://example.com/meet/xyz"
+    assert event.sequence == 3
+    assert event.geo == (52.52, 13.405)
+    assert event.recurrence_rule == "FREQ=WEEKLY;BYDAY=MO"
+    assert event.date_stamp == datetime(2026, 9, 1, 9, 0, tzinfo=UTC)
+    assert event.date_source_modified == datetime(2026, 9, 2, 12, 0, tzinfo=UTC)
+    accepted, room = event.attendees
+    assert accepted.partstat == "ACCEPTED" and accepted.cutype == "INDIVIDUAL"
+    assert room.cutype == "ROOM"
 
 
 def test_all_day_and_tzid_and_duration():

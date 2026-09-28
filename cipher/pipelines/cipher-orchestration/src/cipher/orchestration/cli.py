@@ -16,14 +16,18 @@ import typer
 from loguru import logger
 
 from cipher.datastores.postgres.repositories import PostgresDatasetRepository, PostgresEnrichmentRepository
+from cipher.orchestration.backfill_entity_name_keys import backfill_entity_name_keys_workflow
 from cipher.orchestration.backfill_exif_locations import backfill_exif_locations
 from cipher.orchestration.benchmark import benchmark_ingest, benchmark_storage
+from cipher.orchestration.cluster_faces import cluster_faces_workflow, reset_face_clusters
+from cipher.orchestration.dedupe_entities import dedupe_entities_workflow
 from cipher.orchestration.detect_faces import (
     detect_faces_workflow,
     get_face_detection_stats,
 )
 from cipher.orchestration.embed_images import embed_images_workflow, get_embedding_stats
 from cipher.orchestration.embed_text import DEFAULT_SKIP_EMAIL_STATES, embed_text_workflow, get_text_embedding_stats
+from cipher.orchestration.extract_contact_entities import extract_contact_entities_workflow
 from cipher.orchestration.extract_documents import (
     DEFAULT_CHUNK_SIZE,
     Chunker,
@@ -31,8 +35,22 @@ from cipher.orchestration.extract_documents import (
     get_extraction_stats,
 )
 from cipher.orchestration.extract_emails import extract_emails_workflow
-from cipher.orchestration.extract_events import extract_events_workflow, get_event_extraction_stats
+from cipher.orchestration.extract_entities import extract_entities_workflow, get_entity_extraction_stats
+from cipher.orchestration.extract_events import (
+    TEXT_EVENT_GROUPS_ALL,
+    TEXT_EVENT_GROUPS_EMAIL,
+    extract_events_workflow,
+    extract_text_events_workflow,
+    get_event_extraction_stats,
+)
 from cipher.orchestration.extract_exif_locations import extract_exif_locations_workflow, get_exif_location_stats
+from cipher.orchestration.extract_llm import (
+    DEFAULT_CONCURRENCY,
+    DEFAULT_MAX_LLM_PASS_FILES,
+    LlmPassTooLargeError,
+    extract_llm_workflow,
+)
+from cipher.orchestration.extract_message_selectors import extract_message_selectors_workflow
 from cipher.orchestration.extract_relationships import (
     extract_relationships_workflow,
     get_relationship_extraction_stats,
@@ -43,13 +61,21 @@ from cipher.orchestration.link_face_cooccurrence import (
     get_face_cooccurrence_stats,
     link_face_cooccurrence_workflow,
 )
+from cipher.orchestration.match_faces import match_faces_workflow, reset_face_matches
+from cipher.orchestration.refresh_selectors import refresh_selectors_workflow
 from cipher.orchestration.reset_entities import reset_entities
 from cipher.orchestration.reset_events import reset_events
 from cipher.orchestration.resolve_entities import resolve_entities_workflow
+from cipher.orchestration.resolve_event_links import resolve_event_links_workflow
+from cipher.orchestration.run_recorder import record_run
 from cipher.orchestration.schema import create_tables
 from cipher.orchestration.session import get_elasticsearch_client_context, get_session_context
+from cipher.orchestration.sync_chunk_entities import sync_chunk_entities_workflow
 from cipher.schemas._base.common import ModelDevice
 from cipher.schemas.content.email import EmailState
+from cipher.schemas.graph.entity_resolution import EntityResolutionConfig
+from cipher.schemas.ingestion.enrichment import EnrichmentType
+from cipher.schemas.ingestion.estimation import WorkUnit
 
 app = typer.Typer(help="Test-drive ingestion, embedding, and face detection against a local dataset.")
 
@@ -155,8 +181,14 @@ def embed_images_cmd(
         async with get_session_context() as session:
             resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
             model = CLIP(model_dir=model_dir, device=device.value)
-            count = await embed_images_workflow(session=session, model=model, dataset_id=resolved_id)
-            logger.success(f"Embedded {count} images")
+            async with record_run(
+                enrichment_type=EnrichmentType.IMAGE_EMBEDDING,
+                dataset_id=resolved_id,
+                device=device.value,
+                unit=WorkUnit.IMAGE,
+            ) as run:
+                run.units = await embed_images_workflow(session=session, model=model, dataset_id=resolved_id)
+            logger.success(f"Embedded {run.units} images")
 
     asyncio.run(_run())
 
@@ -171,9 +203,15 @@ def extract_locations_cmd(
     async def _run():
         async with get_session_context() as session:
             resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
-            count = await extract_exif_locations_workflow(session=session, dataset_id=resolved_id)
+            async with record_run(
+                enrichment_type=EnrichmentType.EXIF_LOCATION,
+                dataset_id=resolved_id,
+                device="na",
+                unit=WorkUnit.IMAGE,
+            ) as run:
+                run.units = await extract_exif_locations_workflow(session=session, dataset_id=resolved_id)
             stats = await get_exif_location_stats(session=session, dataset_id=resolved_id)
-            logger.success(f"EXIF locations: processed {count} files; stats={stats}")
+            logger.success(f"EXIF locations: processed {run.units} files; stats={stats}")
 
     asyncio.run(_run())
 
@@ -197,8 +235,14 @@ def detect_faces_cmd(
         async with get_session_context() as session:
             resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
             model = AsyncInsightFaceModel(model_dir=model_dir, device=device)
-            count = await detect_faces_workflow(session=session, model=model, dataset_id=resolved_id)
-            logger.success(f"Face detection processed {count} files")
+            async with record_run(
+                enrichment_type=EnrichmentType.FACE_DETECTION,
+                dataset_id=resolved_id,
+                device=device.value,
+                unit=WorkUnit.IMAGE,
+            ) as run:
+                run.units = await detect_faces_workflow(session=session, model=model, dataset_id=resolved_id)
+            logger.success(f"Face detection processed {run.units} files")
 
     asyncio.run(_run())
 
@@ -245,19 +289,27 @@ def extract_text_cmd(
     async def _run():
         async with get_session_context() as session:
             resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
-            email_count = await extract_emails_workflow(
-                session=session, dataset_id=resolved_id, attachments_dir=attachments_dir
-            )
-            logger.success(f"Extracted text for {email_count} emails")
-            doc_count = await extract_documents_workflow(
-                session=session,
+            async with record_run(
+                enrichment_type=EnrichmentType.TEXT_EXTRACTION,
                 dataset_id=resolved_id,
-                chunker=chunker,
-                tokenizer_model_dir=model_dir,
-                chunk_size=chunk_size,
-                max_concurrent_extractions=max_concurrent_extractions,
-            )
-            logger.success(f"Extracted text for {doc_count} document files")
+                device="na",
+                unit=WorkUnit.TEXT_FILE,
+                params={"chunker": chunker.value, "chunk_size": chunk_size},
+            ) as run:
+                email_count = await extract_emails_workflow(
+                    session=session, dataset_id=resolved_id, attachments_dir=attachments_dir
+                )
+                logger.success(f"Extracted text for {email_count} emails")
+                doc_count = await extract_documents_workflow(
+                    session=session,
+                    dataset_id=resolved_id,
+                    chunker=chunker,
+                    tokenizer_model_dir=model_dir,
+                    chunk_size=chunk_size,
+                    max_concurrent_extractions=max_concurrent_extractions,
+                )
+                logger.success(f"Extracted text for {doc_count} document files")
+                run.units = email_count + doc_count
 
     asyncio.run(_run())
 
@@ -317,21 +369,28 @@ def embed_text_cmd(
 
             async with get_session_context() as session:
                 resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
-                count = await embed_text_workflow(
-                    session=session,
+                async with record_run(
+                    enrichment_type=EnrichmentType.TEXT_EMBEDDING,
                     dataset_id=resolved_id,
-                    model=model,
-                    es_repo=es_repo,
-                    chunk_size=chunk_size,
-                    chunk_overlap=chunk_overlap,
-                    min_chunk_tokens=min_chunk_tokens,
-                    embed_batch_size=embed_batch_size,
-                    max_pages=max_pages,
-                    skip_email_states=(
-                        frozenset(skip_email_state) if skip_email_state is not None else DEFAULT_SKIP_EMAIL_STATES
-                    ),
-                )
-                logger.success(f"Embedded text for {count} files")
+                    device=device.value,
+                    unit=WorkUnit.TEXT_FILE,
+                    params={"chunk_size": chunk_size, "max_pages": max_pages},
+                ) as run:
+                    run.units = await embed_text_workflow(
+                        session=session,
+                        dataset_id=resolved_id,
+                        model=model,
+                        es_repo=es_repo,
+                        chunk_size=chunk_size,
+                        chunk_overlap=chunk_overlap,
+                        min_chunk_tokens=min_chunk_tokens,
+                        embed_batch_size=embed_batch_size,
+                        max_pages=max_pages,
+                        skip_email_states=(
+                            frozenset(skip_email_state) if skip_email_state is not None else DEFAULT_SKIP_EMAIL_STATES
+                        ),
+                    )
+                logger.success(f"Embedded text for {run.units} files")
 
     asyncio.run(_run())
 
@@ -341,21 +400,76 @@ def extract_selectors_cmd(
     dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
     dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
 ):
-    """Extract selectors from a dataset's emails into mentions + selector entities.
+    """Extract selectors from every text-bearing file into mentions + selector entities.
 
-    Currently the email-header path only: every `from`/`sender`/`to`/`cc`/`bcc`
-    address becomes an `email` selector entity plus a resolved `structured_field`
-    mention, and each header display name an unresolved `person` mention. Run
-    `extract-text` first -- this reads persisted `ExtractedText` metadata, it
-    does not parse `.eml`/`.msg` files. Requires the `cli` extra (for
-    `pyselectors`).
+    Two passes per file: email-header participants become `email` selector
+    entities + resolved `structured_field` mentions (with an unresolved name
+    mention per display name), and `pyselectors` runs over the extracted body
+    text for phone / email / ip / iban / imei / crypto / social-handle spans
+    with real offsets, kind attributes, and a context-scored confidence. Run
+    `extract-text` first -- this reads persisted `ExtractedText`, it does not
+    parse source files. Requires the `cli` extra (for `pyselectors`).
     """
 
     async def _run():
         async with get_session_context() as session:
             resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
-            count = await extract_selectors_workflow(session=session, dataset_id=resolved_id)
-            logger.success(f"Extracted selectors for {count} emails")
+            async with record_run(
+                enrichment_type=EnrichmentType.SELECTOR_EXTRACTION,
+                dataset_id=resolved_id,
+                device="na",
+                unit=WorkUnit.TEXT_FILE,
+            ) as run:
+                run.units = await extract_selectors_workflow(session=session, dataset_id=resolved_id)
+            logger.success(f"Extracted selectors for {run.units} files")
+
+    asyncio.run(_run())
+
+
+@app.command("backfill-mention-chunks")
+def backfill_mention_chunks_cmd(
+    dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
+    dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
+):
+    """Set `mention.chunk_id` on a dataset's text mentions (Postgres retrieval backend).
+
+    Extraction now sets `chunk_id` inline, so this is only for datasets extracted
+    before that, or after a re-embed changed chunk boundaries. Set-based; idempotent.
+    """
+    from cipher.datastores.postgres.repositories.mention import PostgresMentionRepository
+
+    async def _run():
+        async with get_session_context() as session:
+            resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
+            n = await PostgresMentionRepository(session=session).backfill_chunk_ids(dataset_id=resolved_id)
+            typer.echo(f"set chunk_id on {n} mentions")
+
+    asyncio.run(_run())
+
+
+@app.command("sync-chunk-entities")
+def sync_chunk_entities_cmd(
+    dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
+    dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
+    purge: Annotated[bool, typer.Option(help="Clear entity fields on chunks with no mentions first")] = False,
+):
+    """[elasticsearch retrieval backend only] Denormalize mentions onto the `text_chunks` ES index.
+
+    Obsolete when `RETRIEVAL__BACKEND=postgres` -- there search joins
+    `mention.chunk_id` live (see `backfill-mention-chunks`). For the ES backend:
+    run after `extract-selectors` / `extract-entities`; each chunk doc gets the
+    `entity_ids` / `entity_types` / `selector_types` / `selector_subtypes` /
+    `mention_count` of the mentions anchored in its span. Idempotent; use
+    `--purge` after `reset-entities`.
+    """
+
+    async def _run():
+        async with get_session_context() as session, get_elasticsearch_client_context() as es_client:
+            resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
+            summary = await sync_chunk_entities_workflow(
+                session=session, es_client=es_client, dataset_id=resolved_id, purge=purge
+            )
+            typer.echo(json.dumps(summary, indent=2))
 
     asyncio.run(_run())
 
@@ -377,26 +491,151 @@ def extract_relationships_cmd(
     async def _run():
         async with get_session_context() as session:
             resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
-            count = await extract_relationships_workflow(session=session, dataset_id=resolved_id)
-            logger.success(f"Extracted relationships for {count} emails")
+            async with record_run(
+                enrichment_type=EnrichmentType.RELATIONSHIP_EXTRACTION,
+                dataset_id=resolved_id,
+                device="na",
+                unit=WorkUnit.LLM_FILE,
+            ) as run:
+                run.units = await extract_relationships_workflow(session=session, dataset_id=resolved_id)
+            logger.success(f"Extracted relationships for {run.units} emails")
 
     asyncio.run(_run())
 
 
 @app.command("link-face-cooccurrence")
-def link_face_cooccurrence_cmd():
+def link_face_cooccurrence_cmd(
+    min_verified_photos: Annotated[
+        int,
+        typer.Option(
+            help="Link two already-identified people only if they share at least this many photos "
+            "(a pair with an unconfirmed/pending face match is always linked). Set to 1 to keep every co-occurrence."
+        ),
+    ] = 2,
+):
     """Rebuild `appears_in_photo_with` edges between people detected in the same image.
 
     Global (not dataset-scoped): an undirected person<->person edge per pair of
     people sharing a photo, where a face counts if it is assigned to a person or
     just has a pending `face_match` to them. `weight` = shared photos. Fully
     re-derived from current face state each run, so it also prunes edges whose
-    matches were since rejected. Run after `detect-faces` and any face review.
+    matches were since rejected or that dropped below `--min-verified-photos`.
+    Run after `detect-faces` and any face review.
     """
 
     async def _run():
         async with get_session_context() as session:
-            counts = await link_face_cooccurrence_workflow(session=session)
+            counts = await link_face_cooccurrence_workflow(session=session, min_verified_photos=min_verified_photos)
+            typer.echo(json.dumps(counts, indent=2))
+
+    asyncio.run(_run())
+
+
+@app.command("match-faces")
+def match_faces_cmd(
+    dataset_name: Annotated[str | None, typer.Option(help="Scope candidate faces to this dataset")] = None,
+    dataset_id: Annotated[str | None, typer.Option(help="Scope candidate faces to this dataset ID")] = None,
+    similarity: Annotated[float, typer.Option(help="Min cosine similarity to propose a match")] = 0.61,
+    verified_only: Annotated[
+        bool,
+        typer.Option(
+            help="Match only against analyst-verified people (default: all people with a representative face)"
+        ),
+    ] = False,
+    per_face_limit: Annotated[int, typer.Option(help="Max candidate faces pulled per representative face")] = 500,
+    no_cooccurrence: Annotated[
+        bool, typer.Option(help="Skip refreshing appears_in_photo_with for the touched faces")
+    ] = False,
+    reset: Annotated[
+        bool, typer.Option(help="Undo: delete pending machine-proposed matches (analyst decisions kept)")
+    ] = False,
+):
+    """Propose pending face->person matches from every person's representative faces.
+
+    The batch counterpart to the reactive matcher that runs when an analyst adds
+    a reference face. Person-level (O(representative faces), not O(all faces)):
+    for each representative face it KNN-searches still-unassigned faces above
+    --similarity and records a pending `face_match` for review -- nothing is
+    auto-assigned. Idempotent; run it after `detect-faces` and before
+    `cluster-faces`. Confirm/reject in the Faces UI.
+    """
+
+    async def _run():
+        async with get_session_context() as session:
+            resolved_id = (
+                await _resolve_dataset_id(session, dataset_id, dataset_name) if (dataset_id or dataset_name) else None
+            )
+            if reset:
+                counts = await reset_face_matches(session=session, dataset_id=resolved_id)
+            else:
+                counts = await match_faces_workflow(
+                    session=session,
+                    dataset_id=resolved_id,
+                    min_similarity=similarity,
+                    verified_only=verified_only,
+                    per_face_limit=per_face_limit,
+                    rebuild_cooccurrence=not no_cooccurrence,
+                )
+            typer.echo(json.dumps(counts, indent=2))
+
+    asyncio.run(_run())
+
+
+@app.command("cluster-faces")
+def cluster_faces_cmd(
+    dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to (persons stay global)")] = None,
+    dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
+    similarity: Annotated[float, typer.Option(help="Min cosine similarity for a face-to-face cluster edge")] = 0.61,
+    k: Annotated[int, typer.Option(help="Nearest neighbours considered per face")] = 20,
+    min_images: Annotated[
+        int, typer.Option(help="Mint a person only for a cluster spanning at least this many distinct images")
+    ] = 3,
+    min_faces: Annotated[int, typer.Option(help="...and at least this many faces")] = 2,
+    max_faces: Annotated[int, typer.Option(help="Safety cap on unassigned faces considered per run")] = 200_000,
+    no_merge: Annotated[
+        bool, typer.Option(help="Always create a fresh person; never merge a cluster into an existing one")
+    ] = False,
+    no_cooccurrence: Annotated[
+        bool, typer.Option(help="Skip rebuilding appears_in_photo_with edges afterwards")
+    ] = False,
+    reset: Annotated[
+        bool, typer.Option(help="Undo: drop unverified face_clustering persons and unlink their faces")
+    ] = False,
+    reset_verified: Annotated[
+        bool, typer.Option(help="With --reset, also drop face_clustering persons an analyst verified")
+    ] = False,
+):
+    """Cluster unassigned faces into unnamed persons (source = face_clustering).
+
+    A dataset-wide sweep: builds a kNN similarity graph off the face HNSW index,
+    union-finds it into clusters, and creates one unnamed / unverified `person`
+    per cluster that spans >= --min-images images (and >= --min-faces faces),
+    assigning every face in it. Smaller clusters and singletons stay unassigned.
+    Incremental -- only touches faces without a person; a new cluster near an
+    existing clustering person merges into it unless --no-merge. Rename / merge /
+    split in the Persons UI (filter with ?source=face_clustering / ?unnamed=true).
+    """
+
+    async def _run():
+        async with get_session_context() as session:
+            if reset:
+                counts = await reset_face_clusters(session=session, include_verified=reset_verified)
+                typer.echo(json.dumps(counts, indent=2))
+                return
+            resolved_id = (
+                await _resolve_dataset_id(session, dataset_id, dataset_name) if (dataset_id or dataset_name) else None
+            )
+            counts = await cluster_faces_workflow(
+                session=session,
+                dataset_id=resolved_id,
+                similarity=similarity,
+                k=k,
+                min_images=min_images,
+                min_faces=min_faces,
+                max_faces=max_faces,
+                merge_into_existing=not no_merge,
+                rebuild_cooccurrence=not no_cooccurrence,
+            )
             typer.echo(json.dumps(counts, indent=2))
 
     asyncio.run(_run())
@@ -406,20 +645,174 @@ def link_face_cooccurrence_cmd():
 def extract_events_cmd(
     dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
     dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
+    llm: Annotated[
+        bool,
+        typer.Option(help="Also run LLM extraction over email bodies (needs pyprompt + an LLM__* config)"),
+    ] = False,
+    llm_only: Annotated[bool, typer.Option(help="Run only the LLM text-body path, skip the .ics parse")] = False,
+    docs: Annotated[bool, typer.Option(help="LLM pass also scans document files (PDF/DOCX), not just email")] = False,
+    model: Annotated[str | None, typer.Option(help="Override the configured LLM model id")] = None,
 ):
-    """Parse a dataset's `.ics` / calendar files into `event` rows (deterministic; no model).
+    """Parse a dataset's `.ics` files into `event` rows (deterministic), optionally plus an LLM pass.
 
-    One row per VEVENT (`extractor = ics`), with unresolved participant / place
-    links (`raw_name` / `raw_text`) for a later resolution sweep. LLM extraction
-    over free-text email bodies is a separate future process. Requires the `cli`
-    extra (for `pyparse`).
+    `.ics`: one row per VEVENT (`extractor = ics`), carrying the iCalendar fields
+    (`uid`, `recurrence_rule`, `categories`, `sequence`, `url`, `sensitivity`,
+    `GEO` -> a geocoded place). `--llm`: also run `pyprompt` over email bodies
+    (`--docs` adds documents) anchored to each file's authored date
+    (`extractor = llm`, typed `details` / `url` / `confidence`), deduped on `uid`
+    then `(title, start date)` / `(type, start date, place)`. Both leave
+    unresolved participant / place links for `resolve-event-links`. Requires the
+    `cli` extra (for `pyparse`); `--llm` also needs `pyprompt`.
     """
 
     async def _run():
         async with get_session_context() as session:
             resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
-            count = await extract_events_workflow(session=session, dataset_id=resolved_id)
-            logger.success(f"Extracted events for {count} calendar files")
+            async with record_run(
+                enrichment_type=EnrichmentType.EVENT_EXTRACTION,
+                dataset_id=resolved_id,
+                device="na",
+                unit=WorkUnit.LLM_FILE,
+                params={"llm": llm or llm_only, "docs": docs},
+            ) as run:
+                if not llm_only:
+                    ics_count = await extract_events_workflow(session=session, dataset_id=resolved_id)
+                    logger.success(f"Extracted events for {ics_count} calendar files")
+                    run.units += ics_count
+                if llm or llm_only:
+                    groups = TEXT_EVENT_GROUPS_ALL if docs else TEXT_EVENT_GROUPS_EMAIL
+                    text_count = await extract_text_events_workflow(
+                        session=session, dataset_id=resolved_id, model=model, filetype_groups=groups
+                    )
+                    logger.success(f"Extracted events for {text_count} text files (llm)")
+                    run.units += text_count
+
+    asyncio.run(_run())
+
+
+@app.command("extract-llm")
+def extract_llm_cmd(
+    dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
+    dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
+    tasks: Annotated[str, typer.Option(help="Comma list of sections to extract: entities, events")] = "entities,events",
+    docs: Annotated[bool, typer.Option(help="Also scan document files (PDF/DOCX), not just email")] = False,
+    model: Annotated[str | None, typer.Option(help="Override the configured LLM model id")] = None,
+    limit: Annotated[
+        int | None, typer.Option(help="Cap files processed this run (for A/B slices); rest stay pending")
+    ] = None,
+    concurrency: Annotated[
+        int, typer.Option(help="LLM calls in flight at once, so the server can batch them")
+    ] = DEFAULT_CONCURRENCY,
+    max_files: Annotated[
+        int, typer.Option(help="Refuse a run larger than this many files unless --yes")
+    ] = DEFAULT_MAX_LLM_PASS_FILES,
+    yes: Annotated[bool, typer.Option("--yes", help="Run the whole backlog even past --max-files")] = False,
+):
+    """Run entities/relations + events in ONE `pyprompt` call per file.
+
+    One structured call over each email (and, with `--docs`, document) file
+    produces `mention` / `mention_relationship` and `event` rows together, and
+    completes both the ENTITY_EXTRACTION and EVENT_EXTRACTION enrichments. Halves
+    the model calls versus `extract-entities --extractor llm` + `extract-events
+    --llm`, and keeps the entity list and event participants consistent.
+
+    `--tasks` selects the sections (`entities`, `events`, or both). For entity
+    extraction over *all* file types, or the `nerd` / `gliner` engines, use
+    `extract-entities`. Needs `pyprompt` and an `LLM__*` config.
+
+    **This is slow.** LLM inference dominates; a bulk pass is an overnight job
+    even with a fast served model and `--concurrency`. A run over more than
+    `--max-files` (default 15,000) is refused unless `--yes` -- do a bounded
+    `--limit` slice first, confirm the results, then run the rest. Prefer a
+    standard ~7-30B instruct model (or a cloud model); tiny models like
+    `gemma-3n-E2B` run ~20-40x slower under vLLM. Follow with `resolve-entities`
+    then `resolve-event-links`.
+    """
+    task_set = {t.strip().lower() for t in tasks.split(",") if t.strip()}
+
+    async def _run():
+        async with get_session_context() as session:
+            resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
+            groups = TEXT_EVENT_GROUPS_ALL if docs else TEXT_EVENT_GROUPS_EMAIL
+            try:
+                async with record_run(
+                    enrichment_type=EnrichmentType.ENTITY_EXTRACTION,
+                    dataset_id=resolved_id,
+                    device="na",
+                    unit=WorkUnit.LLM_FILE,
+                    params={"tasks": sorted(task_set), "concurrency": concurrency, "docs": docs},
+                ) as run:
+                    run.units = await extract_llm_workflow(
+                        session=session,
+                        dataset_id=resolved_id,
+                        tasks=task_set,
+                        filetype_groups=groups,
+                        model=model,
+                        limit=limit,
+                        concurrency=concurrency,
+                        max_files=max_files,
+                        yes=yes,
+                    )
+            except LlmPassTooLargeError as exc:
+                raise typer.BadParameter(str(exc)) from exc
+            logger.success(f"Combined LLM pass over {run.units} files")
+
+    asyncio.run(_run())
+
+
+@app.command("extract-entities")
+def extract_entities_cmd(
+    dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
+    dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
+    extractor: Annotated[str, typer.Option(help="Engine: llm | gliner | nerd")] = "llm",
+    model: Annotated[str | None, typer.Option(help="Override the configured LLM model id (llm extractor)")] = None,
+    gliner_model_dir: Annotated[str | None, typer.Option(help="GLiNER checkpoint dir (gliner extractor)")] = None,
+    glirel_model_dir: Annotated[
+        str | None, typer.Option(help="GLiREL checkpoint dir for relations (gliner extractor; optional)")
+    ] = None,
+    nerd_model_dir: Annotated[
+        str | None, typer.Option(help="Token-classification checkpoint dir (nerd extractor)")
+    ] = None,
+    threshold: Annotated[float, typer.Option(help="Span score floor for gliner / nerd")] = 0.5,
+    no_relations: Annotated[bool, typer.Option(help="Do not persist mention relations")] = False,
+    device: Annotated[ModelDevice, typer.Option(help="Inference device (gliner / nerd)")] = ModelDevice.CPU,
+):
+    """Run NER + relation extraction over a dataset's extracted text.
+
+    Writes unresolved `person` / `organization` / `location` `mention` rows that
+    `resolve-entities` promotes to entities, plus `mention_relationship` rows for
+    every relation the extractor reports between two of those spans (promoted to
+    the relationship review queue once both endpoints resolve). Selector-kind
+    labels are left to `extract-selectors`. Re-run after `reset-entities`.
+
+    Engines (all in-process): `llm` needs `pyprompt` + an `LLM__*` config;
+    `gliner` needs `--gliner-model-dir` (+ `--glirel-model-dir` for relations);
+    `nerd` needs `--nerd-model-dir` (entities only).
+    """
+
+    async def _run():
+        async with get_session_context() as session:
+            resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
+            async with record_run(
+                enrichment_type=EnrichmentType.ENTITY_EXTRACTION,
+                dataset_id=resolved_id,
+                device="na",
+                unit=WorkUnit.LLM_FILE if extractor == "llm" else WorkUnit.TEXT_FILE,
+                params={"extractor": extractor},
+            ) as run:
+                run.units = await extract_entities_workflow(
+                    session=session,
+                    dataset_id=resolved_id,
+                    extractor=extractor,
+                    model=model,
+                    gliner_model_dir=gliner_model_dir,
+                    glirel_model_dir=glirel_model_dir,
+                    nerd_model_dir=nerd_model_dir,
+                    threshold=threshold,
+                    persist_relations=not no_relations,
+                    device=device,
+                )
+            logger.success(f"Extracted entity mentions for {run.units} files")
 
     asyncio.run(_run())
 
@@ -429,36 +822,214 @@ def resolve_entities_cmd(
     dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
     dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
     min_mentions: Annotated[
-        int,
-        typer.Option(
-            help="Create an entity for an unmatched name only if it has at least this many mentions (email-header names are always promoted)"
-        ),
+        int, typer.Option(help="Provisional entity floor: create one only for an unmatched typed group this large")
     ] = 2,
-    no_create: Annotated[bool, typer.Option(help="Attach to existing entities only; never create new ones")] = False,
+    no_create: Annotated[bool, typer.Option(help="Never create provisional entities; attach to existing only")] = False,
     skip_selector_links: Annotated[
         bool, typer.Option(help="Skip upserting person->selector has_selector edges from headers")
     ] = False,
+    auto_threshold: Annotated[float, typer.Option(help="Score at/above which a match auto-resolves")] = 0.92,
+    review_low: Annotated[float, typer.Option(help="Score floor for surfacing a candidate in the review queue")] = 0.55,
+    min_margin: Annotated[float, typer.Option(help="Required score gap over the runner-up to auto-resolve")] = 0.15,
+    allow_auto_name: Annotated[
+        bool, typer.Option(help="Also allow an exact-name match (no selector) to auto-resolve")
+    ] = False,
+    cross_dataset: Annotated[
+        bool, typer.Option(help="Also match against other datasets' entities (review-only; never auto)")
+    ] = False,
+    concurrency: Annotated[
+        int, typer.Option(help="Score this many name groups in parallel (own session each); ~Nx faster on a big mailbox")
+    ] = 1,
 ):
-    """Sweep unresolved name mentions -> entities (exact normalized-name match, then promote).
+    """Sweep unresolved name mentions -> entities: block -> score -> decide -> emit.
 
-    A dataset-wide pass, not per-file: for each unresolved `name` mention it
-    attaches to an existing entity with the same normalized name, else promotes
-    trustworthy groups (email-header names, or >= --min-mentions) to a new
-    provisional entity, else leaves them for the Review queue. Then links people
-    to the address they sat next to in a header via `has_selector`.
+    A dataset-wide pass. For each unresolved `name` group it blocks candidates
+    (`entity_name_key` + selector + trigram), scores them (Fellegi-Sunter), then:
+    auto-attaches the whole group on the one safe rule (exact selector on a
+    structured header), files a pending group-level `entity_match` per candidate
+    for the review queue, or -- if nothing clears `--review-low` -- promotes a
+    trustworthy typed group to a provisional entity, else leaves it for Review.
+    Idempotent; `reset-entities` clears everything it writes.
     """
 
     async def _run():
         async with get_session_context() as session:
             resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
+            config = EntityResolutionConfig(
+                auto_threshold=auto_threshold,
+                review_low=review_low,
+                min_margin=min_margin,
+                auto_methods=["selector", "name_exact"] if allow_auto_name else ["selector"],
+                create_provisional=not no_create,
+                min_mentions=min_mentions,
+                cross_dataset=cross_dataset,
+            )
             counts = await resolve_entities_workflow(
                 session=session,
                 dataset_id=resolved_id,
-                min_mentions=min_mentions,
-                create=not no_create,
+                config=config,
                 link_selectors=not skip_selector_links,
+                concurrency=concurrency,
             )
             typer.echo(json.dumps(counts, indent=2))
+
+    asyncio.run(_run())
+
+
+@app.command("dedupe-entities")
+def dedupe_entities_cmd(
+    dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
+    dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
+    review_low: Annotated[float, typer.Option(help="Score floor for proposing a merge")] = 0.55,
+):
+    """Score every provisional entity against canonical entities and file merge proposals.
+
+    `resolve-entities` mints a provisional entity when a trustworthy name group
+    has no canonical match; nothing then re-checks that stub. This pass blocks
+    canonical candidates for each stub, scores them with the same Fellegi-Sunter
+    scorer, and writes a pending `entity_match` (with `provisional_entity_id`
+    set) per candidate over `--review-low`. Never auto -- a merge is reviewed in
+    the app; confirming runs `merge_entities`. Skips a pair an analyst already
+    rejected. Idempotent.
+    """
+
+    async def _run():
+        async with get_session_context() as session:
+            resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
+            config = EntityResolutionConfig(review_low=review_low)
+            counts = await dedupe_entities_workflow(session=session, dataset_id=resolved_id, config=config)
+            typer.echo(json.dumps(counts, indent=2))
+
+    asyncio.run(_run())
+
+
+@app.command("extract-contact-entities")
+def extract_contact_entities_cmd(
+    dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
+    dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
+):
+    """Turn a dataset's `Contact` (vCard / address-book) rows into resolver-ready mentions.
+
+    Each contact emits a person `name` mention plus its email/phone `selector`
+    mentions under one shared `field_path`, so `resolve-entities` links the name
+    to the identifier exactly as it does an email header. A `Contact.organization`
+    also emits an org name mention + a `member_of` relation. Re-runnable.
+    """
+
+    async def _run():
+        async with get_session_context() as session:
+            resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
+            async with record_run(
+                enrichment_type=EnrichmentType.CONTACT_EXTRACTION,
+                dataset_id=resolved_id,
+                device="na",
+                unit=WorkUnit.CONTACT_FILE,
+            ) as run:
+                counts = await extract_contact_entities_workflow(session=session, dataset_id=resolved_id)
+                run.units = counts.get("contacts", 0)
+            typer.echo(json.dumps(counts, indent=2))
+
+    asyncio.run(_run())
+
+
+@app.command("extract-message-selectors")
+def extract_message_selectors_cmd(
+    dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
+    dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
+):
+    """Turn a dataset's `Message` sender/recipient phones into `phone` selector mentions.
+
+    Feeds the graph, not name resolution directly: once a contact or header
+    resolves a person to one of those numbers (`has_selector`), the conversation
+    is connected to them. Re-runnable.
+    """
+
+    async def _run():
+        async with get_session_context() as session:
+            resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
+            counts = await extract_message_selectors_workflow(session=session, dataset_id=resolved_id)
+            typer.echo(json.dumps(counts, indent=2))
+
+    asyncio.run(_run())
+
+
+@app.command("resolve-event-links")
+def resolve_event_links_cmd(
+    dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
+    dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
+):
+    """Sweep unresolved event participant/place links -> `entity` / `location`.
+
+    The event-layer counterpart to `resolve-entities`: matches an
+    `event_participant` by its calendar email (`mailto:` -> the owning selector's
+    person/org) then by normalized name against an existing person/organization,
+    and an `event_place` by normalized name against an existing location. Rooms /
+    resources are skipped and nothing is created -- unmatched links stay as
+    `raw_name` / `raw_text`. Re-runnable; run after `extract-events` +
+    `resolve-entities`.
+    """
+
+    async def _run():
+        async with get_session_context() as session:
+            resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
+            counts = await resolve_event_links_workflow(session=session, dataset_id=resolved_id)
+            typer.echo(json.dumps(counts, indent=2))
+
+    asyncio.run(_run())
+
+
+@app.command("backfill-entity-name-keys")
+def backfill_entity_name_keys_cmd(
+    dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
+    dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
+    batch_size: Annotated[int, typer.Option(help="Entities per keyset-paginated batch")] = 1000,
+    purge: Annotated[
+        bool, typer.Option(help="Delete every key row first (only with no dataset scope; for a KEYS_VERSION rebuild)")
+    ] = False,
+):
+    """Populate / rebuild the `entity_name_key` blocking index for entity resolution.
+
+    Recomputes `cipher.names.entity_keys` (transliterated / phonetic / sorted-token
+    / surname / given+surname forms) for every person / organization / location
+    entity and replaces its rows. Idempotent -- delete-then-insert per entity, so
+    re-running heals drift. Only needed for initial adoption and after a
+    `cipher-names` upgrade; inline refresh keeps the index current thereafter.
+    Runs across all datasets when none is given.
+    """
+
+    async def _run():
+        async with get_session_context() as session:
+            resolved_id = None
+            if dataset_name or dataset_id:
+                resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
+            counts = await backfill_entity_name_keys_workflow(
+                session=session, dataset_id=resolved_id, batch_size=batch_size, purge=purge
+            )
+            typer.echo(json.dumps(counts, indent=2))
+
+    asyncio.run(_run())
+
+
+@app.command("refresh-selectors")
+def refresh_selectors_cmd(
+    dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
+    dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
+):
+    """Recompute normalization / validation / attributes on existing `selector` rows.
+
+    Retroactive backfill against the current `pyselectors` packs and validators:
+    refreshes `attributes` and `region_hint` on every selector row (all datasets
+    if none is given). `normalized_value` is left untouched; rows that no longer
+    validate are logged, not deleted.
+    """
+
+    async def _run():
+        async with get_session_context() as session:
+            resolved_id = None
+            if dataset_name or dataset_id:
+                resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
+            summary = await refresh_selectors_workflow(session=session, dataset_id=resolved_id)
+            typer.echo(json.dumps(summary, indent=2))
 
     asyncio.run(_run())
 
@@ -518,25 +1089,37 @@ def reset_text_cmd(
     so `extract-text` and `embed-text` reprocess every file from scratch
     instead of skipping ones already marked complete under the old config.
     """
-    from cipher.datastores.elasticsearch.repositories.text_chunk import ElasticsearchTextChunkRepository
     from cipher.schemas.ingestion.enrichment import EnrichmentType
+    from cipher.utils.retrieval import RetrievalBackend, load_retrieval_config
 
     async def _run():
-        async with get_elasticsearch_client_context() as client:
-            es_repo = ElasticsearchTextChunkRepository(client=client)
-            async with get_session_context() as session:
-                resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
-                deleted_chunks = await es_repo.delete_by_dataset_id(resolved_id)
-
-                enrichment_repo = PostgresEnrichmentRepository(session=session)
-                reset_extraction = await enrichment_repo.delete_by_type(resolved_id, EnrichmentType.TEXT_EXTRACTION)
-                reset_embedding = await enrichment_repo.delete_by_type(resolved_id, EnrichmentType.TEXT_EMBEDDING)
-
-                logger.success(
-                    f"Reset dataset {resolved_id}: deleted {deleted_chunks} indexed chunks, "
-                    f"{reset_extraction} extraction + {reset_embedding} embedding enrichments cleared -- "
-                    "re-run extract-text then embed-text to reprocess"
+        cfg = load_retrieval_config()
+        async with get_elasticsearch_client_context() as client, get_session_context() as session:
+            if cfg.backend == RetrievalBackend.POSTGRES:
+                from cipher.datastores.postgres.repositories.chunk_retrieval import (
+                    PostgresChunkRetrievalRepository,
                 )
+
+                chunk_store = PostgresChunkRetrievalRepository(session=session, text_ranker=cfg.text_ranker.value)
+            else:
+                from cipher.datastores.elasticsearch.repositories.chunk_retrieval import (
+                    ElasticsearchChunkRetrievalRepository,
+                )
+
+                chunk_store = ElasticsearchChunkRetrievalRepository(client=client, session=session)
+
+            resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
+            deleted_chunks = await chunk_store.delete_by_dataset_id(resolved_id)
+
+            enrichment_repo = PostgresEnrichmentRepository(session=session)
+            reset_extraction = await enrichment_repo.delete_by_type(resolved_id, EnrichmentType.TEXT_EXTRACTION)
+            reset_embedding = await enrichment_repo.delete_by_type(resolved_id, EnrichmentType.TEXT_EMBEDDING)
+
+            logger.success(
+                f"Reset dataset {resolved_id}: deleted {deleted_chunks} indexed chunks, "
+                f"{reset_extraction} extraction + {reset_embedding} embedding enrichments cleared -- "
+                "re-run extract-text then embed-text to reprocess"
+            )
 
     asyncio.run(_run())
 
@@ -553,6 +1136,12 @@ def stats(
     async def _run():
         async with get_session_context() as session:
             resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
+
+            staging = await PostgresDatasetRepository(session=session).get_staging_summary(resolved_id)
+            typer.echo(
+                f"Staged: {staging.is_staged}"
+                + (f" (at {staging.date_staged:%Y-%m-%d %H:%M})" if staging.date_staged else "")
+            )
 
             inventory = await PostgresFileRepository(session=session).get_dataset_inventory(resolved_id)
             typer.echo("Files by type:")
@@ -587,9 +1176,102 @@ def stats(
             typer.echo("Relationship extraction:")
             typer.echo(f"  {dict(relationship_stats.get(EnrichmentType.RELATIONSHIP_EXTRACTION, {}))}")
 
+            entity_stats = await get_entity_extraction_stats(session=session, dataset_id=resolved_id)
+            typer.echo("Entity extraction (llm):")
+            typer.echo(f"  {dict(entity_stats.get(EnrichmentType.ENTITY_EXTRACTION, {}))}")
+
             event_stats = await get_event_extraction_stats(session=session, dataset_id=resolved_id)
             typer.echo("Event extraction:")
             typer.echo(f"  {dict(event_stats.get(EnrichmentType.EVENT_EXTRACTION, {}))}")
+
+    asyncio.run(_run())
+
+
+@app.command("estimate")
+def estimate_cmd(
+    dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
+    dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
+    device: Annotated[str, typer.Option(help="Device class the run would use: cpu | cuda | mps | na")] = "cpu",
+):
+    """Rough wall-time estimate per enrichment for a staged dataset.
+
+    Uses the file inventory plus measured throughput from prior `enrichment_run`
+    rows on the same device (a seeded default until enough real runs exist).
+    Same numbers the request wizard shows.
+    """
+    from cipher.datastores.postgres.repositories import (
+        PostgresEnrichmentRepository,
+        PostgresEnrichmentRunRepository,
+        PostgresFileRepository,
+    )
+    from cipher.schemas.ingestion.estimation import (
+        ESTIMATE_ORDER,
+        RunDevice,
+        estimate_enrichment,
+        estimate_workload,
+        format_duration,
+        resolve_rate,
+        total_estimate_seconds,
+    )
+
+    async def _run():
+        async with get_session_context() as session:
+            resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
+            run_device = RunDevice(device)
+
+            staging = await PostgresDatasetRepository(session=session).get_staging_summary(resolved_id)
+            if not staging.is_staged:
+                typer.echo("Dataset is not staged yet -- run load-files first.")
+                return
+
+            inventory = await PostgresFileRepository(session=session).get_dataset_inventory(resolved_id)
+            rates = await PostgresEnrichmentRunRepository(session=session).get_rates()
+            enr_repo = PostgresEnrichmentRepository(session=session)
+
+            estimates = []
+            for enrichment_type in ESTIMATE_ORDER:
+                workload = estimate_workload(enrichment_type=enrichment_type, inventory=inventory)
+                rate = resolve_rate(enrichment_type=enrichment_type, device=run_device, measured=rates)
+                stats = await enr_repo.get_enrichment_stats(dataset_id=resolved_id, enrichment_type=enrichment_type)
+                counts = stats.get(enrichment_type, {})
+                done = sum(counts.values())
+                progress = (counts.get("completed", 0) / done) if done else 0.0
+                estimates.append(estimate_enrichment(workload=workload, rate=rate, progress=progress))
+
+            width = max(len(e.enrichment_type.value) for e in estimates)
+            for e in estimates:
+                eta = format_duration(e.estimate_seconds) if e.estimate_seconds is not None else "n/a"
+                units = f"{e.eligible.unit_count} {e.eligible.unit.value}" if e.eligible.estimable else "-"
+                typer.echo(f"  {e.enrichment_type.value:<{width}}  {eta:>9}  [{e.confidence.value:<8}] {units:<18} {e.basis}")
+            typer.echo(f"\n  {'TOTAL (sequential)':<{width}}  {format_duration(total_estimate_seconds(estimates)):>9}")
+
+    asyncio.run(_run())
+
+
+@app.command("rates")
+def rates_cmd(limit: Annotated[int, typer.Option(help="Recent runs to list")] = 20):
+    """Show measured enrichment throughput (median seconds/unit) and recent runs."""
+    from cipher.datastores.postgres.repositories import PostgresEnrichmentRunRepository
+
+    async def _run():
+        async with get_session_context() as session:
+            repo = PostgresEnrichmentRunRepository(session=session)
+            rates = await repo.get_rates()
+            typer.echo("Measured rates (enrichment_type / device -> p50 s/unit, n):")
+            if not rates:
+                typer.echo("  (none yet)")
+            for (etype, device), stat in sorted(rates.items(), key=lambda kv: kv[0][0].value):
+                typer.echo(
+                    f"  {etype.value:<24} {device.value:<5} {stat.seconds_per_unit:>8.3f}  "
+                    f"(p25 {stat.low_per_unit:.3f} / p75 {stat.high_per_unit:.3f}, n={stat.sample_size})"
+                )
+            typer.echo(f"\nRecent runs (newest first, up to {limit}):")
+            for row in await repo.list_recent(limit=limit):
+                dur = f"{row.duration_seconds:.1f}s" if row.duration_seconds is not None else "-"
+                typer.echo(
+                    f"  {row.date_started:%Y-%m-%d %H:%M}  {row.enrichment_type:<22} {row.device:<5} "
+                    f"{row.status:<10} {row.unit_count:>6} {row.unit:<12} {dur}"
+                )
 
     asyncio.run(_run())
 

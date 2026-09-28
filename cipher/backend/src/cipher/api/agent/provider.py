@@ -2,11 +2,12 @@
 
 from pydantic_ai.models import Model
 
-from cipher.schemas.interaction.llm import LLMProvider, LLMSettings, ModelOption
+from cipher.schemas.interaction.llm import LOCAL_LLM_BASE_URL, LLMProvider, LLMSettings, ModelOption
 
-# Temporary: the vLLM OpenAI-compatible server in ~/llm (`make start` there).
-# vLLM doesn't check the key, so any non-empty string works.
-LOCAL_LLM_BASE_URL = "http://localhost:8002/v1"
+# `LOCAL_LLM_BASE_URL` (the vLLM OpenAI-compatible server in ~/llm, `make start`
+# there) is shared from cipher-schemas so chat and the analytics prompt-runner
+# resolve `LLM__PROVIDER=local` to the same endpoint. vLLM ignores the key.
+__all__ = ["LOCAL_LLM_BASE_URL", "AVAILABLE_MODELS", "resolve_llm_settings", "build_model", "can_build"]
 
 # The model picker shown in the chat UI. `has_key` here is a placeholder --
 # the /chat/config route recomputes it per model against the server's settings.

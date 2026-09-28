@@ -44,9 +44,7 @@ class UserRepository(ABC):
         pass
 
     @abstractmethod
-    async def revoke_dataset_access(
-        self, user_id: str, dataset_id: str
-    ) -> bool:
+    async def revoke_dataset_access(self, user_id: str, dataset_id: str) -> bool:
         """Revoke a user's access to a dataset."""
         pass
 
@@ -61,8 +59,6 @@ class UserRepository(ABC):
         pass
 
     @abstractmethod
-    async def has_dataset_access(
-        self, user_id: str, dataset_id: str
-    ) -> bool:
+    async def has_dataset_access(self, user_id: str, dataset_id: str) -> bool:
         """Check if a user has access to a specific dataset."""
         pass

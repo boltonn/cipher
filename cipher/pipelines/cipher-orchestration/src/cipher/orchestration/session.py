@@ -10,6 +10,7 @@ settings = Settings()
 
 
 def get_async_engine_from_settings() -> AsyncEngine:
+    """Return an `AsyncEngine` built from the orchestration Postgres settings."""
     return get_async_engine(config=settings.postgres)
 
 

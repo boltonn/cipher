@@ -52,9 +52,7 @@ class PostgresFileRepository:
 
         if file_id:
             # New file was inserted
-            result = await self.session.execute(
-                select(FileTable).where(FileTable.id == file_id)
-            )
+            result = await self.session.execute(select(FileTable).where(FileTable.id == file_id))
             file_orm = result.scalar_one()
             return File.model_validate(file_orm)
 
@@ -93,9 +91,7 @@ class PostgresFileRepository:
 
     async def get_file_by_id(self, file_id: str) -> File | None:
         """Retrieve a file by its ID."""
-        result = await self.session.execute(
-            select(FileTable).where(FileTable.id == file_id)
-        )
+        result = await self.session.execute(select(FileTable).where(FileTable.id == file_id))
         file_orm = result.scalar_one_or_none()
         if file_orm is None:
             return None
@@ -103,15 +99,11 @@ class PostgresFileRepository:
 
     async def get_file_by_sha256(self, sha256: str) -> File | None:
         """Retrieve a file by its SHA256 hash."""
-        result = await self.session.execute(
-            select(FileTable).where(FileTable.sha256 == sha256).limit(1)
-        )
+        result = await self.session.execute(select(FileTable).where(FileTable.sha256 == sha256).limit(1))
         file_orm = result.scalar_one_or_none()
         return File.model_validate(file_orm) if file_orm else None
 
-    async def find_duplicates(
-        self, sha256: str, exclude_dataset_id: str | None = None
-    ) -> list[File]:
+    async def find_duplicates(self, sha256: str, exclude_dataset_id: str | None = None) -> list[File]:
         """Find files with the same SHA256 hash (duplicates).
 
         Optionally exclude files from a specific dataset.
@@ -126,9 +118,7 @@ class PostgresFileRepository:
 
     async def delete_file(self, file_id: str) -> bool:
         """Delete a file by its ID. Returns True if deleted, False if not found."""
-        result = await self.session.execute(
-            select(FileTable).where(FileTable.id == file_id)
-        )
+        result = await self.session.execute(select(FileTable).where(FileTable.id == file_id))
         file_orm = result.scalar_one_or_none()
 
         if file_orm:
@@ -167,11 +157,9 @@ class PostgresFileRepository:
             stmt = stmt.where(FileTable.path.startswith(prefix))
             stmt = stmt.where(is_direct_child)
 
-        # Search by filename
         if query:
             stmt = stmt.where(FileTable.filename.ilike(f"%{query}%"))
 
-        # Sorting
         sort_column = {
             FileInstanceSortField.FILENAME: FileTable.filename,
             FileInstanceSortField.DATE_CREATED: FileTable.date_created,
@@ -179,9 +167,7 @@ class PostgresFileRepository:
             FileInstanceSortField.SIZE: FileTable.size,
         }[sort_by]
 
-        stmt = stmt.order_by(
-            desc(sort_column) if sort_order == SortOrder.DESC else asc(sort_column)
-        )
+        stmt = stmt.order_by(desc(sort_column) if sort_order == SortOrder.DESC else asc(sort_column))
 
         stmt = stmt.limit(limit).offset(offset)
 
@@ -198,9 +184,7 @@ class PostgresFileRepository:
         filetype_group: str | None = None,
     ) -> int:
         """Count files in a dataset with optional path filtering and search."""
-        stmt = select(func.count(FileTable.id)).where(
-            FileTable.dataset_id == dataset_id
-        )
+        stmt = select(func.count(FileTable.id)).where(FileTable.dataset_id == dataset_id)
 
         # Directory-scoped counting
         if path is not None:
@@ -211,7 +195,6 @@ class PostgresFileRepository:
             stmt = stmt.where(FileTable.path.startswith(prefix))
             stmt = stmt.where(is_direct_child)
 
-        # Search by filename
         if query:
             stmt = stmt.where(FileTable.filename.ilike(f"%{query}%"))
 
@@ -312,7 +295,6 @@ class PostgresFileRepository:
             stmt = stmt.where(FileTable.path.startswith(prefix))
             stmt = stmt.where(func.strpos(relative, "/") == 0)  # No subdirectories
 
-        # Search
         if query:
             stmt = stmt.where(FileTable.filename.ilike(f"%{query}%"))
 
@@ -321,7 +303,6 @@ class PostgresFileRepository:
         if filetype_group:
             stmt = stmt.where(FileTable.filetype_group == filetype_group)
 
-        # Sorting
         sort_column = {
             FileInstanceSortField.FILENAME: FileTable.filename,
             FileInstanceSortField.DATE_CREATED: FileTable.date_created,
@@ -329,9 +310,7 @@ class PostgresFileRepository:
             FileInstanceSortField.SIZE: FileTable.size,
         }[sort_by]
 
-        stmt = stmt.order_by(
-            sort_column.desc() if sort_order == SortOrder.DESC else sort_column.asc()
-        )
+        stmt = stmt.order_by(sort_column.desc() if sort_order == SortOrder.DESC else sort_column.asc())
 
         stmt = stmt.offset(offset).limit(limit)
 
@@ -519,16 +498,12 @@ class PostgresFileRepository:
 
         return inventory
 
-    async def get_stratified_samples(
-        self, dataset_id: str, limit_per_group: int = 5
-    ) -> list[FileTable]:
+    async def get_stratified_samples(self, dataset_id: str, limit_per_group: int = 5) -> list[FileTable]:
         """Grab representative files from every group to see naming/path patterns."""
         inner_stmt = (
             select(
                 FileTable,
-                func.row_number()
-                .over(partition_by=FileTable.filetype_group, order_by=func.random())
-                .label("row_num"),
+                func.row_number().over(partition_by=FileTable.filetype_group, order_by=func.random()).label("row_num"),
             ).where(FileTable.dataset_id == dataset_id)
         ).subquery()
 

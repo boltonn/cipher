@@ -28,6 +28,7 @@ from cipher.api.deps.elasticsearch import TextChunkDatastoreDep
 from cipher.api.deps.postgres import (
     DatasetDatastoreDep,
     EntityDatastoreDep,
+    EntityMatchDatastoreDep,
     ExtractedTextDatastoreDep,
     GraphDatastoreDep,
     MentionDatastoreDep,
@@ -86,6 +87,7 @@ async def chat(
     persons: PersonDatastoreDep,
     datasets: DatasetDatastoreDep,
     entities: EntityDatastoreDep,
+    entity_matches: EntityMatchDatastoreDep,
     mentions: MentionDatastoreDep,
     graph: GraphDatastoreDep,
     extracted_text: ExtractedTextDatastoreDep,
@@ -116,6 +118,7 @@ async def chat(
         persons=persons,
         datasets=datasets,
         entities=entities,
+        entity_matches=entity_matches,
         mentions=mentions,
         graph=graph,
         extracted_text=extracted_text,

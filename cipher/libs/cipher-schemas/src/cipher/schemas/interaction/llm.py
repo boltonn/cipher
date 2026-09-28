@@ -16,6 +16,12 @@ class LLMProvider(StrEnum):
     LOCAL = "local"
 
 
+# The repo's local vLLM OpenAI-compatible server (`~/llm`, `make start` there);
+# the default `LLM__BASE_URL` when `LLM__PROVIDER=local`. Shared so the chat
+# backend and the analytics prompt-runner resolve `local` identically.
+LOCAL_LLM_BASE_URL = "http://localhost:8002/v1"
+
+
 class LLMSettings(BaseModel):
     """Server-side chat-model configuration, populated from ``LLM__*`` env vars.
 
@@ -42,6 +48,22 @@ class LLMSettings(BaseModel):
         empty ``base_url`` as an override that clobbers its computed default.
         """
         return value or None
+
+    def openai_client_kwargs(self) -> dict[str, str]:
+        """``api_key`` / ``base_url`` kwargs for an ``openai`` SDK client.
+
+        ``local`` points at :data:`LOCAL_LLM_BASE_URL` and uses a throwaway key
+        (vLLM ignores it); any other provider passes through only what is set and
+        lets the SDK fall back to its own env var (``OPENAI_API_KEY``, ...).
+        """
+        if self.provider == LLMProvider.LOCAL:
+            return {"api_key": self.api_key or "local", "base_url": self.base_url or LOCAL_LLM_BASE_URL}
+        kwargs: dict[str, str] = {}
+        if self.api_key:
+            kwargs["api_key"] = self.api_key
+        if self.base_url:
+            kwargs["base_url"] = self.base_url
+        return kwargs
 
 
 class ModelOption(CamelModel):

@@ -10,14 +10,13 @@ import re
 
 from elastic_transport import ObjectApiResponse
 from loguru import logger
-from pydantic import Field
 from tqdm import tqdm
 
 from cipher.datastores.elasticsearch.mappings import AnalyzerName, build_text_chunk_mapping
 from cipher.datastores.elasticsearch.utils import PaginatedResponse, paginate
-from cipher.schemas._base.base import BaseModel
 from cipher.schemas.content.document import ScoredDocumentTextChunk
 from cipher.schemas.content.email import ScoredEmailTextChunk
+from cipher.schemas.content.results import FileSearchResult, ScoredTextChunk
 from cipher.schemas.content.search import (
     ChunkFilters,
     ChunkHybridSearchRequest,
@@ -39,8 +38,9 @@ DEFAULT_INDEX = "text_chunks"
 # needs the real vector, not an empty stand-in.
 _EXCLUDE_EMBEDDING_SOURCE = {"excludes": ["embedding"]}
 
-ScoredTextChunk = ScoredDocumentTextChunk | ScoredEmailTextChunk
-
+# FileSearchResult / ScoredTextChunk now live in cipher-schemas
+# (`content/results.py`) so every retrieval backend shares one result contract;
+# imported above and re-exported via __all__ for existing importers.
 _MODEL_BY_FILETYPE_GROUP: dict[str, type[ScoredTextChunk]] = {
     "document": ScoredDocumentTextChunk,
     "email": ScoredEmailTextChunk,
@@ -51,29 +51,11 @@ _MODEL_BY_FILETYPE_GROUP: dict[str, type[ScoredTextChunk]] = {
 # enough that any real "step through the matches" UI never notices the cap.
 _MAX_MATCHES_PER_FILE = 50
 
-
-class FileSearchResult(BaseModel):
-    """One file's search hit: every one of its matching chunks (reading
-    order), plus which one is the best match.
-
-    Grouping by file happens in the Elasticsearch query itself (`collapse`),
-    not by re-aggregating a flat chunk list after the fact -- a caller gets
-    exactly `limit` files per page (not a variable, chunk-dependent count
-    that then has to be re-grouped down to fewer files) and a real
-    distinct-file total for pagination, both of which a client-side re-group
-    can't provide.
-    """
-
-    file_id: str
-    top_score: float = Field(description="Score of `top_chunk_id` -- what this result ranks/sorts by")
-    top_chunk_id: str = Field(description="id of the best-matching chunk within `chunks`")
-    match_count: int = Field(description="Total matching chunks in this file, which may exceed len(chunks) if capped")
-    chunks: list[ScoredTextChunk] = Field(description="Matching chunks, in reading order, capped at a max per file")
+__all__ = ["ElasticsearchTextChunkRepository", "FileSearchResult", "ScoredTextChunk"]
 
 
 def _file_id_clause(file_id: str) -> dict:
-    """Match chunks belonging to `file_id`, whether stored under it directly or shared via
-    `attach_duplicate`.
+    """Match chunks belonging to `file_id`, whether stored under it directly or shared via `attach_duplicate`.
 
     `duplicate_file_ids` always includes a chunk's own representative `file_id` for docs
     written after that field existed, but older chunks (indexed before `duplicate_file_ids`
@@ -100,6 +82,15 @@ def _build_chunk_filters(filters: ChunkFilters) -> list[dict]:
         clauses.append({"term": {"filetype_group": filters.filetype_group}})
     if filters.filetype is not None:
         clauses.append({"term": {"filetype": filters.filetype}})
+    # Every listed entity id must be present (AND); the type/subtype lists are OR.
+    for entity_id in filters.entity_ids or []:
+        clauses.append({"term": {"entity_ids": entity_id}})
+    if filters.entity_types:
+        clauses.append({"terms": {"entity_types": filters.entity_types}})
+    if filters.selector_types:
+        clauses.append({"terms": {"selector_types": filters.selector_types}})
+    if filters.selector_subtypes:
+        clauses.append({"terms": {"selector_subtypes": filters.selector_subtypes}})
     return clauses
 
 
@@ -110,8 +101,7 @@ def _sort_clause(sort_by: ChunkSortField, sort_order: str) -> list[dict] | None:
 
 
 def _bm25_text_query(query: str) -> dict:
-    """BM25 match against a chunk's own text, or its file's title -- title only
-    qualifies the file's first chunk (`chunk_index` 0), not every chunk.
+    """BM25 match against a chunk's own text, or its file's title on the file's first chunk (`chunk_index` 0) only.
 
     `title` is denormalized identically onto every chunk of a file (for
     display), so matching it the same way as `text` would make a title match
@@ -131,11 +121,14 @@ def _bm25_text_query(query: str) -> dict:
     }
 
 
-def _knn_clause(embedding: list[float], k: int, num_candidates: int, min_similarity: float | None, filters: list[dict]) -> dict:
-    """`k` must cover through the end of the requested page (`offset + limit`),
-    not just `limit` -- kNN's ranked candidate list is exactly `k` long, and
-    `from` then slices into it, so a `k` sized to only one page's worth
-    leaves nothing for `from` to slice into past page 1.
+def _knn_clause(
+    embedding: list[float], k: int, num_candidates: int, min_similarity: float | None, filters: list[dict]
+) -> dict:
+    """Size `k` to cover through the end of the requested page (`offset + limit`), not just `limit`.
+
+    kNN's ranked candidate list is exactly `k` long, and `from` then slices
+    into it, so a `k` sized to only one page's worth leaves nothing for `from`
+    to slice into past page 1.
     """
     knn: dict = {"field": "embedding", "query_vector": embedding, "k": k, "num_candidates": num_candidates}
     if filters:
@@ -252,9 +245,7 @@ class ElasticsearchTextChunkRepository:
     async def get_by_id(self, chunk_id: str) -> ScoredTextChunk | None:
         """Get a single chunk by its ES document ID."""
         try:
-            resp: ObjectApiResponse = await self.client.get(
-                index=self.index, id=chunk_id, source_excludes="embedding"
-            )
+            resp: ObjectApiResponse = await self.client.get(index=self.index, id=chunk_id, source_excludes="embedding")
         except NotFoundError:
             return None
         return _from_hit({"_id": resp["_id"], "_source": resp["_source"]})
@@ -379,7 +370,9 @@ class ElasticsearchTextChunkRepository:
         resp = await self.client.count(index=self.index, body={"query": query})
         return resp["count"]
 
-    async def search_text(self, request: ChunkTextSearchRequest) -> PaginatedResponse[FileSearchResult]:
+    async def search_text(
+        self, request: ChunkTextSearchRequest, *, extra_filter: dict | None = None
+    ) -> PaginatedResponse[FileSearchResult]:
         """BM25 search over chunk text/title, grouped by file.
 
         An empty query has no terms for BM25 to match against (and ES would
@@ -393,8 +386,15 @@ class ElasticsearchTextChunkRepository:
         exactly `limit` files (never a chunk-dependent count that then
         collapses down to fewer), and `total` is a real distinct-file count
         (a cardinality agg over this same query) instead of a chunk count.
+
+        `extra_filter` is an additional query-DSL clause ANDed into the filter
+        context -- used by `ElasticsearchChunkRetrievalRepository` to restrict to
+        a chunk-id set resolved from Postgres `mention` rows (entity/graph
+        filters), without denormalizing entity data onto the chunk doc.
         """
         clauses = _build_chunk_filters(request.filters)
+        if extra_filter:
+            clauses.append(extra_filter)
         is_browsing = not request.query.strip()
         text_query = {"match_all": {}} if is_browsing else _bm25_text_query(request.query)
         sort_by = ChunkSortField.DATE if is_browsing else request.sort_by
@@ -424,7 +424,9 @@ class ElasticsearchTextChunkRepository:
             limit=request.limit,
         )
 
-    async def search_semantic(self, request: ChunkSemanticSearchRequest) -> PaginatedResponse[FileSearchResult]:
+    async def search_semantic(
+        self, request: ChunkSemanticSearchRequest, *, extra_filter: dict | None = None
+    ) -> PaginatedResponse[FileSearchResult]:
         """KNN search over chunk embeddings, grouped by file.
 
         Comparing raw kNN scores across filetype groups with very different
@@ -434,9 +436,12 @@ class ElasticsearchTextChunkRepository:
 
         `total` here is a floor, not exact: kNN only ever ranks within its
         requested candidate pool (`k`), so the cardinality agg only sees
-        distinct files inside that pool, not the whole index.
+        distinct files inside that pool, not the whole index. See `search_text`
+        for what `extra_filter` is for.
         """
         clauses = _build_chunk_filters(request.filters)
+        if extra_filter:
+            clauses.append(extra_filter)
         knn = _knn_clause(
             embedding=request.embedding,
             k=request.offset + request.limit,
@@ -462,7 +467,9 @@ class ElasticsearchTextChunkRepository:
             limit=request.limit,
         )
 
-    async def search_hybrid(self, request: ChunkHybridSearchRequest) -> PaginatedResponse[FileSearchResult]:
+    async def search_hybrid(
+        self, request: ChunkHybridSearchRequest, *, extra_filter: dict | None = None
+    ) -> PaginatedResponse[FileSearchResult]:
         """Hybrid RRF search combining BM25 text matching and kNN embedding similarity, grouped by file.
 
         Uses the `retriever` RRF form rather than the older top-level `rank`
@@ -474,9 +481,12 @@ class ElasticsearchTextChunkRepository:
         *rank position*, not raw score, so changing how many candidates the
         knn leg contributes between page requests shifts which documents
         cross the fusion window and reshuffles the combined ranking -- pages
-        stop being stable slices of one ranking and start overlapping.
+        stop being stable slices of one ranking and start overlapping. See
+        `search_text` for what `extra_filter` is for.
         """
         clauses = _build_chunk_filters(request.filters)
+        if extra_filter:
+            clauses.append(extra_filter)
         knn = _knn_clause(
             embedding=request.embedding,
             k=request.num_candidates,
@@ -490,7 +500,11 @@ class ElasticsearchTextChunkRepository:
             "retriever": {
                 "rrf": {
                     "retrievers": [
-                        {"standard": {"query": {"bool": {"must": [_bm25_text_query(request.query)], "filter": clauses}}}},
+                        {
+                            "standard": {
+                                "query": {"bool": {"must": [_bm25_text_query(request.query)], "filter": clauses}}
+                            }
+                        },
                         {"knn": knn},
                     ],
                     "rank_window_size": request.num_candidates,
@@ -524,7 +538,9 @@ class ElasticsearchTextChunkRepository:
             # to diagnose without flooding the log.
             reasons = {item["error"]["reason"] for item in failed_items if "error" in item}
             for reason in reasons:
-                logger.error(f"Chunk index failure ({sum(1 for i in failed_items if i.get('error', {}).get('reason') == reason)}x): {reason}")
+                logger.error(
+                    f"Chunk index failure ({sum(1 for i in failed_items if i.get('error', {}).get('reason') == reason)}x): {reason}"
+                )
         return len(resp["items"]) - len(failed_items), len(failed_items)
 
     async def bulk_index(
@@ -551,3 +567,33 @@ class ElasticsearchTextChunkRepository:
 
         await self.client.indices.refresh(index=self.index)
         return total_indexed, total_failed
+
+    async def attach_chunk_entities(self, updates: dict[str, dict], batch_size: int = 500) -> tuple[int, int]:
+        """Overwrite the denormalized entity fields on existing chunk docs. Returns (updated, failed).
+
+        `updates` maps chunk id -> a dict of `entity_ids` / `entity_types` /
+        `selector_types` / `selector_subtypes` / `mention_count`. Pass empty
+        lists / 0 to clear a chunk that no longer has mentions. Chunks not in
+        `updates` are left untouched.
+        """
+        ids = list(updates)
+        updated = failed = 0
+        for i in range(0, len(ids), batch_size):
+            operations: list[dict] = []
+            for chunk_id in ids[i : i + batch_size]:
+                operations.append({"update": {"_index": self.index, "_id": chunk_id}})
+                operations.append({"doc": updates[chunk_id]})
+            if not operations:
+                continue
+            resp = await self.client.bulk(operations=operations, refresh=False, timeout=-1)
+            for item in resp["items"]:
+                result = item["update"]
+                if result["status"] in (200, 201):
+                    updated += 1
+                elif result["status"] == 404:
+                    pass  # chunk gone (file re-extracted); nothing to sync
+                else:
+                    failed += 1
+                    logger.error(f"attach_chunk_entities failed for {result['_id']}: {result.get('error')}")
+        await self.client.indices.refresh(index=self.index)
+        return updated, failed

@@ -65,9 +65,7 @@ async def _get_or_create_image(image_repo: PostgresImageRepository, file_id: str
     image = await image_repo.get_image_by_id(sha256)
     if image is not None:
         return image
-    return await image_repo.upsert_image(
-        ImageCreate(id=sha256, width=img.width, height=img.height), file_id=file_id
-    )
+    return await image_repo.upsert_image(ImageCreate(id=sha256, width=img.width, height=img.height), file_id=file_id)
 
 
 def _sync_load_image(uri: str) -> PILImage.Image:

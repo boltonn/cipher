@@ -65,7 +65,6 @@ def download(huggingface_token:str, out_dir: Path):
     from huggingface_hub import hf_hub_download
 
     huggingface_hub.login(token=huggingface_token)
-    # download the dataset
     hf_hub_download(
         repo_id=f"Babelscape/{DATASET_NAME}",
         repo_type="dataset",
@@ -114,11 +113,9 @@ def format(
             match = re.match(fr"^{mode}\_(\w{{2}})\.jsonl$", filename)
             language = match.group(1)
             language = iso639.Language.match(language).part3  # Convert to ISO 639-3
-            # separate by language
             sub_out_dir = f"multinerd-{language}"
             out_path = out_dir / sub_out_dir / f"{mode.value}.parquet"
             out_path.parent.mkdir(parents=True, exist_ok=True)
-            # convert to parquet
             convert_to_parquet(file_path=file_path, out_path=out_path)
             logger.info(f"Converted {file_path} to {out_path}")
             

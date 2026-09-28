@@ -1,0 +1,113 @@
+{
+  "selector_type": "bank_card",
+  "priority": 74,
+  "base_confidence": 0.4,
+  "max_confidence": 0.98,
+  "normalizer": "bank_card",
+  "validator": "bank_card",
+  "patterns": [
+    {
+      "name": "grouped16",
+      "regex": "(?<![\\w.])(?:\\d[ \\-]?){12,18}\\d(?![\\w.])",
+      "requires_context": true
+    }
+  ],
+  "context": {
+    "window_before": 36,
+    "window_after": 12,
+    "terms": {
+      "en": [
+        {
+          "term": "card",
+          "weight": 0.28
+        },
+        {
+          "term": "visa",
+          "weight": 0.3
+        },
+        {
+          "term": "mastercard",
+          "weight": 0.3
+        },
+        {
+          "term": "pan",
+          "weight": 0.25
+        },
+        {
+          "term": "credit",
+          "weight": 0.2
+        },
+        {
+          "term": "debit",
+          "weight": 0.2
+        },
+        {
+          "term": "cvv",
+          "weight": 0.2
+        },
+        {
+          "term": "expiry",
+          "weight": 0.18
+        },
+        {
+          "term": "order no",
+          "weight": -0.4
+        },
+        {
+          "term": "imei",
+          "weight": -0.5
+        }
+      ],
+      "ru": [
+        {
+          "term": "карта",
+          "weight": 0.28
+        },
+        {
+          "term": "карты",
+          "weight": 0.25
+        },
+        {
+          "term": "виза",
+          "weight": 0.3
+        },
+        {
+          "term": "мир",
+          "weight": 0.2
+        },
+        {
+          "term": "оплата",
+          "weight": 0.18
+        }
+      ],
+      "fa": [
+        {
+          "term": "کارت",
+          "weight": 0.28
+        },
+        {
+          "term": "شماره کارت",
+          "weight": 0.3
+        },
+        {
+          "term": "شتاب",
+          "weight": 0.3
+        }
+      ],
+      "zh": [
+        {
+          "term": "银行卡",
+          "weight": 0.3
+        },
+        {
+          "term": "卡号",
+          "weight": 0.28
+        },
+        {
+          "term": "信用卡",
+          "weight": 0.25
+        }
+      ]
+    }
+  }
+}

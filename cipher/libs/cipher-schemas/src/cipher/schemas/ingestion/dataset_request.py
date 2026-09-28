@@ -1,8 +1,8 @@
 """Schemas for user-submitted dataset ingestion requests.
 
 A dataset request is filed by a triager who wants an unknown dataset pulled
-in and processed. It carries the target dataset id, an optional name, a
-free-text justification, and the set of analytics (with optional typed
+in and processed. It carries the target dataset id, a name, an optional
+free-text description, and the set of analytics (with optional typed
 parameters) to run against the dataset once it lands. The backend turns
 one of these into a GitHub issue.
 """
@@ -48,6 +48,21 @@ class FaceMatchingParams(_AnalyticParams):
     top_k: int = Field(10, ge=1, le=100, description="Candidate matches kept per face")
 
 
+class FaceClusteringParams(_AnalyticParams):
+    similarity: float = Field(
+        0.61, ge=0.0, le=1.0, description="Minimum cosine similarity for a face-to-face cluster edge"
+    )
+    min_images: int = Field(
+        3, ge=1, le=1000, description="Distinct source images a cluster must span before it becomes a person"
+    )
+    min_faces: int = Field(2, ge=2, le=1000, description="Faces a cluster must contain before it becomes a person")
+    k: int = Field(20, ge=2, le=200, description="Nearest neighbours considered per face when building the graph")
+    merge_into_existing: bool = Field(
+        True,
+        description="Merge a new cluster into a nearby existing clustering person rather than creating a duplicate",
+    )
+
+
 class MessageTranslationParams(_AnalyticParams):
     target_language: str = Field("en", min_length=2, max_length=8, description="ISO code to translate messages into")
     batch_size: int = Field(16, ge=1, le=256, description="Messages translated per batch")
@@ -59,6 +74,7 @@ ANALYTIC_PARAM_MODELS: dict[EnrichmentType, type[_AnalyticParams]] = {
     EnrichmentType.IMAGE_EMBEDDING: ImageEmbeddingParams,
     EnrichmentType.FACE_DETECTION: FaceDetectionParams,
     EnrichmentType.FACE_MATCHING: FaceMatchingParams,
+    EnrichmentType.FACE_CLUSTERING: FaceClusteringParams,
     EnrichmentType.MESSAGE_TRANSLATION: MessageTranslationParams,
 }
 """Analytics not listed here (e.g. contact_extraction) take no parameters."""
@@ -85,8 +101,8 @@ class DatasetRequest(BaseModel):
     """A triager's request to ingest and process a dataset."""
 
     dataset_id: str = Field(min_length=1, max_length=255, description="Identifier of the dataset being requested")
-    name: str | None = Field(None, max_length=255, description="Human-friendly dataset name")
-    reason: str = Field(min_length=10, max_length=5000, description="Why this dataset is needed")
+    name: str = Field(min_length=1, max_length=255, description="Human-friendly dataset name")
+    description: str | None = Field(None, max_length=5000, description="Optional description of the dataset")
     analytics: list[AnalyticRequest] = Field(
         default_factory=list, description="Analytics to run once the dataset is ingested"
     )
@@ -108,7 +124,13 @@ class DatasetRequestResult(BaseModel):
 
 
 class DatasetRequestConfig(BaseModel):
-    """Where dataset-request issues live, so the UI can link out to them."""
+    """Whether dataset requests can be filed, and where the issues live.
 
-    repo: str = Field(description="owner/repo that receives dataset-request issues")
-    issues_url: str = Field(description="URL listing every open dataset-request issue")
+    Backed by an optional GitHub integration -- `configured=False` is a normal
+    result (nothing to report yet), not an error, so the UI can say so plainly
+    instead of a request silently failing.
+    """
+
+    configured: bool = Field(description="Whether the GitHub integration is set up")
+    repo: str | None = Field(None, description="owner/repo that receives dataset-request issues")
+    issues_url: str | None = Field(None, description="URL listing every open dataset-request issue")

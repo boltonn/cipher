@@ -1,19 +1,21 @@
 "use client";
 
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { PageHeader } from "@/components/page-header";
-import { PageLoading } from "@/components/page-loading";
+import { PageError, PageLoading } from "@/components/page-loading";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CommentSection } from "@/features/comments/components/comment-section";
 import { EditEntityDialog } from "@/features/entities/components/edit-entity-dialog";
 import { EntityGraph } from "@/features/entities/components/entity-graph";
 import { EntityMentionsByFile } from "@/features/entities/components/entity-mentions-by-file";
+import { EntityMergePanel } from "@/features/entities/components/entity-merge-list";
 import { EntityRelationships } from "@/features/entities/components/entity-relationships";
 import { EntitySelectorsPanel } from "@/features/entities/components/entity-selectors-panel";
 import { EntityTypeBadge } from "@/features/entities/components/entity-type-badge";
 import { ENTITY_TYPE_META } from "@/features/entities/components/entity-type-meta";
 import { Section } from "@/features/entities/components/section";
-import { useEntityProfile } from "@/features/entities/hooks/use-entities";
+import { useDeleteEntity, useEntityProfile } from "@/features/entities/hooks/use-entities";
 import type { EntityDetail } from "@/features/entities/types";
 import { cn } from "@/lib/utils";
 import {
@@ -22,12 +24,14 @@ import {
   FileText,
   Fingerprint,
   type LucideIcon,
-  MessageSquare,
   Network,
   Pencil,
+  Search,
+  Trash2,
   Waypoints,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { use, useState } from "react";
 
 export default function EntityDetailPage({
@@ -36,23 +40,35 @@ export default function EntityDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
-  const { data: profile, isPending } = useEntityProfile(id);
+  const router = useRouter();
+  const { data: profile, isPending, isError, refetch } = useEntityProfile(id);
   const [isEditOpen, setEditOpen] = useState(false);
+  const deleteEntity = useDeleteEntity(() => router.push("/entities"));
 
-  if (isPending || !profile) {
-    return <PageLoading icon={Network} label="Loading entity…" />;
+  if (isError) {
+    return (
+      <PageError
+        className="mt-24"
+        title="Couldn’t load this entity"
+        body="Its profile didn’t come back. This is usually temporary — try again, or head back to the entity list."
+        onRetry={() => refetch()}
+      />
+    );
   }
 
-  const { entity, detail, mentionCounts, relatedTotal, selectorTotal } = profile;
+  if (isPending || !profile) {
+    return (
+      <PageLoading icon={Network} label="Loading entity…" onRetry={() => refetch()} />
+    );
+  }
+
+  const { entity, detail, fileCount, relatedTotal, selectorTotal } = profile;
   const meta = ENTITY_TYPE_META[entity.entityType];
-  const totalMentions = Object.values(mentionCounts ?? {}).reduce(
-    (a, b) => a + b,
-    0
-  );
   const isSelector = entity.entityType === "selector";
+  const isPerson = entity.entityType === "person";
 
   const stats: { label: string; value: number; href: string; Icon: LucideIcon }[] = [
-    { label: "Mentions", value: totalMentions, href: "#mentions", Icon: FileText },
+    { label: "Mentions", value: fileCount, href: "#mentions", Icon: FileText },
     {
       label: "Relationships",
       value: relatedTotal,
@@ -72,11 +88,15 @@ export default function EntityDetailPage({
   ];
 
   return (
-    <div className="relative mx-auto max-w-5xl px-6 pb-24">
-      <PageHeader eyebrow="Entity" value={`${totalMentions} mentions`} />
+    <div className="relative mx-auto max-w-400 px-6 pb-24 pt-5">
+      <PageHeader
+        eyebrow="Entity"
+        value={`named in ${fileCount.toLocaleString()} file${fileCount === 1 ? "" : "s"}`}
+      />
 
+      <div className="w-full max-w-5xl">
       {/* identity header */}
-      <div className="mt-4 flex flex-col gap-4 rounded-2xl border border-border bg-muted/40 p-6 backdrop-blur-2xl">
+      <div className="flex flex-col gap-4 rounded-2xl border border-border bg-muted/40 p-6 backdrop-blur-2xl">
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-4">
             <span
@@ -99,22 +119,66 @@ export default function EntityDetailPage({
                 <EntityTypeBadge
                   type={entity.entityType}
                   detail={
-                    (detail?.selectorKind as string) ??
-                    (detail?.selector_kind as string) ??
+                    (detail?.selectorType as string) ??
+                    (detail?.selector_type as string) ??
                     null
                   }
                 />
               </div>
             </div>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setEditOpen(true)}
-            className="h-9 gap-2 border-border/50 bg-muted/40 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary"
-          >
-            <Pencil size={14} /> Edit
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              asChild
+              variant="outline"
+              size="sm"
+              className="h-9 gap-2 border-border/50 bg-muted/40 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary"
+            >
+              <Link
+                href={`/search?entityId=${id}${entity.datasetId ? `&datasetId=${entity.datasetId}` : ""}`}
+              >
+                <Search size={14} /> Find in text
+              </Link>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setEditOpen(true)}
+              className="h-9 gap-2 border-border/50 bg-muted/40 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary"
+            >
+              <Pencil size={14} /> Edit
+            </Button>
+            {!isPerson && (
+              <ConfirmDialog
+                trigger={
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Delete entity"
+                    className="h-9 w-9 text-muted-foreground/70 hover:bg-destructive/10 hover:text-destructive"
+                  >
+                    <Trash2 size={14} />
+                  </Button>
+                }
+                title="Delete this entity?"
+                description={
+                  <>
+                    This permanently deletes{" "}
+                    <strong className="text-foreground">{entity.displayName}</strong> from
+                    the knowledge graph. Its {fileCount.toLocaleString()} mention
+                    {fileCount === 1 ? "" : "s"} will become unresolved rather than
+                    disappear, but its {relatedTotal.toLocaleString()} relationship
+                    {relatedTotal === 1 ? "" : "s"}, any pending resolution or merge
+                    decisions naming it, and its comments are deleted outright. This
+                    can&apos;t be undone.
+                  </>
+                }
+                confirmLabel="Delete Entity"
+                isPending={deleteEntity.isPending}
+                onConfirm={() => deleteEntity.mutate(id)}
+              />
+            )}
+          </div>
         </div>
 
         {entity.notes && (
@@ -174,6 +238,8 @@ export default function EntityDetailPage({
       </div>
 
       <div className="mt-8 flex flex-col gap-10">
+        <EntityMergePanel entityId={id} />
+
         <Section
           id="mentions"
           title="Mentions"
@@ -181,7 +247,7 @@ export default function EntityDetailPage({
         >
           <EntityMentionsByFile
             entityId={id}
-            emptyLabel="No mentions recorded for this entity yet."
+            emptyLabel="Not named in any document text yet."
           />
         </Section>
 
@@ -220,14 +286,14 @@ export default function EntityDetailPage({
           </Section>
         )}
 
-        <Section
-          title="Comments"
-          icon={<MessageSquare size={14} className="text-primary" />}
-        >
+        {/* CommentSection renders its own "Comments" header -- no Section
+            wrapper, or the heading shows twice. */}
+        <section id="comments" className="scroll-mt-20">
           <div className="rounded-2xl border border-border bg-muted/40 p-5 backdrop-blur-2xl">
             <CommentSection commentableType="entity" commentableId={id} />
           </div>
-        </Section>
+        </section>
+      </div>
       </div>
 
       <EditEntityDialog
@@ -339,7 +405,7 @@ function DetailPanel({
       <div className="rounded-lg border border-border/60 bg-background/40 p-3">
         <DetailRow
           label="Kind"
-          value={(g("selectorKind", "selector_kind") as string)?.replace(
+          value={(g("selectorType", "selector_type") as string)?.replace(
             /_/g,
             " "
           )}

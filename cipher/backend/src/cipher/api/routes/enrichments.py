@@ -4,6 +4,7 @@ from loguru import logger
 from cipher.api.deps.postgres import EnrichmentDatastoreDep, get_session
 from cipher.schemas._base.base import BaseModel
 from cipher.schemas.ingestion.enrichment import (
+    ENRICHMENT_DEPENDENCIES,
     DatasetEnrichmentFailures,
     DatasetEnrichmentProgress,
     EnrichmentFailureReason,
@@ -22,6 +23,7 @@ PIPELINE_ORDER: tuple[EnrichmentType, ...] = (
     EnrichmentType.EXIF_LOCATION,
     EnrichmentType.FACE_DETECTION,
     EnrichmentType.FACE_MATCHING,
+    EnrichmentType.FACE_CLUSTERING,
     EnrichmentType.SELECTOR_EXTRACTION,
     EnrichmentType.ENTITY_EXTRACTION,
     EnrichmentType.RELATIONSHIP_EXTRACTION,
@@ -39,6 +41,25 @@ class EnrichmentRunRequest(BaseModel):
 
     dataset_id: str
     enrichment_type: EnrichmentType
+
+
+class EnrichmentConfig(BaseModel):
+    """Static pipeline metadata for clients: display order, hard prerequisites,
+    and which analytics the API can trigger directly."""
+
+    pipeline_order: list[EnrichmentType]
+    dependencies: dict[EnrichmentType, list[EnrichmentType]]
+    runnable: list[EnrichmentType]
+
+
+@router.get("/config", response_model=EnrichmentConfig, response_model_by_alias=True)
+async def get_enrichment_config() -> EnrichmentConfig:
+    """The enrichment dependency graph + pipeline order, so clients don't hardcode it."""
+    return EnrichmentConfig(
+        pipeline_order=list(PIPELINE_ORDER),
+        dependencies={etype: list(deps) for etype, deps in ENRICHMENT_DEPENDENCIES.items()},
+        runnable=list(_RUNNABLE),
+    )
 
 
 async def _run_enrichment(enrichment_type: EnrichmentType, dataset_id: str) -> None:

@@ -49,9 +49,7 @@ class PdfParser:
             return "".join(PDFDocEncoding[o] for o in ords)
 
     @staticmethod
-    def get_metadata_from_buffer(
-        buffer: BufferedReader | BytesIO, password: str = None
-    ):
+    def get_metadata_from_buffer(buffer: BufferedReader | BytesIO, password: str = None):
         """Get metadata from a PDF file buffer."""
         parser = PDFParser(buffer)
         document = PDFDocument(parser, password=password)
@@ -111,10 +109,6 @@ class PdfParser:
             )
             if output and output.text:
                 _children.append(output)
-        # elif isinstance(child, LTImage):
-        #     output = PdfParser.parse_img(child=child, img_handler=img_handler)
-        #     if output:
-        #         _children.append(output)
         elif isinstance(child, LTContainer):
             for c in child:
                 PdfParser.parse_child(
@@ -131,11 +125,6 @@ class PdfParser:
             pass
 
         return _children
-
-    # @staticmethod
-    # def parse_img(child: LTImage, img_handler: PDFImageHandler) -> Image:
-    #     """Parse an image from a PDF page."""
-    #     return img_handler.handle_image(child)
 
     @staticmethod
     def parse_text(
@@ -206,14 +195,10 @@ class PdfParser:
             file = BytesIO(file)
 
         out = PdfParser.get_metadata(file, password=password)
-        img_handler = PDFImageHandler(
-            extract_children=extract_children, out_dir=out_dir
-        )
+        img_handler = PDFImageHandler(extract_children=extract_children, out_dir=out_dir)
 
         max_pages = 0 if max_pages is None else max_pages
-        pages = extract_pages(
-            file, maxpages=max_pages, page_numbers=page_numbers, password=password
-        )
+        pages = extract_pages(file, maxpages=max_pages, page_numbers=page_numbers, password=password)
         pages = [
             PdfParser.parse_page(
                 page=page,
@@ -224,17 +209,8 @@ class PdfParser:
             )
             for page in pages
         ]
-        pages = [
-            PdfParser.standardize_page(page=page, delimiter=delimiter) for page in pages
-        ]
-        out["text"] = {
-            "source": page_delimiter.join(
-                [page["text"] for page in pages if page["text"]]
-            ).strip()
-        }
-        # children: list[Image] = [img for page in pages for img in page["images"] if img]
-        # if children:
-        #     out["children"] = children
+        pages = [PdfParser.standardize_page(page=page, delimiter=delimiter) for page in pages]
+        out["text"] = {"source": page_delimiter.join([page["text"] for page in pages if page["text"]]).strip()}
         return out
 
     @staticmethod

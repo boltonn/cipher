@@ -29,9 +29,8 @@ export function EntityTooltipCard({ entityId }: EntityTooltipCardProps) {
     );
   }
 
-  const { entity, detail, selectors, mentionCounts } = data;
+  const { entity, detail, selectors, fileCount } = data;
   const meta = ENTITY_TYPE_META[entity.entityType];
-  const totalMentions = Object.values(mentionCounts ?? {}).reduce((a, b) => a + b, 0);
   const selectorValue =
     (detail?.normalizedValue as string) ?? (detail?.normalized_value as string) ?? null;
 
@@ -70,7 +69,7 @@ export function EntityTooltipCard({ entityId }: EntityTooltipCardProps) {
       </div>
 
       <div className="flex flex-wrap gap-1.5 text-[10px] text-muted-foreground">
-        <Stat label="mentions" value={totalMentions} />
+        <Stat label="mentions" value={fileCount} />
         <Stat label="selectors" value={selectors.length} />
         <Stat label="links" value={data.relatedEntities.length} />
       </div>

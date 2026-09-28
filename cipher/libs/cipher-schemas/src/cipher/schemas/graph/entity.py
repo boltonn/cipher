@@ -14,7 +14,7 @@ from cipher.schemas._base.base import BaseModel
 from cipher.schemas._base.common import PageParams, PaginatedResponse, SortOrder
 from cipher.schemas.content.message import TEXT_EMBEDDING_DIMENSION
 from cipher.schemas.graph.mention import Mention
-from cipher.schemas.graph.ontology import EntitySource, EntityType, RelationshipType, SelectorKind
+from cipher.schemas.graph.ontology import EntitySource, EntityType, RelationshipType, SelectorSubtype, SelectorType
 
 
 class EntitySortField(StrEnum):
@@ -66,6 +66,12 @@ class Entity(EntityBase):
     id: str
     display_name_normalized: str = Field(description="Case/diacritic-folded display_name for fuzzy match")
     person_id: str | None = Field(default=None, description="Bridge to the legacy person table, if any")
+    selector_type: SelectorType | None = Field(
+        default=None, description="Broad selector family; only set for entity_type=selector"
+    )
+    selector_subtype: SelectorSubtype | None = Field(
+        default=None, description="Specific provider/network; only set for entity_type=selector"
+    )
     date_created: datetime
     date_updated: datetime
 
@@ -89,7 +95,10 @@ class EntitySearchParameters(PageParams):
     query: str | None = Field(default=None, description="Fuzzy match against display_name/aliases")
     dataset_id: str | None = Field(default=None)
     entity_type: EntityType | None = Field(default=None)
-    selector_kind: SelectorKind | None = Field(default=None, description="Only for entity_type=selector")
+    selector_type: SelectorType | None = Field(default=None, description="Only for entity_type=selector")
+    selector_subtype: SelectorSubtype | None = Field(
+        default=None, description="Only for entity_type=selector (telegram, btc_address, ...)"
+    )
     tags: list[str] | None = Field(default=None)
     is_verified: bool | None = Field(default=None)
     country: str | None = Field(default=None, description="Detail-row country (organization or location)")
@@ -114,6 +123,22 @@ class PaginatedEntitiesResponse(PaginatedResponse):
     data: list[Entity] = Field(description="List of entities")
 
 
+class BreakdownItem(BaseModel):
+    """One (label, count) pair for a dataset breakdown chart."""
+
+    key: str
+    count: int
+
+
+class EntityBreakdown(BaseModel):
+    """Counts of a dataset's entities by type / selector type / selector subtype, for the dataset view."""
+
+    total: int
+    by_entity_type: list[BreakdownItem]
+    by_selector_type: list[BreakdownItem]
+    by_selector_subtype: list[BreakdownItem]
+
+
 class RelatedEntity(BaseModel):
     """One edge in an entity profile: a neighbour plus how it connects."""
 
@@ -121,13 +146,12 @@ class RelatedEntity(BaseModel):
     direction: str = Field(description="'out' if this entity is the edge source, else 'in'")
     attributes: dict = Field(default_factory=dict, description="Edge attributes, e.g. {'role': 'father'}")
     entity: EntitySummary
-    weight: int | None = Field(
-        default=None, description="Edge weight (for communicates_with, the message count)"
-    )
+    weight: int | None = Field(default=None, description="Edge weight (for communicates_with, the message count)")
     mention_count: int | None = Field(
         default=None, description="For selector neighbours: mentions carrying the selector's normalized value"
     )
-    selector_kind: SelectorKind | None = Field(default=None, description="For selector neighbours")
+    selector_type: SelectorType | None = Field(default=None, description="For selector neighbours")
+    selector_subtype: SelectorSubtype | None = Field(default=None, description="For selector neighbours")
     normalized_value: str | None = Field(default=None, description="For selector neighbours")
 
 
@@ -161,9 +185,18 @@ class SelectorMention(BaseModel):
     """
 
     entity_id: str
-    selector_kind: SelectorKind | None = None
+    selector_type: SelectorType | None = None
+    selector_subtype: SelectorSubtype | None = None
     normalized_value: str | None = None
     mention_count: int = 0
+    sent_count: int = Field(default=0, description="Distinct files where this address is a From/Sender header (email)")
+    received_count: int = Field(
+        default=0, description="Distinct files where this address is a To/Cc/Bcc header (email)"
+    )
+    text_count: int = Field(default=0, description="Body-text mentions of the value produced by NER")
+    pattern_count: int = Field(
+        default=0, description="Body-text mentions of the value found by deterministic pattern match"
+    )
 
 
 class EntityProfile(BaseModel):
@@ -176,8 +209,9 @@ class EntityProfile(BaseModel):
         default_factory=list, description="Per-selector count of mentions matching its normalized value"
     )
     mention_counts: dict[str, int] = Field(
-        default_factory=dict, description="Count of mentions keyed by mentioned_type"
+        default_factory=dict, description="Count of mentions keyed by MentionProvenance (text / email_header / ...)"
     )
+    file_count: int = Field(default=0, description="Distinct files this entity is mentioned in")
     related_entities: list[RelatedEntity] = Field(
         default_factory=list, description="Highest-weight neighbours (preview; full list is paginated)"
     )

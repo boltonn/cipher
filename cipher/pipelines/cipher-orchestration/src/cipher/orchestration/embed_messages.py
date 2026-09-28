@@ -20,13 +20,9 @@ from tqdm import tqdm
 
 from cipher.schemas.content.message import ConversationChunk, MessageBase
 
-app = typer.Typer(
-    help="Chunk (and optionally embed) mobile messages from a parquet file."
-)
+app = typer.Typer(help="Chunk (and optionally embed) mobile messages from a parquet file.")
 
-REQUIRED_COLUMNS = list(
-    MessageBase.model_json_schema(by_alias=False)["properties"].keys()
-)
+REQUIRED_COLUMNS = list(MessageBase.model_json_schema(by_alias=False)["properties"].keys())
 
 _message_adapter = TypeAdapter(list[MessageBase])
 
@@ -44,9 +40,7 @@ def sort_parquet(source: Path, dest: Path) -> None:
     selected_cols = [c for c in REQUIRED_COLUMNS if c in schema_cols]
     sort_cols = [c for c in ("conversation_id", "date_received") if c in schema_cols]
 
-    pl.scan_parquet(source).sort(sort_cols).select(
-        selected_cols or pl.all()
-    ).sink_parquet(dest)
+    pl.scan_parquet(source).sort(sort_cols).select(selected_cols or pl.all()).sink_parquet(dest)
 
 
 def _iter_batches(path: Path, batch_size: int) -> Iterator[list[dict]]:
@@ -55,9 +49,7 @@ def _iter_batches(path: Path, batch_size: int) -> Iterator[list[dict]]:
     for batch in pl.read_parquet(path, columns=columns).iter_slices(batch_size):
         for col in ("date_sent", "date_received", "date_read"):
             if col in batch.columns:
-                batch = batch.with_columns(
-                    pl.col(col).cast(pl.Datetime("us", "UTC"), strict=False)
-                )
+                batch = batch.with_columns(pl.col(col).cast(pl.Datetime("us", "UTC"), strict=False))
         yield batch.to_dicts()
 
 
@@ -69,9 +61,7 @@ def run_optimized(
         for raw_batch in _iter_batches(sorted_path, batch_size):
             messages = _message_adapter.validate_python(raw_batch)
             token_map = chunker.tokenize_conversation(messages=messages)
-            for _conv_id, group_iter in groupby(
-                messages, key=lambda r: r.conversation_id
-            ):
+            for _conv_id, group_iter in groupby(messages, key=lambda r: r.conversation_id):
                 conv_messages = list(group_iter)
                 yield from chunker.chunk_tokenized(conv_messages, token_map)
                 msg_bar.update(len(conv_messages))
@@ -109,9 +99,7 @@ def embed_chunks(
 def main(
     parquet: Annotated[Path, typer.Argument(exists=True)],
     model_dir: Annotated[Path, typer.Option(exists=True)],
-    output: Annotated[Path, typer.Option(help="Path to save embedded chunks")] = Path(
-        "chunks.parquet"
-    ),
+    output: Annotated[Path, typer.Option(help="Path to save embedded chunks")] = Path("chunks.parquet"),
     device: Annotated[str | None, typer.Option()] = None,
     task: Annotated[str | None, typer.Option()] = "retrieval",
     embed_batch_size: Annotated[int, typer.Option()] = 32,
@@ -121,9 +109,7 @@ def main(
     """Chunk and embed messages from a parquet file."""
     model = TextEmbeddingPytorchModel(model_dir=model_dir, device=device)
     model_config = get_model_config_from_name(model_dir)
-    chunker = MessageChunker(
-        config=model_config, tokenizer=model.tokenizer, chunk_size=chunk_size
-    )
+    chunker = MessageChunker(config=model_config, tokenizer=model.tokenizer, chunk_size=chunk_size)
     total_rows = pl.scan_parquet(parquet).select(pl.len()).collect().item()
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -145,9 +131,7 @@ def main(
             ):
                 results.append(
                     {
-                        "messages": [
-                            msg.model_dump(mode="json") for msg in embedded.messages
-                        ],
+                        "messages": [msg.model_dump(mode="json") for msg in embedded.messages],
                         "embedding": embedded.embedding,
                     }
                 )

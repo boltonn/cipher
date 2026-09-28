@@ -8,17 +8,21 @@ from cipher.api.deps.postgres import (
     CommentDatastoreDep,
     DatasetDatastoreDep,
     EnrichmentDatastoreDep,
+    EnrichmentRunDatastoreDep,
     FileDatastoreDep,
 )
+from cipher.api.services.enrichment_estimator import build_dataset_estimates
 from cipher.schemas.ingestion.dataset import (
     Dataset,
     DatasetCreate,
     DatasetsRequest,
+    DatasetStagingSummary,
     DatasetStatsRequest,
     DatasetStatsResponse,
     DatasetUpdate,
     PaginatedDatasetsResponse,
 )
+from cipher.schemas.ingestion.estimation import DatasetEnrichmentEstimates, RunDevice
 from cipher.schemas.ingestion.file import FileBrowserRequest, FileBrowserResponse
 from cipher.schemas.interaction.comment import CommentableType
 
@@ -84,6 +88,46 @@ async def get_dataset_stats(
     if await datastore.get_dataset_by_id(dataset_id=id) is None:
         raise HTTPException(status_code=404, detail=f"Dataset not found: {id}")
     return await datastore.get_dataset_stats(dataset_id=id, request=params)
+
+
+@router.get(
+    "/{id}/staging",
+    summary="Whether a dataset has finished staging, plus its filetype inventory",
+    response_model=DatasetStagingSummary,
+    response_model_by_alias=True,
+)
+async def get_dataset_staging(id: str, datastore: DatasetDatastoreDep):
+    """Staging status + per-`filetype_group` counts/sizes -- the basis for enrichment estimates."""
+    if await datastore.get_dataset_by_id(dataset_id=id) is None:
+        raise HTTPException(status_code=404, detail=f"Dataset not found: {id}")
+    return await datastore.get_staging_summary(dataset_id=id)
+
+
+@router.get(
+    "/{id}/enrichment-estimates",
+    summary="Rough wall-time estimate per enrichment for a dataset",
+    response_model=DatasetEnrichmentEstimates,
+    response_model_by_alias=True,
+)
+async def get_dataset_enrichment_estimates(
+    id: str,
+    dataset_datastore: DatasetDatastoreDep,
+    file_datastore: FileDatastoreDep,
+    enrichment_datastore: EnrichmentDatastoreDep,
+    run_datastore: EnrichmentRunDatastoreDep,
+    device: RunDevice = RunDevice.CPU,
+):
+    """Per-enrichment ETA from the staged inventory + measured throughput, for the request wizard."""
+    if await dataset_datastore.get_dataset_by_id(dataset_id=id) is None:
+        raise HTTPException(status_code=404, detail=f"Dataset not found: {id}")
+    return await build_dataset_estimates(
+        dataset_id=id,
+        device=device,
+        dataset_repo=dataset_datastore,
+        file_repo=file_datastore,
+        enrichment_repo=enrichment_datastore,
+        run_repo=run_datastore,
+    )
 
 
 @router.get(

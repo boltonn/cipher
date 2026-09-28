@@ -1,13 +1,14 @@
 "use client";
 
+import { PageError, PageLoading } from "@/components/page-loading";
 import { PageHeader } from "@/components/page-header";
-import { PageLoading } from "@/components/page-loading";
 import { PaginationModeToggle } from "@/components/pagination-mode-toggle";
 import { ImageSearchBar } from "@/features/images/components/image-search-bar";
 import { ImagesContainerInfinite } from "@/features/images/components/images-container-infinite";
 import { ImagesContainerPaginated } from "@/features/images/components/images-container-paginated";
 import { useSearchController } from "@/features/images/hooks/use-search-controller";
 import { PaginationModeType } from "@/types/common";
+import { useQueryClient } from "@tanstack/react-query";
 import { ImageIcon, Search, X } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
@@ -28,6 +29,7 @@ function ImageSearchPageInner() {
     actions,
     isPending,
     isFetching,
+    error,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
@@ -35,6 +37,9 @@ function ImageSearchPageInner() {
     isSimilarityMode,
     queryLabel,
   } = useSearchController(paginationMode);
+
+  const queryClient = useQueryClient();
+  const retry = () => queryClient.invalidateQueries({ queryKey: ["images"] });
 
   const totalAssets = data?.pages[0]?.total ?? paginatedData?.total ?? 0;
 
@@ -52,7 +57,11 @@ function ImageSearchPageInner() {
     <div className="max-w-400 mx-auto px-6 relative pb-20">
       <PageHeader
         eyebrow="Images"
-        value={`${totalAssets.toLocaleString()} Results`}
+        value={
+          isSimilarityMode || queryLabel
+            ? `${totalAssets.toLocaleString()} Results`
+            : `${totalAssets.toLocaleString()} images`
+        }
         extra={
           isSimilarityMode && (
             <button
@@ -91,8 +100,14 @@ function ImageSearchPageInner() {
 
       {/* Results */}
       <main className="mt-6">
-        {isPending && !data && !paginatedData ? (
-          <PageLoading icon={Search} label="Searching images…" />
+        {error && !data && !paginatedData ? (
+          <PageError
+            title="Couldn’t load images"
+            body="The image index didn’t respond. This is usually temporary — try again."
+            onRetry={retry}
+          />
+        ) : isPending && !data && !paginatedData ? (
+          <PageLoading icon={Search} label="Searching images…" onRetry={retry} />
         ) : paginationMode === "infinite" ? (
           <ImagesContainerInfinite
             data={data}

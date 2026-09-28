@@ -1,0 +1,40 @@
+{
+  "selector_type": "imei",
+  "priority": 78,
+  "base_confidence": 0.55,
+  "max_confidence": 0.98,
+  "normalizer": "imei",
+  "validator": "imei",
+  "patterns": [
+    {
+      "name": "digits15",
+      "regex": "(?<![\\w])(?:\\d[ \\-]?){14}\\d(?!\\d)",
+      "requires_context": true
+    }
+  ],
+  "context": {
+    "window_before": 24,
+    "window_after": 8,
+    "terms": {
+      "en": [
+        {"term": "imei", "weight": 0.35},
+        {"term": "device", "weight": 0.12},
+        {"term": "handset", "weight": 0.15},
+        {"term": "serial", "weight": 0.1}
+      ],
+      "ru": [
+        {"term": "imei", "weight": 0.35},
+        {"term": "имей", "weight": 0.35},
+        {"term": "устройство", "weight": 0.12}
+      ],
+      "zh": [
+        {"term": "串号", "weight": 0.3},
+        {"term": "设备", "weight": 0.12}
+      ],
+      "fa": [
+        {"term": "شماره سریال", "weight": 0.25},
+        {"term": "دستگاه", "weight": 0.12}
+      ]
+    }
+  }
+}

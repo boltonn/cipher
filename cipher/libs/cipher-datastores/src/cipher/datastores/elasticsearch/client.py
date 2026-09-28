@@ -45,18 +45,14 @@ async def get_async_client(
         raise RuntimeError("Elasticsearch authentication failed") from exc
     except ConnectionError as exc:
         await client.close()
-        raise RuntimeError(
-            f"Could not connect to Elasticsearch at {config.host}:{config.port}"
-        ) from exc
+        raise RuntimeError(f"Could not connect to Elasticsearch at {config.host}:{config.port}") from exc
     except Exception as exc:
         await client.close()
         raise RuntimeError(f"Elasticsearch client error: {exc}") from exc
 
     try:
         await client.ping()
-        logger.success(
-            f"Connected to Elasticsearch cluster at {config.host}:{config.port}"
-        )
+        logger.success(f"Connected to Elasticsearch cluster at {config.host}:{config.port}")
         yield client
     finally:
         await client.close()

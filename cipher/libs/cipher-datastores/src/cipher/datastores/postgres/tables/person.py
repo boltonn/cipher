@@ -57,8 +57,6 @@ class PersonTable(Base):
     )
     # Bridge to the knowledge-graph node. The FK lives on `entity.person_id`, so
     # this adds no column to `person` -- only the reverse accessor.
-    entity: Mapped["EntityTable | None"] = relationship(
-        back_populates="person", uselist=False, lazy="select"
-    )
+    entity: Mapped["EntityTable | None"] = relationship(back_populates="person", uselist=False, lazy="select")
 
     __table_args__ = (Index("ix_person_tags_gin", "tags", postgresql_using="gin"),)

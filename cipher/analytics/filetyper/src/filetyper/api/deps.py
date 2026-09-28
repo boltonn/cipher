@@ -31,7 +31,6 @@ class AsyncFileTyper(FileTyper):
         return info
 
 
-# Lifespan context manager
 @asynccontextmanager
 async def model_lifespan(app: FastAPI):
     """Fastapi lifespan context manager to load and cleanup the model."""
@@ -39,7 +38,6 @@ async def model_lifespan(app: FastAPI):
     app.state.filetyper_model = model
     logger.info("✅ Magika loaded.")
     yield
-    # Cleanup if needed
     logger.info("🛑 App shutdown. Cleaning up Magika.")
 
 

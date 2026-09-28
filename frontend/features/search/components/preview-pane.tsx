@@ -8,12 +8,14 @@ import {
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useLocalStorageState } from "@/hooks/use-local-storage-state";
+import { EntityMentionText } from "@/features/entities/components/entity-mention-text";
 import { filesService, useFile } from "@/features/files/api";
 import { FileMetadataPanel } from "@/features/files/components/file-metadata-panel";
 import { FileViewerContent, useFileViewerData } from "@/features/files/components/file-viewer-content";
 import type { FileBrowserItem } from "@/features/files/types";
 import { cn } from "@/lib/utils";
-import { AlignLeft, ChevronLeft, ChevronRight, Eye, Info, Loader2, Maximize2, Minimize2 } from "lucide-react";
+import { AlignLeft, ChevronLeft, ChevronRight, Eye, FileText, Info, Loader2, Maximize, Maximize2, Minimize2, MousePointerClick, Waypoints } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import { matchTerms } from "../highlight";
 import type { SearchChunk, SearchMode } from "../types";
@@ -50,6 +52,7 @@ type FileViewMode = "rendered" | "text";
 export function PreviewPane({ fileId, chunk, query, searchMode, matches, onSelectChunk, isExpanded, onToggleExpand }: PreviewPaneProps) {
   const [fileViewMode, setFileViewMode] = useLocalStorageState<FileViewMode>("cipher:search:file-view-mode", "rendered");
   const [highlightChunk, setHighlightChunk] = useState(searchMode !== "text");
+  const [showEntities, setShowEntities] = useLocalStorageState<boolean>("cipher:search:show-entities", false);
   const [showMetadata, setShowMetadata] = useState(false);
   const { data: file, isPending } = useFile(fileId ?? undefined);
   const [viewerRef, viewerWidth] = useElementWidth<HTMLDivElement>();
@@ -63,8 +66,30 @@ export function PreviewPane({ fileId, chunk, query, searchMode, matches, onSelec
 
   if (!fileId) {
     return (
-      <div className="flex h-full items-center justify-center text-sm italic text-muted-foreground">
-        Select a result to preview.
+      <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-muted/60 text-muted-foreground">
+          <FileText className="h-5 w-5" />
+        </div>
+        <div>
+          <p className="text-sm font-medium text-foreground">Nothing selected</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Pick a result on the left to read it here.
+          </p>
+        </div>
+        <ul className="space-y-1.5 text-left text-[11px] text-muted-foreground">
+          <li className="flex items-center gap-2">
+            <MousePointerClick className="h-3 w-3 shrink-0 text-primary/60" />
+            The matched passage opens highlighted in context.
+          </li>
+          <li className="flex items-center gap-2">
+            <Eye className="h-3 w-3 shrink-0 text-primary/60" />
+            Toggle between the rendered file and its extracted text.
+          </li>
+          <li className="flex items-center gap-2">
+            <Info className="h-3 w-3 shrink-0 text-primary/60" />
+            “Details” shows the file’s metadata.
+          </li>
+        </ul>
       </div>
     );
   }
@@ -147,12 +172,34 @@ export function PreviewPane({ fileId, chunk, query, searchMode, matches, onSelec
             {label}
           </button>
         ))}
-        {chunk && fileViewMode === "text" && !showMetadata && (
+        {chunk && fileViewMode === "text" && !showMetadata && !showEntities && (
           <div className="ml-3 flex items-center gap-2 border-l border-border pl-3">
             <Switch id="highlight-chunk" checked={highlightChunk} onCheckedChange={setHighlightChunk} />
             <Label htmlFor="highlight-chunk" className="text-xs text-muted-foreground">
               Highlight chunk
             </Label>
+          </div>
+        )}
+        {fileViewMode === "text" && !showMetadata && file?.datasetId && (
+          <div className="ml-3 flex items-center gap-1 border-l border-border pl-3">
+            <button
+              type="button"
+              onClick={() => setShowEntities((current) => !current)}
+              className={cn(
+                "flex h-7 items-center gap-1.5 rounded-md px-2 text-xs font-medium transition-colors",
+                showEntities ? "bg-annotation/15 text-annotation" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Waypoints className="h-3.5 w-3.5 shrink-0" />
+              Entities
+            </button>
+            <Link
+              href={`/files/${fileId}?from=/search${chunk ? `&focus=${chunk.startOffset}` : ""}`}
+              title="Open the full-page annotated view"
+              className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <Maximize className="h-3.5 w-3.5 shrink-0" />
+            </Link>
           </div>
         )}
         {hasMultipleMatches && fileViewMode === "text" && !showMetadata && (
@@ -183,8 +230,16 @@ export function PreviewPane({ fileId, chunk, query, searchMode, matches, onSelec
       {showMetadata ? (
         <MetadataView file={browserItem} />
       ) : fileViewMode === "text" ? (
-        <div className="min-h-0 flex-1">
-          <ChunkHighlightedText fileId={fileId} chunk={chunk} terms={terms} highlightChunk={highlightChunk} />
+        <div className="min-h-0 flex-1 overflow-auto">
+          {showEntities && file?.datasetId ? (
+            <EntityMentionText
+              fileId={fileId}
+              datasetId={file.datasetId}
+              focusOffset={chunk?.startOffset}
+            />
+          ) : (
+            <ChunkHighlightedText fileId={fileId} chunk={chunk} terms={terms} highlightChunk={highlightChunk} />
+          )}
         </div>
       ) : (
         <div ref={viewerRef} className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-black">

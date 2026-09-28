@@ -14,6 +14,7 @@ from cipher.schemas.identity.face import (
     BaseFaceSearchParameters,
     Face,
     FaceAssignment,
+    FaceAssignmentMethod,
     FaceCreate,
     FaceIdKnnSearchRequest,
     FacePublic,
@@ -153,6 +154,13 @@ class PostgresFaceRepository:
         await self.session.commit()
         return face
 
+    async def image_ids_for_person(self, person_id: str) -> list[str]:
+        """Distinct source-image ids of every face assigned to a person."""
+        result = await self.session.execute(
+            select(FaceTable.image_id).where(FaceTable.person_id == person_id).distinct()
+        )
+        return list(result.scalars().all())
+
     async def get_representative_faces(self, person_id: str) -> list[FacePublic]:
         """Retrieve a person's representative faces, primary face first (excludes embeddings)."""
         stmt = (
@@ -238,17 +246,19 @@ class PostgresFaceRepository:
             status = FaceStatus.MATCHED
         else:
             status = FaceStatus.UNMATCHED
-        return FacePublic.model_validate({
-            **face.__dict__,
-            "uri": uri,
-            "status": status,
-            # assigned person's name, denormalized so a grid of cards needn't
-            # fetch it per card
-            "person_name": person_name if face.person_id else None,
-            # the candidate is only meaningful when not already assigned
-            "candidate_person_id": candidate_person_id if not face.person_id else None,
-            "candidate_person_name": candidate_person_name if not face.person_id else None,
-        })
+        return FacePublic.model_validate(
+            {
+                **face.__dict__,
+                "uri": uri,
+                "status": status,
+                # assigned person's name, denormalized so a grid of cards needn't
+                # fetch it per card
+                "person_name": person_name if face.person_id else None,
+                # the candidate is only meaningful when not already assigned
+                "candidate_person_id": candidate_person_id if not face.person_id else None,
+                "candidate_person_name": candidate_person_name if not face.person_id else None,
+            }
+        )
 
     def _joined_for_public(self, stmt):
         """Join everything `_to_face_public` needs onto a Face select.
@@ -438,11 +448,24 @@ class PostgresFaceRepository:
             similarity_score=max(0.0, min(1.0, similarity_score)),
         )
 
+    async def representative_faces(self, *, verified_only: bool = False) -> list[tuple[str, str]]:
+        """`(face_id, person_id)` for every representative face -- the anchors for batch matching."""
+        stmt = (
+            select(FaceTable.id, FaceTable.person_id)
+            .join(PersonTable, PersonTable.id == FaceTable.person_id)
+            .where(FaceTable.is_representative.is_(True), FaceTable.embedding.is_not(None))
+        )
+        if verified_only:
+            stmt = stmt.where(PersonTable.is_verified.is_(True))
+        rows = (await self.session.execute(stmt)).all()
+        return [(r[0], r[1]) for r in rows]
+
     async def get_potential_person_matches(
         self,
         face_id: str,
         min_similarity: float = DEFAULT_FACE_MATCH_SIMILARITY,
         limit: int = 10_000,
+        dataset_id: str | None = None,
     ) -> list[tuple[str, float]]:
         """KNN-search for still-unassigned faces similar to `face_id`, above `min_similarity`.
 
@@ -464,15 +487,181 @@ class PostgresFaceRepository:
             return []
 
         distance_expr = FaceTable.embedding.max_inner_product(embedding)
-        stmt = (
-            select(FaceTable.id, -distance_expr)
-            .where(
-                FaceTable.person_id.is_(None),
-                FaceTable.id != face_id,
-                distance_expr <= -min_similarity,
+        where = [
+            FaceTable.person_id.is_(None),
+            FaceTable.id != face_id,
+            distance_expr <= -min_similarity,
+        ]
+        if dataset_id is not None:
+            # `image` is content-keyed and dataset-agnostic; the dataset link is on `file`.
+            where.append(
+                exists(
+                    select(literal(1)).where(
+                        FileTable.sha256 == FaceTable.image_id,
+                        FileTable.dataset_id == dataset_id,
+                    )
+                )
             )
-            .order_by(asc(distance_expr))
-            .limit(limit)
-        )
+        stmt = select(FaceTable.id, -distance_expr).where(*where).order_by(asc(distance_expr)).limit(limit)
         rows = (await self.session.execute(stmt)).all()
         return [(face_id_, max(0.0, min(1.0, score))) for face_id_, score in rows]
+
+    # --- Face clustering (unsupervised identity discovery) -------------------
+    #
+    # A dataset-wide sweep, not a per-face op: pull a kNN similarity graph over
+    # still-unassigned faces off the HNSW index, union-find it into clusters in
+    # the workflow, and mint one (unnamed) `person` per cluster that clears the
+    # size floor. All reads here filter `person_id IS NULL`, so a re-run only
+    # ever considers newly detected faces.
+
+    async def knn_face_edges(
+        self,
+        *,
+        dataset_id: str | None = None,
+        k: int = 20,
+        min_similarity: float = DEFAULT_FACE_MATCH_SIMILARITY,
+        max_faces: int = 200_000,
+    ) -> list[tuple[str, str, float]]:
+        """Similarity edges among still-unassigned faces, for clustering.
+
+        For up to `max_faces` unassigned faces (oldest first), the HNSW index
+        yields each one's `k` nearest unassigned neighbours; a pair is emitted
+        when cosine similarity (`-(a <#> b)`, embeddings are L2-normalised) is
+        at least `min_similarity`. Scoped to one dataset via `image.dataset_id`
+        when given. Returns `(face_a, face_b, similarity)` rows (directed hits;
+        the caller de-dupes via union-find).
+        """
+        anchor_face = aliased(FaceTable)
+        neighbour = aliased(FaceTable)
+
+        def _in_dataset(face_alias):
+            # `image` is keyed by content (sha256) and dataset-agnostic; the
+            # dataset link lives on `file` (file.sha256 == image.id == face.image_id).
+            return exists(
+                select(literal(1)).where(
+                    FileTable.sha256 == face_alias.image_id,
+                    FileTable.dataset_id == dataset_id,
+                )
+            )
+
+        anchor_q = select(anchor_face.id.label("id"), anchor_face.embedding.label("embedding")).where(
+            anchor_face.person_id.is_(None), anchor_face.embedding.is_not(None)
+        )
+        if dataset_id:
+            anchor_q = anchor_q.where(_in_dataset(anchor_face))
+        anchor_q = anchor_q.order_by(anchor_face.date_created).limit(max_faces).subquery("anchors")
+
+        distance = neighbour.embedding.max_inner_product(anchor_q.c.embedding)
+        neighbour_q = select(neighbour.id.label("id"), (-distance).label("sim")).where(
+            neighbour.person_id.is_(None),
+            neighbour.embedding.is_not(None),
+            neighbour.id != anchor_q.c.id,
+        )
+        if dataset_id:
+            neighbour_q = neighbour_q.where(_in_dataset(neighbour))
+        neighbour_q = neighbour_q.order_by(asc(distance)).limit(k).lateral("nn")
+
+        stmt = (
+            select(anchor_q.c.id, neighbour_q.c.id, neighbour_q.c.sim)
+            .select_from(anchor_q)
+            .join(neighbour_q, literal(True))
+            .where(neighbour_q.c.sim >= min_similarity)
+        )
+        rows = (await self.session.execute(stmt)).all()
+        return [(a, b, max(0.0, min(1.0, float(sim)))) for a, b, sim in rows]
+
+    async def faces_cluster_meta(self, face_ids: list[str]) -> list[tuple[str, str, float | None, float | None]]:
+        """`(id, image_id, quality_score, detection_confidence)` for each face id."""
+        if not face_ids:
+            return []
+        rows = (
+            await self.session.execute(
+                select(
+                    FaceTable.id,
+                    FaceTable.image_id,
+                    FaceTable.quality_score,
+                    FaceTable.detection_confidence,
+                ).where(FaceTable.id.in_(face_ids))
+            )
+        ).all()
+        return [(r[0], r[1], r[2], r[3]) for r in rows]
+
+    async def nearest_assigned_person(
+        self, face_ids: list[str], *, min_similarity: float = DEFAULT_FACE_MATCH_SIMILARITY
+    ) -> tuple[str, str, bool, float] | None:
+        """Closest already-assigned face to any face in the set -> its person.
+
+        Returns `(person_id, person_source, person_is_verified, similarity)`
+        for the single best hit at or above `min_similarity`, else None. Uses
+        the HNSW index per input face. Lets a fresh cluster merge into an
+        existing identity instead of minting a duplicate person.
+        """
+        if not face_ids:
+            return None
+
+        anchors = (
+            select(FaceTable.embedding.label("embedding"))
+            .where(FaceTable.id.in_(face_ids), FaceTable.embedding.is_not(None))
+            .subquery("a")
+        )
+        assigned = aliased(FaceTable)
+        distance = assigned.embedding.max_inner_product(anchors.c.embedding)
+        nearest = (
+            select(
+                assigned.person_id.label("person_id"),
+                PersonTable.source.label("source"),
+                PersonTable.is_verified.label("is_verified"),
+                (-distance).label("sim"),
+            )
+            .select_from(assigned)
+            .join(PersonTable, PersonTable.id == assigned.person_id)
+            .where(assigned.person_id.is_not(None), assigned.embedding.is_not(None))
+            .order_by(asc(distance))
+            .limit(1)
+            .lateral("nn")
+        )
+        stmt = (
+            select(nearest.c.person_id, nearest.c.source, nearest.c.is_verified, nearest.c.sim)
+            .select_from(anchors)
+            .join(nearest, literal(True))
+            .where(nearest.c.sim >= min_similarity)
+            .order_by(desc(nearest.c.sim))
+            .limit(1)
+        )
+        row = (await self.session.execute(stmt)).first()
+        if row is None:
+            return None
+        return (row[0], str(row[1]), bool(row[2]), max(0.0, min(1.0, float(row[3]))))
+
+    async def assign_faces_to_person(
+        self,
+        face_ids: list[str],
+        person_id: str,
+        *,
+        method: FaceAssignmentMethod = FaceAssignmentMethod.AUTOMATIC,
+        confidence: float | None = None,
+        chunk: int = 2000,
+    ) -> int:
+        """Bulk-link a set of faces to one person. Returns rows updated."""
+        total = 0
+        for start in range(0, len(face_ids), chunk):
+            part = face_ids[start : start + chunk]
+            result = await self.session.execute(
+                update(FaceTable)
+                .where(FaceTable.id.in_(part))
+                .values(person_id=person_id, assignment_method=method, assignment_confidence=confidence)
+            )
+            total += result.rowcount or 0
+        await self.session.commit()
+        return total
+
+    async def set_primary_representative(self, face_id: str) -> None:
+        """Mark one already-assigned face representative + primary for its person.
+
+        No cap / uniqueness handling -- only called once per freshly created
+        clustering person, which has no other representative or primary face.
+        """
+        await self.session.execute(
+            update(FaceTable).where(FaceTable.id == face_id).values(is_representative=True, is_primary=True)
+        )
+        await self.session.commit()

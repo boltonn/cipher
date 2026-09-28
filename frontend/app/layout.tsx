@@ -3,7 +3,7 @@ import { PageHeaderProvider } from "@/components/page-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ReactQueryProvider } from "@/providers/react-query-provider";
-import { ThemeProvider } from "@/providers/theme-provider";
+import { THEME_INIT_SCRIPT, ThemeProvider } from "@/providers/theme-provider";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Inter } from "next/font/google";
 import { MotionConfig } from "motion/react";
@@ -29,6 +29,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={inter.variable} suppressHydrationWarning>
+      <head>
+        {/* Applies the stored theme to <html> before first paint (no flash).
+            Emitted once from this Server Component, so nothing renders a
+            <script> during a client render. */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased
         bg-background text-foreground overflow-hidden h-screen w-screen flex`}
@@ -49,12 +55,7 @@ export default function RootLayout({
         </div>
 
         <MotionConfig reducedMotion="user">
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="dark"
-          enableSystem
-          disableTransitionOnChange
-        >
+        <ThemeProvider defaultTheme="dark">
           <TooltipProvider>
             <ReactQueryProvider>
               <SidebarProvider>

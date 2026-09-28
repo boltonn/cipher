@@ -1,0 +1,97 @@
+{
+  "selector_type": "phone",
+  "priority": 70,
+  "base_confidence": 0.55,
+  "max_confidence": 0.97,
+  "normalizer": "phone",
+  "validator": "phone",
+  "patterns": [
+    {
+      "name": "intl",
+      "regex": "(?<![\\w+])\\+\\d[\\d\\s().\\-]{6,18}\\d(?![\\w])"
+    },
+    {
+      "name": "grouped",
+      "regex": "(?<![\\w+])(?:\\(?\\d{2,4}\\)?[\\s.\\-]){1,4}\\d{2,4}(?![\\w])"
+    }
+  ],
+  "context": {
+    "window_before": 40,
+    "window_after": 15,
+    "terms": {
+      "en": [
+        {"term": "tel", "weight": 0.18},
+        {"term": "phone", "weight": 0.25},
+        {"term": "call", "weight": 0.2},
+        {"term": "mobile", "weight": 0.22},
+        {"term": "cell", "weight": 0.2},
+        {"term": "whatsapp", "weight": 0.28},
+        {"term": "sms", "weight": 0.2},
+        {"term": "fax", "weight": 0.12},
+        {"term": "invoice", "weight": -0.45},
+        {"term": "order no", "weight": -0.45},
+        {"term": "ref", "weight": -0.3},
+        {"term": "isbn", "weight": -0.5}
+      ],
+      "ru": [
+        {"term": "телефон", "weight": 0.25},
+        {"term": "тел", "weight": 0.15},
+        {"term": "звони", "weight": 0.22},
+        {"term": "звоните", "weight": 0.22},
+        {"term": "моб", "weight": 0.2},
+        {"term": "сотовый", "weight": 0.2},
+        {"term": "вотсап", "weight": 0.28},
+        {"term": "счёт", "weight": -0.45},
+        {"term": "счет", "weight": -0.45},
+        {"term": "заказ", "weight": -0.4}
+      ],
+      "uk": [
+        {"term": "телефон", "weight": 0.25},
+        {"term": "тел", "weight": 0.15},
+        {"term": "дзвоніть", "weight": 0.22},
+        {"term": "моб", "weight": 0.2}
+      ],
+      "zh": [
+        {"term": "电话", "weight": 0.25},
+        {"term": "手机", "weight": 0.25},
+        {"term": "联系", "weight": 0.15},
+        {"term": "致电", "weight": 0.2},
+        {"term": "订单号", "weight": -0.45}
+      ],
+      "ar": [
+        {"term": "هاتف", "weight": 0.25},
+        {"term": "جوال", "weight": 0.25},
+        {"term": "اتصل", "weight": 0.2},
+        {"term": "رقم", "weight": 0.12}
+      ],
+      "fa": [
+        {"term": "تلفن", "weight": 0.25},
+        {"term": "موبایل", "weight": 0.25},
+        {"term": "همراه", "weight": 0.22},
+        {"term": "تماس", "weight": 0.2},
+        {"term": "شماره", "weight": 0.12}
+      ],
+      "es": [
+        {"term": "teléfono", "weight": 0.25},
+        {"term": "tel", "weight": 0.15},
+        {"term": "llama", "weight": 0.2},
+        {"term": "móvil", "weight": 0.22},
+        {"term": "celular", "weight": 0.22},
+        {"term": "factura", "weight": -0.45}
+      ],
+      "fr": [
+        {"term": "téléphone", "weight": 0.25},
+        {"term": "tél", "weight": 0.15},
+        {"term": "appelez", "weight": 0.2},
+        {"term": "portable", "weight": 0.22},
+        {"term": "facture", "weight": -0.45}
+      ]
+    }
+  },
+  "countries": {
+    "IR": {"default_region": "IR"},
+    "RU": {"default_region": "RU"},
+    "CN": {"default_region": "CN"},
+    "UA": {"default_region": "UA"}
+  }
+}

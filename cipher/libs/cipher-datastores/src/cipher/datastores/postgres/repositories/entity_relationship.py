@@ -29,6 +29,12 @@ _MAX_DEPTH = 3
 _ACTOR_TYPES = (EntityType.PERSON, EntityType.ORGANIZATION)
 _EDGE_INSERT_CHUNK = 2000
 
+# A pair of already-identified people sharing a single photo is a weak signal;
+# an `appears_in_photo_with` edge between two verified faces is only kept once
+# they share at least this many photos. Edges backed by a *pending* face match
+# (a lead) are kept regardless of count. Set to 1 to keep every co-occurrence.
+_DEFAULT_MIN_VERIFIED_PHOTOS = 2
+
 
 class PostgresGraphRepository(GraphRepository):
     """Recursive-CTE-free bounded traversal over `entity_relationship` rows.
@@ -306,6 +312,11 @@ class PostgresGraphRepository(GraphRepository):
     #
     # `dataset_id` is NULL on these edges -- a pair can share photos across
     # datasets and the person bridge nodes are themselves dataset-agnostic.
+    #
+    # A pair of already-identified people is only linked once they share
+    # `min_verified_photos` photos (default 2); a pair with any pending-match
+    # photo -- a lead about a not-yet-confirmed connection -- is linked from the
+    # first photo.
 
     _COOCCURRENCE_VERIFIED = "verified"
     _COOCCURRENCE_POTENTIAL = "potential"
@@ -330,7 +341,7 @@ class PostgresGraphRepository(GraphRepository):
                 person_id.label("person_id"),
                 FaceTable.person_id.is_not(None).label("assigned"),
             )
-            .select_from(FaceTable.__table__.outerjoin(pending, pending.c.face_id == FaceTable.id))
+            .outerjoin(pending, pending.c.face_id == FaceTable.id)
             .where(person_id.is_not(None))
         )
         if image_ids is not None:
@@ -345,22 +356,28 @@ class PostgresGraphRepository(GraphRepository):
         return by_image
 
     @classmethod
-    def _cooccurrence_pairs(
-        cls, persons_by_image: dict[str, dict[str, bool]]
-    ) -> dict[tuple[str, str], dict[str, str]]:
+    def _cooccurrence_pairs(cls, persons_by_image: dict[str, dict[str, bool]]) -> dict[tuple[str, str], dict[str, str]]:
         """Canonical `(src < dst)` person pair -> `{image_id: 'verified' | 'potential'}`."""
         pairs: dict[tuple[str, str], dict[str, str]] = {}
         for image_id, persons in persons_by_image.items():
             ordered = sorted(persons)
             for i, src in enumerate(ordered):
                 for dst in ordered[i + 1 :]:
-                    basis = (
-                        cls._COOCCURRENCE_VERIFIED
-                        if persons[src] and persons[dst]
-                        else cls._COOCCURRENCE_POTENTIAL
-                    )
+                    basis = cls._COOCCURRENCE_VERIFIED if persons[src] and persons[dst] else cls._COOCCURRENCE_POTENTIAL
                     pairs.setdefault((src, dst), {})[image_id] = basis
         return pairs
+
+    @classmethod
+    def _cooccurrence_edge_kept(cls, evidence: dict[str, str], min_verified_photos: int) -> bool:
+        """Whether a pair's evidence clears the noise floor.
+
+        Kept if any photo is a *potential* (pending-match) co-occurrence -- a
+        lead worth surfacing from the first frame -- or the pair shares at least
+        `min_verified_photos` fully-verified photos.
+        """
+        if any(basis == cls._COOCCURRENCE_POTENTIAL for basis in evidence.values()):
+            return True
+        return len(evidence) >= min_verified_photos
 
     @classmethod
     def _cooccurrence_attributes(cls, evidence: dict[str, str]) -> dict:
@@ -417,54 +434,77 @@ class PostgresGraphRepository(GraphRepository):
             )
         )
 
-    async def rebuild_face_cooccurrence(self) -> dict[str, int]:
+    async def rebuild_face_cooccurrence(
+        self, min_verified_photos: int = _DEFAULT_MIN_VERIFIED_PHOTOS
+    ) -> dict[str, int]:
         """Rebuild every `appears_in_photo_with` edge from current face state.
 
         Idempotent full reconciliation: derive the desired person<->person pairs
-        from all faces + assignments + pending `face_match` rows, upsert the
-        survivors, and delete edges no longer supported. Pairs whose person has
-        no `entity` bridge node yet are skipped (and counted).
+        from all faces + assignments + pending `face_match` rows, keep the ones
+        that clear the noise floor (`min_verified_photos` shared photos for a
+        fully-verified pair; any count for a pair with a pending-match lead),
+        upsert those, and delete every other existing edge. Pairs whose person
+        has no `entity` bridge node yet are skipped (and counted).
         """
         persons_by_image = await self._cooccurrence_persons_by_image(None)
         desired = self._cooccurrence_pairs(persons_by_image)
 
         known = await self._known_entity_ids({person_id for pair in desired for person_id in pair})
         resolved = {pair: evidence for pair, evidence in desired.items() if pair[0] in known and pair[1] in known}
+        kept = {
+            pair: evidence
+            for pair, evidence in resolved.items()
+            if self._cooccurrence_edge_kept(evidence, min_verified_photos)
+        }
 
         existing = await self._load_cooccurrence_edges()
-        for (src, dst), evidence in resolved.items():
+        for (src, dst), evidence in kept.items():
             await self._write_cooccurrence_edge(src, dst, evidence)
         removed = 0
-        for src, dst in existing.keys() - resolved.keys():
+        for src, dst in existing.keys() - kept.keys():
             await self._drop_cooccurrence_edge(src, dst)
             removed += 1
 
         await self.session.commit()
         return {
-            "edges_written": len(resolved),
+            "edges_written": len(kept),
             "edges_removed": removed,
             "images_considered": len(persons_by_image),
+            "pairs_below_floor": len(resolved) - len(kept),
             "pairs_skipped_no_entity": len(desired) - len(resolved),
         }
 
-    async def recompute_face_cooccurrence_for_faces(self, face_ids: list[str]) -> dict[str, int]:
-        """Re-derive `appears_in_photo_with` edges for the images these faces sit in.
+    async def recompute_face_cooccurrence_for_faces(
+        self, face_ids: list[str], min_verified_photos: int = _DEFAULT_MIN_VERIFIED_PHOTOS
+    ) -> dict[str, int]:
+        """Recompute `appears_in_photo_with` edges for the images these faces sit in.
 
-        Same reconciliation as `rebuild_face_cooccurrence`, scoped to the touched
-        images: each affected edge keeps its evidence from other images and only
-        has these images' contribution rewritten, so confirming or rejecting one
-        match immediately adds or prunes the right photo -- and deletes the edge
-        when nothing supports it any more. Safe to call inline after a face
-        assignment or a match review.
+        Convenience wrapper over `recompute_face_cooccurrence_for_images` that
+        resolves the faces to their images first -- so it must run *before* the
+        faces are deleted. For a post-deletion refresh, capture the image ids
+        up front and call the image variant.
         """
         face_ids = [face_id for face_id in dict.fromkeys(face_ids) if face_id]
         if not face_ids:
             return {"edges_written": 0, "edges_removed": 0, "images_touched": 0}
-
-        image_rows = await self.session.execute(
-            select(FaceTable.image_id).where(FaceTable.id.in_(face_ids)).distinct()
+        image_rows = await self.session.execute(select(FaceTable.image_id).where(FaceTable.id.in_(face_ids)).distinct())
+        return await self.recompute_face_cooccurrence_for_images(
+            list(image_rows.scalars().all()), min_verified_photos=min_verified_photos
         )
-        image_ids = list(image_rows.scalars().all())
+
+    async def recompute_face_cooccurrence_for_images(
+        self, image_ids: list[str], min_verified_photos: int = _DEFAULT_MIN_VERIFIED_PHOTOS
+    ) -> dict[str, int]:
+        """Re-derive `appears_in_photo_with` edges for a set of images.
+
+        Same reconciliation as `rebuild_face_cooccurrence`, scoped to the given
+        images: each affected edge keeps its evidence from other images and only
+        has these images' contribution rewritten, so confirming or rejecting one
+        match immediately adds or prunes the right photo -- and deletes the edge
+        once nothing supports it or it drops back below the noise floor. Safe to
+        call inline after a face assignment, a match review, or a face deletion.
+        """
+        image_ids = [image_id for image_id in dict.fromkeys(image_ids) if image_id]
         if not image_ids:
             return {"edges_written": 0, "edges_removed": 0, "images_touched": 0}
         touched = set(image_ids)
@@ -491,7 +531,8 @@ class PostgresGraphRepository(GraphRepository):
                 }
             merged.update(desired_local.get(pair, {}))
 
-            if merged and pair[0] in known and pair[1] in known:
+            keep = bool(merged) and self._cooccurrence_edge_kept(merged, min_verified_photos)
+            if keep and pair[0] in known and pair[1] in known:
                 await self._write_cooccurrence_edge(pair[0], pair[1], merged)
                 written += 1
             elif row is not None:

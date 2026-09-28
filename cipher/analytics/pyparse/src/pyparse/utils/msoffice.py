@@ -17,24 +17,10 @@ METADATA_MAPPINGS = {
 }
 
 
-def parse_meta(
-    doc: docx.document.Document | pptx.presentation.Presentation, raw: bool = False
-) -> dict:
+def parse_meta(doc: docx.document.Document | pptx.presentation.Presentation, raw: bool = False) -> dict:
     """Parse the metadata from a Microsoft Office document."""
-    meta = {
-        att: getattr(doc.core_properties, att)
-        for att in dir(doc.core_properties)
-        if not att.startswith("_")
-    }
-    return (
-        {
-            METADATA_MAPPINGS[k]: v
-            for k, v in meta.items()
-            if k in METADATA_MAPPINGS and v
-        }
-        if raw is False
-        else meta
-    )
+    meta = {att: getattr(doc.core_properties, att) for att in dir(doc.core_properties) if not att.startswith("_")}
+    return {METADATA_MAPPINGS[k]: v for k, v in meta.items() if k in METADATA_MAPPINGS and v} if raw is False else meta
 
 
 def get_visual_cells(row):

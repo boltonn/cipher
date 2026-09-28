@@ -56,15 +56,9 @@ class DocxParser:
         soup = BeautifulSoup(comments, "xml")
         comments = [
             {
-                "created_by": comment.get("w:author")
-                if "w:author" in comment.attrs
-                else None,
-                "initials": comment.get("w:initials")
-                if "w:initials" in comment.attrs
-                else None,
-                "date": date_parser.parse(comment.get("w:date"))
-                if "w:date" in comment.attrs
-                else None,
+                "created_by": comment.get("w:author") if "w:author" in comment.attrs else None,
+                "initials": comment.get("w:initials") if "w:initials" in comment.attrs else None,
+                "date": date_parser.parse(comment.get("w:date")) if "w:date" in comment.attrs else None,
                 "text": clean_text(comment.string),
             }
             for comment in soup.find_all("w:comment")
@@ -75,24 +69,13 @@ class DocxParser:
     def convert_comments_to_text(comments: list[Comment]) -> str:
         """Convert a list of comments to text."""
         return "\n".join(
-            ["Comments:"]
-            + [
-                f"{c.created_by} @{c.date}: {c.text}"
-                for c in comments
-                if c.text is not None
-            ]
+            ["Comments:"] + [f"{c.created_by} @{c.date}: {c.text}" for c in comments if c.text is not None]
         )
 
     @staticmethod
-    def parse_images(
-        archive: ZipFile, extract: bool = False, out_dir: Path = None
-    ) -> list[dict]:
+    def parse_images(archive: ZipFile, extract: bool = False, out_dir: Path = None) -> list[dict]:
         """Parse the images from a docx file."""
-        images = [
-            i
-            for i in archive.infolist()
-            if not i.is_dir() and i.filename.startswith("word/media/")
-        ]
+        images = [i for i in archive.infolist() if not i.is_dir() and i.filename.startswith("word/media/")]
         return [
             ZipParser.extract(
                 info=i,
@@ -104,9 +87,7 @@ class DocxParser:
         ]
 
     @staticmethod
-    def _iter_section_page_breaks(
-        page_number: int, section_idx: int, section: Section
-    ) -> bool:
+    def _iter_section_page_breaks(page_number: int, section_idx: int, section: Section) -> bool:
         """Generate zero-or-one `PageBreak` document elements for `section`.
 
         A docx section has a "start" type which can be "continuous" (no page-break), "nextPage",
@@ -138,9 +119,7 @@ class DocxParser:
         return to_iter
 
     @staticmethod
-    def _iter_section_headers(
-        section: Section, odd_and_even_pages_header_footer: bool
-    ) -> list[_Header]:
+    def _iter_section_headers(section: Section, odd_and_even_pages_header_footer: bool) -> list[_Header]:
         """Iterate through the headers of a section."""
         headers = []
 
@@ -156,9 +135,7 @@ class DocxParser:
         return [header for header in headers if header is not None]
 
     @staticmethod
-    def _iter_section_footers(
-        section: Section, odd_and_even_pages_header_footer: bool
-    ) -> list[_Header]:
+    def _iter_section_footers(section: Section, odd_and_even_pages_header_footer: bool) -> list[_Header]:
         """Iterate through the footers of a section."""
         footers = []
 
@@ -320,11 +297,7 @@ class DocxParser:
         cleaned: bool = True,
     ) -> str:
         """Parse the text from a docx file."""
-        _fn = (
-            DocxParser.parse_section_text
-            if len(doc.sections) > 0
-            else DocxParser.parse_sectionless_text
-        )
+        _fn = DocxParser.parse_section_text if len(doc.sections) > 0 else DocxParser.parse_sectionless_text
         text = _fn(
             doc=doc,
             delimiter=delimiter,
@@ -364,9 +337,7 @@ class DocxParser:
 
         archive = ZipFile(file)
 
-        children: list[dict] = DocxParser.parse_images(
-            archive=archive, extract=extract_children, out_dir=out_dir
-        )
+        children: list[dict] = DocxParser.parse_images(archive=archive, extract=extract_children, out_dir=out_dir)
         if children:
             out["children"] = children
 

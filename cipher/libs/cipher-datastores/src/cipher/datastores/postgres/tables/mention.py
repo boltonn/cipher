@@ -8,7 +8,7 @@ from sqlalchemy.sql import text
 
 from cipher.datastores.postgres.tables.base import Base
 from cipher.schemas.graph.mention import MentionedType
-from cipher.schemas.graph.ontology import EntityType, SelectorKind
+from cipher.schemas.graph.ontology import EntityType, SelectorSubtype, SelectorType
 
 
 class MentionTable(Base):
@@ -29,25 +29,26 @@ class MentionTable(Base):
     dataset_id: Mapped[str] = mapped_column(
         String, ForeignKey("dataset.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    entity_id: Mapped[str | None] = mapped_column(
-        String, ForeignKey("entity.id", ondelete="SET NULL"), nullable=True
+    entity_id: Mapped[str | None] = mapped_column(String, ForeignKey("entity.id", ondelete="SET NULL"), nullable=True)
+    # The chunk whose span contains this mention's start_offset -- the materialized
+    # chunk<->mention range-join. Populated at extraction time; null for
+    # header/metadata mentions with no text offset, and until backfilled.
+    chunk_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("chunk.id", ondelete="SET NULL"), nullable=True
     )
 
-    mentioned_type: Mapped[MentionedType] = mapped_column(
-        Enum(MentionedType, native_enum=False), nullable=False
-    )
+    mentioned_type: Mapped[MentionedType] = mapped_column(Enum(MentionedType, native_enum=False), nullable=False)
     mentioned_id: Mapped[str] = mapped_column(String, nullable=False)
-    file_id: Mapped[str | None] = mapped_column(
-        String, ForeignKey("file.id", ondelete="SET NULL"), nullable=True
-    )
+    file_id: Mapped[str | None] = mapped_column(String, ForeignKey("file.id", ondelete="SET NULL"), nullable=True)
 
     surface_text: Mapped[str] = mapped_column(String, nullable=False)
-    entity_type: Mapped[EntityType | None] = mapped_column(
-        Enum(EntityType, native_enum=False), nullable=True
-    )
+    entity_type: Mapped[EntityType | None] = mapped_column(Enum(EntityType, native_enum=False), nullable=True)
     entity_attribute: Mapped[str | None] = mapped_column(String, nullable=True)
-    selector_kind: Mapped[SelectorKind | None] = mapped_column(
-        Enum(SelectorKind, native_enum=False), nullable=True
+    selector_type: Mapped[SelectorType | None] = mapped_column(
+        Enum(SelectorType, native_enum=False, length=32), nullable=True
+    )
+    selector_subtype: Mapped[SelectorSubtype | None] = mapped_column(
+        Enum(SelectorSubtype, native_enum=False, length=32), nullable=True
     )
     normalized_value: Mapped[str | None] = mapped_column(String, nullable=True)
 
@@ -80,11 +81,24 @@ class MentionTable(Base):
             "ix_mention_selector_value",
             "dataset_id",
             "normalized_value",
-            postgresql_where=text("selector_kind IS NOT NULL"),
+            postgresql_where=text("selector_type IS NOT NULL"),
         ),
         Index(
             "ix_mention_unresolved",
             "dataset_id",
             postgresql_where=text("entity_id IS NULL"),
+        ),
+        Index("ix_mention_chunk", "chunk_id", postgresql_where=text("chunk_id IS NOT NULL")),
+        Index(
+            "ix_mention_chunk_entity",
+            "chunk_id",
+            "entity_id",
+            postgresql_where=text("chunk_id IS NOT NULL"),
+        ),
+        Index(
+            "ix_mention_chunk_selector",
+            "chunk_id",
+            "selector_type",
+            postgresql_where=text("chunk_id IS NOT NULL"),
         ),
     )

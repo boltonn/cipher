@@ -27,9 +27,7 @@ UNICODE_BULLETS: Final[list[str]] = [
     "·",
 ]
 BULLETS_PATTERN: Final[str] = "|".join(UNICODE_BULLETS)
-UNICODE_BULLETS_RE: Final[re.Pattern] = re.compile(
-    f"(?:{BULLETS_PATTERN})(?!{BULLETS_PATTERN})"
-)
+UNICODE_BULLETS_RE: Final[re.Pattern] = re.compile(f"(?:{BULLETS_PATTERN})(?!{BULLETS_PATTERN})")
 
 URL_RE: Final[re.Pattern] = re.compile(r'https?://[^\s<>"]+|www\.[^\s<>"]+')
 

@@ -1,13 +1,16 @@
 "use client";
 
 import { useFileText } from "@/features/files/api";
-import { ENTITY_TYPE_META } from "@/features/entities/components/entity-type-meta";
+import {
+  ENTITY_TYPE_META,
+  entityGlyph,
+} from "@/features/entities/components/entity-type-meta";
 import { EntityHoverCard } from "@/features/entities/components/entity-tooltip-card";
 import { EntityMentionPopover } from "@/features/entities/components/entity-mention-popover";
 import { useFileMentions } from "@/features/entities/hooks/use-mentions";
 import type { Mention } from "@/features/entities/types";
 import { cn } from "@/lib/utils";
-import { Loader2 } from "lucide-react";
+import { HelpCircle, Loader2 } from "lucide-react";
 import { Fragment, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 interface EntityMentionTextProps {
@@ -129,8 +132,14 @@ export function EntityMentionText({ fileId, datasetId, focusOffset, className }:
           const m = seg.mention;
           const resolved = !!m.entityId;
           const meta = m.entityType ? ENTITY_TYPE_META[m.entityType] : null;
+          const Glyph = m.entityType
+            ? entityGlyph(m.entityType, m.selectorType)
+            : HelpCircle;
+          // Inline chip: a small type icon + the surface text in a rounded,
+          // tinted pill -- displacy-style, but it stays in the text flow and
+          // keeps click-to-annotate + hover-card.
           const mark = (
-            <mark
+            <span
               ref={spansFocus ? focusRef : undefined}
               onClick={(e) => {
                 e.stopPropagation();
@@ -138,17 +147,20 @@ export function EntityMentionText({ fileId, datasetId, focusOffset, className }:
                   surface: slice,
                   start: seg.start,
                   end: seg.end,
-                  rect: (e.target as HTMLElement).getBoundingClientRect(),
+                  rect: (e.currentTarget as HTMLElement).getBoundingClientRect(),
                   existing: m,
                 });
               }}
               className={cn(
-                "cursor-pointer rounded-[2px] text-inherit underline decoration-2 underline-offset-2",
-                resolved && meta ? meta.markClass : "bg-annotation/15 decoration-dashed decoration-annotation/70"
+                "mx-[1px] inline-flex cursor-pointer select-text items-center gap-1 rounded-md border px-1 py-[1px] align-baseline font-sans text-[0.82em] font-medium leading-tight transition-shadow hover:shadow-sm",
+                resolved && meta
+                  ? cn(meta.bgClass, meta.textClass, meta.borderClass)
+                  : "border-dashed border-annotation/50 bg-annotation/10 text-annotation"
               )}
             >
+              <Glyph size={10} className="shrink-0 opacity-80" />
               {slice}
-            </mark>
+            </span>
           );
           return (
             <Fragment key={i}>

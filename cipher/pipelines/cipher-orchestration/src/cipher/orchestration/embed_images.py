@@ -187,7 +187,7 @@ async def embed_images(
     # own AsyncSession -- a single session isn't safe for concurrent use and
     # will corrupt its transaction state under interleaved commits/queries.
     engine = session.bind
-    async with AsyncSession(engine, expire_on_commit=False) as producer_session:
+    async with AsyncSession(engine, expire_on_commit=False) as producer_session:  # noqa: SIM117
         async with AsyncSession(engine, expire_on_commit=False) as consumer_session:
             await asyncio.gather(
                 _producer(queue, producer_session, batch_size, dataset_id, model.img_preprocessor),

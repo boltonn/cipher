@@ -7,10 +7,10 @@ import { Loader2 } from "lucide-react";
 import { useMemo } from "react";
 
 /**
- * Mentions of an entity grouped by the file they appear in, newest first, each
- * expanding to the highlighted source text. Shared by the entity and person
- * dossier pages; resolves the dataset per file so it works for dataset-agnostic
- * bridge entities too. Paged -- a hub entity can have thousands of mentions.
+ * Where an entity is named in document text, grouped by file, newest first, each
+ * row dropping down to the highlighted source. NER mentions only -- From/To/Cc
+ * live in Connections, selector hits in Selectors. Paged; still "load more" for
+ * an entity named across many documents.
  */
 export function EntityMentionsByFile({
   entityId,
@@ -19,13 +19,8 @@ export function EntityMentionsByFile({
   entityId: string;
   emptyLabel?: string;
 }) {
-  const {
-    data,
-    isPending,
-    hasNextPage,
-    fetchNextPage,
-    isFetchingNextPage,
-  } = useEntityMentionsInfinite(entityId);
+  const { data, isPending, hasNextPage, fetchNextPage, isFetchingNextPage } =
+    useEntityMentionsInfinite(entityId, { provenance: "text" });
 
   const mentions = useMemo(
     () => data?.pages.flatMap((p) => p.data) ?? [],
@@ -41,12 +36,12 @@ export function EntityMentionsByFile({
     <div className="space-y-3">
       {total > 0 && (
         <p className="text-[11px] text-muted-foreground">
-          Showing {mentions.length} of {total}
+          Showing {mentions.length.toLocaleString()} of {total.toLocaleString()}
         </p>
       )}
       <MentionsByFile
         mentions={mentions}
-        emptyLabel={emptyLabel ?? "No mentions recorded yet."}
+        emptyLabel={emptyLabel ?? "Not named in any document text yet."}
       />
       {hasNextPage && (
         <div className="flex justify-center">

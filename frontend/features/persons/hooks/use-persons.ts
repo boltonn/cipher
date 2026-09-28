@@ -85,6 +85,74 @@ export function useUpdatePerson(personId: string, onSuccess?: () => void) {
   });
 }
 
+/**
+ * Fold another person into `targetId` and delete that other record. The
+ * backend moves faces, pending matches, event participations, comments,
+ * mentions and relationship edges onto the survivor, so invalidate broadly.
+ */
+export function useMergePerson(targetId: string, onSuccess?: () => void) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (sourceId: string) => personsService.merge(targetId, sourceId),
+    onSuccess: (_result, sourceId) => {
+      // The merged-in person (and its shared-id entity) is deleted -- drop its
+      // cache outright so a still-mounted observer doesn't refetch a 404, and
+      // exclude its keys from the broad invalidation below.
+      queryClient.removeQueries({ queryKey: ["persons", sourceId] });
+      queryClient.removeQueries({ queryKey: ["entities", sourceId] });
+      const notSource = (key: readonly unknown[]) => key[1] !== sourceId;
+      queryClient.invalidateQueries({ queryKey: ["persons"], predicate: (q) => notSource(q.queryKey) });
+      queryClient.invalidateQueries({ queryKey: ["entities"], predicate: (q) => notSource(q.queryKey) });
+      queryClient.invalidateQueries({ queryKey: ["faces"] });
+      queryClient.invalidateQueries({ queryKey: ["face-matches"] });
+      queryClient.invalidateQueries({ queryKey: ["events"] });
+      queryClient.invalidateQueries({ queryKey: ["comments"] });
+      onSuccess?.();
+    },
+  });
+}
+
+/**
+ * Delete a person and their bridged entity node. Faces are unlinked rather
+ * than deleted; mentions/relationships/comments on the bridge entity go too
+ * -- invalidate the same breadth as a merge, since the effect is similar
+ * (this person's records disappear from every list that showed them).
+ */
+export function useDeletePerson(onSuccess?: () => void) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (personId: string) => personsService.delete(personId),
+    onSuccess: (_result, personId) => {
+      // The page viewing this person is often still mounted at this point (the
+      // route change hasn't unmounted it yet) -- excluding its id from the
+      // broad invalidation below stops that live observer from refetching a
+      // 404 for the id we just removeQueries'd.
+      queryClient.removeQueries({ queryKey: ["persons", personId] });
+      queryClient.removeQueries({ queryKey: ["entities", personId] });
+      const notDeleted = (key: readonly unknown[]) => key[1] !== personId;
+      queryClient.invalidateQueries({ queryKey: ["persons"], predicate: (q) => notDeleted(q.queryKey) });
+      queryClient.invalidateQueries({ queryKey: ["entities"], predicate: (q) => notDeleted(q.queryKey) });
+      queryClient.invalidateQueries({ queryKey: ["faces"] });
+      queryClient.invalidateQueries({ queryKey: ["face-matches"] });
+      queryClient.invalidateQueries({ queryKey: ["events"] });
+      queryClient.invalidateQueries({ queryKey: ["comments"] });
+      onSuccess?.();
+    },
+  });
+}
+
+/** Ranked shortlist of other persons who may be the same identity as `personId`. */
+export function usePersonMergeCandidates(personId: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ["persons", personId, "merge-candidates"],
+    queryFn: () => personsService.mergeCandidates(personId as string),
+    enabled: !!personId && enabled,
+    staleTime: 30_000,
+  });
+}
+
 export function usePersonRepresentativeFaces(personId: string | undefined) {
   return useQuery({
     queryKey: ["persons", personId, "representative-faces"],

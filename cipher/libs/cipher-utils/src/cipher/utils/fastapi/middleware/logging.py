@@ -73,7 +73,6 @@ def _log_request(
         "elapsed_ms": round(elapsed * 1000, 2),
     }
 
-    # Choose log level
     if exception:
         log_level = logger.error
         message = "Request failed with exception"

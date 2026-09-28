@@ -6,6 +6,7 @@ import type {
   EntitySearchParameters,
   EntityType,
   EntityUpdatePayload,
+  MentionProvenance,
   RelatedEntitySort,
   RelationshipType,
   SelectorLinkPayload,
@@ -41,6 +42,9 @@ export function useEntitySearch(
       entitiesService.search({ ...opts, datasetId: opts.datasetId as string }),
     enabled: enabled && !!opts.datasetId && !!(opts.q || opts.selector),
     staleTime: 15_000,
+    // Keep the previous matches visible while the next query loads so the
+    // dropdown doesn't flash "no matches" between keystrokes.
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -96,18 +100,26 @@ export function useEntityMentions(
 
 const MENTIONS_PAGE_SIZE = 40;
 
-/** Mentions of an entity, paged. Feeds the "load more" list on the dossier. */
+/** Mentions of an entity, paged, optionally one evidence class. Feeds the dossier "Files" list. */
 export function useEntityMentionsInfinite(
   entityId: string | undefined,
-  fileId?: string
+  opts?: { fileId?: string; provenance?: MentionProvenance }
 ) {
+  const { fileId, provenance } = opts ?? {};
   return useInfiniteQuery({
-    queryKey: ["entities", entityId, "mentions-infinite", fileId ?? null],
+    queryKey: [
+      "entities",
+      entityId,
+      "mentions-infinite",
+      fileId ?? null,
+      provenance ?? null,
+    ],
     enabled: !!entityId,
     initialPageParam: 1,
     queryFn: ({ pageParam }) =>
       entitiesService.getMentions(entityId as string, {
         fileId,
+        provenance,
         limit: MENTIONS_PAGE_SIZE,
         page: pageParam,
       }),
@@ -235,22 +247,32 @@ export function useOntology() {
   });
 }
 
+/** Entity / selector counts for one dataset -- the dataset-view breakdown chart. */
+export function useEntityBreakdown(datasetId: string | undefined) {
+  return useQuery({
+    queryKey: ["entities", "breakdown", datasetId ?? null],
+    queryFn: () => entitiesService.getBreakdown(datasetId),
+    enabled: !!datasetId,
+    staleTime: 60_000,
+  });
+}
+
 /**
  * Mentions whose normalized value equals a selector's -- across every dataset and
  * regardless of resolution -- so a linked selector surfaces where it already appears.
  */
 export function useSelectorMentions(
   normalizedValue: string | null | undefined,
-  selectorKind?: string | null
+  selectorType?: string | null
 ) {
   return useInfiniteQuery({
-    queryKey: ["mentions", "by-value", normalizedValue, selectorKind ?? null],
+    queryKey: ["mentions", "by-value", normalizedValue, selectorType ?? null],
     enabled: !!normalizedValue,
     initialPageParam: 1,
     queryFn: ({ pageParam }) =>
       mentionsService.list({
         normalizedValue: normalizedValue as string,
-        selectorKind: selectorKind ?? undefined,
+        selectorType: selectorType ?? undefined,
         limit: SELECTOR_MENTIONS_PAGE_SIZE,
         page: pageParam,
       }),
@@ -271,12 +293,19 @@ export function useDetachSelector(entityId: string, onSuccess?: () => void) {
   });
 }
 
+/** Delete an entity node. Mentions unresolve and relationships/matches/comments on it go too. */
 export function useDeleteEntity(onSuccess?: () => void) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (entityId: string) => entitiesService.delete(entityId),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["entities"] });
+    onSuccess: (_result, entityId) => {
+      // The dossier page for this entity is often still mounted here (the route
+      // change hasn't unmounted it yet) -- excluding its id from the broad
+      // invalidation stops that live observer from refetching a 404 for the id
+      // we just removeQueries'd.
+      qc.removeQueries({ queryKey: ["entities", entityId] });
+      qc.invalidateQueries({ queryKey: ["entities"], predicate: (q) => q.queryKey[1] !== entityId });
+      qc.invalidateQueries({ queryKey: ["comments"] });
       onSuccess?.();
     },
   });

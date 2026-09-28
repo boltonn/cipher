@@ -33,54 +33,145 @@ from cipher.schemas.ingestion.dataset import DatasetsRequest
 _MAX_FILE_CHARS = 6000
 
 
-def _chunk_filters(ctx: RunContext[ChatDeps]) -> ChunkFilters:
-    return ChunkFilters(dataset_id=ctx.deps.dataset_id)
+def _chunk_filters(
+    ctx: RunContext[ChatDeps],
+    *,
+    entity_id: str | None = None,
+    selector_type: str | None = None,
+) -> ChunkFilters:
+    """Dataset scope plus an optional entity / selector-type restriction.
+
+    `entity_id` and `selector_type` are matched against the entity metadata
+    `sync-chunk-entities` denormalizes onto each chunk, so they compose with the
+    BM25 / kNN query instead of being a separate lookup.
+    """
+    return ChunkFilters(
+        dataset_id=ctx.deps.dataset_id,
+        entity_ids=[entity_id] if entity_id else None,
+        selector_types=[selector_type] if selector_type else None,
+    )
 
 
-async def search_text(ctx: RunContext[ChatDeps], query: str, limit: int = 5) -> list[dict]:
+async def search_text(
+    ctx: RunContext[ChatDeps],
+    query: str,
+    limit: int = 5,
+    entity_id: str | None = None,
+    selector_type: str | None = None,
+) -> list[dict]:
     """Keyword (BM25) search over document and email text.
 
     Use this when the user's words are likely to appear verbatim -- names,
     quoted phrases, error strings, identifiers, exact terminology. It will not
     match paraphrases or synonyms; for those use `search_semantic`.
+
+    Pass `entity_id` (from `find_entity`) to only return passages that mention
+    that entity, or `selector_type` (e.g. "phone", "crypto_address",
+    "social_handle") to only return passages containing that kind of identifier
+    -- both compose with `query`, and `query` may be "" to browse them.
     """
     result = await ctx.deps.chunks.search_text(
-        ChunkTextSearchRequest(query=query, limit=limit, filters=_chunk_filters(ctx))
+        ChunkTextSearchRequest(
+            query=query, limit=limit, filters=_chunk_filters(ctx, entity_id=entity_id, selector_type=selector_type)
+        )
     )
     return [chunk_citation(top_chunk(r)) for r in result.data]
 
 
-async def search_semantic(ctx: RunContext[ChatDeps], query: str, limit: int = 5) -> list[dict]:
+async def search_semantic(
+    ctx: RunContext[ChatDeps],
+    query: str,
+    limit: int = 5,
+    entity_id: str | None = None,
+    selector_type: str | None = None,
+) -> list[dict]:
     """Meaning-based (vector) search over document and email text.
 
     Use this for conceptual questions where the wording won't match -- "concerns
     about the merger timeline", "anyone unhappy with the vendor". Matches on
     meaning, not exact words. For verbatim terms use `search_text`; when unsure
     use `search_hybrid`.
+
+    `entity_id` / `selector_type` restrict the results the same way as in
+    `search_text`.
     """
     embedding = await ctx.deps.embedding_model.infer(text=query, task="retrieval", prompt="Query: ")
     if embedding is None:
         raise ModelRetry("The embedding model is unavailable, so semantic search can't run right now.")
     result = await ctx.deps.chunks.search_semantic(
-        ChunkSemanticSearchRequest(embedding=embedding, limit=limit, filters=_chunk_filters(ctx))
+        ChunkSemanticSearchRequest(
+            embedding=embedding,
+            limit=limit,
+            filters=_chunk_filters(ctx, entity_id=entity_id, selector_type=selector_type),
+        )
     )
     return [chunk_citation(top_chunk(r)) for r in result.data]
 
 
-async def search_hybrid(ctx: RunContext[ChatDeps], query: str, limit: int = 5) -> list[dict]:
+async def search_hybrid(
+    ctx: RunContext[ChatDeps],
+    query: str,
+    limit: int = 5,
+    entity_id: str | None = None,
+    selector_type: str | None = None,
+) -> list[dict]:
     """Combined keyword + vector search over documents and emails (RRF fusion).
 
     The safe default when you want relevant passages to ground an answer and
     don't have a specific reason to prefer keyword-only or meaning-only.
+
+    `entity_id` / `selector_type` restrict the results the same way as in
+    `search_text`.
     """
     try:
         result = await search_chunks(
-            params=ChunkTextSearchRequest(query=query, limit=limit, filters=_chunk_filters(ctx)),
+            params=ChunkTextSearchRequest(
+                query=query,
+                limit=limit,
+                filters=_chunk_filters(ctx, entity_id=entity_id, selector_type=selector_type),
+            ),
             datastore=ctx.deps.chunks,
             embedding_model=ctx.deps.embedding_model,
         )
     except RuntimeError as exc:
         raise ModelRetry(str(exc)) from exc
+    return [chunk_citation(top_chunk(r)) for r in result.data]
+
+
+async def search_graph(
+    ctx: RunContext[ChatDeps],
+    entity_id: str,
+    query: str = "",
+    hops: int = 1,
+    relationship_type: str | None = None,
+    limit: int = 5,
+) -> list[dict]:
+    """Graph-RAG: retrieve passages that mention an entity **or anyone it's connected to**.
+
+    Expands the knowledge graph out from `entity_id` (from `find_entity`) by
+    `hops` (1-3) relationships -- optionally only `relationship_type`
+    (`communicates_with`, `employed_by`, ...) -- then returns passages mentioning
+    any entity in that neighbourhood, ranked by `query` (leave `query` empty to
+    just browse them). Use when a question is about a person *and their circle*,
+    not only direct mentions of them. Requires the Postgres retrieval backend.
+    """
+    from cipher.schemas.content.search import GraphExpand, RetrievalMode, RetrievalQuery
+
+    if not hasattr(ctx.deps.chunks, "search"):
+        raise ModelRetry("Graph-scoped search needs the Postgres retrieval backend; use `related_entities` instead.")
+    result = await ctx.deps.chunks.search(
+        RetrievalQuery(
+            mode=RetrievalMode.KEYWORD,
+            text=query or None,
+            filters=_chunk_filters(ctx),
+            graph_expand=GraphExpand(
+                seed_entity_id=entity_id,
+                max_depth=max(1, min(hops, 3)),
+                relationship_types=[relationship_type] if relationship_type else None,
+            ),
+            limit=limit,
+        )
+    )
     return [chunk_citation(top_chunk(r)) for r in result.data]
 
 
@@ -201,6 +292,31 @@ async def related_entities(
     return to_jsonable_python(graph, by_alias=True)
 
 
+async def explain_entity_resolution(ctx: RunContext[ChatDeps], mention_id: str) -> dict:
+    """Why a mention did or didn't resolve to an entity.
+
+    Returns the scored candidates for the mention's name group with the
+    per-feature breakdown (shared selector, name structure, trigram, any
+    conflict that vetoed a look-alike) and the decision band. An empty
+    `candidates` list means nothing blocked or nothing cleared the review floor.
+    """
+    mention = await ctx.deps.mentions.get_mention(mention_id)
+    if mention is None:
+        raise ModelRetry(f"No mention {mention_id!r}.")
+    candidates = []
+    if mention.normalized_value:
+        rows = await ctx.deps.entity_matches.list_for_name_group(
+            dataset_id=mention.dataset_id, normalized_value=mention.normalized_value
+        )
+        candidates = [to_jsonable_python(r, by_alias=True) for r in rows]
+    return {
+        "mentionId": mention_id,
+        "normalizedValue": mention.normalized_value,
+        "resolvedEntityId": mention.entity_id,
+        "candidates": candidates,
+    }
+
+
 async def read_file(
     ctx: RunContext[ChatDeps],
     file_id: str,
@@ -234,11 +350,13 @@ ALL_TOOLS = (
     search_text,
     search_semantic,
     search_hybrid,
+    search_graph,
     find_person,
     list_datasets,
     find_entity,
     entity_profile,
     entity_mentions,
     related_entities,
+    explain_entity_resolution,
     read_file,
 )

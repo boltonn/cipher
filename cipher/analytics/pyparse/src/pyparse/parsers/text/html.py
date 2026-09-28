@@ -27,9 +27,7 @@ IMG_B64_RE: Final[re.Pattern[str]] = re.compile(
     r"data:(?P<mime>image/(?P<ext>png|jpeg|jpg|gif|webp));base64,(?P<data>[A-Za-z0-9+/=]+)"
 )
 
-SAFE_PROTOCOLS: Final[frozenset[str]] = frozenset(
-    {"http", "https", "mailto", "ftp", "ftps", ""}
-)
+SAFE_PROTOCOLS: Final[frozenset[str]] = frozenset({"http", "https", "mailto", "ftp", "ftps", ""})
 
 # ``head`` is included so that all <style> blocks, <meta> tags, and <link>
 # elements are removed in a single pass when processing full email HTML documents.
@@ -180,9 +178,7 @@ class SanitizeConfig:
     """
 
     allowed_tags: frozenset[str] = field(default_factory=lambda: MODERATE_TAGS)
-    allowed_attrs: dict[str, frozenset[str]] = field(
-        default_factory=lambda: MODERATE_ATTRS
-    )
+    allowed_attrs: dict[str, frozenset[str]] = field(default_factory=lambda: MODERATE_ATTRS)
     drop_subtree_tags: frozenset[str] = field(default_factory=lambda: DROP_SUBTREE_TAGS)
     safe_protocols: frozenset[str] = field(default_factory=lambda: SAFE_PROTOCOLS)
     strip_comments: bool = True
@@ -192,9 +188,7 @@ class SanitizeConfig:
     def strict(cls) -> SanitizeConfig:
         """Returns a restrictive configuration safe for raw browser rendering."""
         return cls(
-            allowed_tags=frozenset(
-                {"a", "b", "i", "em", "strong", "p", "br", "ul", "li"}
-            ),
+            allowed_tags=frozenset({"a", "b", "i", "em", "strong", "p", "br", "ul", "li"}),
             allowed_attrs={"*": frozenset(), "a": frozenset({"href"})},
         )
 
@@ -244,9 +238,7 @@ class HtmlParser:
         except Exception:
             return HtmlParseResult(text="", children=[])
 
-        children: list[FileBase] = (
-            self._mine_images(doc, out_dir) if extract_images else []
-        )
+        children: list[FileBase] = self._mine_images(doc, out_dir) if extract_images else []
 
         if method == "html":
             text = HtmlParser._sanitize_doc(doc)
@@ -381,9 +373,7 @@ class HtmlParser:
                 mime_type: str = match.group("mime")
                 ext: str = match.group("ext")
                 filename = f"{md5}.{ext}"
-                filetype_info = self.filetyper.map_mime_type_to_filetype_info(
-                    mime_type=mime_type
-                )
+                filetype_info = self.filetyper.map_mime_type_to_filetype_info(mime_type=mime_type)
                 if out_dir:
                     out_dir.mkdir(parents=True, exist_ok=True)
                     (out_dir / filename).write_bytes(raw_data)
@@ -412,9 +402,7 @@ class HtmlParser:
                 raw_text = re.sub(r"\s+", " ", c.text_content()).strip()
 
                 # CLEANING STEP: Remove NULL bytes and non-printable control characters
-                clean_text = "".join(
-                    ch for ch in raw_text if ch.isprintable() or ch in "\n\r\t"
-                ).replace("\x00", "")
+                clean_text = "".join(ch for ch in raw_text if ch.isprintable() or ch in "\n\r\t").replace("\x00", "")
 
                 cells.append(clean_text)
 
@@ -442,9 +430,7 @@ class HtmlParser:
 
         # 2. Use fromstring for better resilience with full documents
         try:
-            return lxml_html.fromstring(
-                raw, parser=lxml_html.HTMLParser(encoding="utf-8")
-            )
+            return lxml_html.fromstring(raw, parser=lxml_html.HTMLParser(encoding="utf-8"))
         except Exception:
             # logger.warning(f"Initial parse failed, trying fragment: {exc}")
             return lxml_html.fragment_fromstring(
@@ -459,10 +445,7 @@ class HtmlParser:
         target = body if body is not None else doc
 
         # Serialize only the children of the target to return a fragment
-        parts = [
-            lxml_html.tostring(child, encoding="unicode", method="html")
-            for child in target.iterchildren()
-        ]
+        parts = [lxml_html.tostring(child, encoding="unicode", method="html") for child in target.iterchildren()]
         return "".join(parts)
 
     @staticmethod
@@ -508,18 +491,12 @@ class HtmlParser:
             if EVENT_ATTR_RE.match(attr):
                 del element.attrib[attr]
                 continue
-            is_valid = (
-                attr in global_ok
-                or attr in tag_ok
-                or (allow_data and attr.startswith("data-"))
-            )
+            is_valid = attr in global_ok or attr in tag_ok or (allow_data and attr.startswith("data-"))
             if not is_valid:
                 del element.attrib[attr]
                 continue
             if attr in ("href", "src", "action"):
-                element.attrib[attr] = HtmlParser._safe_url(
-                    element.attrib[attr], cfg.safe_protocols
-                )
+                element.attrib[attr] = HtmlParser._safe_url(element.attrib[attr], cfg.safe_protocols)
 
     @staticmethod
     def _unwrap(element: Any) -> None:
@@ -537,9 +514,7 @@ class HtmlParser:
         if element.tail:
             moved = list(element)
             if moved:
-                parent[index + len(moved) - 1].tail = (
-                    parent[index + len(moved) - 1].tail or ""
-                ) + element.tail
+                parent[index + len(moved) - 1].tail = (parent[index + len(moved) - 1].tail or "") + element.tail
             else:
                 parent.text = (parent.text or "") + element.tail
         parent.remove(element)

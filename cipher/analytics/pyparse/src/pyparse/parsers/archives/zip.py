@@ -34,11 +34,7 @@ class ZipParser:
         password_encoding: str = "utf-8",
     ) -> dict:
         """Extract a file from a zip archive."""
-        password = (
-            bytes(password, encoding=password_encoding)
-            if isinstance(password, str)
-            else password
-        )
+        password = bytes(password, encoding=password_encoding) if isinstance(password, str) else password
         child = ZipParser.standardize_file_meta(info)
         if extract_children:
             with archive.open(info, pwd=password) as fb:

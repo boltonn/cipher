@@ -29,6 +29,7 @@ import {
 } from "@/features/entities/hooks/use-mentions";
 import { ENTITY_TYPES, type EntityType, type Mention } from "@/features/entities/types";
 import { useMe } from "@/features/users/hooks/use-me";
+import { useDebounce } from "@/hooks/use-debounce";
 import { cn } from "@/lib/utils";
 import { motion } from "motion/react";
 import { Link2Off, Loader2, Plus, Trash2 } from "lucide-react";
@@ -57,8 +58,9 @@ export function EntityMentionPopover(props: EntityMentionPopoverProps) {
 
   const [entityType, setEntityType] = useState<EntityType>(existing?.entityType ?? "person");
   const [query, setQuery] = useState(surface.trim().slice(0, 80));
+  const debouncedQuery = useDebounce(query, 250);
 
-  const { data: results, isFetching } = useEntitySearch({ datasetId, q: query });
+  const { data: results, isFetching } = useEntitySearch({ datasetId, q: debouncedQuery });
 
   const done = () => onClose();
   const createEntity = useCreateEntity();

@@ -138,19 +138,20 @@ export default function FaqPage() {
   }, [query]);
 
   return (
-    <div className="w-full max-w-4xl mx-auto px-6 relative pb-20">
+    <div className="max-w-400 mx-auto px-6 relative pb-20 pt-5">
       <PageHeader
         eyebrow="Help"
         value="Frequently Asked Questions"
         icon={<HelpCircle className="h-3.5 w-3.5 text-primary/80" />}
       />
 
-      <div className="mt-6 mb-10">
+      <div className="w-full max-w-3xl">
+      <div className="mb-10">
         <Input
           placeholder="Search the FAQ..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          className="max-w-md"
+          className="w-full"
         />
       </div>
 
@@ -182,6 +183,7 @@ export default function FaqPage() {
           ))}
         </div>
       )}
+      </div>
     </div>
   );
 }

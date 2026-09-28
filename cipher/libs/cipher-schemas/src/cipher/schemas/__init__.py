@@ -18,6 +18,7 @@ from cipher.schemas.graph.organization import Organization
 from cipher.schemas.graph.location import Location
 from cipher.schemas.graph.selector import Selector
 from cipher.schemas.graph.mention import Mention
+from cipher.schemas.graph.mention_relationship import MentionRelationship
 from cipher.schemas.graph.entity_relationship import EntityRelationship, RelationshipCandidate
 from cipher.schemas.graph.entity_match import EntityMatch
 from cipher.schemas.graph.event_participant import EventParticipant
@@ -39,6 +40,7 @@ __all__ = [
     "Location",
     "Selector",
     "Mention",
+    "MentionRelationship",
     "EntityRelationship",
     "RelationshipCandidate",
     "EntityMatch",

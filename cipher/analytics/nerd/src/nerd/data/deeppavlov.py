@@ -55,18 +55,6 @@ def format_file(file_path: Path, out_dir: Path):
     """Format a file into a Parquet file NERD dataset."""
     raise NotImplementedError("Not implemented yet. They seem to only have the English version")
 
-    # mode = file_path.stem
-    # mode = Mode.VAL if mode == "valid" else mode
-    # if mode not in Mode:
-    #     raise ValueError(f"Unknown mode: {mode}")
-    # out_path = out_dir / f"{mode}.parquet"
-
-    # out_dir.mkdir(parents=True, exist_ok=True)
-    # df = pd.read_csv(file_path, sep="\t", encoding="utf-8")
-    # df = df.rename(columns={"index": "doc_id", "sentence": "text", "tag": "tags"})
-    # df["md5"] = df["doc_id"].apply(lambda x: hashlib.md5(x.encode()).hexdigest())
-    # df["lang"] = iso639.to_iso639_3("en")
-    # df.to_parquet(out_dir / f"{file_path.stem}.parquet")
 
 if __name__ == "__main__":
     app()

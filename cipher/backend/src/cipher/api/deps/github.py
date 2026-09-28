@@ -56,10 +56,24 @@ class GithubIssueClient:
 
 
 def get_github_client() -> GithubIssueClient:
-    """Provide a GitHub issue client, or 503 if the integration is unconfigured."""
+    """Provide a GitHub issue client, or 503 if the integration is unconfigured.
+
+    For an endpoint that can't do its job at all without GitHub (creating an
+    issue). An endpoint that can report "not configured" as a normal result
+    (reading config) should use `get_optional_github_client` instead -- an
+    optional integration being off isn't a server error.
+    """
     if settings.github is None:
         raise HTTPException(status_code=503, detail="GitHub integration is not configured")
     return GithubIssueClient(settings.github)
 
 
+def get_optional_github_client() -> GithubIssueClient | None:
+    """Provide a GitHub issue client, or `None` if the integration is unconfigured."""
+    if settings.github is None:
+        return None
+    return GithubIssueClient(settings.github)
+
+
 GithubClientDep = Annotated[GithubIssueClient, Depends(get_github_client)]
+OptionalGithubClientDep = Annotated[GithubIssueClient | None, Depends(get_optional_github_client)]

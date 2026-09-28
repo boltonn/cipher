@@ -1,3 +1,4 @@
+import { colorFor } from "@/features/locations/lib/category-icons";
 import type { LocationFeature } from "@/features/locations/types";
 
 /** Which feature property drives the marker colour. */
@@ -7,39 +8,6 @@ export const COLOR_FIELDS: { id: ColorField; label: string }[] = [
   { id: "source", label: "Source" },
   { id: "category", label: "Category" },
 ];
-
-/**
- * Colours are design-token names (or literal hex where the app has no matching
- * token) resolved to concrete rgb at runtime -- maplibre paint can't read CSS
- * variables, and we want the map to track the app's theme. `exif` is the app's
- * primary; the rest are muted, harmonious hues (no amber/yellow).
- */
-const SOURCE_TOKENS: Record<string, string> = {
-  exif: "--primary",
-  geocoded: "--highlight",
-  named_mention: "#7a74d6",
-  device_gps: "#3f9d6d",
-};
-const FALLBACK_TOKEN = "--muted-foreground";
-
-// Categorical hues -- app tokens first, then a curated, yellow-free set that
-// harmonises with them (all mid saturation / mid lightness).
-const CATEGORY_TOKENS = [
-  "--primary",
-  "--highlight",
-  "#3f9d6d",
-  "#c65f88",
-  "#7a74d6",
-  "#4a90b8",
-  "#b5744a",
-  "#7d7f8c",
-];
-
-function hash(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
-  return Math.abs(h);
-}
 
 const FALLBACK_RGB = "#6366f1";
 
@@ -76,36 +44,32 @@ export function resolveCssColor(token: string): string {
 }
 
 export interface MarkerPalette {
-  source: Record<string, string>;
-  category: string[];
   fallback: string;
   cluster: string;
   clusterText: string;
   pointStroke: string;
 }
 
-/** Resolve every token once (call again on a theme change). */
+/** Resolve the theme-tracking colours once (call again on a theme change). */
 export function buildMarkerPalette(): MarkerPalette {
   return {
-    source: Object.fromEntries(
-      Object.entries(SOURCE_TOKENS).map(([k, v]) => [k, resolveCssColor(v)]),
-    ),
-    category: CATEGORY_TOKENS.map(resolveCssColor),
-    fallback: resolveCssColor(FALLBACK_TOKEN),
+    fallback: resolveCssColor("--muted-foreground"),
     cluster: resolveCssColor("--primary"),
     clusterText: resolveCssColor("--foreground"),
     pointStroke: resolveCssColor("--background"),
   };
 }
 
+/**
+ * Fixed display colour for a feature's `source` / `category` value. Delegates to
+ * `category-icons` so markers, legend, and detail header always agree.
+ */
 export function colorForValue(
-  palette: MarkerPalette,
+  _palette: MarkerPalette,
   field: ColorField,
   value: string | null | undefined,
 ): string {
-  if (!value) return palette.fallback;
-  if (field === "source") return palette.source[value] ?? palette.fallback;
-  return palette.category[hash(value) % palette.category.length];
+  return colorFor(field, value);
 }
 
 /** Feature with a `markerColor` property so the circle layer can `["get", "markerColor"]`. */

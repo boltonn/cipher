@@ -6,10 +6,12 @@ from cipher.datastores.postgres.tables.base import Base
 ENTITY_LAYER_TABLE_NAMES: frozenset[str] = frozenset(
     {
         "entity",
+        "entity_name_key",
         "organization",
         "location",
         "selector",
         "mention",
+        "mention_relationship",
         "entity_relationship",
         "entity_relationship_candidate",
         "entity_match",

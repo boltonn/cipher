@@ -4,9 +4,16 @@ from cipher.datastores.postgres.repositories.dataset import PostgresDatasetRepos
 from cipher.datastores.postgres.repositories.enrichment import (
     PostgresEnrichmentRepository,
 )
+from cipher.datastores.postgres.repositories.enrichment_run import (
+    PostgresEnrichmentRunRepository,
+)
 from cipher.datastores.postgres.repositories.entity import PostgresEntityRepository
 from cipher.datastores.postgres.repositories.entity_match import (
     PostgresEntityMatchRepository,
+)
+from cipher.datastores.postgres.repositories.entity_name_key import (
+    PostgresEntityNameKeyRepository,
+    refresh_entity_name_keys,
 )
 from cipher.datastores.postgres.repositories.entity_relationship import (
     PostgresGraphRepository,
@@ -26,6 +33,9 @@ from cipher.datastores.postgres.repositories.file import PostgresFileRepository
 from cipher.datastores.postgres.repositories.image import PostgresImageRepository
 from cipher.datastores.postgres.repositories.location import PostgresLocationRepository
 from cipher.datastores.postgres.repositories.mention import PostgresMentionRepository
+from cipher.datastores.postgres.repositories.mention_relationship import (
+    PostgresMentionRelationshipRepository,
+)
 from cipher.datastores.postgres.repositories.person import PostgresPersonRepository
 from cipher.datastores.postgres.repositories.user import PostgresUserRepository
 
@@ -34,8 +44,11 @@ __all__ = [
     "PostgresContactRepository",
     "PostgresDatasetRepository",
     "PostgresEnrichmentRepository",
+    "PostgresEnrichmentRunRepository",
     "PostgresEntityRepository",
     "PostgresEntityMatchRepository",
+    "PostgresEntityNameKeyRepository",
+    "refresh_entity_name_keys",
     "PostgresGraphRepository",
     "PostgresRelationshipCandidateRepository",
     "PostgresEventRepository",
@@ -46,6 +59,7 @@ __all__ = [
     "PostgresImageRepository",
     "PostgresLocationRepository",
     "PostgresMentionRepository",
+    "PostgresMentionRelationshipRepository",
     "PostgresPersonRepository",
     "PostgresUserRepository",
 ]

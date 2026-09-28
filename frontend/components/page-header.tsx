@@ -1,61 +1,84 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import { PAGE_CONTAINER } from "@/lib/layout";
 import { cn } from "@/lib/utils";
 
-type PageHeaderState = {
-  left: React.ReactNode;
-  right: React.ReactNode;
+type PageHeaderContextValue = {
+  leftEl: HTMLElement | null;
+  rightEl: HTMLElement | null;
   sidebarAccentClassName?: string;
-} | null;
+  setLeftEl: (el: HTMLElement | null) => void;
+  setRightEl: (el: HTMLElement | null) => void;
+  setSidebarAccentClassName: (className: string | undefined) => void;
+};
 
-const PageHeaderStateContext = React.createContext<PageHeaderState>(null);
-const PageHeaderSetterContext =
-  React.createContext<React.Dispatch<React.SetStateAction<PageHeaderState>> | null>(null);
+const PageHeaderContext = React.createContext<PageHeaderContextValue | null>(null);
 
 /**
- * Wraps the app shell. Holds the "current page's header content" as state so
- * `PageHeaderSlot` (rendered once, at a fixed spot in the shell) can display
- * whatever the active page's `PageHeader` last reported, instead of every
- * page rendering (and repositioning) its own copy of the sidebar trigger.
+ * Wraps the app shell. Owns the two DOM containers inside `PageHeaderSlot`
+ * that each page portals its header content into.
+ *
+ * Earlier this held the header content itself as React state and every page's
+ * `PageHeader` pushed a fresh node tree into it from a dependency-less effect
+ * on every render. On a page that re-renders often (React Query loading flips)
+ * and puts a stateful Radix widget in `actions`, that re-mounted the widget on
+ * every render and tripped React's "state update on a component that hasn't
+ * mounted yet" warning. Portalling drops the state round-trip: the slot
+ * renders once, pages render straight into it and update it in place.
  */
 export function PageHeaderProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = React.useState<PageHeaderState>(null);
+  const [leftEl, setLeftEl] = React.useState<HTMLElement | null>(null);
+  const [rightEl, setRightEl] = React.useState<HTMLElement | null>(null);
+  const [sidebarAccentClassName, setSidebarAccentClassName] = React.useState<
+    string | undefined
+  >(undefined);
 
-  return (
-    <PageHeaderSetterContext value={setState}>
-      <PageHeaderStateContext value={state}>{children}</PageHeaderStateContext>
-    </PageHeaderSetterContext>
+  const value = React.useMemo<PageHeaderContextValue>(
+    () => ({
+      leftEl,
+      rightEl,
+      sidebarAccentClassName,
+      setLeftEl,
+      setRightEl,
+      setSidebarAccentClassName,
+    }),
+    [leftEl, rightEl, sidebarAccentClassName]
   );
+
+  return <PageHeaderContext value={value}>{children}</PageHeaderContext>;
 }
 
 /**
  * The single, real sidebar-trigger + header bar for the app. Rendered once
  * in the root layout so its position never moves between pages or with the
  * sidebar's expanded/collapsed width -- pages only ever feed it content via
- * `PageHeader`.
+ * `PageHeader`, which portals into the `left`/`right` containers here.
  */
 export function PageHeaderSlot({ className }: { className?: string }) {
-  const state = React.use(PageHeaderStateContext);
+  const ctx = React.use(PageHeaderContext);
 
   return (
     <div
       className={cn(
-        "sticky top-0 z-30 flex h-24 shrink-0 items-center justify-between px-6 bg-sidebar/85 backdrop-blur-xl border-b border-border",
+        "sticky top-0 z-30 flex h-14 shrink-0 items-center bg-sidebar/85 backdrop-blur-xl border-b border-border",
         className
       )}
     >
-      <div className="flex items-center gap-4">
-        <SidebarTrigger
-          className={cn(
-            "h-9 w-9 text-muted-foreground",
-            state?.sidebarAccentClassName ?? "hover:text-primary"
-          )}
-        />
-        {state?.left}
+      <div className={cn(PAGE_CONTAINER, "flex items-center justify-between gap-4")}>
+        <div className="flex min-w-0 items-center gap-3">
+          <SidebarTrigger
+            className={cn(
+              "h-8 w-8 shrink-0 text-muted-foreground",
+              ctx?.sidebarAccentClassName ?? "hover:text-primary"
+            )}
+          />
+          <div ref={ctx?.setLeftEl} className="flex min-w-0 items-center gap-3" />
+        </div>
+        <div ref={ctx?.setRightEl} className="flex shrink-0 items-center gap-2" />
       </div>
-      {state?.right && <div className="flex items-center gap-2">{state.right}</div>}
     </div>
   );
 }
@@ -80,9 +103,10 @@ interface PageHeaderProps {
 }
 
 /**
- * Reports this page's header content to the shared `PageHeaderSlot` -- it
- * renders nothing itself. Mount once per page, anywhere in its tree; unmount
- * (route change) clears the slot back to just the bare trigger.
+ * Reports this page's header content to the shared `PageHeaderSlot` by
+ * portalling into its containers -- it renders nothing in place. Mount once
+ * per page, anywhere in its tree; unmount (route change) clears the slot back
+ * to just the bare trigger.
  */
 export function PageHeader({
   eyebrow,
@@ -94,7 +118,7 @@ export function PageHeader({
   actions,
   children,
 }: PageHeaderProps) {
-  const setState = React.use(PageHeaderSetterContext);
+  const ctx = React.use(PageHeaderContext);
 
   const left =
     children ?? (
@@ -114,13 +138,18 @@ export function PageHeader({
       </>
     );
 
+  const setSidebarAccent = ctx?.setSidebarAccentClassName;
   React.useEffect(() => {
-    setState?.({ left, right: actions, sidebarAccentClassName });
-  });
+    setSidebarAccent?.(sidebarAccentClassName);
+    return () => setSidebarAccent?.(undefined);
+  }, [setSidebarAccent, sidebarAccentClassName]);
 
-  React.useEffect(() => {
-    return () => setState?.(null);
-  }, [setState]);
+  if (!ctx) return null;
 
-  return null;
+  return (
+    <>
+      {ctx.leftEl ? createPortal(left, ctx.leftEl) : null}
+      {ctx.rightEl && actions ? createPortal(actions, ctx.rightEl) : null}
+    </>
+  );
 }

@@ -2,7 +2,7 @@
 
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
-import { PageLoading } from "@/components/page-loading";
+import { PageError, PageLoading } from "@/components/page-loading";
 import { Pagination } from "@/components/pagination";
 import { SearchBarShell } from "@/components/search-bar-shell";
 import { SearchInput } from "@/components/search-input";
@@ -41,34 +41,61 @@ import {
   type EntityFilters,
 } from "@/features/entities/components/entity-search-filters";
 import { MentionReviewList } from "@/features/entities/components/mention-review-list";
+import { ResolutionReviewList } from "@/features/entities/components/resolution-review-list";
 import {
   useEntityList,
   useEntitySearch,
 } from "@/features/entities/hooks/use-entities";
 import { useUnresolvedNameGroups } from "@/features/entities/hooks/use-mentions";
 import { ENTITY_TYPES, type EntityType } from "@/features/entities/types";
+import { useDebounce } from "@/hooks/use-debounce";
 import { useLocalStorageState } from "@/hooks/use-local-storage-state";
 import {
   ChevronsUpDown,
   ClipboardCheck,
   Database,
+  GitMerge,
+  HelpCircle,
   Network,
   Search,
   Shapes,
+  Share2,
   Table2,
 } from "lucide-react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 
 const LIMIT = 15;
 const ALL_TYPES = "__all__";
 
 export default function EntitiesPage() {
-  const [datasetId, setDatasetId] = useLocalStorageState<string | undefined>(
-    "entities:datasetId",
-    undefined
+  // A deep link from the dataset breakdown (?datasetId=&entityType=&selectorType=&selectorSubtype=)
+  // seeds the initial view; after mount it behaves like any other filter (not URL-synced).
+  const initialParams = useSearchParams();
+  const linkedDatasetId = initialParams.get("datasetId") ?? undefined;
+  const [storedDatasetId, setStoredDatasetId] = useLocalStorageState<
+    string | undefined
+  >("entities:datasetId", undefined);
+  const [datasetOverride, setDatasetOverride] = useState<string | undefined>(
+    linkedDatasetId
   );
+  const datasetId = datasetOverride ?? storedDatasetId;
+  const setDatasetId = (id: string | undefined) => {
+    setDatasetOverride(id);
+    setStoredDatasetId(id);
+  };
   const [query, setQuery] = useState("");
-  const [filters, setFilters] = useState<EntityFilters>(EMPTY_ENTITY_FILTERS);
+  const [filters, setFilters] = useState<EntityFilters>(() => {
+    const f: EntityFilters = {};
+    const et = initialParams.get("entityType");
+    const st = initialParams.get("selectorType");
+    const ss = initialParams.get("selectorSubtype");
+    if (et) f.entityType = et as EntityFilters["entityType"];
+    if (st) f.selectorType = st as EntityFilters["selectorType"];
+    if (ss) f.selectorSubtype = ss as EntityFilters["selectorSubtype"];
+    return f;
+  });
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState<{
     by: "display_name" | "date_updated";
@@ -79,7 +106,8 @@ export default function EntitiesPage() {
     datasetId,
     query: query || undefined,
     entityType: filters.entityType,
-    selectorKind: filters.selectorKind,
+    selectorType: filters.selectorType,
+    selectorSubtype: filters.selectorSubtype,
     country: filters.country,
     orgType: filters.orgType,
     dateOfBirthFrom: filters.dobFrom?.slice(0, 10),
@@ -118,7 +146,8 @@ export default function EntitiesPage() {
     setFilters({
       ...filters,
       entityType,
-      selectorKind: undefined,
+      selectorType: undefined,
+      selectorSubtype: undefined,
       country: undefined,
       orgType: undefined,
       dobFrom: undefined,
@@ -133,7 +162,7 @@ export default function EntitiesPage() {
   const filtered = entityRefinementsActive(filters) || !!query;
 
   return (
-    <div className="relative mx-auto max-w-400 px-6 pb-20">
+    <div className="relative mx-auto max-w-400 px-6 pb-20 pt-5">
       <PageHeader
         eyebrow="Entities"
         value={datasetId ? `${total.toLocaleString()} entities` : "no dataset"}
@@ -222,29 +251,52 @@ export default function EntitiesPage() {
           />
 
           <Tabs defaultValue="table" className="gap-4">
-            <TabsList className="h-9">
-              <TabsTrigger value="table" className="gap-1.5 px-3 text-xs">
-                <Table2 size={13} />
-                Table
-              </TabsTrigger>
-              <TabsTrigger value="graph" className="gap-1.5 px-3 text-xs">
-                <Network size={13} />
-                Graph
-              </TabsTrigger>
-              <TabsTrigger value="review" className="gap-1.5 px-3 text-xs">
-                <ClipboardCheck size={13} />
-                Review
-                {reviewCount > 0 && (
-                  <Badge className="h-4 min-w-4 bg-annotation/20 px-1 text-[9px] text-annotation">
-                    {reviewCount}
-                  </Badge>
-                )}
-              </TabsTrigger>
-            </TabsList>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <TabsList className="h-9">
+                <TabsTrigger value="table" className="gap-1.5 px-3 text-xs">
+                  <Table2 size={13} />
+                  Table
+                </TabsTrigger>
+                <TabsTrigger value="graph" className="gap-1.5 px-3 text-xs">
+                  <Network size={13} />
+                  Graph
+                </TabsTrigger>
+                <TabsTrigger value="review" className="gap-1.5 px-3 text-xs">
+                  <ClipboardCheck size={13} />
+                  Review
+                  {reviewCount > 0 && (
+                    <Badge className="h-4 min-w-4 bg-annotation/20 px-1 text-[9px] text-annotation">
+                      {reviewCount}
+                    </Badge>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="resolve" className="gap-1.5 px-3 text-xs">
+                  <GitMerge size={13} />
+                  Resolve
+                </TabsTrigger>
+              </TabsList>
+              <Link
+                href="/entities/resolution-guide"
+                className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-primary"
+              >
+                <HelpCircle size={12} />
+                How Review &amp; Resolve work
+              </Link>
+            </div>
 
             <TabsContent value="table">
-              {listQuery.isPending ? (
-                <PageLoading className="py-24" label="Loading entities…" />
+              {listQuery.isError ? (
+                <PageError
+                  title="Couldn’t load entities"
+                  body="The request for this dataset’s entities failed. This is usually temporary."
+                  onRetry={() => listQuery.refetch()}
+                />
+              ) : listQuery.isPending ? (
+                <PageLoading
+                  className="py-24"
+                  label="Loading entities…"
+                  onRetry={() => listQuery.refetch()}
+                />
               ) : entities.length === 0 ? (
                 <EmptyState
                   icon={Shapes}
@@ -293,6 +345,10 @@ export default function EntitiesPage() {
             <TabsContent value="review">
               <MentionReviewList datasetId={datasetId} />
             </TabsContent>
+
+            <TabsContent value="resolve">
+              <ResolutionReviewList datasetId={datasetId} />
+            </TabsContent>
           </Tabs>
         </div>
       )}
@@ -305,7 +361,8 @@ function GraphExplorer({ datasetId }: { datasetId: string }) {
   const [depth, setDepth] = useState(2);
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
-  const { data: results, isFetching } = useEntitySearch({ datasetId, q });
+  const debouncedQ = useDebounce(q, 250);
+  const { data: results, isFetching } = useEntitySearch({ datasetId, q: debouncedQ });
 
   return (
     <div className="space-y-3">
@@ -376,6 +433,24 @@ function GraphExplorer({ datasetId }: { datasetId: string }) {
             ))}
           </SelectContent>
         </Select>
+
+        <Button
+          asChild
+          variant="ghost"
+          size="sm"
+          className="ml-auto h-9 gap-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary"
+        >
+          <Link
+            href={
+              focus
+                ? `/graph?dataset=${datasetId}&seed=${focus.id}`
+                : `/graph?dataset=${datasetId}`
+            }
+          >
+            <Share2 size={13} />
+            Full graph viewer
+          </Link>
+        </Button>
       </div>
 
       {focus ? (

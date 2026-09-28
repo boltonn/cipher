@@ -37,24 +37,119 @@ class EntitySource(StrEnum):
     FACE_CLUSTERING = "face_clustering"
 
 
-class SelectorKind(StrEnum):
-    """A strong, typed identifier that resolves to a single real-world thing."""
+class SelectorType(StrEnum):
+    """The broad family of a selector -- always present on a selector row.
+
+    The specific provider / network (Telegram, Instagram, BTC, ETH, ...) is the
+    optional ``SelectorSubtype``. Query one axis or the other:
+    ``selector_type == CRYPTO_ADDRESS`` for all crypto, ``selector_subtype ==
+    TELEGRAM`` for one platform.
+    """
 
     PHONE = "phone"
     EMAIL = "email"
+    IP = "ip"
+    IBAN = "iban"
+    BANK_CARD = "bank_card"
     PASSPORT = "passport"
     NATIONAL_ID = "national_id"
     IMEI = "imei"
-    IBAN = "iban"
-    HANDLE = "handle"
+    IMSI = "imsi"
+    SOCIAL_HANDLE = "social_handle"
     CRYPTO_ADDRESS = "crypto_address"
     LICENSE_PLATE = "license_plate"
+
+
+class SelectorSubtype(StrEnum):
+    """The specific provider / network / scheme within a ``SelectorType``. Optional."""
+
+    # social_handle
+    TELEGRAM = "telegram"
+    INSTAGRAM = "instagram"
+    FACEBOOK = "facebook"
+    WHATSAPP = "whatsapp"
+    SIGNAL = "signal"
+    TWITTER = "twitter"
+    TIKTOK = "tiktok"
+    VK = "vk"
+    ODNOKLASSNIKI = "odnoklassniki"
+    WECHAT = "wechat"
+    QQ = "qq"
+    WEIBO = "weibo"
+    DOUYIN = "douyin"
+    SOROUSH = "soroush"
+    BALE = "bale"
+    RUBIKA = "rubika"
+    EITAA = "eitaa"
+
+    # crypto_address
+    BTC_ADDRESS = "btc_address"
+    ETH_ADDRESS = "eth_address"
+    XMR_ADDRESS = "xmr_address"
+    TRON_ADDRESS = "tron_address"
+
+    # national_id
+    RU_INN = "ru_inn"
+    RU_SNILS = "ru_snils"
+    CN_RIC = "cn_ric"
+    IR_CODE_MELLI = "ir_code_melli"
+
+
+SELECTOR_SUBTYPES: dict[SelectorType, frozenset[SelectorSubtype]] = {
+    SelectorType.SOCIAL_HANDLE: frozenset(
+        {
+            SelectorSubtype.TELEGRAM,
+            SelectorSubtype.INSTAGRAM,
+            SelectorSubtype.FACEBOOK,
+            SelectorSubtype.WHATSAPP,
+            SelectorSubtype.SIGNAL,
+            SelectorSubtype.TWITTER,
+            SelectorSubtype.TIKTOK,
+            SelectorSubtype.VK,
+            SelectorSubtype.ODNOKLASSNIKI,
+            SelectorSubtype.WECHAT,
+            SelectorSubtype.QQ,
+            SelectorSubtype.WEIBO,
+            SelectorSubtype.DOUYIN,
+            SelectorSubtype.SOROUSH,
+            SelectorSubtype.BALE,
+            SelectorSubtype.RUBIKA,
+            SelectorSubtype.EITAA,
+        }
+    ),
+    SelectorType.CRYPTO_ADDRESS: frozenset(
+        {
+            SelectorSubtype.BTC_ADDRESS,
+            SelectorSubtype.ETH_ADDRESS,
+            SelectorSubtype.XMR_ADDRESS,
+            SelectorSubtype.TRON_ADDRESS,
+        }
+    ),
+    SelectorType.NATIONAL_ID: frozenset(
+        {
+            SelectorSubtype.RU_INN,
+            SelectorSubtype.RU_SNILS,
+            SelectorSubtype.CN_RIC,
+            SelectorSubtype.IR_CODE_MELLI,
+        }
+    ),
+}
+
+SUBTYPE_TO_TYPE: dict[SelectorSubtype, SelectorType] = {
+    sub: typ for typ, subs in SELECTOR_SUBTYPES.items() for sub in subs
+}
+
+
+def selector_type_of(subtype: SelectorSubtype) -> SelectorType:
+    """The ``SelectorType`` a subtype rolls up to."""
+    return SUBTYPE_TO_TYPE[subtype]
 
 
 class LocationSource(StrEnum):
     """Where a location's coordinates/address came from."""
 
     NAMED_MENTION = "named_mention"
+    TEXT_MENTION = "text_mention"
     EXIF = "exif"
     GEOCODED = "geocoded"
     DEVICE_GPS = "device_gps"
@@ -149,7 +244,7 @@ class TypeSpec:
     label_singular: str
     label_plural: str
     description: str
-    allowed_selector_kinds: frozenset[SelectorKind] = field(default_factory=frozenset)
+    allowed_selector_types: frozenset[SelectorType] = field(default_factory=frozenset)
     # Attributes a NER mention can fill for this type. A mention asserts
     # `entity.<attribute> = normalized_value`, grounded at a span.
     mention_attributes: frozenset[str] = field(default_factory=frozenset)
@@ -162,7 +257,7 @@ class MentionTarget:
     entity_type: EntityType
     attribute: str
     resolution: ResolutionPolicy
-    selector_kind: SelectorKind | None = None
+    selector_type: SelectorType | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -191,15 +286,16 @@ ONTOLOGY: dict[EntityType, TypeSpec] = {
         label_singular="person",
         label_plural="people",
         description="A real-world individual of interest.",
-        allowed_selector_kinds=frozenset(
+        allowed_selector_types=frozenset(
             {
-                SelectorKind.PHONE,
-                SelectorKind.EMAIL,
-                SelectorKind.PASSPORT,
-                SelectorKind.NATIONAL_ID,
-                SelectorKind.HANDLE,
-                SelectorKind.IBAN,
-                SelectorKind.CRYPTO_ADDRESS,
+                SelectorType.PHONE,
+                SelectorType.EMAIL,
+                SelectorType.SOCIAL_HANDLE,
+                SelectorType.CRYPTO_ADDRESS,
+                SelectorType.IBAN,
+                SelectorType.BANK_CARD,
+                SelectorType.PASSPORT,
+                SelectorType.NATIONAL_ID,
             }
         ),
         mention_attributes=frozenset({"name", "date_of_birth", "nationality"}),
@@ -209,8 +305,15 @@ ONTOLOGY: dict[EntityType, TypeSpec] = {
         label_singular="organization",
         label_plural="organizations",
         description="A company, agency, unit, or other named group; may contain sub-units.",
-        allowed_selector_kinds=frozenset(
-            {SelectorKind.PHONE, SelectorKind.EMAIL, SelectorKind.IBAN, SelectorKind.HANDLE}
+        allowed_selector_types=frozenset(
+            {
+                SelectorType.PHONE,
+                SelectorType.EMAIL,
+                SelectorType.SOCIAL_HANDLE,
+                SelectorType.IBAN,
+                SelectorType.BANK_CARD,
+                SelectorType.IP,
+            }
         ),
         mention_attributes=frozenset({"name"}),
     ),
@@ -219,14 +322,14 @@ ONTOLOGY: dict[EntityType, TypeSpec] = {
         label_singular="location",
         label_plural="locations",
         description="A place: an address, a named place, or a geolocation from text or EXIF.",
-        mention_attributes=frozenset({"name", "address"}),
+        mention_attributes=frozenset({"name", "address", "coordinate"}),
     ),
     EntityType.SELECTOR: TypeSpec(
         entity_type=EntityType.SELECTOR,
         label_singular="selector",
         label_plural="selectors",
         description="A strong typed identifier (phone, email, passport, IMEI, IBAN, handle, ...).",
-        # `selector_kind` is the `.type` (phone/email/...); `normalized_value` is the `.value`.
+        # `selector_type` is the `.type` (phone/email/...); `normalized_value` is the `.value`.
         mention_attributes=frozenset({"value"}),
     ),
 }
@@ -369,26 +472,187 @@ LABEL_TO_MENTION_TARGET: dict[str, MentionTarget] = {
     "location": MentionTarget(EntityType.LOCATION, "name", ResolutionPolicy.MANUAL_ONLY),
     "facility": MentionTarget(EntityType.LOCATION, "name", ResolutionPolicy.MANUAL_ONLY),
     "address": MentionTarget(EntityType.LOCATION, "address", ResolutionPolicy.BY_GEOCODE),
-    "phone number": MentionTarget(EntityType.SELECTOR, "value", ResolutionPolicy.BY_VALUE, SelectorKind.PHONE),
-    "email address": MentionTarget(EntityType.SELECTOR, "value", ResolutionPolicy.BY_VALUE, SelectorKind.EMAIL),
-    "passport number": MentionTarget(EntityType.SELECTOR, "value", ResolutionPolicy.BY_VALUE, SelectorKind.PASSPORT),
+    "coordinate": MentionTarget(EntityType.LOCATION, "coordinate", ResolutionPolicy.BY_GEOCODE),
+    "phone number": MentionTarget(EntityType.SELECTOR, "value", ResolutionPolicy.BY_VALUE, SelectorType.PHONE),
+    "email address": MentionTarget(EntityType.SELECTOR, "value", ResolutionPolicy.BY_VALUE, SelectorType.EMAIL),
+    "ip address": MentionTarget(EntityType.SELECTOR, "value", ResolutionPolicy.BY_VALUE, SelectorType.IP),
+    "passport number": MentionTarget(EntityType.SELECTOR, "value", ResolutionPolicy.BY_VALUE, SelectorType.PASSPORT),
     "national id number": MentionTarget(
-        EntityType.SELECTOR, "value", ResolutionPolicy.BY_VALUE, SelectorKind.NATIONAL_ID
+        EntityType.SELECTOR, "value", ResolutionPolicy.BY_VALUE, SelectorType.NATIONAL_ID
     ),
-    "bank account number": MentionTarget(EntityType.SELECTOR, "value", ResolutionPolicy.BY_VALUE, SelectorKind.IBAN),
-    "social media handle": MentionTarget(EntityType.SELECTOR, "value", ResolutionPolicy.BY_VALUE, SelectorKind.HANDLE),
+    "imsi": MentionTarget(EntityType.SELECTOR, "value", ResolutionPolicy.BY_VALUE, SelectorType.IMSI),
+    "bank account number": MentionTarget(EntityType.SELECTOR, "value", ResolutionPolicy.BY_VALUE, SelectorType.IBAN),
+    "payment card number": MentionTarget(
+        EntityType.SELECTOR, "value", ResolutionPolicy.BY_VALUE, SelectorType.BANK_CARD
+    ),
+    "social media handle": MentionTarget(
+        EntityType.SELECTOR, "value", ResolutionPolicy.BY_VALUE, SelectorType.SOCIAL_HANDLE
+    ),
+    "cryptocurrency address": MentionTarget(
+        EntityType.SELECTOR, "value", ResolutionPolicy.BY_VALUE, SelectorType.CRYPTO_ADDRESS
+    ),
 }
 
 # Derived views kept for callers that only need one axis.
 NER_LABEL_TO_TYPE: dict[str, EntityType] = {label: t.entity_type for label, t in LABEL_TO_MENTION_TARGET.items()}
-NER_LABEL_TO_SELECTOR_KIND: dict[str, SelectorKind] = {
-    label: t.selector_kind for label, t in LABEL_TO_MENTION_TARGET.items() if t.selector_kind is not None
+NER_LABEL_TO_SELECTOR_TYPE: dict[str, SelectorType] = {
+    label: t.selector_type for label, t in LABEL_TO_MENTION_TARGET.items() if t.selector_type is not None
+}
+
+# Resolution policy for a schema-aligned ``<entity_type>.<attribute>`` label --
+# the tagset the supervised ``analytics/nerd`` model emits (e.g. ``person.name``,
+# ``location.address``). Absent (type, attr) pairs fall back to ``MANUAL_ONLY``.
+RESOLUTION_BY_TYPE_ATTR: dict[tuple[EntityType, str], ResolutionPolicy] = {
+    (EntityType.PERSON, "name"): ResolutionPolicy.BY_NAME_MATCH,
+    (EntityType.PERSON, "date_of_birth"): ResolutionPolicy.BY_NAME_MATCH,
+    (EntityType.PERSON, "nationality"): ResolutionPolicy.BY_NAME_MATCH,
+    (EntityType.ORGANIZATION, "name"): ResolutionPolicy.BY_NAME_MATCH,
+    (EntityType.LOCATION, "name"): ResolutionPolicy.MANUAL_ONLY,
+    (EntityType.LOCATION, "address"): ResolutionPolicy.BY_GEOCODE,
+}
+
+# Raw type tokens other people's NER models emit (CoNLL-2003, OntoNotes,
+# spaCy, GLiNER prompts, WikiANN, ...) -> the canonical entity type. Anything
+# here without an explicit attribute resolves to that type's primary attribute
+# (``name`` for person/org/location). This is what lets a mention from a
+# model CIPHER has never seen still land on an entity.
+_EXTERNAL_TYPE_ALIASES: dict[str, EntityType] = {
+    # person
+    "per": EntityType.PERSON,
+    "pers": EntityType.PERSON,
+    "person": EntityType.PERSON,
+    "people": EntityType.PERSON,
+    "human": EntityType.PERSON,
+    "individual": EntityType.PERSON,
+    "name": EntityType.PERSON,
+    "persname": EntityType.PERSON,
+    "per_name": EntityType.PERSON,
+    # organization
+    "org": EntityType.ORGANIZATION,
+    "orgs": EntityType.ORGANIZATION,
+    "organization": EntityType.ORGANIZATION,
+    "organisation": EntityType.ORGANIZATION,
+    "company": EntityType.ORGANIZATION,
+    "corp": EntityType.ORGANIZATION,
+    "corporation": EntityType.ORGANIZATION,
+    "institution": EntityType.ORGANIZATION,
+    "agency": EntityType.ORGANIZATION,
+    "group": EntityType.ORGANIZATION,
+    "orgname": EntityType.ORGANIZATION,
+    # location (named place -- GPE / LOC / FAC all fold here; admin level is a
+    # geocode-time concern, not an NER-time one)
+    "loc": EntityType.LOCATION,
+    "location": EntityType.LOCATION,
+    "place": EntityType.LOCATION,
+    "gpe": EntityType.LOCATION,
+    "geo": EntityType.LOCATION,
+    "geoloc": EntityType.LOCATION,
+    "fac": EntityType.LOCATION,
+    "facility": EntityType.LOCATION,
+    "building": EntityType.LOCATION,
+    "city": EntityType.LOCATION,
+    "country": EntityType.LOCATION,
+    "state": EntityType.LOCATION,
+    "province": EntityType.LOCATION,
+    "region": EntityType.LOCATION,
+    "territory": EntityType.LOCATION,
+    "landmark": EntityType.LOCATION,
+    "poi": EntityType.LOCATION,
+    "locname": EntityType.LOCATION,
+}
+# Raw labels that specifically mean a postal address (LOCATION.address, not .name).
+_EXTERNAL_ADDRESS_ALIASES: frozenset[str] = frozenset(
+    {
+        "address",
+        "addr",
+        "street address",
+        "street_address",
+        "postal address",
+        "postal_address",
+        "mailing address",
+        "full address",
+        "location.address",
+        "loc.address",
+        "gpe.address",
+    }
+)
+# Raw attribute tokens -> canonical attribute name.
+_EXTERNAL_ATTR_ALIASES: dict[str, str] = {
+    "name": "name",
+    "fullname": "name",
+    "full_name": "name",
+    "label": "name",
+    "value": "name",
+    "address": "address",
+    "addr": "address",
+    "street": "address",
+    "dob": "date_of_birth",
+    "birthdate": "date_of_birth",
+    "date_of_birth": "date_of_birth",
+    "nationality": "nationality",
+    "citizenship": "nationality",
+    "country_of_citizenship": "nationality",
 }
 
 
+def _normalize_label_key(label: str) -> str:
+    """Lower-case, drop a ``B-``/``I-``/``E-``/``S-`` IOB prefix, unify separators to ``.``."""
+    key = label.strip().lower()
+    if len(key) > 2 and key[1] == "-" and key[0] in "bielsu":
+        key = key[2:]
+    return key.replace("::", ".").replace(":", ".").replace("/", ".").replace(" - ", ".").replace("__", ".")
+
+
 def mention_target(label: str) -> MentionTarget | None:
-    """Resolve a raw extractor label to its (entity_type, attribute, resolution)."""
-    return LABEL_TO_MENTION_TARGET.get(label.strip().lower())
+    """Resolve *any* extractor's raw label to a ``(entity_type, attribute, resolution)``.
+
+    Handled, in order:
+
+    * the flat zero-shot labels this repo's own extractors emit (``person``,
+      ``address``, ``phone number``, ...);
+    * the schema-aligned ``<entity_type>.<attribute>`` form the supervised
+      ``analytics/nerd`` model emits (``person.name``, ``location.address``);
+    * an unfamiliar label from a third-party model -- CoNLL/OntoNotes/spaCy
+      tags (``PER``, ``B-GPE``, ``ORG``), verbose names (``street address``),
+      or ``TYPE.ATTR`` / ``TYPE:ATTR`` / ``TYPE/ATTR`` with a synonym on either
+      side. Falls back to the type's ``name`` attribute when no attribute is given.
+
+    Returns ``None`` only when nothing plausibly maps -- the caller then keeps
+    the mention unresolved rather than guessing.
+    """
+    key = _normalize_label_key(label)
+
+    hit = LABEL_TO_MENTION_TARGET.get(key)
+    if hit is not None:
+        return hit
+
+    if key in _EXTERNAL_ADDRESS_ALIASES:
+        return MentionTarget(EntityType.LOCATION, "address", ResolutionPolicy.BY_GEOCODE)
+
+    type_str, sep, attr_str = key.partition(".")
+    if not sep and "_" in key:
+        # ``person_name`` / ``org_name`` -- but not ``date_of_birth``: only split
+        # when the head is a recognised type token.
+        head, _, tail = key.partition("_")
+        if head in _EXTERNAL_TYPE_ALIASES or head in {e.value for e in EntityType}:
+            type_str, sep, attr_str = head, "_", tail
+
+    etype: EntityType | None = None
+    try:
+        etype = EntityType(type_str)
+    except ValueError:
+        etype = _EXTERNAL_TYPE_ALIASES.get(type_str)
+    if etype is None:
+        return None
+
+    attr = "name"
+    if sep and attr_str:
+        attr = _EXTERNAL_ATTR_ALIASES.get(attr_str.replace(" ", "_"), attr_str)
+    if attr not in attributes_for(etype):
+        attr = "name" if "name" in attributes_for(etype) else next(iter(attributes_for(etype)), None)
+    if attr is None:
+        return None
+    return MentionTarget(etype, attr, RESOLUTION_BY_TYPE_ATTR.get((etype, attr), ResolutionPolicy.MANUAL_ONLY))
 
 
 # Whole-word tokens that mark a name as an organization rather than a person --
@@ -521,7 +785,8 @@ class Ontology(BaseModel):
     """The full entity-layer registry, served so the frontend never hard-codes it."""
 
     entity_types: list[EntityType]
-    selector_kinds: list[SelectorKind]
+    selector_types: list[SelectorType]
+    selector_subtypes: dict[SelectorType, list[SelectorSubtype]]
     relationships: list[OntologyRelationship]
 
 
@@ -541,9 +806,11 @@ def build_ontology() -> Ontology:
         )
         for rt, spec in RELATIONSHIPS.items()
     ]
+    subtypes: dict[SelectorType, list[SelectorSubtype]] = {typ: sorted(subs) for typ, subs in SELECTOR_SUBTYPES.items()}
     return Ontology(
         entity_types=list(EntityType),
-        selector_kinds=list(SelectorKind),
+        selector_types=list(SelectorType),
+        selector_subtypes=subtypes,
         relationships=relationships,
     )
 

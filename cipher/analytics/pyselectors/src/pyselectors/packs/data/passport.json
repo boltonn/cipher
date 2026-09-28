@@ -1,0 +1,28 @@
+{
+  "selector_type": "passport",
+  "priority": 85,
+  "base_confidence": 0.9,
+  "max_confidence": 0.99,
+  "normalizer": "passport",
+  "validator": "passport",
+  "patterns": [
+    {
+      "name": "mrz_td3",
+      "regex": "P[A-Z0-9<]{43}[\\r\\n\\s]{1,3}[A-Z0-9<]{44}"
+    },
+    {
+      "name": "mrz_td2",
+      "regex": "P[A-Z0-9<]{35}[\\r\\n\\s]{1,3}[A-Z0-9<]{36}"
+    }
+  ],
+  "context": {
+    "window_before": 24,
+    "window_after": 8,
+    "terms": {
+      "en": [
+        {"term": "passport", "weight": 0.15},
+        {"term": "mrz", "weight": 0.15}
+      ]
+    }
+  }
+}

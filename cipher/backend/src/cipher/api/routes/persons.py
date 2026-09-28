@@ -5,9 +5,11 @@ from uuid import uuid4
 from face.api.deps import FaceModelDep
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
 from filetyper.models.magic import MagicNumberFilterTyper
+from loguru import logger
 from PIL import Image as PILImage
 
 from cipher.api.deps.postgres import (
+    CommentDatastoreDep,
     DatasetDatastoreDep,
     EntityDatastoreDep,
     FaceDatastoreDep,
@@ -34,11 +36,15 @@ from cipher.schemas.identity.person import (
     PaginatedPersonsResponse,
     Person,
     PersonCreate,
+    PersonMerge,
+    PersonMergeResult,
+    PersonMergeSuggestion,
     PersonSearchParameters,
     PersonUpdate,
 )
 from cipher.schemas.ingestion.dataset import DatasetCreate
 from cipher.schemas.ingestion.file import FileCreate
+from cipher.schemas.interaction.comment import CommentableType
 from cipher.utils.io import HashType, compute_hash
 
 # Same floor the rest of the app treats as "this counts as a match" (the
@@ -380,13 +386,14 @@ async def add_person_example(
     except ValidationError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
-    await _propose_potential_matches(
+    candidate_face_ids = await _propose_potential_matches(
         person_id=id,
         reference_face_id=face.id,
         face_datastore=face_datastore,
         face_match_datastore=face_match_datastore,
     )
 
+    await graph_datastore.recompute_face_cooccurrence_for_faces([face.id, *candidate_face_ids])
     return updated
 
 
@@ -399,6 +406,69 @@ async def add_person_example(
 async def get_person_representative_faces(id: str, datastore: FaceDatastoreDep):
     """Get a person's representative (reference) faces, primary face first."""
     return await datastore.get_representative_faces(person_id=id)
+
+
+@router.get(
+    "/{id}/merge-candidates",
+    summary="Suggest persons that may be the same identity (merge shortlist)",
+    response_model=list[PersonMergeSuggestion],
+    response_model_by_alias=True,
+)
+async def get_merge_candidates(
+    id: str,
+    datastore: PersonDatastoreDep,
+    min_similarity: float = 0.5,
+    limit: int = 8,
+) -> list[PersonMergeSuggestion]:
+    """Rank other persons by how closely their representative faces match this one's."""
+    person = await datastore.get_person_by_id(person_id=id)
+    if person is None:
+        raise HTTPException(status_code=404, detail=f"Person not found: {id}")
+    return await datastore.suggest_merge_candidates(person_id=id, min_similarity=min_similarity, limit=limit)
+
+
+@router.post(
+    "/{id}/merge",
+    summary="Merge another person into this one",
+    response_model=PersonMergeResult,
+    response_model_by_alias=True,
+)
+async def merge_person(
+    id: str,
+    data: PersonMerge,
+    person_datastore: PersonDatastoreDep,
+    entity_datastore: EntityDatastoreDep,
+    face_datastore: FaceDatastoreDep,
+    graph_datastore: GraphDatastoreDep,
+) -> PersonMergeResult:
+    """Fold `source_id` into the person at `{id}`, then delete the source.
+
+    Faces, pending matches, event participations, comments, name mentions,
+    relationship edges and the relationship-candidate / entity-match review
+    queues all move onto `{id}` (colliding and self-referential rows dropped).
+    Moved faces lose their representative/primary flags -- re-pick exemplars on
+    the survivor.
+    """
+    target = await person_datastore.get_person_by_id(person_id=id)
+    if target is None:
+        raise HTTPException(status_code=404, detail=f"Person not found: {id}")
+    source = await person_datastore.get_person_by_id(person_id=data.source_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail=f"Person not found: {data.source_id}")
+
+    moved_image_ids = await face_datastore.image_ids_for_person(person_id=data.source_id)
+
+    try:
+        result = await person_datastore.merge_persons(target_id=id, source_id=data.source_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    refreshed = await person_datastore.get_person_by_id(person_id=id)
+    if refreshed is not None:
+        await entity_datastore.upsert_person_entity(refreshed)
+    if moved_image_ids:
+        await graph_datastore.recompute_face_cooccurrence_for_images(moved_image_ids)
+    return result
 
 
 @router.patch("/{id}", summary="Update a person", response_model=Person, response_model_by_alias=True)
@@ -421,9 +491,21 @@ async def delete_person(
     id: str,
     datastore: PersonDatastoreDep,
     entity_datastore: EntityDatastoreDep,
+    comment_datastore: CommentDatastoreDep,
 ) -> bool:
-    """Delete a person by their ID."""
+    """Delete a person and their bridged entity node.
+
+    Faces are unlinked (``person_id`` set null) and face matches cascade-delete;
+    mentions/relationships on the bridge entity unresolve/cascade the same way
+    they would for any entity. Comments on either the person or the bridge
+    entity (``entity.id == person.id``) reference it polymorphically, so both
+    are purged explicitly first.
+    """
     deleted = await datastore.delete_person(person_id=id)
     if deleted:
+        deleted_comments = await comment_datastore.delete_by_commentable(
+            commentable_type=CommentableType.PERSON, commentable_id=id
+        ) + await comment_datastore.delete_by_commentable(commentable_type=CommentableType.ENTITY, commentable_id=id)
         await entity_datastore.delete_person_entity(person_id=id)
+        logger.info(f"Purged {deleted_comments} comments for person {id} before delete")
     return deleted

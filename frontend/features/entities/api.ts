@@ -1,9 +1,11 @@
 import { apiClient } from "@/lib/api-client";
 import type {
   Entity,
+  EntityBreakdown,
   EntityCreatePayload,
   EntityDetail,
   EntityMatch,
+  EntityMatchBatchItem,
   EntityProfile,
   EntityRelationship,
   EntitySearchParameters,
@@ -12,11 +14,14 @@ import type {
   GraphResponse,
   Mention,
   MentionCreatePayload,
+  MentionProvenance,
   MentionResolvePayload,
   MentionUpdatePayload,
   Ontology,
   PaginatedEntitiesResponse,
   PaginatedEntityMatchesResponse,
+  PaginatedEntityMatchGroupsResponse,
+  PaginatedEntityMergeGroupsResponse,
   PaginatedMentionsResponse,
   PaginatedRelatedEntitiesResponse,
   PaginatedRelationshipsResponse,
@@ -89,6 +94,14 @@ export const entitiesService = {
       .get<Ontology>(`${entitiesBaseURL}/ontology`)
       .then((res) => res.data),
 
+  // Entity / selector counts for a dataset -- the dataset-view breakdown chart.
+  getBreakdown: (datasetId?: string) =>
+    apiClient
+      .get<EntityBreakdown>(`${entitiesBaseURL}/breakdown`, {
+        params: { datasetId },
+      })
+      .then((res) => res.data),
+
   // ISO-3166-1 alpha-2 regions the phone normalizer accepts (for the selector form).
   listSelectorRegions: () =>
     apiClient
@@ -114,12 +127,18 @@ export const entitiesService = {
 
   getMentions: (
     id: string,
-    params?: { fileId?: string; limit?: number; page?: number }
+    params?: {
+      fileId?: string;
+      provenance?: MentionProvenance;
+      limit?: number;
+      page?: number;
+    }
   ) =>
     apiClient
       .get<PaginatedMentionsResponse>(`${entitiesBaseURL}/${id}/mentions`, {
         params: {
           file_id: params?.fileId,
+          provenance: params?.provenance,
           limit: params?.limit ?? 50,
           page: params?.page ?? 1,
         },
@@ -241,6 +260,83 @@ export const entitiesService = {
         review
       )
       .then((res) => res.data),
+
+  // The grouped resolution review queue: one card per unresolved name, its best
+  // candidate plus alternatives, each carrying the per-feature `explanation`.
+  listMatchGroups: (params: {
+    datasetId: string;
+    status?: string;
+    minSimilarity?: number;
+    sortBy?: "similarity_score" | "date_created";
+    limit?: number;
+    page?: number;
+  }) =>
+    apiClient
+      .get<PaginatedEntityMatchGroupsResponse>(
+        `${entitiesBaseURL}/matches/groups`,
+        {
+          params: {
+            dataset_id: params.datasetId,
+            status: params.status ?? "pending",
+            min_similarity: params.minSimilarity,
+            sort_by: params.sortBy ?? "similarity_score",
+            limit: params.limit ?? 25,
+            page: params.page ?? 1,
+          },
+        }
+      )
+      .then((res) => res.data),
+
+  // Confirm / reject many candidates in one transaction (the bulk-annotation path).
+  resolveMatchesBatch: (body: {
+    reviewedBy: string;
+    decisions: EntityMatchBatchItem[];
+  }) =>
+    apiClient
+      .post<{ confirmed: number; rejected: number; notFound: number }>(
+        `${entitiesBaseURL}/matches/resolve-batch`,
+        body
+      )
+      .then((res) => res.data),
+
+  // "None of these" -- reject every pending candidate for a name group.
+  dismissMatchNameGroup: (body: {
+    datasetId: string;
+    normalizedValue: string;
+    reviewedBy: string;
+    reviewNote?: string;
+  }) =>
+    apiClient
+      .post<{ rejected: number }>(
+        `${entitiesBaseURL}/matches/name-group/dismiss`,
+        body
+      )
+      .then((res) => res.data),
+
+  // Entity->entity merge review queue: one card per provisional stub, the
+  // canonical entities it may duplicate nested. Populate with `dedupe-entities`.
+  listMergeGroups: (params: {
+    datasetId: string;
+    status?: string;
+    limit?: number;
+    page?: number;
+  }) =>
+    apiClient
+      .get<PaginatedEntityMergeGroupsResponse>(`${entitiesBaseURL}/merges`, {
+        params: {
+          dataset_id: params.datasetId,
+          status: params.status ?? "pending",
+          limit: params.limit ?? 25,
+          page: params.page ?? 1,
+        },
+      })
+      .then((res) => res.data),
+
+  // Merge proposals filed against one entity (empty unless it's a provisional stub).
+  getEntityMergeCandidates: (entityId: string) =>
+    apiClient
+      .get<EntityMatch[]>(`${entitiesBaseURL}/${entityId}/merge-candidates`)
+      .then((res) => res.data),
 };
 
 export const mentionsService = {
@@ -250,7 +346,7 @@ export const mentionsService = {
     entityId?: string;
     resolved?: boolean;
     mentionedType?: string;
-    selectorKind?: string;
+    selectorType?: string;
     normalizedValue?: string;
     limit?: number;
     page?: number;

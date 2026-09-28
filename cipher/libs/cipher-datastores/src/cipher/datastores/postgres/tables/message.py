@@ -19,9 +19,7 @@ class MessageTable(Base):
 
     __tablename__ = "message"
 
-    id: Mapped[str] = mapped_column(
-        String, primary_key=True, default=lambda: str(uuid4())
-    )
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
 
     message_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
 
@@ -33,24 +31,14 @@ class MessageTable(Base):
     )
 
     sender: Mapped[str] = mapped_column(String, nullable=False, index=True)
-    sender_type: Mapped[PhoneNumberType] = mapped_column(
-        Enum(PhoneNumberType, native_enum=False), nullable=False
-    )
+    sender_type: Mapped[PhoneNumberType] = mapped_column(Enum(PhoneNumberType, native_enum=False), nullable=False)
 
     recipient: Mapped[str] = mapped_column(String, nullable=False, index=True)
-    recipient_type: Mapped[PhoneNumberType] = mapped_column(
-        Enum(PhoneNumberType, native_enum=False), nullable=False
-    )
+    recipient_type: Mapped[PhoneNumberType] = mapped_column(Enum(PhoneNumberType, native_enum=False), nullable=False)
 
-    date_sent: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    date_received: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True, index=True
-    )
-    date_read: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    date_sent: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    date_received: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    date_read: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     device_id: Mapped[str] = mapped_column(
         String,
@@ -67,13 +55,9 @@ class MessageTable(Base):
 
     conversation_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
 
-    message_status: Mapped[MessageStatus] = mapped_column(
-        Enum(MessageStatus, native_enum=False), nullable=False
-    )
+    message_status: Mapped[MessageStatus] = mapped_column(Enum(MessageStatus, native_enum=False), nullable=False)
 
-    meaningful_hash: Mapped[str] = mapped_column(
-        String, nullable=False, unique=True, index=True
-    )
+    meaningful_hash: Mapped[str] = mapped_column(String, nullable=False, unique=True, index=True)
 
     source_type: Mapped[str | None] = mapped_column(String, nullable=True)
 

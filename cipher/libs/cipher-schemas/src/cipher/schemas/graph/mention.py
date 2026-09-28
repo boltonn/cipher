@@ -16,11 +16,11 @@ entity (see `ontology.ResolutionPolicy`).
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import Field
+from pydantic import Field, computed_field
 
 from cipher.schemas._base.base import BaseModel
 from cipher.schemas._base.common import PageParams, PaginatedResponse
-from cipher.schemas.graph.ontology import EntityType, SelectorKind
+from cipher.schemas.graph.ontology import EntityType, SelectorSubtype, SelectorType
 
 
 class MentionedType(StrEnum):
@@ -29,6 +29,46 @@ class MentionedType(StrEnum):
     EXTRACTED_TEXT = "extracted_text"
     IMAGE = "image"
     STRUCTURED_FIELD = "structured_field"
+
+
+class MentionProvenance(StrEnum):
+    """How a mention was found -- its evidence class, coarser than `MentionedType`.
+
+    `MentionedType` says *where* the anchor is (a text span, an image, a field);
+    provenance says *what kind of trace* it is, which is what an analyst reasons
+    about. An email `To:` line and a name written in prose are both evidence, but
+    only the latter is a "mention" in the ordinary sense.
+    """
+
+    TEXT = "text"  # a span in body / extracted text (NER, prose)
+    EMAIL_HEADER = "email_header"  # a From/To/Cc/Bcc address or display name
+    METADATA = "metadata"  # a non-header structured field (vCard, doc properties)
+    IMAGE = "image"  # an image region or photo metadata (EXIF)
+    PATTERN = "pattern"  # a deterministic pattern match (selectors regex)
+
+
+def mention_provenance(
+    *,
+    mentioned_type: MentionedType | str,
+    field_path: str | None = None,
+    bounding_box: dict | None = None,
+    extractor: str | None = None,
+) -> MentionProvenance:
+    """Classify a mention into its evidence class from the fields it carries.
+
+    First match wins: a header field path beats everything, then image evidence,
+    then any other structured field, then a deterministic pattern extractor;
+    anything left is a text span.
+    """
+    if field_path and field_path.startswith("header."):
+        return MentionProvenance.EMAIL_HEADER
+    if str(mentioned_type) == MentionedType.IMAGE or bounding_box:
+        return MentionProvenance.IMAGE
+    if str(mentioned_type) == MentionedType.STRUCTURED_FIELD:
+        return MentionProvenance.METADATA
+    if extractor == "selectors":
+        return MentionProvenance.PATTERN
+    return MentionProvenance.TEXT
 
 
 class MentionSortField(StrEnum):
@@ -50,8 +90,11 @@ class MentionBase(BaseModel):
         default=None,
         description="Which attribute of the entity this asserts, e.g. 'name', 'alias', 'address', 'value'",
     )
-    selector_kind: SelectorKind | None = Field(
+    selector_type: SelectorType | None = Field(
         default=None, description="Selector `.type` (phone/email/...) when entity_type is selector"
+    )
+    selector_subtype: SelectorSubtype | None = Field(
+        default=None, description="Specific provider/network/scheme, e.g. telegram, btc_address"
     )
     normalized_value: str | None = Field(
         default=None,
@@ -60,6 +103,12 @@ class MentionBase(BaseModel):
 
     start_offset: int | None = Field(default=None, ge=0, description="Char offset into ExtractedText.content")
     end_offset: int | None = Field(default=None, ge=0, description="Char offset into ExtractedText.content")
+    chunk_id: str | None = Field(
+        default=None,
+        description="The `chunk` whose span contains `start_offset` -- the materialized "
+        "chunk<->mention join, set at extraction time. Null for header/metadata mentions and "
+        "until backfilled.",
+    )
     bounding_box: dict | None = Field(default=None, description="Normalized box for image mentions")
     field_path: str | None = Field(default=None, description="Dotted path for structured_field mentions")
 
@@ -81,7 +130,8 @@ class MentionUpdate(BaseModel):
     entity_id: str | None = Field(default=None, description="Re-point the mention at this entity")
     entity_type: EntityType | None = Field(default=None, description="Corrected predicted type")
     entity_attribute: str | None = Field(default=None, description="Corrected attribute, e.g. name -> alias")
-    selector_kind: SelectorKind | None = Field(default=None)
+    selector_type: SelectorType | None = Field(default=None)
+    selector_subtype: SelectorSubtype | None = Field(default=None)
     normalized_value: str | None = Field(default=None)
     surface_text: str | None = Field(default=None)
     context: str | None = Field(default=None)
@@ -113,6 +163,17 @@ class Mention(MentionBase):
 
     model_config = {"from_attributes": True}
 
+    @computed_field
+    @property
+    def provenance(self) -> MentionProvenance:
+        """Evidence class, derived so the UI can group and filter without a join."""
+        return mention_provenance(
+            mentioned_type=self.mentioned_type,
+            field_path=self.field_path,
+            bounding_box=self.bounding_box,
+            extractor=self.extractor,
+        )
+
 
 class MentionSearchParameters(PageParams):
     """Parameters for listing/searching mentions."""
@@ -121,9 +182,15 @@ class MentionSearchParameters(PageParams):
     file_id: str | None = Field(default=None)
     dataset_id: str | None = Field(default=None)
     mentioned_type: MentionedType | None = Field(default=None)
+    provenance: MentionProvenance | None = Field(
+        default=None, description="Filter by evidence class (text / email_header / metadata / image / pattern)"
+    )
     entity_type: EntityType | None = Field(default=None)
     entity_attribute: str | None = Field(default=None, description="e.g. 'name', 'address', 'value'")
-    selector_kind: SelectorKind | None = Field(default=None, description="Filter selector mentions by kind")
+    selector_type: SelectorType | None = Field(default=None, description="Filter selector mentions by type")
+    selector_subtype: SelectorSubtype | None = Field(
+        default=None, description="Filter selector mentions by subtype (telegram, btc_address, ...)"
+    )
     normalized_value: str | None = Field(
         default=None, description="Exact match on the resolution blocking key (E.164 phone, folded name, ...)"
     )

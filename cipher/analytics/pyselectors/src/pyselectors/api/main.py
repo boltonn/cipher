@@ -2,6 +2,7 @@
 
 from loguru import logger
 
+from cipher.schemas.graph.spans import CoordinateSpan
 from cipher.utils.fastapi.health import ServiceHealthStatus, service_health
 from cipher.utils.fastapi.info import ServiceInfo, get_package_info
 from cipher.utils.fastapi.middleware import (
@@ -10,8 +11,9 @@ from cipher.utils.fastapi.middleware import (
     validation_exception_handler,
 )
 from cipher.utils.fastapi.settings import BaseServiceSettings
-from pyselectors.extract import extract_selectors
-from pyselectors.schemas import SelectorExtractionRequest, SelectorSpan
+from pyselectors.coordinates import extract_coordinates
+from pyselectors.extract import extract_selectors, resolve_selector
+from pyselectors.schemas import SelectorExtractionRequest, SelectorResolveRequest, SelectorSpan
 
 settings = BaseServiceSettings()
 service_info = get_package_info("pyselectors")
@@ -60,8 +62,34 @@ async def info() -> ServiceInfo:
 async def extract(request: SelectorExtractionRequest) -> list[SelectorSpan]:
     """Extract and normalize selectors from a block of text."""
     return extract_selectors(
-        request.text, language=request.language, region=request.region
+        request.text,
+        language=request.language,
+        region=request.region,
+        types=set(request.types) if request.types else None,
+        min_confidence=request.min_confidence,
     )
+
+
+@app.post("/resolve")
+async def resolve(request: SelectorResolveRequest) -> list[SelectorSpan]:
+    """Normalize + validate + attribute-extract a single bare selector value.
+
+    Retroactive / standalone: no surrounding text. Force `selector_type`, or
+    omit it to infer the type from the value.
+    """
+    return resolve_selector(
+        request.value,
+        selector_type=request.selector_type,
+        selector_subtype=request.selector_subtype,
+        language=request.language,
+        region=request.region,
+    )
+
+
+@app.post("/coordinates")
+async def coordinates(request: SelectorExtractionRequest) -> list[CoordinateSpan]:
+    """Find geographic coordinates in text, normalized to decimal degrees."""
+    return extract_coordinates(request.text, language=request.language)
 
 
 def main():

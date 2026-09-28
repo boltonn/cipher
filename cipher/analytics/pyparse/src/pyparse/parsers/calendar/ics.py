@@ -35,6 +35,20 @@ _DURATION_RE = re.compile(
 )
 
 
+class ParsedCalendarPerson(BaseModel):
+    """An ``ORGANIZER`` / ``ATTENDEE`` cal-address with its parameters."""
+
+    name: str | None = Field(default=None, description="CN= display name")
+    email: str | None = Field(default=None, description="mailto: address, lowercased")
+    partstat: str | None = Field(default=None, description="PARTSTAT= (NEEDS-ACTION | ACCEPTED | DECLINED | ...)")
+    cutype: str | None = Field(default=None, description="CUTYPE= (INDIVIDUAL | GROUP | ROOM | RESOURCE | UNKNOWN)")
+
+    @property
+    def display(self) -> str | None:
+        """Best surface string: the display name, else the address."""
+        return self.name or self.email
+
+
 class ParsedCalendarEvent(BaseModel):
     """One ``VEVENT`` as read from an `.ics` payload."""
 
@@ -42,13 +56,20 @@ class ParsedCalendarEvent(BaseModel):
     summary: str | None = None
     description: str | None = None
     location: str | None = Field(default=None, description="Free-text LOCATION value")
+    geo: tuple[float, float] | None = Field(default=None, description="(latitude, longitude) from GEO")
+    url: str | None = Field(default=None, description="URL value")
     date_start: datetime | None = None
     date_end: datetime | None = None
     timezone: str | None = Field(default=None, description="IANA TZID carried on DTSTART, if any")
     is_all_day: bool = False
     status: str | None = Field(default=None, description="CONFIRMED | TENTATIVE | CANCELLED")
-    organizer: str | None = None
-    attendees: list[str] = Field(default_factory=list)
+    event_class: str | None = Field(default=None, description="CLASS (PUBLIC | PRIVATE | CONFIDENTIAL)")
+    sequence: int | None = Field(default=None, description="SEQUENCE revision number")
+    date_stamp: datetime | None = Field(default=None, description="DTSTAMP")
+    date_source_created: datetime | None = Field(default=None, description="CREATED")
+    date_source_modified: datetime | None = Field(default=None, description="LAST-MODIFIED")
+    organizer: ParsedCalendarPerson | None = None
+    attendees: list[ParsedCalendarPerson] = Field(default_factory=list)
     recurrence_rule: str | None = None
     categories: list[str] = Field(default_factory=list)
 
@@ -126,11 +147,28 @@ def _parse_duration(value: str) -> timedelta | None:
     return -delta if match.group("sign") == "-" else delta
 
 
-def _extract_cal_address(value: str, params: dict[str, str]) -> str:
-    """Prefer the CN= display name, else the mailto: address."""
-    if "CN" in params:
-        return params["CN"]
-    return value.split(":", 1)[-1].strip() if value.lower().startswith("mailto:") else value.strip()
+def _parse_cal_person(value: str, params: dict[str, str]) -> ParsedCalendarPerson:
+    """An ``ORGANIZER`` / ``ATTENDEE`` value + params -> `ParsedCalendarPerson`."""
+    raw = value.strip()
+    email = raw.split(":", 1)[-1].strip() if raw.lower().startswith("mailto:") else raw
+    email = email.lower() or None
+    return ParsedCalendarPerson(
+        name=params.get("CN") or None,
+        email=email,
+        partstat=(params.get("PARTSTAT") or "").upper() or None,
+        cutype=(params.get("CUTYPE") or "").upper() or None,
+    )
+
+
+def _parse_geo(value: str) -> tuple[float, float] | None:
+    """``GEO`` value ``lat;lon`` (or ``lat,lon``) -> ``(lat, lon)``."""
+    parts = re.split(r"[;,]", value.strip(), maxsplit=1)
+    if len(parts) != 2:
+        return None
+    try:
+        return float(parts[0]), float(parts[1])
+    except ValueError:
+        return None
 
 
 class IcsParser:
@@ -202,10 +240,27 @@ class IcsParser:
                 current["_duration"] = _parse_duration(value)
             case "STATUS":
                 current["status"] = value.strip().upper()
+            case "CLASS":
+                current["event_class"] = value.strip().upper()
+            case "URL":
+                current["url"] = value.strip()
+            case "GEO":
+                current["geo"] = _parse_geo(value)
+            case "SEQUENCE":
+                try:
+                    current["sequence"] = int(value.strip())
+                except ValueError:
+                    pass
+            case "DTSTAMP":
+                current["date_stamp"], _, _ = _parse_datetime(value, params)
+            case "CREATED":
+                current["date_source_created"], _, _ = _parse_datetime(value, params)
+            case "LAST-MODIFIED":
+                current["date_source_modified"], _, _ = _parse_datetime(value, params)
             case "ORGANIZER":
-                current["organizer"] = _extract_cal_address(value, params)
+                current["organizer"] = _parse_cal_person(value, params)
             case "ATTENDEE":
-                current["attendees"].append(_extract_cal_address(value, params))
+                current["attendees"].append(_parse_cal_person(value, params))
             case "RRULE":
                 current["recurrence_rule"] = value.strip()
             case "CATEGORIES":

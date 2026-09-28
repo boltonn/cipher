@@ -1,0 +1,20 @@
+{
+  "base_confidence": 0.4,
+  "validator": "national_id_ir",
+  "patterns": [
+    {"name": "code_melli", "regex": "(?<![\\d])\\d{8,10}(?![\\d])", "subtype": "ir_code_melli"}
+  ],
+  "context": {
+    "terms": {
+      "fa": [
+        {"term": "کد ملی", "weight": 0.45},
+        {"term": "شماره ملی", "weight": 0.4},
+        {"term": "کدملی", "weight": 0.45}
+      ],
+      "en": [
+        {"term": "national code", "weight": 0.35},
+        {"term": "code melli", "weight": 0.4}
+      ]
+    }
+  }
+}

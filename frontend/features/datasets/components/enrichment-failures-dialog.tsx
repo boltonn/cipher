@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -9,9 +10,10 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useEnrichmentFailures } from "@/features/datasets/api";
-import { formatCompactNumber } from "@/lib/utils";
+import { cn, formatCompactNumber } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { AlertTriangle, Loader2, Maximize2, Minimize2 } from "lucide-react";
+import { useState } from "react";
 
 interface EnrichmentFailuresDialogProps {
   datasetId: string;
@@ -27,6 +29,7 @@ export function EnrichmentFailuresDialog({
   label,
   onClose,
 }: EnrichmentFailuresDialogProps) {
+  const [expanded, setExpanded] = useState(false);
   const { data, isPending, isError } = useEnrichmentFailures(
     datasetId,
     enrichmentType
@@ -34,8 +37,15 @@ export function EnrichmentFailuresDialog({
 
   return (
     <Dialog open={!!enrichmentType} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="border-border bg-card sm:max-w-2xl">
-        <DialogHeader>
+      <DialogContent
+        className={cn(
+          "flex flex-col overflow-hidden border-border bg-card",
+          expanded
+            ? "h-[90vh] w-[calc(100%-2rem)] sm:max-w-[95vw]"
+            : "max-h-[85vh] sm:max-w-3xl"
+        )}
+      >
+        <DialogHeader className="pr-16">
           <DialogTitle className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.1em] text-destructive">
             <AlertTriangle size={14} />
             {label} — failures
@@ -46,6 +56,18 @@ export function EnrichmentFailuresDialog({
               : "Per-file error detail for this analytic."}
           </DialogDescription>
         </DialogHeader>
+
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="absolute right-9 top-2"
+          onClick={() => setExpanded((prev) => !prev)}
+        >
+          {expanded ? <Minimize2 /> : <Maximize2 />}
+          <span className="sr-only">
+            {expanded ? "Collapse dialog" : "Expand dialog"}
+          </span>
+        </Button>
 
         {isPending && (
           <div className="flex items-center gap-2 py-8 text-xs text-muted-foreground">
@@ -66,21 +88,21 @@ export function EnrichmentFailuresDialog({
         )}
 
         {data && data.items.length > 0 && (
-          <div className="flex flex-col gap-3">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
             {data.reasons.length > 1 && (
-              <div className="flex flex-col gap-1.5 rounded-lg border border-border bg-muted/40 p-3">
+              <div className="flex min-w-0 flex-col gap-1.5 rounded-lg border border-border bg-muted/40 p-3">
                 <p className="text-[10px] font-black uppercase tracking-[0.15em] text-muted-foreground">
                   Reasons
                 </p>
                 {data.reasons.map((reason, index) => (
                   <div
                     key={index}
-                    className="flex items-start gap-2 text-[11px]"
+                    className="flex min-w-0 items-start gap-2 text-[11px]"
                   >
                     <span className="shrink-0 font-mono text-destructive">
                       {formatCompactNumber(reason.count)}×
                     </span>
-                    <span className="min-w-0 flex-1 font-mono text-muted-foreground">
+                    <span className="min-w-0 flex-1 font-mono text-muted-foreground [overflow-wrap:anywhere]">
                       {reason.errorMessage ?? "(no message recorded)"}
                     </span>
                   </div>
@@ -88,12 +110,12 @@ export function EnrichmentFailuresDialog({
               </div>
             )}
 
-            <ScrollArea className="max-h-[50vh] pr-3">
+            <ScrollArea className="min-h-0 min-w-0 flex-1 pr-3">
               <div className="flex flex-col gap-2">
                 {data.items.map((item) => (
                   <div
                     key={item.id}
-                    className="rounded-lg border border-border bg-muted/30 p-3"
+                    className="min-w-0 rounded-lg border border-border bg-muted/30 p-3"
                   >
                     <div className="flex items-baseline justify-between gap-3">
                       <span className="truncate font-mono text-xs text-foreground">
@@ -108,7 +130,7 @@ export function EnrichmentFailuresDialog({
                     <p className="mt-0.5 truncate text-[10px] text-muted-foreground/70">
                       {item.path}
                     </p>
-                    <pre className="mt-2 whitespace-pre-wrap break-words rounded bg-background/60 p-2 font-mono text-[11px] text-destructive">
+                    <pre className="mt-2 whitespace-pre-wrap rounded bg-background/60 p-2 font-mono text-[11px] text-destructive [overflow-wrap:anywhere]">
                       {item.errorMessage ?? "(no message recorded)"}
                     </pre>
                     {item.retryCount > 0 && (

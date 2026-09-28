@@ -45,6 +45,23 @@ export interface PersonUpdate {
   isVerified?: boolean;
 }
 
+export interface PersonMergeResult {
+  personId: string;
+  facesMoved: number;
+  matchesMoved: number;
+  eventParticipantsMoved: number;
+  commentsMoved: number;
+  mentionsMoved: number;
+  relationshipsMoved: number;
+  relationshipCandidatesMoved: number;
+  entityMatchesMoved: number;
+}
+
+/** A person whose representative faces resemble another person's -- a merge lead. */
+export interface PersonMergeSuggestion extends Person {
+  similarityScore: number;
+}
+
 export interface PersonSearchParameters {
   query?: string;
   tags?: string[];

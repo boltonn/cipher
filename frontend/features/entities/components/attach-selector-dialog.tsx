@@ -19,13 +19,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { DatasetSelect } from "@/features/datasets/components/dataset-select";
 import { RegionCombobox } from "@/features/entities/components/region-combobox";
 import { useAttachSelector } from "@/features/entities/hooks/use-entities";
 import {
-  SELECTOR_KIND_LABELS,
-  SELECTOR_KINDS,
-  type SelectorKind,
+  SELECTOR_TYPE_LABELS,
+  SELECTOR_TYPES,
+  type SelectorType,
 } from "@/features/entities/types";
 import { Loader2 } from "lucide-react";
 import { useState } from "react";
@@ -73,20 +72,17 @@ function AttachSelectorForm({
   entityId: string;
   onDone: () => void;
 }) {
-  const [datasetId, setDatasetId] = useState<string | undefined>(undefined);
-  const [kind, setKind] = useState<SelectorKind>("phone");
+  const [kind, setKind] = useState<SelectorType>("phone");
   const [rawValue, setRawValue] = useState("");
   const [region, setRegion] = useState<string | undefined>(undefined);
 
   const attach = useAttachSelector(entityId, onDone);
 
-  const canSubmit = !!datasetId && rawValue.trim().length > 0 && !attach.isPending;
+  const canSubmit = rawValue.trim().length > 0 && !attach.isPending;
 
   const handleSubmit = () => {
-    if (!datasetId) return;
     attach.mutate({
-      datasetId,
-      selectorKind: kind,
+      selectorType: kind,
       rawValue: rawValue.trim(),
       regionHint: kind === "phone" ? region : undefined,
     });
@@ -95,33 +91,19 @@ function AttachSelectorForm({
   return (
     <>
       <FieldGroup>
-        <Field>
-          <FieldLabel className="text-[10px] uppercase tracking-widest text-muted-foreground">
-            Dataset
-          </FieldLabel>
-          <DatasetSelect
-            datasetId={datasetId}
-            onChange={setDatasetId}
-            className="h-10 w-full"
-          />
-          <FieldDescription className="text-[11px]">
-            The dataset this selector was observed in.
-          </FieldDescription>
-        </Field>
-
         <div className="grid grid-cols-[9rem_1fr] gap-3">
           <Field>
             <FieldLabel className="text-[10px] uppercase tracking-widest text-muted-foreground">
               Type
             </FieldLabel>
-            <Select value={kind} onValueChange={(v) => setKind(v as SelectorKind)}>
+            <Select value={kind} onValueChange={(v) => setKind(v as SelectorType)}>
               <SelectTrigger className="w-full border-border bg-muted/40 text-sm data-[size=default]:h-10">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {SELECTOR_KINDS.map((k) => (
+                {SELECTOR_TYPES.map((k) => (
                   <SelectItem key={k} value={k}>
-                    {SELECTOR_KIND_LABELS[k]}
+                    {SELECTOR_TYPE_LABELS[k]}
                   </SelectItem>
                 ))}
               </SelectContent>

@@ -10,9 +10,9 @@ import { useSearchController } from "@/features/search/hooks/use-search-controll
 import type { SearchFilters, SearchMode, SearchSelection } from "@/features/search/types";
 import type { PaginationModeType } from "@/types/common";
 import { FileSearch } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 
-export default function SearchPage() {
+function SearchPageInner() {
   const [selection, setSelection] = useState<SearchSelection | null>(null);
   const [paginationMode, setPaginationMode] = useState<PaginationModeType>("infinite");
   const [previewExpanded, setPreviewExpanded] = useState(false);
@@ -71,11 +71,15 @@ export default function SearchPage() {
   };
 
   return (
-    <div className="relative mx-auto flex h-full w-full max-w-400 flex-col px-6 pb-6">
+    <div className="relative mx-auto flex h-full w-full max-w-400 flex-col px-6 pb-6 pt-5">
       <PageHeader
         eyebrow="Search"
         icon={<FileSearch size={10} className="text-primary/50" />}
-        value={canSearch && !isPending ? `${total.toLocaleString()} Result${total === 1 ? "" : "s"}` : "Documents & Emails"}
+        value={
+          query && canSearch && !isPending
+            ? `${total.toLocaleString()} Result${total === 1 ? "" : "s"}`
+            : "Documents & Emails"
+        }
         actions={
           <PaginationModeToggle
             mode={paginationMode}
@@ -139,5 +143,13 @@ export default function SearchPage() {
         </main>
       </div>
     </div>
+  );
+}
+
+export default function SearchPage() {
+  return (
+    <Suspense>
+      <SearchPageInner />
+    </Suspense>
   );
 }
