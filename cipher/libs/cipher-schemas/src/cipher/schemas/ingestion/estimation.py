@@ -62,6 +62,7 @@ MIN_SAMPLES_FOR_MEASURED = 5
 # Surfaced in the request wizard, roughly in pipeline order.
 ESTIMATE_ORDER: tuple[EnrichmentType, ...] = (
     EnrichmentType.TEXT_EXTRACTION,
+    EnrichmentType.OCR,
     EnrichmentType.TEXT_EMBEDDING,
     EnrichmentType.IMAGE_EMBEDDING,
     EnrichmentType.EXIF_LOCATION,
@@ -80,6 +81,8 @@ _ELIGIBLE_GROUPS: dict[EnrichmentType, tuple[str, ...]] = {
     EnrichmentType.EXIF_LOCATION: ("image",),
     EnrichmentType.FACE_DETECTION: ("image",),
     EnrichmentType.TEXT_EXTRACTION: TEXT_GROUPS,
+    # Upper bound: only image-based PDF pages + (optionally CLIP-filtered) images are OCR'd.
+    EnrichmentType.OCR: ("document", "image"),
     EnrichmentType.TEXT_EMBEDDING: TEXT_GROUPS,
     EnrichmentType.SELECTOR_EXTRACTION: TEXT_GROUPS,
     EnrichmentType.ENTITY_EXTRACTION: TEXT_GROUPS,
@@ -95,6 +98,7 @@ _UNIT: dict[EnrichmentType, WorkUnit] = {
     EnrichmentType.FACE_MATCHING: WorkUnit.IMAGE,
     EnrichmentType.FACE_CLUSTERING: WorkUnit.IMAGE,
     EnrichmentType.TEXT_EXTRACTION: WorkUnit.TEXT_FILE,
+    EnrichmentType.OCR: WorkUnit.FILE,
     EnrichmentType.TEXT_EMBEDDING: WorkUnit.TEXT_FILE,
     EnrichmentType.SELECTOR_EXTRACTION: WorkUnit.TEXT_FILE,
     EnrichmentType.ENTITY_EXTRACTION: WorkUnit.LLM_FILE,
@@ -195,6 +199,7 @@ def _seed(unit: WorkUnit, *, cpu: float, gpu: float, na: float | None = None, ov
 # takes over once `MIN_SAMPLES_FOR_MEASURED` real runs exist.
 DEFAULT_RATES: dict[EnrichmentType, SeedRate] = {
     EnrichmentType.TEXT_EXTRACTION: _seed(WorkUnit.TEXT_FILE, cpu=1.5, gpu=1.5),
+    EnrichmentType.OCR: _seed(WorkUnit.FILE, cpu=60.0, gpu=2.0, overhead=60.0),
     EnrichmentType.TEXT_EMBEDDING: _seed(WorkUnit.TEXT_FILE, cpu=4.0, gpu=0.8),
     EnrichmentType.IMAGE_EMBEDDING: _seed(WorkUnit.IMAGE, cpu=0.6, gpu=0.08),
     EnrichmentType.FACE_DETECTION: _seed(WorkUnit.IMAGE, cpu=1.2, gpu=0.15),

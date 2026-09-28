@@ -5,6 +5,7 @@ import torch
 from loguru import logger
 from PIL import Image
 from transformers import CLIPImageProcessor, CLIPModel, CLIPTokenizer
+from transformers.modeling_outputs import BaseModelOutputWithPooling
 
 from cipher.schemas._base.common import ModelDevice
 
@@ -62,10 +63,7 @@ class CLIP:
         """GPU Inference of text embeddings for a batch of token ID tensors."""
         inputs = {"input_ids": batched_tensors.to(self.device)}
         with torch.inference_mode():
-            # transformers>=5 returns the full BaseModelOutputWithPooling here
-            # (with pooler_output holding the projected text embedding) rather
-            # than a plain tensor.
-            embeddings = self.model.get_text_features(**inputs).pooler_output
+            embeddings = _projected(self.model.get_text_features(**inputs))
             if normalized:
                 embeddings = torch.nn.functional.normalize(embeddings, dim=1)
         return embeddings.cpu().tolist()
@@ -74,10 +72,12 @@ class CLIP:
         """GPU Inference of image embeddings for a batch of pixel value tensors."""
         inputs = {"pixel_values": pixel_values.to(self.device)}
         with torch.inference_mode():
-            # transformers>=5 returns the full BaseModelOutputWithPooling here
-            # (with pooler_output holding the projected image embedding) rather
-            # than a plain tensor.
-            embeddings = self.model.get_image_features(**inputs).pooler_output
+            embeddings = _projected(self.model.get_image_features(**inputs))
             if normalized:
                 embeddings = torch.nn.functional.normalize(embeddings, dim=1)
         return embeddings.cpu().tolist()
+
+
+def _projected(features: torch.Tensor | BaseModelOutputWithPooling) -> torch.Tensor:
+    """The projected CLIP embedding: transformers>=5 wraps it in `pooler_output`, 4.x returns the tensor."""
+    return features if isinstance(features, torch.Tensor) else features.pooler_output

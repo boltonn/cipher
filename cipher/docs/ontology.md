@@ -11,7 +11,7 @@ this doc together.
 
 > Naming note: three extractor packages under `analytics/`, all emitting
 > `cipher.schemas.spans`. **`pyselectors`** (not `selectors` — stdlib clash) is
-> deterministic. **`pygliner`** is zero-shot (GLiNER entities + GLiREL
+> deterministic. **`pygliner`** is zero-shot (GLiNER2.5 joint entities +
 > relations). **`nerd`** is supervised/fine-tuned token classification for
 > *standard* entity types, ported from the standalone `nerd` repo.
 > `extract-entities --extractor {pygliner|nerd}`.

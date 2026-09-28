@@ -97,15 +97,15 @@ def test_relations_dropped_when_endpoint_missing_or_label_unknown():
 def test_build_extractor_requires_model_dirs():
     with pytest.raises(ValueError, match="gliner-model-dir"):
         _build_extractor(
-            "gliner", model=None, gliner_model_dir=None, glirel_model_dir=None, nerd_model_dir=None, threshold=0.5
+            "gliner", model=None, gliner_model_dir=None, nerd_model_dir=None, threshold=0.5
         )
     with pytest.raises(ValueError, match="nerd-model-dir"):
         _build_extractor(
-            "nerd", model=None, gliner_model_dir=None, glirel_model_dir=None, nerd_model_dir=None, threshold=0.5
+            "nerd", model=None, gliner_model_dir=None, nerd_model_dir=None, threshold=0.5
         )
     with pytest.raises(ValueError, match="Unknown"):
         _build_extractor(
-            "bogus", model=None, gliner_model_dir=None, glirel_model_dir=None, nerd_model_dir=None, threshold=0.5
+            "bogus", model=None, gliner_model_dir=None, nerd_model_dir=None, threshold=0.5
         )
 
 

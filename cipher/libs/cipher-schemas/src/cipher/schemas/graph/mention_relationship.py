@@ -1,6 +1,6 @@
 """A relation between two mention spans, captured at extraction time.
 
-An extractor (an LLM pack, or GLiREL) reports a directed relation between two
+An extractor (an LLM pack, or GLiNER2.5) reports a directed relation between two
 entity *spans* it found in the same text -- before either span is resolved to
 an entity. A `MentionRelationship` records that assertion against the two
 `mention` rows it connects, so the relation is not lost while resolution

@@ -30,6 +30,7 @@ single source of truth (also served at `GET /enrichments/config`). Hard
 prerequisites only — an enrichment that reads rows a prior one produces:
 
 - `text_embedding`, `selector_extraction`, `entity_extraction` ← `text_extraction`
+- `ocr` ← `text_extraction` (PDFs only: OCR merges into the xberg row; images need nothing)
 - `relationship_extraction` ← `entity_extraction`, `selector_extraction`
 - `face_matching`, `face_clustering` ← `face_detection`
 
@@ -84,6 +85,42 @@ them from `cipher rates` output as runs accumulate.
 | `cipher rates` | measured rates + recent runs |
 | `EnrichmentEstimates` card on `datasets/[id]` (`features/datasets/components/enrichment-estimates.tsx`) | **the only estimate UI.** ETA + eligible count + in-flight % per analytic, CPU/GPU toggle, "remaining to run" total, not-staged notice. Display-only -- no run trigger yet. |
 | Dataset-request wizard (`features/datasets/components/dataset-create-form.tsx`) | **no estimates.** Fires before the dataset exists, so there's no inventory to estimate against. Collects an analytics *wishlist* (no numbers) for the GitHub issue, with dependency auto-enable/disable and required-param checks. |
+
+## OCR (`cipher ocr`)
+
+Multilingual OCR for image-based PDF pages and images (incl. HEIF), via the `pyocr`
+analytic (jina-ocr-v1 on vLLM; `make start-vllm` in `analytics/pyocr`). Run after
+`extract-text` (and `embed-images` if filtering), before `embed-text`:
+
+```bash
+cipher ocr --dataset-name X                                  # every PDF + supported image
+cipher ocr --dataset-name X --filetype pdf --filetype heif   # restrict by filetype
+cipher ocr --dataset-name X --clip-model-dir ~/models/transformers/clip-vit-base-patch16
+```
+
+- **Which pages:** pdfium reads each PDF page's text layer; pages with < 20 word chars
+  (`--min-chars`) are *image-based* and go to the model, the rest keep xberg's text
+  (`--force` OCRs everything). Every image/TIFF frame is OCR'd.
+- **CLIP tag filter (opt-in):** zero-shot over the image embeddings `embed-images`
+  already stored -- `--clip-tag` (text-bearing: screenshot, scanned document, receipt…)
+  vs `--clip-negative-tag` (people, landscape…); an image is queued when ≥
+  `--clip-threshold` of the probability mass is on the text-bearing tags. Filtered-out
+  images stay unqueued, so a later unfiltered run still reaches them.
+- **Output (one `ExtractedText` per file):** PDF pages are merged into the
+  existing row page-by-page; images get a new row. `extractor=pyocr`,
+  `metadata.ocr_pages` / `ocr_model` record provenance, HTML tables become
+  `ExtractedTableInfo`, located figures become `DocumentStructureNode(node_type="figure")`
+  with a normalized `BoundingBox` and a model-written caption (kept out of `content`).
+  `prechunked` is one span per page, so chunks keep real page numbers.
+- **Downstream:** written files are re-queued for `text_embedding` (images included --
+  `embed-text` only *processes* `image`-group rows, OCR is what queues them). Mention
+  producers (selectors/entities/events) are re-queued only for files that had no text
+  before; files whose existing mentions now point at replaced text are reported.
+- **Speed:** a rolling window of `--concurrency` files (default 16) keeps the GPU fed;
+  the service decodes every page of every in-flight file together. Content-identical
+  files (sha256) are OCR'd once -- across runs and within a run. Measured on one RTX
+  3090: 4.2 pages/s (138 dense scanned pages in 32 s); 1.2 pages/s one file at a time.
+- `reset-text` also clears `ocr` rows (re-extraction overwrites the merged text).
 
 ## Adding an enrichment
 

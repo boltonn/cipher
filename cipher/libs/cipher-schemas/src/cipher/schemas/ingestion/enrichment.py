@@ -15,6 +15,7 @@ class EnrichmentType(StrEnum):
     FACE_MATCHING = "face_matching"
     FACE_CLUSTERING = "face_clustering"
     TEXT_EXTRACTION = "text_extraction"
+    OCR = "ocr"
     TEXT_EMBEDDING = "text_embedding"
     SELECTOR_EXTRACTION = "selector_extraction"
     ENTITY_EXTRACTION = "entity_extraction"
@@ -30,6 +31,8 @@ class EnrichmentType(StrEnum):
 # `GET /enrichments/config` are derived from it. Types absent from the dict have
 # no prerequisites.
 ENRICHMENT_DEPENDENCIES: dict[EnrichmentType, tuple[EnrichmentType, ...]] = {
+    # PDFs only: OCR merges scanned pages into the xberg extraction (images need nothing).
+    EnrichmentType.OCR: (EnrichmentType.TEXT_EXTRACTION,),
     EnrichmentType.TEXT_EMBEDDING: (EnrichmentType.TEXT_EXTRACTION,),
     EnrichmentType.SELECTOR_EXTRACTION: (EnrichmentType.TEXT_EXTRACTION,),
     EnrichmentType.ENTITY_EXTRACTION: (EnrichmentType.TEXT_EXTRACTION,),

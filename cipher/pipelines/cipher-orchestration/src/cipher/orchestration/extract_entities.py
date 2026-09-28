@@ -16,8 +16,8 @@ text-bearing file:
 `--extractor` selects the engine, all run in-process:
 
 * `llm`    -- `pyprompt` LLM pack (entities + relations); needs an `LLM__*` config.
-* `gliner` -- GLiNER entities + (optional) GLiREL relations; needs `--gliner-model-dir`
-             (and `--glirel-model-dir` for relations).
+* `gliner` -- GLiNER2.5 entities + ontology-typed relations in one joint pass;
+             needs `--gliner-model-dir` (a local checkpoint, loaded offline).
 * `nerd`   -- supervised token-classification NER (entities only); needs `--nerd-model-dir`.
 
 Re-runnable: a file with a completed ENTITY_EXTRACTION row is skipped until
@@ -56,6 +56,15 @@ _CONTEXT_WINDOW = 80
 _PERSISTED_TYPES = {EntityType.PERSON, EntityType.ORGANIZATION, EntityType.LOCATION}
 _EXTRACTORS = ("llm", "gliner", "nerd")
 
+# Default span-score floor per extractor, used when --threshold is not passed.
+# Measured against real production data + gold multilingual corpora: nerd's
+# score is well-calibrated only once its span decoding is correct (see
+# `nerd.model.NerdModel`'s word-pooled merge) and gains nothing from a floor
+# above 0.5 -- precision is already 88-99% there and only recall drops as the
+# floor rises. gliner is zero-shot and genuinely under-confident on a lot of
+# real spans; 0.65 trades a bit of recall for meaningfully higher precision.
+_DEFAULT_THRESHOLD = {"gliner": 0.65, "nerd": 0.5}
+
 
 # --------------------------------------------------------------------------- #
 # Extractor abstraction -- one async `extract(content)` per engine            #
@@ -86,30 +95,22 @@ class _LlmExtractor:
 
 
 class _GlinerExtractor:
-    """GLiNER entities + optional GLiREL relations."""
+    """GLiNER2.5 entities, plus relations from a joint pass unless disabled."""
 
     name = "gliner"
 
-    def __init__(
-        self, *, gliner_model_dir: str, glirel_model_dir: str | None, threshold: float, device: ModelDevice
-    ):
+    def __init__(self, *, gliner_model_dir: str, relations: bool, threshold: float, device: ModelDevice):
         from pygliner.model import GlinerModel
 
-        self._ner = GlinerModel(gliner_model_dir, device=device)
-        self._rel = None
-        if glirel_model_dir:
-            from pygliner.model import GlirelModel
-
-            self._rel = GlirelModel(glirel_model_dir, device=device)
+        self._model = GlinerModel(gliner_model_dir, device=device)
+        self._relations = relations
         self._threshold = threshold
         self.model_label = gliner_model_dir.rstrip("/").split("/")[-1]
 
     async def extract(self, content: str) -> tuple[list[EntitySpan], list[RelationSpan]]:
-        entities = await asyncio.to_thread(self._ner.infer, content, None, self._threshold)
-        if self._rel is None or len(entities) < 2:
-            return entities, []
-        relations = await asyncio.to_thread(self._rel.infer, content, entities, None, self._threshold)
-        return entities, relations
+        if not self._relations:
+            return await asyncio.to_thread(self._model.infer, content, None, self._threshold), []
+        return await asyncio.to_thread(self._model.extract, content, None, None, self._threshold)
 
 
 class _NerdExtractor:
@@ -134,26 +135,27 @@ def _build_extractor(
     *,
     model: str | None,
     gliner_model_dir: str | None,
-    glirel_model_dir: str | None,
     nerd_model_dir: str | None,
-    threshold: float,
+    threshold: float | None,
+    relations: bool = True,
     device: ModelDevice = ModelDevice.CPU,
 ) -> _Extractor:
     if extractor == "llm":
         return _LlmExtractor(model)
+    resolved_threshold = threshold if threshold is not None else _DEFAULT_THRESHOLD.get(extractor, 0.5)
     if extractor == "gliner":
         if not gliner_model_dir:
             raise ValueError("extract-entities --extractor gliner needs --gliner-model-dir")
         return _GlinerExtractor(
             gliner_model_dir=gliner_model_dir,
-            glirel_model_dir=glirel_model_dir,
-            threshold=threshold,
+            relations=relations,
+            threshold=resolved_threshold,
             device=device,
         )
     if extractor == "nerd":
         if not nerd_model_dir:
             raise ValueError("extract-entities --extractor nerd needs --nerd-model-dir")
-        return _NerdExtractor(nerd_model_dir=nerd_model_dir, threshold=threshold, device=device)
+        return _NerdExtractor(nerd_model_dir=nerd_model_dir, threshold=resolved_threshold, device=device)
     raise ValueError(f"Unknown --extractor '{extractor}' (choose from {_EXTRACTORS})")
 
 
@@ -336,9 +338,8 @@ async def extract_entities_workflow(
     batch_size: int = 25,
     model: str | None = None,
     gliner_model_dir: str | None = None,
-    glirel_model_dir: str | None = None,
     nerd_model_dir: str | None = None,
-    threshold: float = 0.5,
+    threshold: float | None = None,
     persist_relations: bool = True,
     device: ModelDevice = ModelDevice.CPU,
 ) -> int:
@@ -347,9 +348,9 @@ async def extract_entities_workflow(
         extractor,
         model=model,
         gliner_model_dir=gliner_model_dir,
-        glirel_model_dir=glirel_model_dir,
         nerd_model_dir=nerd_model_dir,
         threshold=threshold,
+        relations=persist_relations,
         device=device,
     )
 

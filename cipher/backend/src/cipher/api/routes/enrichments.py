@@ -18,6 +18,7 @@ router = APIRouter(prefix="/enrichments", tags=["enrichments"])
 # Order the pipeline steps are surfaced in: roughly the order they run.
 PIPELINE_ORDER: tuple[EnrichmentType, ...] = (
     EnrichmentType.TEXT_EXTRACTION,
+    EnrichmentType.OCR,
     EnrichmentType.TEXT_EMBEDDING,
     EnrichmentType.IMAGE_EMBEDDING,
     EnrichmentType.EXIF_LOCATION,

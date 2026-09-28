@@ -20,7 +20,7 @@ def extract(
     show_tables: Annotated[bool, typer.Option(help="Print extracted tables as markdown")] = False,
 ):
     """Extract a single file and print its content, metadata, and table/language/page summary."""
-    from xberg import ExtractionConfig, OcrConfig, extract_file_sync
+    from kreuzberg import ExtractionConfig, OcrConfig, extract_file_sync
 
     config = ExtractionConfig(disable_ocr=disable_ocr, ocr=OcrConfig(language=ocr_language))
     result = extract_file_sync(str(path), config=config)
@@ -53,7 +53,7 @@ def benchmark(
     real numbers on hand for this codebase's own files if/when comparing
     against another extractor (e.g. unstructured.io) later.
     """
-    from xberg import ExtractionConfig, OcrConfig, extract_file_sync
+    from kreuzberg import ExtractionConfig, OcrConfig, extract_file_sync
 
     config = ExtractionConfig(disable_ocr=disable_ocr, ocr=OcrConfig(language=ocr_language))
     paths = [p for p in sorted(directory.glob(glob)) if p.is_file()]

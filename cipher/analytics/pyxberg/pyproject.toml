@@ -10,7 +10,6 @@ classifiers = [
   "Programming Language :: Python"
 ]
 dependencies = [
-  "xberg",
   "kreuzberg[easyocr]",
   "loguru",
   "pydantic",

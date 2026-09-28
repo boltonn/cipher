@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from cipher.schemas.graph.ontology import default_ner_labels, default_relation_labels
 from cipher.schemas.graph.spans import EntitySpan, RelationSpan
 
-__all__ = ["EntitySpan", "RelationSpan", "NerRequest", "RelationRequest"]
+__all__ = ["EntitySpan", "RelationSpan", "NerRequest", "ExtractRequest", "ExtractResponse"]
 
 
 class NerRequest(BaseModel):
@@ -18,17 +18,17 @@ class NerRequest(BaseModel):
 
     text: str
     labels: list[str] = Field(default_factory=default_ner_labels)
-    threshold: float = Field(default=0.5, ge=0, le=1)
+    threshold: float = Field(default=0.65, ge=0, le=1)
 
 
-class RelationRequest(BaseModel):
-    """Request body for `POST /relations`.
+class ExtractRequest(NerRequest):
+    """Request body for `POST /extract`: entities and ontology-typed relations in one joint pass."""
 
-    `entities` are the spans to consider as relation endpoints -- normally the
-    output of a prior `/infer` call.
-    """
+    relation_labels: list[str] = Field(default_factory=default_relation_labels)
 
-    text: str
+
+class ExtractResponse(BaseModel):
+    """Response body for `POST /extract`."""
+
     entities: list[EntitySpan]
-    labels: list[str] = Field(default_factory=default_relation_labels)
-    threshold: float = Field(default=0.5, ge=0, le=1)
+    relations: list[RelationSpan]

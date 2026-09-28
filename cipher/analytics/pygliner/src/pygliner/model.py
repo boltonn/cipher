@@ -1,121 +1,147 @@
-"""GLiNER (entities) and GLiREL (relations) wrappers producing typed spans."""
+"""GLiNER2.5 wrapper producing typed entity and relation spans.
 
-import re
+One boundary checkpoint serves both tasks: entities via the extractor's
+long-text API, entities + relations jointly via `JointIE` with a schema whose
+relation endpoints are typed from the ontology. Loads from a local directory
+with no hub access (the checkpoint bundles its encoder config and tokenizer).
+"""
 
 from loguru import logger
 
 from cipher.schemas._base.common import ModelDevice
-from cipher.schemas.graph.ontology import default_ner_labels, default_relation_labels
+from cipher.schemas.graph.ontology import (
+    NER_LABEL_TO_TYPE,
+    RELATION_LABEL_TO_TYPE,
+    RELATIONSHIPS,
+    default_ner_labels,
+    default_relation_labels,
+)
 from pygliner.schemas import EntitySpan, RelationSpan
 
-_TOKEN_RE = re.compile(r"\S+")
+_CHUNK_SIZE = 384
+_CHUNK_OVERLAP = 64
+# Greedy matches beam's relations on real data (749 vs 748, full overlap) at ~6x the speed;
+# beam's Python search dominates runtime (entities alone are ~0.07s/file on GPU).
 
 
 class GlinerModel:
-    """Zero-shot entity span extraction over a GLiNER checkpoint."""
+    """Zero-shot entity and relation extraction over a GLiNER2.5 checkpoint."""
 
     def __init__(self, model_dir: str, device: ModelDevice = ModelDevice.CPU):
-        from gliner import GLiNER
+        from gliner2 import AutoExtractor
+        from gliner2.joint_ie import JointIE
 
-        self._model = GLiNER.from_pretrained(model_dir)
         self._device = "cuda" if device == ModelDevice.CUDA else "cpu"
-        self._model.to(self._device)
-        logger.info(f"✅ GLiNER loaded from {model_dir} on {self._device}.")
+        self._model = AutoExtractor.from_pretrained(model_dir, local_files_only=True)
+        self._joint = JointIE(self._model, device=self._device)
+        self._schemas: dict[tuple[tuple[str, ...], tuple[str, ...]], object] = {}
+        logger.info(f"✅ GLiNER2.5 loaded from {model_dir} on {self._device}.")
 
-    def infer(
-        self, text: str, labels: list[str] | None = None, threshold: float = 0.5
-    ) -> list[EntitySpan]:
+    def infer(self, text: str, labels: list[str] | None = None, threshold: float = 0.65) -> list[EntitySpan]:
         """Predict entity spans for the requested labels."""
         if not text.strip():
             return []
-        predictions = self._model.predict_entities(
-            text, labels or default_ner_labels(), threshold=threshold
+        result = self._model.extract_entities_long(
+            text,
+            labels or default_ner_labels(),
+            threshold=threshold,
+            chunk_size=_CHUNK_SIZE,
+            chunk_overlap=_CHUNK_OVERLAP,
+            include_spans=True,
+            include_confidence=True,
         )
         return [
             EntitySpan(
-                surface_text=p["text"],
-                label=p["label"],
-                start_offset=p["start"],
-                end_offset=p["end"],
-                score=float(p.get("score", threshold)),
+                surface_text=e["text"],
+                label=label,
+                start_offset=e["start"],
+                end_offset=e["end"],
+                score=float(e.get("confidence", threshold)),
             )
-            for p in predictions
+            for label, found in result["entities"].items()
+            for e in found
         ]
 
-    def unload(self) -> None:
-        """Release the underlying model."""
-        del self._model
-
-
-class GlirelModel:
-    """Zero-shot relation extraction over a GLiREL checkpoint (optional extra)."""
-
-    def __init__(self, model_dir: str, device: ModelDevice = ModelDevice.CPU):
-        try:
-            from glirel import GLiREL
-        except ImportError as exc:  # pragma: no cover - optional dependency
-            raise RuntimeError(
-                "Relation extraction needs the `relations` extra: uv sync --extra relations"
-            ) from exc
-
-        self._model = GLiREL.from_pretrained(model_dir)
-        self._device = "cuda" if device == ModelDevice.CUDA else "cpu"
-        self._model.to(self._device)
-        logger.info(f"✅ GLiREL loaded from {model_dir} on {self._device}.")
-
-    def infer(
+    def extract(
         self,
         text: str,
-        entities: list[EntitySpan],
         labels: list[str] | None = None,
-        threshold: float = 0.5,
-    ) -> list[RelationSpan]:
-        """Predict directed relations between the supplied entity spans."""
-        if len(entities) < 2 or not text.strip():
-            return []
+        relation_labels: list[str] | None = None,
+        threshold: float = 0.65,
+    ) -> tuple[list[EntitySpan], list[RelationSpan]]:
+        """Jointly predict entity spans and the typed relations between them."""
+        if not text.strip():
+            return [], []
+        from gliner2.joint_ie import JointIEConfig
 
-        tokens, offsets = _tokenize(text)
-        ner = []
-        for e in entities:
-            span = _token_span(offsets, e.start_offset, e.end_offset)
-            if span is not None:
-                ner.append([span[0], span[1], e.label, e.surface_text])
-        if len(ner) < 2:
-            return []
-
-        raw = self._model.predict_relations(
-            tokens,
-            {"glirel_labels": {label: {} for label in (labels or default_relation_labels())}},
-            threshold=threshold,
-            ner=ner,
-            top_k=1,
+        schema = self._schema(
+            labels=tuple(labels or default_ner_labels()),
+            relation_labels=tuple(relation_labels or default_relation_labels()),
         )
-        return [
-            RelationSpan(
-                label=r["label"],
-                head_text=" ".join(r["head_text"]) if isinstance(r["head_text"], list) else r["head_text"],
-                tail_text=" ".join(r["tail_text"]) if isinstance(r["tail_text"], list) else r["tail_text"],
-                head_start=offsets[r["head_pos"][0]][0],
-                tail_start=offsets[r["tail_pos"][0]][0],
-                score=float(r.get("score", threshold)),
+        result = self._joint.extract_long(
+            text,
+            schema,
+            config=JointIEConfig(optimizer="greedy", entity_threshold=threshold),
+            chunk_size=_CHUNK_SIZE,
+            chunk_overlap=_CHUNK_OVERLAP,
+        )
+        entities = [
+            EntitySpan(
+                surface_text=e.text,
+                label=e.type,
+                start_offset=e.start,
+                end_offset=e.end,
+                score=float(e.confidence if e.confidence is not None else threshold),
             )
-            for r in raw
+            for e in result.entities
         ]
+        relations = []
+        for r in result.relations:
+            score = float(r.confidence if r.confidence is not None else threshold)
+            if score < threshold:
+                continue
+            head, tail = result.entity(r.head), result.entity(r.tail)
+            relations.append(
+                RelationSpan(
+                    label=r.type,
+                    head_text=head.text,
+                    tail_text=tail.text,
+                    head_start=head.start,
+                    tail_start=tail.start,
+                    score=score,
+                )
+            )
+        return entities, relations
+
+    def _schema(self, *, labels: tuple[str, ...], relation_labels: tuple[str, ...]):
+        """Compiled JointIE schema with each relation's head/tail restricted to ontology-permitted labels.
+
+        Compiled here rather than by `JointIE`, whose own compile cache is keyed on
+        the schema's `repr` (a memory address) and can return a stale schema.
+        """
+        from gliner2.joint_ie import compile_schema
+
+        key = (labels, relation_labels)
+        if key not in self._schemas:
+            schema = self._joint.create_schema().entities(list(labels))
+            for relation_label in relation_labels:
+                spec = RELATIONSHIPS.get(RELATION_LABEL_TO_TYPE.get(relation_label))
+                if spec is None:
+                    continue
+                heads = [label for label in labels if NER_LABEL_TO_TYPE.get(label) in spec.allowed_src]
+                tails = [label for label in labels if NER_LABEL_TO_TYPE.get(label) in spec.allowed_dst]
+                if heads and tails:
+                    schema.relation(
+                        relation_label,
+                        heads,
+                        tails,
+                        spec.description,
+                        directed=spec.directed,
+                    )
+            self._schemas[key] = compile_schema(schema)
+        return self._schemas[key]
 
     def unload(self) -> None:
         """Release the underlying model."""
+        del self._joint
         del self._model
-
-
-def _tokenize(text: str) -> tuple[list[str], list[tuple[int, int]]]:
-    tokens: list[str] = []
-    offsets: list[tuple[int, int]] = []
-    for m in _TOKEN_RE.finditer(text):
-        tokens.append(m.group(0))
-        offsets.append((m.start(), m.end()))
-    return tokens, offsets
-
-
-def _token_span(offsets: list[tuple[int, int]], start: int, end: int) -> tuple[int, int] | None:
-    idx = [i for i, (s, e) in enumerate(offsets) if s < end and e > start]
-    return (idx[0], idx[-1]) if idx else None

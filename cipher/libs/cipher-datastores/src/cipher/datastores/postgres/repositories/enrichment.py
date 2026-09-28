@@ -470,3 +470,63 @@ class PostgresEnrichmentRepository:
         await self.session.flush()
         logger.info(f"Queued {count} {enrichment_type.value} enrichments")
         return count
+
+    async def get_unqueued_files(
+        self, dataset_id: str, enrichment_type: EnrichmentType, filetypes: list[str]
+    ) -> list[dict]:
+        """`{id, sha256, filetype, filetype_group}` of a dataset's files of `filetypes` with no `enrichment_type` row.
+
+        For enrichments that filter candidates beyond filetype (e.g. OCR's CLIP
+        gate) before calling `queue_enrichments_for_files`.
+        """
+        query = (
+            select(FileTable.id, FileTable.sha256, FileTable.filetype, FileTable.filetype_group)
+            .outerjoin(
+                EnrichmentTable,
+                (EnrichmentTable.enrichable_id == FileTable.id)
+                & (EnrichmentTable.enrichable_type == EnrichableType.FILE)
+                & (EnrichmentTable.enrichment_type == enrichment_type),
+            )
+            .where(EnrichmentTable.id.is_(None), FileTable.dataset_id == dataset_id, FileTable.filetype.in_(filetypes))
+        )
+        return [dict(row._mapping) for row in (await self.session.execute(query)).all()]
+
+    async def queue_enrichments_for_files(self, file_ids: list[str], enrichment_type: EnrichmentType) -> int:
+        """Queue PENDING `enrichment_type` rows for exactly these files (callers pass unqueued ids)."""
+        self.session.add_all(
+            EnrichmentTable(
+                enrichable_type=EnrichableType.FILE,
+                enrichable_id=file_id,
+                enrichment_type=enrichment_type,
+                status=ProcessingStatus.PENDING,
+            )
+            for file_id in file_ids
+        )
+        await self.session.flush()
+        return len(file_ids)
+
+    async def requeue(self, file_ids: list[str], enrichment_type: EnrichmentType, create_missing: bool = False) -> int:
+        """Put these files' `enrichment_type` rows back to PENDING (fresh retries), e.g. after their text changed.
+
+        With `create_missing`, files lacking a row get one -- for enrichments whose
+        own queueing wouldn't pick these files up (e.g. text embedding for images).
+        """
+        if not file_ids:
+            return 0
+        result = await self.session.execute(
+            update(EnrichmentTable)
+            .where(
+                EnrichmentTable.enrichable_type == EnrichableType.FILE,
+                EnrichmentTable.enrichment_type == enrichment_type,
+                EnrichmentTable.enrichable_id.in_(file_ids),
+            )
+            .values(status=ProcessingStatus.PENDING, retry_count=0, error_message=None, date_updated=datetime.now(UTC))
+            .returning(EnrichmentTable.enrichable_id)
+        )
+        existing = set(result.scalars().all())
+        created = 0
+        if create_missing:
+            created = await self.queue_enrichments_for_files(
+                [file_id for file_id in file_ids if file_id not in existing], enrichment_type
+            )
+        return len(existing) + created

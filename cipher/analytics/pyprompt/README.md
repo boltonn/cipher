@@ -9,7 +9,7 @@ It is the model-backed counterpart to the deterministic / zero-shot extractors:
 | service | style | best at |
 |---|---|---|
 | `pyselectors` | regex + checksums | strong identifiers (phone, email, IBAN, IMEI) |
-| `pygliner` | zero-shot (GLiNER + GLiREL) | long-tail entity/relation types, no training data |
+| `pygliner` | zero-shot (GLiNER2.5) | long-tail entity/relation types, no training data |
 | `nerd` | supervised | high-precision standard entity types |
 | **`pyprompt`** | LLM + structured output | free-text **event** extraction, nuanced relations, and any task expressible as a prompt |
 

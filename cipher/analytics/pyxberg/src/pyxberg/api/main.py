@@ -62,7 +62,7 @@ async def extract(
     file: UploadFile, options: Annotated[ExtractRequest, Depends()]
 ) -> ExtractResponse:
     """Extract text, tables, and structure from an uploaded document."""
-    from xberg import ExtractionConfig, OcrConfig, extract_bytes
+    from kreuzberg import ExtractionConfig, OcrConfig, extract_bytes
 
     data = await file.read()
     config = ExtractionConfig(

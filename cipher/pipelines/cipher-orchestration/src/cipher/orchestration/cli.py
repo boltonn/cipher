@@ -62,6 +62,13 @@ from cipher.orchestration.link_face_cooccurrence import (
     link_face_cooccurrence_workflow,
 )
 from cipher.orchestration.match_faces import match_faces_workflow, reset_face_matches
+from cipher.orchestration.ocr import (
+    DEFAULT_CLIP_NEGATIVE_TAGS,
+    DEFAULT_CLIP_TAGS,
+    ClipTagFilter,
+    get_ocr_stats,
+    ocr_workflow,
+)
 from cipher.orchestration.refresh_selectors import refresh_selectors_workflow
 from cipher.orchestration.reset_entities import reset_entities
 from cipher.orchestration.reset_events import reset_events
@@ -310,6 +317,76 @@ def extract_text_cmd(
                 )
                 logger.success(f"Extracted text for {doc_count} document files")
                 run.units = email_count + doc_count
+
+    asyncio.run(_run())
+
+
+@app.command("ocr")
+def ocr_cmd(
+    dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
+    dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
+    filetype: Annotated[
+        list[str] | None,
+        typer.Option(help="Filetype(s) to OCR, repeatable (e.g. pdf, heif). Default: every PDF + supported image"),
+    ] = None,
+    service_url: Annotated[str, typer.Option(help="pyocr service base URL")] = "http://localhost:8010",
+    concurrency: Annotated[int, typer.Option(help="Files in flight; the service decodes all their pages at once")] = 16,
+    min_chars: Annotated[int, typer.Option(help="PDF pages with fewer text-layer word chars are OCR'd")] = 20,
+    force: Annotated[bool, typer.Option(help="OCR every PDF page, not just image-based ones")] = False,
+    figures: Annotated[bool, typer.Option(help="Also locate + caption figures (grounding prompt)")] = False,
+    clip_model_dir: Annotated[
+        Path | None, typer.Option(help="CLIP model dir: only OCR images matching --clip-tag (needs embed-images)")
+    ] = None,
+    clip_tag: Annotated[list[str] | None, typer.Option(help="Text-bearing CLIP tag, repeatable")] = None,
+    clip_negative_tag: Annotated[list[str] | None, typer.Option(help="Competing non-text CLIP tag, repeatable")] = None,
+    clip_threshold: Annotated[float, typer.Option(help="Min probability mass on --clip-tag to OCR an image")] = 0.5,
+):
+    """OCR image-based PDF pages and images into extracted text (run after extract-text).
+
+    Needs the pyocr service running (`make start-vllm` in analytics/pyocr). With
+    --clip-model-dir, images are filtered by zero-shot CLIP tags scored against the
+    embeddings `embed-images` already stored, so only likely text-bearing images
+    (screenshots, scans, receipts, signs...) are sent to the model.
+    """
+    from pyocr.client import OcrClient
+
+    clip_filter = None
+    if clip_model_dir:
+        from setfitcv.model import CLIP
+
+        clip_filter = ClipTagFilter.from_model(
+            model=CLIP(model_dir=clip_model_dir, device="cpu", warmup=False),
+            tags=clip_tag or list(DEFAULT_CLIP_TAGS),
+            negative_tags=clip_negative_tag or list(DEFAULT_CLIP_NEGATIVE_TAGS),
+            threshold=clip_threshold,
+        )
+
+    async def _run():
+        client = OcrClient(base_url=service_url)
+        try:
+            async with get_session_context() as session:
+                resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
+                async with record_run(
+                    enrichment_type=EnrichmentType.OCR,
+                    dataset_id=resolved_id,
+                    device="cuda",
+                    unit=WorkUnit.FILE,
+                    params={"filetypes": filetype, "clip": clip_filter is not None, "force": force, "figures": figures},
+                ) as run:
+                    run.units = await ocr_workflow(
+                        session=session,
+                        client=client,
+                        dataset_id=resolved_id,
+                        filetypes=filetype,
+                        clip_filter=clip_filter,
+                        concurrency=concurrency,
+                        min_chars=min_chars,
+                        force=force,
+                        figures=figures,
+                    )
+                logger.success(f"OCR stats: {await get_ocr_stats(session=session, dataset_id=resolved_id)}")
+        finally:
+            await client.aclose()
 
     asyncio.run(_run())
 
@@ -766,14 +843,15 @@ def extract_entities_cmd(
     dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
     extractor: Annotated[str, typer.Option(help="Engine: llm | gliner | nerd")] = "llm",
     model: Annotated[str | None, typer.Option(help="Override the configured LLM model id (llm extractor)")] = None,
-    gliner_model_dir: Annotated[str | None, typer.Option(help="GLiNER checkpoint dir (gliner extractor)")] = None,
-    glirel_model_dir: Annotated[
-        str | None, typer.Option(help="GLiREL checkpoint dir for relations (gliner extractor; optional)")
+    gliner_model_dir: Annotated[
+        str | None, typer.Option(help="Local GLiNER2.5 checkpoint dir (gliner extractor)")
     ] = None,
     nerd_model_dir: Annotated[
         str | None, typer.Option(help="Token-classification checkpoint dir (nerd extractor)")
     ] = None,
-    threshold: Annotated[float, typer.Option(help="Span score floor for gliner / nerd")] = 0.5,
+    threshold: Annotated[
+        float | None, typer.Option(help="Span score floor. Default: 0.65 for gliner, 0.5 for nerd")
+    ] = None,
     no_relations: Annotated[bool, typer.Option(help="Do not persist mention relations")] = False,
     device: Annotated[ModelDevice, typer.Option(help="Inference device (gliner / nerd)")] = ModelDevice.CPU,
 ):
@@ -786,7 +864,7 @@ def extract_entities_cmd(
     labels are left to `extract-selectors`. Re-run after `reset-entities`.
 
     Engines (all in-process): `llm` needs `pyprompt` + an `LLM__*` config;
-    `gliner` needs `--gliner-model-dir` (+ `--glirel-model-dir` for relations);
+    `gliner` needs `--gliner-model-dir` (entities + relations in one joint pass);
     `nerd` needs `--nerd-model-dir` (entities only).
     """
 
@@ -806,7 +884,6 @@ def extract_entities_cmd(
                     extractor=extractor,
                     model=model,
                     gliner_model_dir=gliner_model_dir,
-                    glirel_model_dir=glirel_model_dir,
                     nerd_model_dir=nerd_model_dir,
                     threshold=threshold,
                     persist_relations=not no_relations,
@@ -1113,12 +1190,14 @@ def reset_text_cmd(
 
             enrichment_repo = PostgresEnrichmentRepository(session=session)
             reset_extraction = await enrichment_repo.delete_by_type(resolved_id, EnrichmentType.TEXT_EXTRACTION)
+            # re-extraction overwrites the OCR-merged text, so OCR must run again too
+            reset_extraction += await enrichment_repo.delete_by_type(resolved_id, EnrichmentType.OCR)
             reset_embedding = await enrichment_repo.delete_by_type(resolved_id, EnrichmentType.TEXT_EMBEDDING)
 
             logger.success(
                 f"Reset dataset {resolved_id}: deleted {deleted_chunks} indexed chunks, "
                 f"{reset_extraction} extraction + {reset_embedding} embedding enrichments cleared -- "
-                "re-run extract-text then embed-text to reprocess"
+                "re-run extract-text, ocr, then embed-text to reprocess"
             )
 
     asyncio.run(_run())

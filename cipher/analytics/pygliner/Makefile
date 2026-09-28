@@ -8,9 +8,6 @@ DEVICE ?= cpu
 install:
 	uv sync --extra fastapi --extra ${DEVICE}
 
-install-relations:
-	uv sync --extra fastapi --extra ${DEVICE} --extra relations
-
 start:
 	uv run --no-sync ${NAME}-api
 

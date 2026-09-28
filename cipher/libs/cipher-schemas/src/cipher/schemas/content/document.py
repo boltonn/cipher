@@ -67,6 +67,10 @@ class DocumentMetadata(BaseModel):
         description="xberg's hierarchical layout nodes (heading/paragraph/table/etc, with page + bounding box), "
         "when extracted with document-structure detection enabled",
     )
+    ocr_pages: list[int] = Field(
+        default_factory=list, description="1-indexed pages whose text came from OCR rather than a text layer"
+    )
+    ocr_model: str | None = Field(default=None, description="OCR model that produced `ocr_pages`, if any")
     sent_from: NamedParticipant | None = Field(
         default=None, description="Sender, if this document arrived as an email attachment"
     )

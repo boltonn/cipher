@@ -1,7 +1,7 @@
 [project]
 name = "pygliner"
-description = "Zero-shot multilingual entity and relation extraction (GLiNER + GLiREL) for the CIPHER entity layer."
-keywords = ["ner", "relation-extraction", "gliner", "glirel", "zero-shot", "multilingual", "cipher"]
+description = "Zero-shot multilingual entity and relation extraction (GLiNER2.5) for the CIPHER entity layer."
+keywords = ["ner", "relation-extraction", "gliner", "gliner2", "zero-shot", "multilingual", "cipher"]
 version = "0.0.1"
 requires-python = ">=3.12"
 classifiers = [
@@ -10,7 +10,7 @@ classifiers = [
 ]
 dependencies = [
   "cipher-schemas",
-  "gliner",
+  "gliner2[local]>=2.0",
   "loguru",
 ]
 
@@ -27,7 +27,6 @@ packages = ["src/pygliner"]
 
 [project.optional-dependencies]
 fastapi = [ "cipher-utils[fastapi]" ]
-relations = [ "glirel" ]
 cpu = [ "torch" ]
 cuda = [ "torch" ]
 

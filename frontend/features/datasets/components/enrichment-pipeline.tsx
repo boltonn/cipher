@@ -22,6 +22,7 @@ import {
   MapPin,
   Network,
   ScanFace,
+  ScanText,
   Users,
   UsersRound,
   Waypoints,
@@ -30,6 +31,7 @@ import { useState } from "react";
 
 const META: Record<string, { label: string; Icon: IconComponent }> = {
   text_extraction: { label: "Text extraction", Icon: FileText },
+  ocr: { label: "OCR", Icon: ScanText },
   text_embedding: { label: "Text embedding", Icon: Binary },
   image_embedding: { label: "Image embedding", Icon: ImageIcon },
   exif_location: { label: "Photo locations", Icon: MapPin },

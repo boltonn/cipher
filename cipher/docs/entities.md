@@ -377,7 +377,7 @@ land in Phase 2.
 |---|---|---|---|
 | **`analytics/pyselectors`** | deterministic (regex + checksums) | strong identifiers — `phone` (E.164), `email`, `iban` (mod‑97), `imei` (Luhn), MRZ passports; char offsets into the input | `POST /extract`; 6 tests pass |
 | **`analytics/pyprompt`** | LLM + structured output (`openai` SDK, any OpenAI‑wire endpoint) | free‑text **event** extraction, nuanced relations, and any prompt‑expressible task; repo‑resident prompt packs + a custom‑prompt escape hatch | `POST /entities` · `/events` · `/run`. Same `LLM__*` env as chat. Offsets resolved server‑side by locating each surface string. `app.state.pyprompt_runner` |
-| **`analytics/pygliner`** | zero‑shot (GLiNER + GLiREL) | long‑tail / ad‑hoc entity types **and relations**, multilingual, no training data | `POST /infer` (entities) + `POST /relations` (`relations` extra). Labels from `ontology.default_ner_labels()` / `default_relation_labels()`. `app.state.pygliner_model` |
+| **`analytics/pygliner`** | zero‑shot (GLiNER2.5 joint entities + relations) | long‑tail / ad‑hoc entity types **and relations**, multilingual, no training data | `POST /infer` (entities) + `POST /extract` (joint `JointIE` pass; each relation's head/tail restricted to the entity labels `RELATIONSHIPS` permits). Labels from `ontology.default_ner_labels()` / `default_relation_labels()`. `GLINER_MODEL_DIR` → a local checkpoint (`~/models/gliner/gliner2.5-multi-v1`), loaded offline. `app.state.pygliner_model` |
 | **`analytics/nerd`** | supervised / fine‑tuned (transformers token classification) | high‑precision **standard** types (person / organization / location / date …) where labelled data exists | `POST /infer`. `NERD_MODEL_DIR` → a HF id or a local `nerd-*` checkpoint. HF `entity_group` tags folded to ontology labels by `nerd.labels`. `app.state.nerd_model`. `src/nerd/data/` holds the training dataset processors (`train` extra). Ported from the standalone `nerd` repo |
 
 `cipher.schemas.ontology` exposes `NER_LABEL_TO_TYPE`,
@@ -386,8 +386,8 @@ any extractor's labels back to an `EntityType` / `SelectorKind` /
 `RelationshipType`.
 
 - **`pyselectors`** not `selectors` — the latter shadows a stdlib module (same
-  reason `pyparse` / `pyxberg` carry the prefix). **`pygliner`** wraps GLiNER +
-  GLiREL; **`nerd`** is the supervised counterpart.
+  reason `pyparse` / `pyxberg` carry the prefix). **`pygliner`** wraps
+  GLiNER2.5; **`nerd`** is the supervised counterpart.
 
 ---
 
@@ -475,5 +475,5 @@ which the `POST /entities/{id}/relationships` route calls.
 | **1** | `analytics/selectors`, `extract-selectors`, `resolve-entities` (exact blocking), agent tools `find_entity` / `entity_profile` / `entity_mentions` / `read_file` | next |
 | **1b** | `analytics/pyprompt` LLM prompt-runner (`entities` / `events` packs + `/run`), `extract-entities --extractor llm` → name/address mentions | **landed** — opt-in; needs an `LLM__*` config |
 | **2** | `analytics/pygliner` (GLiNER) + `analytics/nerd` wired into `extract-entities` via `--extractor`, name trigram/embedding resolution, provisional entities + merge, ES `entities` index + `entity_ids` on chunks, review UI | |
-| **3** | relationship extraction (co‑mention + `pygliner` `/relations` / GLiREL, or `pyprompt` LLM relations), org sub‑unit hierarchy, EXIF locations, frontend `features/entities/` | |
+| **3** | relationship extraction (co‑mention + `pygliner` `/extract` (GLiNER2.5 joint), or `pyprompt` LLM relations), org sub‑unit hierarchy, EXIF locations, frontend `features/entities/` | |
 | **4** | migrate `Face`/`FaceMatch` FKs onto `entity` (optional), cross‑dataset `canonical_entity_id`, optional `Neo4jGraphRepository` | |

@@ -37,8 +37,8 @@ from cipher.schemas.content.extraction import (
 from cipher.schemas.ingestion.enrichment import EnrichableType, EnrichmentType
 
 if TYPE_CHECKING:
+    from kreuzberg import ExtractionResult
     from sqlalchemy.ext.asyncio import AsyncSession
-    from xberg import ExtractionResult
 
 # Shared with embed_text.py's CLIR chunker -- both take this as their
 # `chunk_size` default so chunk boundaries don't drift depending on which
@@ -166,7 +166,7 @@ def _run_batch(
     `cipher benchmark-ingest`, if extraction is CPU-underutilized or
     memory-constrained on a given machine.
     """
-    from xberg import ChunkingConfig, ExtractionConfig, HierarchyConfig, PdfConfig, batch_extract_files_sync
+    from kreuzberg import ChunkingConfig, ExtractionConfig, HierarchyConfig, PdfConfig, batch_extract_files_sync
 
     chunking = None
     if use_chunking:

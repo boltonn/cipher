@@ -10,7 +10,7 @@ the `analytics/*` workspace pattern.
 | service | model style | best at |
 |---|---|---|
 | `pyselectors` | deterministic (regex + checksums) | phone, email, IBAN, IMEI, passport |
-| `pygliner` | zero-shot (GLiNER + GLiREL) | long-tail / ad-hoc types **and relations**, no training data |
+| `pygliner` | zero-shot (GLiNER2.5) | long-tail / ad-hoc types **and relations**, no training data |
 | **`nerd`** | supervised / fine-tuned | high-precision **standard** types (person / organization / location / date / …) where labelled data exists |
 
 `extract-entities` takes an `--extractor` switch; all three emit the shared
@@ -27,6 +27,13 @@ nerd-api                                  # POST /infer {text, threshold?}
 The HF pipeline's `entity_group` labels are normalized and mapped to ontology
 types via `nerd.labels` (`PERSON`/`PER` → person, `ORG` → organization,
 `GPE`/`LOC`/`FAC` → location, everything else passed through as a raw label).
+
+Decoding pools sub-word predictions to whole words first (`NerdModel._pool_words`,
+HF's `"first"` aggregation) before BIO-merging -- this is what keeps a mid-word
+tag flip (e.g. "Delaware" as "Dela"+"ware") from truncating the span. Measured
+on real + gold data, the model's confidence is already well-calibrated at the
+default `threshold=0.5` (88-99% precision across languages) -- raising it buys
+almost no precision and steadily costs recall, so leave it at 0.5.
 
 ## Training
 

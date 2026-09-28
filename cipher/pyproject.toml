@@ -12,8 +12,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-analytics-cpu = [ "clir", "face", "filetyper", "nerd", "pygliner", "pyprompt", "pyparse[all]", "pyselectors", "pyxberg", "setfitcv" ]
-analytics-cuda = [ "clir[cuda,tables]", "face[cuda]", "filetyper", "nerd[cuda]", "pygliner[cuda]", "pyprompt", "pyparse[all]", "pyselectors", "pyxberg", "setfitcv[cuda]" ]
+analytics-cpu = [ "clir", "face", "filetyper", "nerd", "pygliner", "pyprompt", "pyocr[transformers,fastapi]", "pyparse[all]", "pyselectors", "pyxberg", "setfitcv" ]
+analytics-cuda = [ "clir[cuda,tables]", "face[cuda]", "filetyper", "nerd[cuda]", "pygliner[cuda]", "pyprompt", "pyocr[transformers,fastapi]", "pyparse[all]", "pyselectors", "pyxberg", "setfitcv[cuda]" ]
 elasticsearch = [ "cipher-datastores[elasticsearch]" ]
 postgres = [ "cipher-datastores[postgres]" ]
 backend = [ "cipher-backend" ]
@@ -38,6 +38,7 @@ filetyper = { workspace = true }
 setfitcv = { workspace = true }
 pyparse = { workspace = true }
 pyxberg = { workspace = true }
+pyocr = { workspace = true }
 pyselectors = { workspace = true }
 pygliner = { workspace = true }
 pyprompt = { workspace = true }
@@ -57,6 +58,7 @@ members = [
     "analytics/filetyper",
     "analytics/nerd",
     "analytics/pygliner",
+    "analytics/pyocr",
     "analytics/pyprompt",
     "analytics/pyselectors",
     "analytics/setfitcv",

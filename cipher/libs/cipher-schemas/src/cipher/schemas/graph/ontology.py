@@ -704,7 +704,7 @@ def default_ner_labels() -> list[str]:
 
 
 def default_relation_labels() -> list[str]:
-    """The default zero-shot *relation* label set for GLiREL-style extraction.
+    """The default zero-shot *relation* label set for zero-shot (GLiNER2.5) extraction.
 
     Human-readable phrasings of the directed relationship types; map a
     prediction back with `RELATION_LABEL_TO_TYPE`.

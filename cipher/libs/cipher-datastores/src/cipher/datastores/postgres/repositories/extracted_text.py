@@ -35,6 +35,15 @@ class PostgresExtractedTextRepository:
         row = result.scalar_one_or_none()
         return _to_schema(row) if row else None
 
+    async def get_file_ids_with_text(self, file_ids: list[str]) -> set[str]:
+        """The subset of `file_ids` that already have an extraction row."""
+        if not file_ids:
+            return set()
+        result = await self.session.execute(
+            select(ExtractedTextTable.file_id).where(ExtractedTextTable.file_id.in_(file_ids))
+        )
+        return set(result.scalars().all())
+
     async def upsert(self, extracted: ExtractedTextCreate) -> ExtractedText:
         """Upsert extracted text -- insert or overwrite if file_id already has a row."""
         data = strip_null_bytes(extracted.model_dump(mode="json"))

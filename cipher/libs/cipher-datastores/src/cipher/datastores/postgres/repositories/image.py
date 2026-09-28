@@ -242,6 +242,17 @@ class PostgresImageRepository:
             return embedding.tolist()
         return embedding
 
+    async def get_embeddings(self, image_ids: list[str]) -> dict[str, list[float]]:
+        """`{image_id: embedding}` for the given ids that have been embedded."""
+        if not image_ids:
+            return {}
+        result = await self.session.execute(
+            select(ImageTable.id, ImageTable.embedding).where(
+                ImageTable.id.in_(image_ids), ImageTable.embedding.is_not(None)
+            )
+        )
+        return {image_id: np.asarray(embedding).tolist() for image_id, embedding in result.all()}
+
     async def search_images(self, request: BaseImageSearchParameters) -> PaginatedImagesResponse:
         """Retrieve images with general filtering and sorting, one row per distinct image.
 

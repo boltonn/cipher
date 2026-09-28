@@ -49,6 +49,8 @@ if TYPE_CHECKING:
 # Both document and email files land here once their respective extraction
 # workflow (extract_emails.py / extract_documents.py) has completed.
 _TEXT_GROUPS = ("document", "email")
+# OCR'd images carry text too, but only `ocr` queues them (most images have none).
+_EMBED_GROUPS = (*_TEXT_GROUPS, "image")
 
 # Tokenizing (CPU) is what the producer offloads here -- HF's fast (Rust)
 # tokenizers release the GIL during encode, so threads (not processes) give
@@ -180,7 +182,7 @@ def _build_chunk(
         # tables/document_structure are the whole document's structure, already
         # persisted once on ExtractedText -- denormalizing them onto every chunk
         # would repeat that payload per chunk for no query benefit.
-        metadata = extracted.metadata.model_dump(exclude={"tables", "document_structure"})
+        metadata = extracted.metadata.model_dump(exclude={"tables", "document_structure", "ocr_pages", "ocr_model"})
         # page_number/heading_path live on DocumentTextChunk itself, not on
         # DocumentMetadata -- only populated for prechunked (Kreuzberg) spans;
         # CLIR-chunked spans have no per-span page info by construction.
@@ -262,7 +264,7 @@ async def dedupe_pending_text_embeddings(
     extracted_text_repo = PostgresExtractedTextRepository(session=session)
 
     total = 0
-    for group in _TEXT_GROUPS:
+    for group in _EMBED_GROUPS:
         while True:
             batch = await enrichment_repo.get_pending_batch(
                 enrichment_type=EnrichmentType.TEXT_EMBEDDING,
@@ -590,7 +592,7 @@ async def embed_text_workflow(
     # write can leave HNSW / pg_search structures corrupt. Only when there's work.
     if _use_pg and hasattr(es_repo, "drop_search_indexes"):
         pending_total = 0
-        for g in _TEXT_GROUPS:
+        for g in _EMBED_GROUPS:
             pending_total += await enrichment_repo.count_pending(
                 enrichment_type=EnrichmentType.TEXT_EMBEDDING,
                 enrichable_type=EnrichableType.FILE,
@@ -615,7 +617,7 @@ async def embed_text_workflow(
     engine = session.bind
     total_count = total_failed = total_chunks = 0
 
-    for group in _TEXT_GROUPS:
+    for group in _EMBED_GROUPS:
         pending = await enrichment_repo.count_pending(
             enrichment_type=EnrichmentType.TEXT_EMBEDDING,
             enrichable_type=EnrichableType.FILE,

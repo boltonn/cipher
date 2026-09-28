@@ -38,6 +38,7 @@ analytics/     # ML analytics services (each independently deployable)
   face/        # Face Recognition using InsightFace
   filetyper/   # File type detection (Google Magika + heuristics)
   pykreuzberg/ # Rust-based text extraction & OCR
+  pyocr/       # Multilingual page OCR (jina-ocr-v1 on vLLM) for image-based PDF pages + images
   pyparse/     # Email/document parsing (.eml, .msg, VCF, DOCX, PDF, etc.)
   setfitcv/    # Image embedding via CLIP
 backend/       # FastAPI REST API (entry: cipher-serve)

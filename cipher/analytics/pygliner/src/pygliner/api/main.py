@@ -1,3 +1,4 @@
+from fastapi.concurrency import run_in_threadpool
 from loguru import logger
 
 from cipher.utils.fastapi.health import ServiceHealthStatus, service_health
@@ -8,7 +9,7 @@ from cipher.utils.fastapi.middleware import (
     validation_exception_handler,
 )
 from pygliner.api.deps import PyglinerModelDep, model_lifespan, settings
-from pygliner.schemas import EntitySpan, NerRequest, RelationRequest, RelationSpan
+from pygliner.schemas import EntitySpan, ExtractRequest, ExtractResponse, NerRequest
 
 service_info = get_package_info("pygliner")
 
@@ -56,20 +57,16 @@ async def info() -> ServiceInfo:
 @app.post("/infer")
 async def infer(request: NerRequest, model: PyglinerModelDep) -> list[EntitySpan]:
     """Extract entity spans for the requested zero-shot labels."""
-    return await model.infer_entities(
-        text=request.text, labels=request.labels, threshold=request.threshold
-    )
+    return await run_in_threadpool(model.infer, request.text, request.labels, request.threshold)
 
 
-@app.post("/relations")
-async def relations(request: RelationRequest, model: PyglinerModelDep) -> list[RelationSpan]:
-    """Extract directed relations between the supplied entity spans (needs the `relations` extra)."""
-    return await model.infer_relations(
-        text=request.text,
-        entities=request.entities,
-        labels=request.labels,
-        threshold=request.threshold,
+@app.post("/extract")
+async def extract(request: ExtractRequest, model: PyglinerModelDep) -> ExtractResponse:
+    """Jointly extract entity spans and the ontology-typed relations between them."""
+    entities, relations = await run_in_threadpool(
+        model.extract, request.text, request.labels, request.relation_labels, request.threshold
     )
+    return ExtractResponse(entities=entities, relations=relations)
 
 
 def main():
