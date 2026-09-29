@@ -272,6 +272,8 @@ class RelationshipSpec:
     allowed_dst: frozenset[EntityType]
     description: str
     inverse_label: str | None = None
+    weight: str | None = None
+    """What the edge's `weight` counts; None = unweighted (so not rankable by weight)."""
 
 
 _ACTOR_TYPES = frozenset({EntityType.PERSON, EntityType.ORGANIZATION})
@@ -416,9 +418,10 @@ RELATIONSHIPS: dict[RelationshipType, RelationshipSpec] = {
         allowed_dst=_COMMS_ENDPOINT_TYPES,
         inverse_label="emailed_by",
         description=(
-            "The source sent the destination email (to/cc/bcc); weight = emails sent that way. Endpoints are "
+            "The source sent the destination email (to/cc/bcc); a reply is its own edge back. Endpoints are "
             "people/orgs when resolved, otherwise the bare email selector."
         ),
+        weight="emails sent source -> destination",
     ),
     RelationshipType.FAMILY_OF: RelationshipSpec(
         relationship_type=RelationshipType.FAMILY_OF,
@@ -444,9 +447,9 @@ RELATIONSHIPS: dict[RelationshipType, RelationshipSpec] = {
         allowed_dst=frozenset({EntityType.PERSON}),
         description=(
             "Two people were detected in the same image by face recognition -- either "
-            "face may still be an unconfirmed (pending) match. `weight` is the number of "
-            "shared photos. Excluded from default graph traversal."
+            "face may still be an unconfirmed (pending) match. Excluded from default graph traversal."
         ),
+        weight="shared photos",
     ),
     RelationshipType.SAME_AS: RelationshipSpec(
         relationship_type=RelationshipType.SAME_AS,
@@ -834,9 +837,19 @@ def ontology_summary_for_llm() -> str:
     lines = ["Entity types:"]
     for spec in ONTOLOGY.values():
         lines.append(f"  - {spec.entity_type}: {spec.description}")
-    lines.append("Relationship types (source -> destination):")
+    lines.append("Relationship types (source -> destination; [weight = what it counts] if rankable):")
     for spec in RELATIONSHIPS.values():
         src = "|".join(sorted(t.value for t in spec.allowed_src))
         dst = "|".join(sorted(t.value for t in spec.allowed_dst))
-        lines.append(f"  - {spec.relationship_type} ({src} -> {dst}): {spec.description}")
+        arrow = "->" if spec.directed else "<->"
+        weight = f" [weight = {spec.weight}]" if spec.weight else ""
+        lines.append(f"  - {spec.relationship_type} ({src} {arrow} {dst}){weight}: {spec.description}")
     return "\n".join(lines)
+
+
+WEIGHTED_RELATIONSHIPS: frozenset[RelationshipType] = frozenset(t for t, spec in RELATIONSHIPS.items() if spec.weight)
+
+WeightedRelationshipType = StrEnum(
+    "WeightedRelationshipType", {t.name: t.value for t in RelationshipType if t in WEIGHTED_RELATIONSHIPS}
+)
+"""The relationship types whose `weight` is meaningful to rank by -- generated from `RELATIONSHIPS`."""

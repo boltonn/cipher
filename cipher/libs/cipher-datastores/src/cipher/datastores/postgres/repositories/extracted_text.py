@@ -35,6 +35,13 @@ class PostgresExtractedTextRepository:
         row = result.scalar_one_or_none()
         return _to_schema(row) if row else None
 
+    async def get_by_file_ids(self, file_ids: list[str]) -> dict[str, ExtractedText]:
+        """Extracted text keyed by file id, for the subset of `file_ids` that have been extracted."""
+        if not file_ids:
+            return {}
+        result = await self.session.execute(select(ExtractedTextTable).where(ExtractedTextTable.file_id.in_(file_ids)))
+        return {row.file_id: _to_schema(row) for row in result.scalars().all()}
+
     async def get_file_ids_with_text(self, file_ids: list[str]) -> set[str]:
         """The subset of `file_ids` that already have an extraction row."""
         if not file_ids:

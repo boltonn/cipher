@@ -1,15 +1,16 @@
-from sqlalchemy import and_, asc, case, delete, desc, distinct, func, literal, or_, select, update
+from sqlalchemy import and_, asc, case, delete, desc, distinct, func, literal, or_, select, union_all, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cipher.datastores.postgres.geo import geojson_to_geom, geom_to_geojson, point_to_geom
-from cipher.datastores.postgres.repositories._merge import repoint_entity_references
+from cipher.datastores.postgres.repositories._merge import fold_entity
 from cipher.datastores.postgres.repositories.entity_name_key import (
     PostgresEntityNameKeyRepository,
     refresh_entity_name_keys,
 )
 from cipher.datastores.postgres.repositories.mention import provenance_case
 from cipher.datastores.postgres.tables.entity import EntityTable
+from cipher.datastores.postgres.tables.entity_match import EntityMatchTable
 from cipher.datastores.postgres.tables.entity_relationship import EntityRelationshipTable
 from cipher.datastores.postgres.tables.face import FaceTable
 from cipher.datastores.postgres.tables.location import LocationTable
@@ -25,6 +26,7 @@ from cipher.schemas.graph.entity import (
     Entity,
     EntityBreakdown,
     EntityCreate,
+    EntityListItem,
     EntityProfile,
     EntitySearchParameters,
     EntitySearchResult,
@@ -38,6 +40,7 @@ from cipher.schemas.graph.entity import (
     RelatedEntitySort,
     SelectorMention,
 )
+from cipher.schemas.graph.entity_match import DecisionSource, EntityMatchStatus
 from cipher.schemas.graph.entity_resolution import ResolutionCandidate
 from cipher.schemas.graph.location import LocationCreate, LocationUpdate
 from cipher.schemas.graph.mention import MentionProvenance
@@ -51,7 +54,7 @@ from cipher.schemas.graph.ontology import (
 )
 from cipher.schemas.graph.organization import OrganizationCreate, OrganizationUpdate
 from cipher.schemas.graph.selector import Selector, SelectorCreate, SelectorUpdate
-from cipher.schemas.identity.person import Person
+from cipher.schemas.identity.person import Person, PersonSource
 
 _DETAIL_TABLE = {
     EntityType.ORGANIZATION: OrganizationTable,
@@ -271,6 +274,54 @@ class PostgresEntityRepository:
         await self.session.commit()
         return {"entities": ent_result.rowcount or 0, "locations": loc_result.rowcount or 0}
 
+    async def _list_stats(self, entity_ids: list[str], *, mention_where: list) -> dict[str, dict[str, int]]:
+        """Mention / file / edge / pending-match counts for one page of entity rows."""
+        if not entity_ids:
+            return {}
+        stats: dict[str, dict[str, int]] = {entity_id: {} for entity_id in entity_ids}
+        mention_rows = await self.session.execute(
+            select(
+                MentionTable.entity_id,
+                func.count(MentionTable.id),
+                func.count(distinct(MentionTable.file_id)),
+            )
+            .where(*mention_where, MentionTable.entity_id.in_(entity_ids))
+            .group_by(MentionTable.entity_id)
+        )
+        for entity_id, mention_count, file_count in mention_rows.all():
+            stats[entity_id].update(mention_count=mention_count, file_count=file_count)
+
+        endpoints = union_all(
+            select(EntityRelationshipTable.src_entity_id.label("entity_id")).where(
+                EntityRelationshipTable.src_entity_id.in_(entity_ids)
+            ),
+            select(EntityRelationshipTable.dst_entity_id.label("entity_id")).where(
+                EntityRelationshipTable.dst_entity_id.in_(entity_ids)
+            ),
+        ).subquery()
+        edge_rows = await self.session.execute(
+            select(endpoints.c.entity_id, func.count()).group_by(endpoints.c.entity_id)
+        )
+        for entity_id, relationship_count in edge_rows.all():
+            stats[entity_id]["relationship_count"] = relationship_count
+
+        match_entity = func.coalesce(EntityMatchTable.provisional_entity_id, EntityMatchTable.entity_id)
+        match_rows = await self.session.execute(
+            select(match_entity, func.count(EntityMatchTable.id))
+            .where(
+                EntityMatchTable.status == EntityMatchStatus.PENDING,
+                or_(
+                    EntityMatchTable.entity_id.in_(entity_ids),
+                    EntityMatchTable.provisional_entity_id.in_(entity_ids),
+                ),
+            )
+            .group_by(match_entity)
+        )
+        for entity_id, pending_match_count in match_rows.all():
+            if entity_id in stats:
+                stats[entity_id]["pending_match_count"] = pending_match_count
+        return stats
+
     async def list_entities(self, request: EntitySearchParameters) -> PaginatedEntitiesResponse:
         """List/filter entity nodes with pagination and sorting."""
         where = []
@@ -284,9 +335,9 @@ class PostgresEntityRepository:
                     EntityTable.dataset_id == request.dataset_id,
                     and_(
                         EntityTable.dataset_id.is_(None),
-                        EntityTable.id.in_(
-                            select(MentionTable.entity_id).where(MentionTable.dataset_id == request.dataset_id)
-                        ),
+                        select(MentionTable.id)
+                        .where(MentionTable.dataset_id == request.dataset_id, MentionTable.entity_id == EntityTable.id)
+                        .exists(),
                     ),
                 )
             )
@@ -344,23 +395,40 @@ class PostgresEntityRepository:
         count_result = await self.session.execute(select(func.count(EntityTable.id)).where(*where))
         total = count_result.scalar_one()
 
-        sort_column = {
-            EntitySortField.DISPLAY_NAME: EntityTable.display_name_normalized,
-            EntitySortField.DATE_CREATED: EntityTable.date_created,
-            EntitySortField.DATE_UPDATED: EntityTable.date_updated,
-        }[request.sort_by]
-        order = desc(sort_column) if request.sort_order == SortOrder.DESC else asc(sort_column)
+        mention_where = [MentionTable.entity_id.is_not(None)]
+        if request.dataset_id:
+            mention_where.append(MentionTable.dataset_id == request.dataset_id)
 
         stmt = (
             select(EntityTable, SelectorTable.selector_type, SelectorTable.selector_subtype)
             .outerjoin(SelectorTable, SelectorTable.entity_id == EntityTable.id)
             .where(*where)
-            .order_by(order)
+        )
+        if request.sort_by == EntitySortField.MENTION_COUNT:
+            mention_totals = (
+                select(MentionTable.entity_id, func.count(MentionTable.id).label("mention_count"))
+                .where(*mention_where)
+                .group_by(MentionTable.entity_id)
+                .subquery()
+            )
+            sort_column = func.coalesce(mention_totals.c.mention_count, 0)
+            stmt = stmt.outerjoin(mention_totals, mention_totals.c.entity_id == EntityTable.id)
+        else:
+            sort_column = {
+                EntitySortField.DISPLAY_NAME: EntityTable.display_name_normalized,
+                EntitySortField.DATE_CREATED: EntityTable.date_created,
+                EntitySortField.DATE_UPDATED: EntityTable.date_updated,
+            }[request.sort_by]
+        order = desc(sort_column) if request.sort_order == SortOrder.DESC else asc(sort_column)
+
+        result = await self.session.execute(
+            stmt.order_by(order, EntityTable.display_name_normalized)
             .offset((request.page - 1) * request.limit)
             .limit(request.limit)
         )
-        result = await self.session.execute(stmt)
-        data = [_entity_with_selector(row) for row in result.all()]
+        entities = [_entity_with_selector(row) for row in result.all()]
+        stats = await self._list_stats([e.id for e in entities], mention_where=mention_where)
+        data = [EntityListItem(**e.model_dump(), **stats.get(e.id, {})) for e in entities]
         return PaginatedEntitiesResponse(total=total, page=request.page, limit=request.limit, data=data)
 
     async def entity_breakdown(self, *, dataset_id: str | None = None) -> EntityBreakdown:
@@ -452,7 +520,12 @@ class PostgresEntityRepository:
                     EntityTable.dataset_id == dataset_id,
                     and_(
                         EntityTable.dataset_id.is_(None),
-                        EntityTable.id.in_(select(MentionTable.entity_id).where(MentionTable.dataset_id == dataset_id)),
+                        # Correlated EXISTS, not `id IN (SELECT ... FROM mention)`: the IN form
+                        # makes the planner cost a ~1.5M-row materialize, which trips JIT
+                        # compilation (~120 ms) on every call -- 190 ms -> 0.5 ms.
+                        select(MentionTable.id)
+                        .where(MentionTable.entity_id == EntityTable.id, MentionTable.dataset_id == dataset_id)
+                        .exists(),
                     ),
                 )
             )
@@ -666,32 +739,57 @@ class PostgresEntityRepository:
         )
         return entity, True
 
+    async def promote_entity(self, entity_id: str, *, reviewed_by: str | None = None) -> Entity | None:
+        """Make a provisional entity canonical, keeping its id (its mentions stay put).
+
+        A person gains a person record sharing its id (`entity.id == person.id`) so it
+        gets a person page and becomes a merge target; any other type is marked
+        analyst-made (`source=manual`). No-op on an already-canonical entity.
+        """
+        row = await self.session.get(EntityTable, entity_id)
+        if row is None:
+            return None
+        if row.entity_type == EntityType.PERSON and row.person_id is None:
+            self.session.add(
+                PersonTable(
+                    id=row.id, name=row.display_name, aliases=list(row.aliases or []), source=PersonSource.MANUAL
+                )
+            )
+            await self.session.flush()
+            row.person_id = row.id
+            row.dataset_id = None
+        elif row.entity_type != EntityType.PERSON:
+            row.source = EntitySource.MANUAL
+        # "a new entity" answers its merge proposals: none of those
+        await self.session.execute(
+            update(EntityMatchTable)
+            .where(
+                EntityMatchTable.provisional_entity_id == entity_id,
+                EntityMatchTable.status == EntityMatchStatus.PENDING,
+            )
+            .values(
+                status=EntityMatchStatus.REJECTED,
+                reviewed_by=reviewed_by,
+                reviewed_at=func.now(),
+                decision_source=DecisionSource.ANALYST.value,
+            )
+        )
+        entity = Entity.model_validate(row)
+        await self.session.commit()
+        return entity
+
     async def merge_entities(self, *, canonical_id: str, provisional_id: str) -> dict[str, int]:
         """Fold the provisional entity into the canonical one, then delete it.
 
         Repoints everything keyed on ``provisional_id`` -- mentions, relationship
         edges + candidates, entity-match review rows, event participations and
-        comment threads -- onto ``canonical_id``, dropping rows that would
-        self-reference or duplicate one the canonical entity already has. Returns
-        per-table moved counts. Raises ``ValueError`` if the ids are equal.
+        comment threads -- onto ``canonical_id``, and keeps the provisional's
+        name as a canonical alias. Returns per-table moved counts.
+
+        Raises:
+            ValueError: if the ids are equal or either entity is missing.
         """
-        if canonical_id == provisional_id:
-            raise ValueError("cannot merge an entity into itself")
-        moved = await repoint_entity_references(self.session, source_id=provisional_id, target_id=canonical_id)
-        await self.session.execute(delete(EntityTable).where(EntityTable.id == provisional_id))
-        # provisional's keys drop by CASCADE; re-key the survivor in case a future
-        # merge folds aliases across.
-        canonical = (
-            await self.session.execute(select(EntityTable).where(EntityTable.id == canonical_id))
-        ).scalar_one_or_none()
-        if canonical is not None:
-            await refresh_entity_name_keys(
-                self.session,
-                entity_id=canonical.id,
-                entity_type=canonical.entity_type,
-                display_name=canonical.display_name,
-                aliases=canonical.aliases or [],
-            )
+        moved = await fold_entity(self.session, source_id=provisional_id, target_id=canonical_id)
         await self.session.commit()
         return moved
 

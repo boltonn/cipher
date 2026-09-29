@@ -134,3 +134,27 @@ class DatasetRequestConfig(BaseModel):
     configured: bool = Field(description="Whether the GitHub integration is set up")
     repo: str | None = Field(None, description="owner/repo that receives dataset-request issues")
     issues_url: str | None = Field(None, description="URL listing every open dataset-request issue")
+
+
+class EnrichmentRequest(BaseModel):
+    """A triager's request to run more analytics on an already-loaded dataset."""
+
+    dataset_id: str = Field(min_length=1, max_length=255, description="Dataset to enrich")
+    analytics: list[AnalyticRequest] = Field(min_length=1, description="Analytics to run")
+    note: str | None = Field(default=None, max_length=5000, description="Why these analytics are wanted")
+
+    @model_validator(mode="after")
+    def _no_duplicate_analytics(self) -> "EnrichmentRequest":
+        requested = [item.enrichment_type for item in self.analytics]
+        if len(requested) != len(set(requested)):
+            raise ValueError("The same analytic was requested more than once")
+        return self
+
+
+class EnrichmentRequestResult(BaseModel):
+    """The rendered enrichment request, plus the GitHub issue when the integration is configured."""
+
+    title: str = Field(description="Issue title")
+    body: str = Field(description="Issue body (markdown) -- copyable when no issue was filed")
+    issue_number: int | None = Field(default=None, description="Number of the created GitHub issue")
+    issue_url: str | None = Field(default=None, description="Web URL of the created GitHub issue")

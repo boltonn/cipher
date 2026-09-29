@@ -114,14 +114,17 @@ class ElasticsearchChunkRetrievalRepository(ChunkRetrievalRepository):
         graph_ids = None
         if query.graph_expand and self.graph_repo:
             g = query.graph_expand
-            graph = await self.graph_repo.traverse(
-                start_entity_id=g.seed_entity_id,
-                max_depth=g.max_depth,
-                min_weight=g.min_weight,
-                relationship_types=g.relationship_types,
-                limit=self.graph_expand_entity_cap,
-            )
-            graph_ids = list({n.id for n in graph.nodes} | {g.seed_entity_id})[: self.graph_expand_entity_cap]
+            expanded = set(g.seed_entity_ids)
+            for seed in g.seed_entity_ids:
+                graph = await self.graph_repo.traverse(
+                    start_entity_id=seed,
+                    max_depth=g.max_depth,
+                    min_weight=g.min_weight,
+                    relationship_types=g.relationship_types,
+                    limit=self.graph_expand_entity_cap,
+                )
+                expanded |= {n.id for n in graph.nodes}
+            graph_ids = list(expanded)[: self.graph_expand_entity_cap]
 
         requested = bool(f.entity_ids or f.entity_types or f.selector_types or f.selector_subtypes or graph_ids)
         if not requested:

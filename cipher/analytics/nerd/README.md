@@ -20,9 +20,15 @@ the `analytics/*` workspace pattern.
 
 ```
 NERD_MODEL_DIR=~/nerd/deps/nerd-c28-v0   # or a HuggingFace id
-NERD_MODEL_DEVICE=cpu
-nerd-api                                  # POST /infer {text, threshold?}
+NERD_MODEL_DEVICE=cuda                    # ~60x CPU; fp16 by default (NERD_MODEL_DTYPE)
+nerd-api                                  # POST /infer {text, threshold?}, POST /infer/batch {texts, threshold?}
 ```
+
+`infer_batch` pools every text's 512-token windows, length-sorts them and packs
+them into shared passes (`NERD_MAX_BATCH_TOKENS`, default 16384). On a 3090 it is
+compute-bound (~76k tok/s fp16), so `torch.compile` (+7%) and TensorRT aren't
+worth their complexity. Parity vs CPU fp32 on 400 `rag` texts: fp32 batched
+100%, fp16 99.93% (borderline spans only), bf16 98.98% -- don't use bf16.
 
 The HF pipeline's `entity_group` labels are normalized and mapped to ontology
 types via `nerd.labels` (`PERSON`/`PER` → person, `ORG` → organization,

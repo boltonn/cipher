@@ -1,7 +1,9 @@
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel, Field, computed_field
+from pydantic import Field, computed_field
+
+from cipher.schemas._base.base import BaseModel
 
 if TYPE_CHECKING:
     from cipher.schemas.ingestion.dataset import Dataset
@@ -57,8 +59,8 @@ class User(UserBase):
                 "id": "123e4567-e89b-12d3-a456-426614174000",
                 "name": "John Doe",
                 "email": "john.doe@example.com",
-                "date_created": "2024-01-01T12:00:00Z",
-                "date_updated": "2024-01-02T12:00:00Z",
+                "dateCreated": "2024-01-01T12:00:00Z",
+                "dateUpdated": "2024-01-02T12:00:00Z",
             }
         },
     }
@@ -74,8 +76,8 @@ class UserDatasetAccess(BaseModel):
         "from_attributes": True,
         "json_schema_extra": {
             "example": {
-                "user_id": "123e4567-e89b-12d3-a456-426614174000",
-                "dataset_id": "123e4567-e89b-12d3-a456-426614174001",
+                "userId": "123e4567-e89b-12d3-a456-426614174000",
+                "datasetId": "123e4567-e89b-12d3-a456-426614174001",
             }
         },
     }

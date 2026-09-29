@@ -151,7 +151,7 @@ class TopConnectionsRequest(BaseModel):
         "work on their own, so no entity resolution is required",
     )
     relationship_types: list[RelationshipType] | None = Field(
-        default=None, description="Edge types to rank; default every type except `has_selector` and co-mention noise"
+        default=None, description="Edge types to rank; default every weighted type (`WEIGHTED_RELATIONSHIPS`)"
     )
     direction: TraversalDirection = Field(
         default=TraversalDirection.BOTH, description="out = seed -> neighbour, in = neighbour -> seed"

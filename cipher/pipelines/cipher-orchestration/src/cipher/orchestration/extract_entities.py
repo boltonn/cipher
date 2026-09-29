@@ -129,6 +129,11 @@ class _NerdExtractor:
         entities = await asyncio.to_thread(self._ner.infer, content, self._threshold)
         return entities, []
 
+    async def extract_batch(self, contents: list[str]) -> list[tuple[list[EntitySpan], list[RelationSpan]]]:
+        """One packed pass over many files -- the GPU throughput path."""
+        results = await asyncio.to_thread(self._ner.infer_batch, contents, self._threshold)
+        return [(entities, []) for entities in results]
+
 
 def _build_extractor(
     extractor: str,
@@ -382,17 +387,26 @@ async def extract_entities_workflow(
             await enrichment_repo.mark_processing(enrichment_ids=[item.enrichment.id for item in batch])
             await session.commit()
 
+            texts = await extracted_text_repo.get_by_file_ids([item.resource["id"] for item in batch])
+            precomputed: dict[str, tuple[list[EntitySpan], list[RelationSpan]]] = {}
+            if isinstance(engine, _NerdExtractor):
+                todo = {fid: t.content for fid, t in texts.items() if t.content and t.content.strip()}
+                try:
+                    precomputed = dict(zip(todo, await engine.extract_batch(list(todo.values())), strict=True))
+                except Exception as e:
+                    logger.warning(f"Batched nerd pass failed, falling back to per-file: {e}")
+
             completed, failed = [], []
             for item in batch:
                 file_id = item.resource["id"]
                 try:
-                    extracted = await extracted_text_repo.get_by_file_id(file_id)
+                    extracted = texts.get(file_id)
                     content = (extracted.content or "") if extracted is not None else ""
                     if not content.strip():
                         completed.append(item.enrichment.id)
                         continue
 
-                    spans, relations = await engine.extract(content)
+                    spans, relations = precomputed.get(file_id) or await engine.extract(content)
                     written_mentions, written_relations = await persist_file_entities(
                         spans=spans,
                         relations=relations,

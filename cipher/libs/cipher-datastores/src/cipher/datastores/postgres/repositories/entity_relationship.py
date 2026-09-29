@@ -1,8 +1,9 @@
-from sqlalchemy import and_, asc, delete, desc, func, or_, select
+from sqlalchemy import and_, asc, delete, desc, func, or_, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cipher.datastores.base.graph import GraphRepository
+from cipher.datastores.postgres.repositories.selector_links import HeaderEvidence, decide_header_links
 from cipher.datastores.postgres.tables.entity import EntityTable
 from cipher.datastores.postgres.tables.entity_relationship import EntityRelationshipTable
 from cipher.datastores.postgres.tables.face import FaceTable
@@ -23,6 +24,7 @@ from cipher.schemas.graph.entity_relationship import (
 )
 from cipher.schemas.graph.ontology import (
     LOW_SIGNAL_RELATIONSHIPS,
+    WEIGHTED_RELATIONSHIPS,
     EntityType,
     RelationshipSource,
     RelationshipType,
@@ -207,8 +209,7 @@ class PostgresGraphRepository(GraphRepository):
         if request.relationship_types:
             where.append(EntityRelationshipTable.relationship_type.in_(request.relationship_types))
         else:
-            excluded = [RelationshipType.HAS_SELECTOR, *LOW_SIGNAL_RELATIONSHIPS]
-            where.append(EntityRelationshipTable.relationship_type.notin_(excluded))
+            where.append(EntityRelationshipTable.relationship_type.in_(WEIGHTED_RELATIONSHIPS))
         if request.dataset_id:
             where.append(
                 or_(
@@ -360,17 +361,13 @@ class PostgresGraphRepository(GraphRepository):
         await self.session.commit()
         return result.rowcount or 0
 
-    async def link_header_selectors(self, dataset_id: str) -> int:
-        """Upsert `has_selector` edges wherever a resolved actor and a resolved selector share a header field.
-
-        Idempotent (`ON CONFLICT DO NOTHING` on the edge triple). Called by the
-        `resolve-entities` sweep and after a Review-queue name resolution, so the
-        person/org a header name resolves to is linked to the address it sat next
-        to. Returns the number of distinct actor->selector pairs considered.
-        """
+    async def plan_header_selector_links(self, dataset_id: str) -> tuple[set[tuple[str, str]], set[tuple[str, str]]]:
+        """`(to_link, to_unlink)` actor->selector pairs for a dataset -- see `link_header_selectors`."""
         actor = MentionTable.__table__.alias("a")
         selector = MentionTable.__table__.alias("s")
-        pairs = (
+        # Contact cards (and other structured fields): a name next to its numbers in one
+        # record is strong evidence on its own -- link every co-occurrence.
+        contact_pairs = (
             select(actor.c.entity_id.label("actor_id"), selector.c.entity_id.label("selector_id"))
             .select_from(
                 actor.join(
@@ -387,33 +384,110 @@ class PostgresGraphRepository(GraphRepository):
                 actor.c.entity_attribute == "name",
                 actor.c.entity_id.is_not(None),
                 actor.c.field_path.is_not(None),
+                actor.c.field_path.not_like("header.%"),
                 EntityTable.entity_type.in_(_ACTOR_TYPES),
                 selector.c.entity_type == EntityType.SELECTOR,
                 selector.c.entity_id.is_not(None),
             )
             .distinct()
         )
-        rows = (await self.session.execute(pairs)).all()
-        if not rows:
-            return 0
+        contact = {(r.actor_id, r.selector_id) for r in (await self.session.execute(contact_pairs)).all()}
 
+        # Email headers: one pairing proves little -- decide from all of an address's evidence.
+        evidence_rows = (
+            await self.session.execute(
+                text(
+                    "SELECT m.entity_id AS address_id, addr.display_name AS address, n.surface_text AS name, "
+                    "n.entity_id AS resolved_id, count(DISTINCT n.file_id) AS emails "
+                    "FROM mention n JOIN mention m ON m.file_id = n.file_id AND m.field_path = n.field_path "
+                    "AND m.selector_type = 'EMAIL' AND m.entity_id IS NOT NULL "
+                    "JOIN entity addr ON addr.id = m.entity_id "
+                    "WHERE n.dataset_id = :dataset_id AND n.field_path LIKE 'header.%' AND n.selector_type IS NULL "
+                    "GROUP BY 1, 2, 3, 4"
+                ),
+                {"dataset_id": dataset_id},
+            )
+        ).all()
+        evidence = [HeaderEvidence(**row._mapping) for row in evidence_rows]
+        resolved_ids = {row.resolved_id for row in evidence if row.resolved_id}
+        actors = (
+            await self.session.execute(
+                select(EntityTable.id, EntityTable.display_name).where(
+                    EntityTable.id.in_(resolved_ids), EntityTable.entity_type.in_(_ACTOR_TYPES)
+                )
+            )
+        ).all()
+        header = decide_header_links(evidence, {row.id: row.display_name for row in actors})
+
+        addresses = list({row.address_id for row in evidence})
+        # An analyst has decided who owns these: inference neither adds nor prunes their owners,
+        # so a "Move here" / "Also link here" on the entity page sticks across re-runs.
+        analyst_owned = set(
+            (
+                await self.session.execute(
+                    select(EntityRelationshipTable.dst_entity_id).where(
+                        EntityRelationshipTable.relationship_type == RelationshipType.HAS_SELECTOR,
+                        EntityRelationshipTable.source == RelationshipSource.MANUAL,
+                        EntityRelationshipTable.dst_entity_id.in_(addresses),
+                    )
+                )
+            ).scalars()
+        )
+        header = {(actor, address) for actor, address in header if address not in analyst_owned}
+        existing = (
+            await self.session.execute(
+                select(EntityRelationshipTable.src_entity_id, EntityRelationshipTable.dst_entity_id).where(
+                    EntityRelationshipTable.dataset_id == dataset_id,
+                    EntityRelationshipTable.relationship_type == RelationshipType.HAS_SELECTOR,
+                    EntityRelationshipTable.source == RelationshipSource.SELECTOR_INFERENCE,
+                    EntityRelationshipTable.dst_entity_id.in_(addresses),
+                )
+            )
+        ).all()
+        keep = contact | header
+        stale = {(r.src_entity_id, r.dst_entity_id) for r in existing} - keep
+        return keep, {(actor, address) for actor, address in stale if address not in analyst_owned}
+
+    async def link_header_selectors(self, dataset_id: str) -> int:
+        """Reconcile inferred `has_selector` edges between actors and the selectors they appear with.
+
+        Contact-card names are linked to every selector in the same record. Email
+        header addresses are linked only on evidence of ownership (the address spells
+        the actor's name, or the actor's name dominates its header slots -- see
+        `selector_links`). Inferred edges that no longer qualify are removed; manual
+        and other-source edges are never touched, and an address an analyst has
+        linked by hand is left exactly as they set it. Called by the `resolve-entities`
+        sweep and after a Review-queue name resolution. Returns the number of pairs
+        linked.
+        """
+        to_link, to_unlink = await self.plan_header_selector_links(dataset_id)
         values = [
             {
                 "dataset_id": dataset_id,
-                "src_entity_id": r.actor_id,
-                "dst_entity_id": r.selector_id,
+                "src_entity_id": actor_id,
+                "dst_entity_id": selector_id,
                 "relationship_type": RelationshipType.HAS_SELECTOR,
                 "directed": True,
                 "source": RelationshipSource.SELECTOR_INFERENCE,
                 "attributes": {},
             }
-            for r in rows
+            for actor_id, selector_id in to_link
         ]
         for start in range(0, len(values), _EDGE_INSERT_CHUNK):
             insert_stmt = pg_insert(EntityRelationshipTable).values(values[start : start + _EDGE_INSERT_CHUNK])
             await self.session.execute(insert_stmt.on_conflict_do_nothing(constraint="uq_entity_relationship_triple"))
+        for actor_id, selector_id in to_unlink:
+            await self.session.execute(
+                delete(EntityRelationshipTable).where(
+                    EntityRelationshipTable.dataset_id == dataset_id,
+                    EntityRelationshipTable.src_entity_id == actor_id,
+                    EntityRelationshipTable.dst_entity_id == selector_id,
+                    EntityRelationshipTable.relationship_type == RelationshipType.HAS_SELECTOR,
+                    EntityRelationshipTable.source == RelationshipSource.SELECTOR_INFERENCE,
+                )
+            )
         await self.session.commit()
-        return len(rows)
+        return len(to_link)
 
     # --- Face co-occurrence (`appears_in_photo_with`) --------------------------
     #
@@ -458,7 +532,7 @@ class PostgresGraphRepository(GraphRepository):
                 FaceTable.person_id.is_not(None).label("assigned"),
             )
             .outerjoin(pending, pending.c.face_id == FaceTable.id)
-            .where(person_id.is_not(None))
+            .where(person_id.is_not(None), FaceTable.date_rejected.is_(None))
         )
         if image_ids is not None:
             if not image_ids:

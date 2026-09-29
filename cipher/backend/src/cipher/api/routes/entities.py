@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Query
 from loguru import logger
 from pyselectors.normalize import normalize_selector
 
+from cipher.api.deps.authentication import CurrentUserDep
 from cipher.api.deps.postgres import (
     CommentDatastoreDep,
     EntityDatastoreDep,
@@ -13,6 +14,7 @@ from cipher.api.deps.postgres import (
     MentionDatastoreDep,
     RelationshipCandidateDatastoreDep,
 )
+from cipher.schemas._base.base import camelize_keys
 from cipher.schemas._base.exceptions import EntityNotFoundError
 from cipher.schemas.graph.entity import (
     Entity,
@@ -71,7 +73,7 @@ from cipher.schemas.graph.ontology import (
     validate_relationship,
 )
 from cipher.schemas.graph.organization import OrganizationUpdate
-from cipher.schemas.graph.selector import SelectorLinkRequest, SelectorRegion, SelectorUpdate
+from cipher.schemas.graph.selector import SelectorEvidence, SelectorLinkRequest, SelectorRegion, SelectorUpdate
 from cipher.schemas.interaction.comment import CommentableType
 
 router = APIRouter(prefix="/entities", tags=["entities"])
@@ -114,7 +116,7 @@ async def list_entities(
 )
 async def search_entities(
     datastore: EntityDatastoreDep,
-    dataset_id: Annotated[str, Query(description="Dataset to search within")],
+    dataset_id: Annotated[str, Query(alias="datasetId", description="Dataset to search within")],
     q: Annotated[str | None, Query(description="Name/alias to fuzzy-match")] = None,
     selector: Annotated[str | None, Query(description="Normalized selector value for exact match")] = None,
     limit: Annotated[int, Query(ge=1, le=50)] = 5,
@@ -152,7 +154,9 @@ async def get_ontology() -> Ontology:
 )
 async def get_entity_breakdown(
     datastore: EntityDatastoreDep,
-    dataset_id: Annotated[str | None, Query(description="Scope to one dataset; omit for all")] = None,
+    dataset_id: Annotated[
+        str | None, Query(alias="datasetId", description="Scope to one dataset; omit for all")
+    ] = None,
 ) -> EntityBreakdown:
     """Counts by entity type, selector type, and selector subtype -- feeds the dataset-view chart."""
     return await datastore.entity_breakdown(dataset_id=dataset_id)
@@ -203,27 +207,33 @@ async def list_entity_match_groups(
 
 
 @router.post("/matches/{match_id}/resolve", summary="Resolve an entity match", response_model_by_alias=True)
-async def resolve_entity_match(match_id: str, review: EntityMatchReview, datastore: EntityMatchDatastoreDep):
+async def resolve_entity_match(
+    match_id: str, review: EntityMatchReview, user: CurrentUserDep, datastore: EntityMatchDatastoreDep
+):
     """Confirm or reject a candidate resolution."""
-    resolved = await datastore.resolve_match(match_id, review)
+    resolved = await datastore.resolve_match(match_id, review.model_copy(update={"reviewed_by": user.id}))
     if resolved is None:
         raise EntityNotFoundError("EntityMatch", match_id)
     return resolved
 
 
 @router.post("/matches/resolve-batch", summary="Bulk-resolve entity matches")
-async def resolve_entity_matches_batch(body: EntityMatchBatchReview, datastore: EntityMatchDatastoreDep) -> dict:
+async def resolve_entity_matches_batch(
+    body: EntityMatchBatchReview, user: CurrentUserDep, datastore: EntityMatchDatastoreDep
+) -> dict:
     """Apply many confirm/reject decisions in one transaction -- the fast bulk-annotation path."""
-    return await datastore.resolve_matches_batch(reviewed_by=body.reviewed_by, decisions=body.decisions)
+    return camelize_keys(await datastore.resolve_matches_batch(reviewed_by=user.id, decisions=body.decisions))
 
 
 @router.post("/matches/name-group/dismiss", summary="Dismiss a name group ('none of these')")
-async def dismiss_entity_match_name_group(body: NameGroupDismissRequest, datastore: EntityMatchDatastoreDep) -> dict:
+async def dismiss_entity_match_name_group(
+    body: NameGroupDismissRequest, user: CurrentUserDep, datastore: EntityMatchDatastoreDep
+) -> dict:
     """Reject every pending candidate for a name group -- a captured negative for calibration."""
     rejected = await datastore.dismiss_name_group(
         dataset_id=body.dataset_id,
         normalized_value=body.normalized_value,
-        reviewed_by=body.reviewed_by,
+        reviewed_by=user.id,
         review_note=body.review_note,
     )
     return {"rejected": rejected}
@@ -266,10 +276,10 @@ async def list_relationship_candidates(
     response_model_by_alias=True,
 )
 async def resolve_relationship_candidate(
-    candidate_id: str, review: RelationshipReview, datastore: RelationshipCandidateDatastoreDep
+    candidate_id: str, review: RelationshipReview, user: CurrentUserDep, datastore: RelationshipCandidateDatastoreDep
 ):
     """Confirm (promote to a real edge) or reject a proposed edge."""
-    resolved = await datastore.resolve(candidate_id, review)
+    resolved = await datastore.resolve(candidate_id, review.model_copy(update={"reviewed_by": user.id}))
     if resolved is None:
         raise EntityNotFoundError("RelationshipCandidate", candidate_id)
     return resolved
@@ -324,25 +334,36 @@ async def update_entity_detail(entity_id: str, body: dict, datastore: EntityData
     detail = await datastore.update_detail(entity_id, data)
     if detail is None:
         raise EntityNotFoundError("Entity detail", entity_id)
-    return detail
+    return camelize_keys(detail)
 
 
 @router.delete("/{entity_id}", summary="Delete an entity")
-async def delete_entity(entity_id: str, datastore: EntityDatastoreDep, comment_datastore: CommentDatastoreDep) -> dict:
+async def delete_entity(
+    entity_id: str,
+    datastore: EntityDatastoreDep,
+    comment_datastore: CommentDatastoreDep,
+    mention_datastore: MentionDatastoreDep,
+    discard_mentions: Annotated[
+        bool, Query(alias="discardMentions", description="Also delete its mentions ('not an entity')")
+    ] = False,
+) -> dict:
     """Delete an entity node and its detail/edges (cascade).
 
-    Mentions pointing at it are unresolved (FK ``SET NULL``); relationships and
-    resolution/merge decisions naming it cascade-delete. Comments reference it
-    polymorphically (no real FK), so they're purged explicitly first.
+    By default mentions pointing at it are unresolved (FK ``SET NULL``) and go
+    back to Review; with ``discardMentions`` they are deleted too, so the value
+    doesn't return. Relationships and resolution/merge decisions naming it
+    cascade-delete. Comments reference it polymorphically (no real FK), so
+    they're purged explicitly first.
     """
+    if await datastore.get_entity(entity_id) is None:
+        raise EntityNotFoundError("Entity", entity_id)
+    deleted_mentions = await mention_datastore.delete_by_entity(entity_id) if discard_mentions else 0
     deleted_comments = await comment_datastore.delete_by_commentable(
         commentable_type=CommentableType.ENTITY, commentable_id=entity_id
     )
-    deleted = await datastore.delete_entity(entity_id)
-    if not deleted:
-        raise EntityNotFoundError("Entity", entity_id)
-    logger.info(f"Purged {deleted_comments} comments for entity {entity_id} before delete")
-    return {"deleted": True}
+    await datastore.delete_entity(entity_id)
+    logger.info(f"Deleted entity {entity_id}: {deleted_mentions} mentions, {deleted_comments} comments")
+    return {"deleted": True, "mentionsDeleted": deleted_mentions}
 
 
 @router.get("/{entity_id}/profile", summary="Entity dossier", response_model=EntityProfile, **_BY_ALIAS)
@@ -352,6 +373,18 @@ async def get_entity_profile(entity_id: str, datastore: EntityDatastoreDep) -> E
     if profile is None:
         raise EntityNotFoundError("Entity", entity_id)
     return profile
+
+
+@router.post("/{entity_id}/promote", summary="Promote a provisional entity", response_model=Entity, **_BY_ALIAS)
+async def promote_entity(entity_id: str, user: CurrentUserDep, datastore: EntityDatastoreDep) -> Entity:
+    """Keep a provisional entity as a new canonical one (a person gets its own person page).
+
+    Rejects its pending merge proposals -- the analyst has said it is none of them.
+    """
+    entity = await datastore.promote_entity(entity_id, reviewed_by=user.id)
+    if entity is None:
+        raise EntityNotFoundError("Entity", entity_id)
+    return entity
 
 
 @router.get(
@@ -376,7 +409,9 @@ async def list_related_entities(
     datastore: EntityDatastoreDep,
     direction: Annotated[TraversalDirection, Query()] = TraversalDirection.BOTH,
     relationship_type: Annotated[RelationshipType | None, Query()] = None,
-    entity_type: Annotated[EntityType | None, Query(description="Only neighbours of this type")] = None,
+    entity_type: Annotated[
+        EntityType | None, Query(alias="entityType", description="Only neighbours of this type")
+    ] = None,
     sort: Annotated[RelatedEntitySort, Query()] = RelatedEntitySort.WEIGHT,
     limit: Annotated[int, Query(ge=1, le=200)] = 25,
     page: Annotated[int, Query(ge=1)] = 1,
@@ -452,6 +487,57 @@ async def attach_selector(
         normalized_value=normalized,
         mention_count=matching.total,
     )
+
+
+@router.get(
+    "/{entity_id}/selector-evidence",
+    summary="Header usage and current owners of candidate selectors",
+    response_model=list[SelectorEvidence],
+    **_BY_ALIAS,
+)
+async def selector_evidence(
+    entity_id: str, mentions: MentionDatastoreDep, ids: Annotated[list[str], Query()]
+) -> list[SelectorEvidence]:
+    """The evidence behind a proposed link: how often each address is used, under which names, and who owns it."""
+    return await mentions.selector_evidence(ids)
+
+
+@router.post(
+    "/{entity_id}/selectors/{selector_id}",
+    summary="Link an existing selector node to an actor entity",
+)
+async def link_selector(
+    entity_id: str, selector_id: str, datastore: EntityDatastoreDep, graph: GraphDatastoreDep
+) -> dict:
+    """Manual `has_selector` edge to this exact selector node (the one its mentions point at).
+
+    Unlike `POST /{entity_id}/selectors`, which creates-or-reuses a dataset-agnostic node
+    from a typed value, this links the node the data already uses -- so every email that
+    carries it is attributed. Manual edges are never pruned by the inferred-link reconcile.
+    """
+    actor = await datastore.get_entity(entity_id)
+    selector = await datastore.get_entity(selector_id)
+    if actor is None:
+        raise EntityNotFoundError("Entity", entity_id)
+    if selector is None:
+        raise EntityNotFoundError("Selector", selector_id)
+    try:
+        validate_relationship(
+            relationship_type=RelationshipType.HAS_SELECTOR,
+            src_type=actor.entity_type,
+            dst_type=selector.entity_type,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    await graph.upsert_relationship(
+        EntityRelationshipCreate(
+            src_entity_id=entity_id,
+            dst_entity_id=selector_id,
+            relationship_type=RelationshipType.HAS_SELECTOR,
+            source=RelationshipSource.MANUAL,
+        )
+    )
+    return {"linked": True}
 
 
 @router.delete("/{entity_id}/selectors/{selector_id}", summary="Detach a selector from an entity")
@@ -538,7 +624,9 @@ async def traverse_entity_graph(
     direction: Annotated[TraversalDirection, Query()] = TraversalDirection.BOTH,
     types: Annotated[str | None, Query(description="Comma-separated relationship types")] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
-    min_weight: Annotated[float, Query(ge=0, description="Drop weighted edges below this (keeps unweighted)")] = 0,
+    min_weight: Annotated[
+        float, Query(alias="minWeight", ge=0, description="Drop weighted edges below this (keeps unweighted)")
+    ] = 0,
 ) -> GraphResponse:
     """Return the subgraph reachable from an entity within `depth` hops."""
     relationship_types = None

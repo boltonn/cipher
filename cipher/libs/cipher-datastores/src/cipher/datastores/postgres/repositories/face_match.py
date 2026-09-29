@@ -148,6 +148,9 @@ class PostgresFaceMatchRepository:
                     person_id=match_table.person_id,
                     assignment_method=FaceAssignmentMethod.MANUAL,
                     assignment_confidence=match_table.similarity_score,
+                    date_rejected=None,
+                    rejection_method=None,
+                    rejection_confidence=None,
                 )
             )
             await self.session.execute(

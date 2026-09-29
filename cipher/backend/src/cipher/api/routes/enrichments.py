@@ -1,4 +1,6 @@
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from typing import Annotated
+
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from loguru import logger
 
 from cipher.api.deps.postgres import EnrichmentDatastoreDep, get_session
@@ -46,7 +48,8 @@ class EnrichmentRunRequest(BaseModel):
 
 class EnrichmentConfig(BaseModel):
     """Static pipeline metadata for clients: display order, hard prerequisites,
-    and which analytics the API can trigger directly."""
+    and which analytics the API can trigger directly.
+    """
 
     pipeline_order: list[EnrichmentType]
     dependencies: dict[EnrichmentType, list[EnrichmentType]]
@@ -110,7 +113,11 @@ def _to_progress(
     response_model=DatasetEnrichmentProgress,
     response_model_by_alias=True,
 )
-async def get_enrichment_progress(datastore: EnrichmentDatastoreDep, enrichment_type: EnrichmentType, dataset_id: str):
+async def get_enrichment_progress(
+    datastore: EnrichmentDatastoreDep,
+    enrichment_type: Annotated[EnrichmentType, Query(alias="enrichmentType")],
+    dataset_id: Annotated[str, Query(alias="datasetId")],
+):
     """Get enrichment progress for a given dataset and enrichment type."""
     stats = await datastore.get_enrichment_stats(
         dataset_id=dataset_id,
@@ -124,7 +131,9 @@ async def get_enrichment_progress(datastore: EnrichmentDatastoreDep, enrichment_
     response_model=list[DatasetEnrichmentProgress],
     response_model_by_alias=True,
 )
-async def get_dataset_enrichment_progress(datastore: EnrichmentDatastoreDep, dataset_id: str):
+async def get_dataset_enrichment_progress(
+    datastore: EnrichmentDatastoreDep, dataset_id: Annotated[str, Query(alias="datasetId")]
+):
     """Progress for every analytic that has run against `dataset_id`, in pipeline order."""
     stats = await datastore.get_enrichment_stats(dataset_id=dataset_id)
     return [
@@ -141,8 +150,8 @@ async def get_dataset_enrichment_progress(datastore: EnrichmentDatastoreDep, dat
 )
 async def get_enrichment_failures(
     datastore: EnrichmentDatastoreDep,
-    dataset_id: str,
-    enrichment_type: EnrichmentType,
+    dataset_id: Annotated[str, Query(alias="datasetId")],
+    enrichment_type: Annotated[EnrichmentType, Query(alias="enrichmentType")],
     limit: int = 200,
     offset: int = 0,
 ):

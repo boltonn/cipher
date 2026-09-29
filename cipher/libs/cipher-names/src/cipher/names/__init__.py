@@ -5,6 +5,7 @@ parsing, comparison, and blocking-key generation. See
 ``docs/entity-resolution.md`` §7.
 """
 
+from cipher.names.address import AddressAgreement, address_name_agreement
 from cipher.names.compare import Level, NameComparison, compare_names
 from cipher.names.culture import Culture, infer_culture
 from cipher.names.keys import KEY_TYPES, KEYS_VERSION, blocking_keys, entity_keys
@@ -16,6 +17,8 @@ from cipher.names.script import Script, dominant_script
 from cipher.names.translit import to_latin
 
 __all__ = [
+    "AddressAgreement",
+    "address_name_agreement",
     "KEYS_VERSION",
     "KEY_TYPES",
     "Culture",

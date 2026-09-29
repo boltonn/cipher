@@ -65,6 +65,12 @@ class FaceTable(Base):
     is_representative: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
     is_primary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
+    date_rejected: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    rejection_method: Mapped[FaceAssignmentMethod | None] = mapped_column(
+        Enum(FaceAssignmentMethod, native_enum=False), nullable=True
+    )
+    rejection_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+
     date_created: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
@@ -95,6 +101,15 @@ class FaceTable(Base):
             "person_id",
             unique=True,
             postgresql_where=text("is_primary"),
+        ),
+        Index(
+            "ix_face_rejected",
+            "rejection_method",
+            postgresql_where=text("date_rejected IS NOT NULL"),
+        ),
+        CheckConstraint(
+            "date_rejected IS NULL OR person_id IS NULL",
+            name="ck_face_rejected_unassigned",
         ),
         CheckConstraint(
             "NOT is_representative OR person_id IS NOT NULL",

@@ -21,6 +21,11 @@ DEFAULT_FACE_MATCH_SIMILARITY = 0.61
 whenever similarity search runs without an analyst-chosen threshold (e.g.
 the background matching pipeline), and the UI's default slider position."""
 
+DEFAULT_FACE_REJECT_SIMILARITY = 0.64
+"""Floor for auto-rejecting a face as 'not a face': an unassigned face at least
+this similar to one an analyst manually rejected (e.g. the same cat) is
+rejected automatically, flagged `rejection_method=automatic` so it can be undone."""
+
 
 class FaceAssignmentMethod(StrEnum):
     """How a face came to be linked to a person."""
@@ -46,11 +51,14 @@ class FaceStatus(StrEnum):
     MATCHED: either assigned to a person who isn't yet verified, or not
         assigned but has one or more pending `FaceMatch` candidates.
     VERIFIED: assigned to a person who has been verified.
+    REJECTED: not a face (detector false positive, e.g. a pet), marked by an
+        analyst or auto-rejected by similarity to one an analyst marked.
     """
 
     UNMATCHED = "unmatched"
     MATCHED = "matched"
     VERIFIED = "verified"
+    REJECTED = "rejected"
 
 
 class FaceBoundingBox(BaseModel):
@@ -125,6 +133,26 @@ class FaceAssignment(BaseModel):
     assignment_confidence: float | None = Field(default=None, ge=0, le=1)
 
 
+class FaceRejection(BaseModel):
+    """Mark (or unmark) a set of faces as not a face.
+
+    Rejecting unassigns each face, rejects its pending matches, and -- unless
+    `reject_similar` is off -- auto-rejects unassigned faces at least
+    `min_similarity` similar to them (e.g. more photos of the same cat).
+    """
+
+    face_ids: list[str] = Field(min_length=1, max_length=1000)
+    reject_similar: bool = Field(default=True)
+    min_similarity: float = Field(default=DEFAULT_FACE_REJECT_SIMILARITY, ge=0, le=1)
+
+
+class FaceRejectionResult(BaseModel):
+    """Outcome of a reject/unreject call."""
+
+    updated: int = Field(default=0, description="Faces whose rejection state changed as asked")
+    auto_rejected: int = Field(default=0, description="Similar faces auto-rejected alongside")
+
+
 class FaceRepresentativeUpdate(BaseModel):
     """Schema for curating a person's representative (reference) faces.
 
@@ -149,6 +177,11 @@ class Face(FaceBase):
     assignment_confidence: float | None = Field(default=None)
     is_representative: bool = Field(default=False, description="Used as a reference face when matching this person")
     is_primary: bool = Field(default=False, description="This person's primary/display face")
+    date_rejected: datetime | None = Field(default=None, description="When this was marked not a face")
+    rejection_method: FaceAssignmentMethod | None = Field(default=None)
+    rejection_confidence: float | None = Field(
+        default=None, description="Similarity to the analyst-rejected face that triggered an automatic rejection"
+    )
     embedding: FaceEmbedding | None = Field(default=None)
     date_created: datetime
 
@@ -201,6 +234,9 @@ class FacePublic(FaceBase):
     assignment_method: FaceAssignmentMethod | None = Field(default=None)
     is_representative: bool = Field(default=False)
     is_primary: bool = Field(default=False)
+    date_rejected: datetime | None = Field(default=None)
+    rejection_method: FaceAssignmentMethod | None = Field(default=None)
+    rejection_confidence: float | None = Field(default=None)
     status: FaceStatus = Field(default=FaceStatus.UNMATCHED)
     candidate_person_id: str | None = Field(
         default=None, description="Top pending-match candidate's person id, when not yet assigned"
@@ -217,6 +253,9 @@ class BaseFaceSearchParameters(PageParams):
     person_id: str | None = Field(default=None, description="Filter to faces of this person")
     unassigned_only: bool = Field(default=False, description="Only return faces with no person assigned")
     representative_only: bool = Field(default=False, description="Only return representative faces")
+    rejected_only: bool = Field(
+        default=False, description="Only return faces marked not a face (otherwise they're excluded)"
+    )
     min_quality: float | None = Field(default=None, ge=0, le=1)
     min_size: int | None = Field(
         default=None,

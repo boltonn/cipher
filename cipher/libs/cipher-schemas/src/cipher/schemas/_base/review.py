@@ -39,7 +39,9 @@ class ReviewDecision(BaseModel):
     """An analyst confirming or rejecting a proposed link."""
 
     status: ReviewStatus = Field(description="Must be 'confirmed' or 'rejected'")
-    reviewed_by: str = Field(description="Id/name of the reviewing user")
+    reviewed_by: str | None = Field(
+        default=None, description="Set server-side from the signed-in user; ignored from clients"
+    )
     review_note: str | None = None
 
 

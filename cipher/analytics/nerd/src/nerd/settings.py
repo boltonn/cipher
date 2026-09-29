@@ -5,6 +5,7 @@ from pydantic_settings import SettingsConfigDict
 
 from cipher.schemas._base.common import ModelDevice
 from cipher.utils.fastapi.settings import BaseServiceSettings
+from nerd.model import CudaDtype
 
 
 class Settings(BaseServiceSettings):
@@ -17,6 +18,12 @@ class Settings(BaseServiceSettings):
     )
     model_device: ModelDevice | None = Field(
         default=None, description="Device to use for the model", alias="NERD_MODEL_DEVICE"
+    )
+    model_dtype: CudaDtype = Field(
+        default="float16", description="CUDA weight dtype (CPU always runs float32)", alias="NERD_MODEL_DTYPE"
+    )
+    max_batch_tokens: int = Field(
+        default=16384, description="Padded-token budget per packed forward pass", alias="NERD_MAX_BATCH_TOKENS"
     )
     aggregation_strategy: str = Field(
         default="first",

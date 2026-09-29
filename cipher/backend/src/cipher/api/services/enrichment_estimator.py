@@ -21,21 +21,22 @@ from cipher.schemas.ingestion.estimation import (
     estimate_enrichment,
     estimate_workload,
     resolve_rate,
+    run_device,
 )
 
 
 async def build_dataset_estimates(
     *,
     dataset_id: str,
-    device: RunDevice,
     dataset_repo: PostgresDatasetRepository,
     file_repo: PostgresFileRepository,
     enrichment_repo: PostgresEnrichmentRepository,
     run_repo: PostgresEnrichmentRunRepository,
     only: list[EnrichmentType] | None = None,
     params_by_type: dict[EnrichmentType, dict] | None = None,
+    accelerator: RunDevice = RunDevice.CUDA,
 ) -> DatasetEnrichmentEstimates:
-    """One `EnrichmentEstimate` per enrichment (or just `only`), in pipeline order."""
+    """One `EnrichmentEstimate` per enrichment (or just `only`), in pipeline order, each on its own device."""
     params_by_type = params_by_type or {}
     staging = await dataset_repo.get_staging_summary(dataset_id)
     inventory = await file_repo.get_dataset_inventory(dataset_id)
@@ -49,7 +50,12 @@ async def build_dataset_estimates(
             continue
         params = params_by_type.get(enrichment_type, {})
         workload = estimate_workload(enrichment_type=enrichment_type, inventory=inventory, params=params)
-        rate = resolve_rate(enrichment_type=enrichment_type, device=device, measured=rates, params=params)
+        rate = resolve_rate(
+            enrichment_type=enrichment_type,
+            device=run_device(enrichment_type, accelerator=accelerator),
+            measured=rates,
+            params=params,
+        )
         counts = stats.get(enrichment_type, {}) or {}
         total = sum(counts.values())
         progress = (counts.get("completed", 0) / total) if total else 0.0
@@ -58,7 +64,7 @@ async def build_dataset_estimates(
     return DatasetEnrichmentEstimates(
         dataset_id=dataset_id,
         is_staged=staging.is_staged,
-        device=device,
+        accelerator=accelerator,
         date_generated=datetime.now(UTC),
         items=items,
     )

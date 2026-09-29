@@ -1,12 +1,12 @@
 from collections import defaultdict
 from datetime import UTC, datetime
 
-from sqlalchemy import asc, delete, desc, func, or_, select, update
+from sqlalchemy import and_, asc, delete, desc, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cipher.datastores.postgres.repositories._merge import repoint_entity_references
-from cipher.datastores.postgres.tables.entity import EntityTable
+from cipher.datastores.postgres.repositories._merge import fold_entity
+from cipher.datastores.postgres.tables.entity import EntityTable, is_canonical_entity
 from cipher.datastores.postgres.tables.entity_match import EntityMatchTable
 from cipher.datastores.postgres.tables.mention import MentionTable
 from cipher.schemas._base.common import SortOrder
@@ -150,7 +150,9 @@ class PostgresEntityMatchRepository:
         refreshes the score/explanation of a still-`pending` row and never
         touches an analyst decision.
         """
-        values = match.model_dump(by_alias=False, mode="json", exclude={"entity_name", "entity_type", "provisional_name"})
+        values = match.model_dump(
+            by_alias=False, mode="json", exclude={"entity_name", "entity_type", "provisional_name"}
+        )
         refresh = {"similarity_score": values["similarity_score"], "match_method": values["match_method"]}
         if "explanation" in values:
             refresh["explanation"] = values["explanation"]
@@ -340,6 +342,23 @@ class PostgresEntityMatchRepository:
             base.append(EntityMatchTable.status == request.status)
         if request.min_similarity is not None:
             base.append(EntityMatchTable.similarity_score >= request.min_similarity)
+        unfiltered = list(base)  # before hiding provisional targets -- to report how many are hidden
+        if not request.include_provisional_entities:
+            base.append(EntityMatchTable.entity_id.in_(select(EntityTable.id).where(is_canonical_entity())))
+
+        def _group_where(conditions: list) -> list:
+            if not request.entity_id:
+                return list(conditions)
+            return [
+                *conditions,
+                EntityMatchTable.normalized_value.in_(
+                    select(EntityMatchTable.normalized_value).where(
+                        *conditions, EntityMatchTable.entity_id == request.entity_id
+                    )
+                ),
+            ]
+
+        group_where = _group_where(base)
 
         name_q = (
             select(
@@ -349,10 +368,20 @@ class PostgresEntityMatchRepository:
                 func.coalesce(func.max(EntityMatchTable.mention_count), 0).label("mc"),
                 func.min(EntityMatchTable.status).label("st"),
             )
-            .where(*base)
+            .where(*group_where)
             .group_by(EntityMatchTable.dataset_id, EntityMatchTable.normalized_value)
         )
         total = (await self.session.execute(select(func.count()).select_from(name_q.subquery()))).scalar_one()
+        hidden_provisional = 0
+        if not request.include_provisional_entities:
+            everything = (
+                select(EntityMatchTable.normalized_value)
+                .where(*_group_where(unfiltered))
+                .group_by(EntityMatchTable.dataset_id, EntityMatchTable.normalized_value)
+            )
+            hidden_provisional = (
+                await self.session.execute(select(func.count()).select_from(everything.subquery()))
+            ).scalar_one() - total
 
         order = desc("mc") if request.sort_by == EntityMatchSortField.DATE_CREATED else desc("best")
         page_rows = (
@@ -362,7 +391,9 @@ class PostgresEntityMatchRepository:
         ).all()
         names = [r.normalized_value for r in page_rows]
         if not names:
-            return PaginatedEntityMatchGroupsResponse(total=total, page=request.page, limit=request.limit, data=[])
+            return PaginatedEntityMatchGroupsResponse(
+                total=total, page=request.page, limit=request.limit, data=[], hidden_provisional_total=hidden_provisional
+            )
 
         cand_rows = (
             await self.session.execute(
@@ -371,14 +402,18 @@ class PostgresEntityMatchRepository:
                     EntityTable.display_name,
                     EntityTable.entity_type,
                     EntityTable.person_id,
+                    is_canonical_entity().label("canonical"),
                 )
                 .join(EntityTable, EntityTable.id == EntityMatchTable.entity_id)
                 .where(*base, EntityMatchTable.normalized_value.in_(names))
                 .order_by(desc(EntityMatchTable.similarity_score))
             )
         ).all()
+        pending_merges = await self._pending_merge_counts(
+            {row.entity_id for row, *_, canonical in cand_rows if not canonical}
+        )
         by_name: dict[str, list[EntityMatch]] = defaultdict(list)
-        for row, display_name, etype, person_id in cand_rows:
+        for row, display_name, etype, person_id, canonical in cand_rows:
             if row.normalized_value is not None:
                 m = EntityMatch.model_validate(row)
                 m = m.model_copy(
@@ -386,6 +421,8 @@ class PostgresEntityMatchRepository:
                         "entity_name": display_name,
                         "entity_type": str(etype) if etype is not None else None,
                         "entity_person_id": str(person_id) if person_id is not None else None,
+                        "entity_is_provisional": not canonical,
+                        "entity_pending_merge_count": None if canonical else pending_merges.get(row.entity_id, 0),
                     }
                 )
                 by_name[row.normalized_value].append(m)
@@ -425,7 +462,23 @@ class PostgresEntityMatchRepository:
                     alternatives=cands[1:],
                 )
             )
-        return PaginatedEntityMatchGroupsResponse(total=total, page=request.page, limit=request.limit, data=data)
+        return PaginatedEntityMatchGroupsResponse(
+            total=total, page=request.page, limit=request.limit, data=data, hidden_provisional_total=hidden_provisional
+        )
+
+    async def _pending_merge_counts(self, provisional_ids: set[str]) -> dict[str, int]:
+        """`provisional entity id -> pending merge proposals` filed against it."""
+        if not provisional_ids:
+            return {}
+        rows = await self.session.execute(
+            select(EntityMatchTable.provisional_entity_id, func.count())
+            .where(
+                EntityMatchTable.provisional_entity_id.in_(provisional_ids),
+                EntityMatchTable.status == EntityMatchStatus.PENDING,
+            )
+            .group_by(EntityMatchTable.provisional_entity_id)
+        )
+        return {pid: n for pid, n in rows.all()}
 
     async def get_match_by_id(self, match_id: str) -> EntityMatch | None:
         """Retrieve a candidate resolution by ID."""
@@ -544,6 +597,51 @@ class PostgresEntityMatchRepository:
             await self._merge(canonical_id=row.entity_id, provisional_id=row.provisional_entity_id)
         return row
 
+    async def reopen_match(self, match_id: str) -> EntityMatch | None:
+        """Undo a confirmation: back to pending, its mentions unresolved, auto-rejected siblings reopened.
+
+        For a wrong auto-confirmation found after the fact -- it returns to the Resolve
+        queue for an analyst to decide, instead of being silently flipped.
+        """
+        row = (
+            await self.session.execute(
+                update(EntityMatchTable)
+                .where(EntityMatchTable.id == match_id, EntityMatchTable.status == EntityMatchStatus.CONFIRMED)
+                .values(status=EntityMatchStatus.PENDING, reviewed_by=None, reviewed_at=None, decision_source=None)
+                .returning(EntityMatchTable)
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            return None
+        if row.mention_id:
+            mentions = MentionTable.id == row.mention_id
+            siblings = EntityMatchTable.mention_id == row.mention_id
+        else:
+            mentions = and_(
+                MentionTable.dataset_id == row.dataset_id,
+                MentionTable.entity_attribute == "name",
+                MentionTable.normalized_value == row.normalized_value,
+            )
+            siblings = and_(
+                EntityMatchTable.dataset_id == row.dataset_id,
+                EntityMatchTable.normalized_value == row.normalized_value,
+                EntityMatchTable.mention_id.is_(None),
+            )
+        await self.session.execute(
+            update(MentionTable).where(mentions, MentionTable.entity_id == row.entity_id).values(entity_id=None)
+        )
+        await self.session.execute(
+            update(EntityMatchTable)
+            .where(
+                siblings,
+                EntityMatchTable.id != match_id,
+                EntityMatchTable.decision_source == DecisionSource.SIBLING_AUTO.value,
+            )
+            .values(status=EntityMatchStatus.PENDING, reviewed_by=None, reviewed_at=None, decision_source=None)
+        )
+        await self.session.commit()
+        return EntityMatch.model_validate(row)
+
     async def resolve_match(self, match_id: str, review: EntityMatchReview) -> EntityMatch | None:
         """Confirm or reject one candidate. On confirm: attach + merge provisional + reject siblings."""
         row = await self._apply_decision(
@@ -590,9 +688,8 @@ class PostgresEntityMatchRepository:
         return result.rowcount or 0
 
     async def _merge(self, *, canonical_id: str, provisional_id: str) -> None:
-        """Fold a provisional entity into the canonical one via the shared repointer."""
-        await repoint_entity_references(self.session, source_id=provisional_id, target_id=canonical_id)
-        await self.session.execute(delete(EntityTable).where(EntityTable.id == provisional_id))
+        """Fold a provisional entity into the canonical one, keeping its name as an alias."""
+        await fold_entity(self.session, source_id=provisional_id, target_id=canonical_id)
 
     async def delete_by_dataset_id(self, dataset_id: str) -> int:
         """Delete all candidate resolutions for a dataset (used by reset-entities)."""

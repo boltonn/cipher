@@ -168,6 +168,8 @@ async def _consumer(
 
         if new_faces:
             await face_repo.add_faces_batch(new_faces)
+            # Faces resembling one an analyst marked "not a face" (the same cat) are rejected on arrival.
+            await face_repo.auto_reject_similar(image_ids=list({face.image_id for face in new_faces}))
         await enrichment_repo.mark_completed_batch(completed)
         if failed:
             await enrichment_repo.mark_failed_batch(failed, increment_retry=True)

@@ -5,7 +5,8 @@ from pydantic import Field
 
 from cipher.schemas._base.base import BaseModel
 
-CitationKind = Literal["document", "email", "person", "dataset", "entity"]
+# `action`: a proposed change the analyst reviews and confirms on the linked page.
+CitationKind = Literal["document", "email", "person", "dataset", "entity", "action"]
 
 
 class ChatCitation(BaseModel):

@@ -42,6 +42,30 @@ class RunDevice(StrEnum):
     NA = "na"
 
 
+# Analytics whose CLI takes `--device`; every other analytic has a fixed device.
+DEVICE_SELECTABLE: frozenset[EnrichmentType] = frozenset(
+    {EnrichmentType.TEXT_EMBEDDING, EnrichmentType.IMAGE_EMBEDDING, EnrichmentType.FACE_DETECTION}
+)
+GPU_ONLY: frozenset[EnrichmentType] = frozenset({EnrichmentType.OCR})
+
+
+def run_device(enrichment_type: EnrichmentType, accelerator: RunDevice = RunDevice.CUDA) -> RunDevice:
+    """The device class an analytic actually runs on, matching what `record_run` stores.
+
+    Args:
+        enrichment_type: The analytic.
+        accelerator: Device used by analytics that accept `--device`.
+
+    Returns:
+        `accelerator` for device-selectable analytics, CUDA for GPU-only ones, else NA.
+    """
+    if enrichment_type in DEVICE_SELECTABLE:
+        return accelerator
+    if enrichment_type in GPU_ONLY:
+        return RunDevice.CUDA
+    return RunDevice.NA
+
+
 class EstimateConfidence(StrEnum):
     MEASURED = "measured"
     SEEDED = "seeded"
@@ -161,6 +185,7 @@ class EnrichmentEstimate(BaseModel):
     """A rough wall-time estimate for one enrichment over one dataset."""
 
     enrichment_type: EnrichmentType
+    device: RunDevice = RunDevice.NA
     eligible: EnrichmentWorkload
     estimate_seconds: float | None = None
     low_seconds: float | None = None
@@ -172,11 +197,11 @@ class EnrichmentEstimate(BaseModel):
 
 
 class DatasetEnrichmentEstimates(BaseModel):
-    """Per-enrichment estimates for one dataset at a chosen device class."""
+    """Per-enrichment estimates for one dataset, each on the device it runs on."""
 
     dataset_id: str
     is_staged: bool
-    device: RunDevice
+    accelerator: RunDevice
     date_generated: datetime
     items: list[EnrichmentEstimate]
 
@@ -310,6 +335,7 @@ def estimate_enrichment(
     def _bare(basis: str) -> EnrichmentEstimate:
         return EnrichmentEstimate(
             enrichment_type=workload.enrichment_type,
+            device=rate.device if rate else RunDevice.NA,
             eligible=workload,
             prerequisites=prerequisites,
             progress=round(progress, 4),
@@ -337,6 +363,7 @@ def estimate_enrichment(
 
     return EnrichmentEstimate(
         enrichment_type=workload.enrichment_type,
+        device=rate.device,
         eligible=workload,
         prerequisites=prerequisites,
         progress=round(progress, 4),

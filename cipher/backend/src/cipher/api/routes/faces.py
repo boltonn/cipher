@@ -24,6 +24,8 @@ from cipher.schemas.identity.face import (
     FaceEmbedding,
     FaceIdKnnSearchRequest,
     FaceLandmark,
+    FaceRejection,
+    FaceRejectionResult,
     FaceRepresentativeUpdate,
     FaceSimilaritySearchParameters,
     FaceSimilaritySearchRequest,
@@ -117,6 +119,42 @@ async def resolve_face_match(
     # so refresh the `appears_in_photo_with` edges for that image right away.
     await graph_datastore.recompute_face_cooccurrence_for_faces([match.face_id])
     return match
+
+
+@router.post(
+    "/reject",
+    summary="Mark faces as not a face (bulk), auto-rejecting similar ones",
+    response_model=FaceRejectionResult,
+    response_model_by_alias=True,
+)
+async def reject_faces(
+    body: FaceRejection, user: CurrentUserDep, datastore: FaceDatastoreDep, graph_datastore: GraphDatastoreDep
+):
+    """Mark detector false positives (e.g. a cat) so they drop out of search, matching and the graph.
+
+    The rejected faces also become negative exemplars: unassigned faces at least
+    `min_similarity` similar are auto-rejected too, and so are future detections.
+    """
+    updated = await datastore.reject_faces(body.face_ids, reviewed_by=user.id)
+    auto_rejected_ids = []
+    if body.reject_similar:
+        auto_rejected_ids = await datastore.auto_reject_similar(
+            exemplar_ids=body.face_ids, min_similarity=body.min_similarity
+        )
+    await graph_datastore.recompute_face_cooccurrence_for_faces([*body.face_ids, *auto_rejected_ids])
+    return FaceRejectionResult(updated=updated, auto_rejected=len(auto_rejected_ids))
+
+
+@router.post(
+    "/unreject",
+    summary="Undo not-a-face on faces (bulk)",
+    response_model=FaceRejectionResult,
+    response_model_by_alias=True,
+)
+async def unreject_faces(body: FaceRejection, datastore: FaceDatastoreDep):
+    """Restore faces; automatic rejections no remaining exemplar supports are released too."""
+    updated = await datastore.unreject_faces(body.face_ids, min_similarity=body.min_similarity)
+    return FaceRejectionResult(updated=updated)
 
 
 @router.get("/{id}", summary="Get face by ID", response_model=Face)

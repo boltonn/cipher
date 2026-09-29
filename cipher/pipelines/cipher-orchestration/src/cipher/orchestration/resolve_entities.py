@@ -35,7 +35,7 @@ from cipher.datastores.postgres.repositories import (
     PostgresMentionRelationshipRepository,
     PostgresMentionRepository,
 )
-from cipher.datastores.postgres.tables.entity import EntityTable
+from cipher.datastores.postgres.tables.entity import EntityTable, is_canonical_entity
 from cipher.datastores.postgres.tables.entity_name_key import EntityNameKeyTable
 from cipher.datastores.postgres.tables.entity_relationship import EntityRelationshipTable
 from cipher.datastores.postgres.tables.mention import MentionTable
@@ -257,10 +257,18 @@ async def _candidate_details(session: AsyncSession, entity_ids: list[str]) -> di
     }
 
 
+_NEIGHBOUR_SAMPLE = 50
+
+
 async def _group_neighbours(session: AsyncSession, mention_ids: list[str]) -> frozenset[str]:
-    """Resolved name-entity ids co-mentioned in the same files as this name group."""
+    """Resolved name-entity ids co-mentioned in the same files as this name group.
+
+    Samples the group's first `_NEIGHBOUR_SAMPLE` mentions: at most 50 neighbours are
+    kept anyway, and joining every file of a 3,000-mention name took ~400 ms a group.
+    """
     if not mention_ids:
         return frozenset()
+    mention_ids = mention_ids[:_NEIGHBOUR_SAMPLE]
     m1 = MentionTable.__table__.alias("m1")
     m2 = MentionTable.__table__.alias("m2")
     rows = (
@@ -301,6 +309,29 @@ async def _group_employer(session: AsyncSession, mention_ids: list[str]) -> str 
         )
     ).scalar_one_or_none()
     return row
+
+
+async def _drop_provisional_if_canonical(
+    session: AsyncSession, scored: list[ScoredCandidate], config: EntityResolutionConfig
+) -> list[ScoredCandidate]:
+    """Drop provisional-entity candidates when a canonical one is in play (review band or better).
+
+    Otherwise the queue offers `E F Bolton (provisional)` beside `Edmond Bolton` for
+    the same name -- that duplication belongs to `dedupe-entities`, not this card.
+    A group whose only credible match is provisional keeps it.
+    """
+    ids = [s.entity_id for s in scored]
+    canonical = set(
+        (await session.execute(select(EntityTable.id).where(EntityTable.id.in_(ids), is_canonical_entity()))).scalars()
+    )
+    in_play = (ResolutionBand.AUTO, ResolutionBand.REVIEW)
+    if len(canonical) == len(ids) or not any(
+        s.entity_id in canonical and not s.vetoed and s.band in in_play for s in scored
+    ):
+        return scored
+    kept = [s for s in scored if s.entity_id in canonical]
+    decide(kept, config)
+    return kept
 
 
 async def _resolve_group(
@@ -363,6 +394,7 @@ async def _resolve_group(
             )
             scored.append(score_candidate(mi, ci, config))
         decide(scored, config)
+        scored = await _drop_provisional_if_canonical(session, scored, config)
 
     plan = _plan(group, scored, config)
     live = sorted((s for s in scored if not s.vetoed), key=lambda s: s.score, reverse=True)
@@ -478,6 +510,38 @@ async def _reconcile_resolved_name_groups(session: AsyncSession, dataset_id: str
     return result.rowcount or 0
 
 
+_APPLY_CONFIRMED_SQL = """
+WITH decided AS (
+    SELECT em.normalized_value, e.entity_type, min(em.entity_id) AS entity_id
+    FROM entity_match em JOIN entity e ON e.id = em.entity_id
+    WHERE em.dataset_id = :ds AND em.mention_id IS NULL AND em.provisional_entity_id IS NULL
+      AND em.normalized_value IS NOT NULL AND em.status = 'CONFIRMED'
+    GROUP BY em.normalized_value, e.entity_type
+    HAVING count(DISTINCT em.entity_id) = 1
+)
+UPDATE mention m
+SET entity_id = d.entity_id
+FROM decided d
+WHERE m.dataset_id = :ds AND m.entity_id IS NULL AND m.entity_attribute = 'name'
+  AND m.normalized_value = d.normalized_value
+  AND (m.entity_type IS NULL OR m.entity_type = d.entity_type)
+"""
+
+
+async def _apply_confirmed_name_groups(session: AsyncSession, dataset_id: str) -> int:
+    """Attach unresolved name mentions to the entity their name group was already confirmed to.
+
+    Group-level decisions are keyed by name, not mention, so they outlive a
+    re-extraction (`reset-entities` / a new extractor run) -- without this the
+    fresh mentions would sit unresolved, or be re-queued, despite an analyst
+    (or an earlier auto pass) having already decided them. A name confirmed to
+    more than one same-typed entity is ambiguous and left to normal scoring.
+    """
+    result = await session.execute(text(_APPLY_CONFIRMED_SQL), {"ds": dataset_id})
+    await session.commit()
+    return result.rowcount or 0
+
+
 async def _resolve_group_isolated(engine, group: dict, **kw) -> Counter:
     """Run `_resolve_group` on its own `AsyncSession` (for the concurrent path).
 
@@ -527,6 +591,7 @@ async def resolve_entities_workflow(
     entity_repo = PostgresEntityRepository(session=session)
     ematch_repo = PostgresEntityMatchRepository(session=session)
 
+    decisions_applied = await _apply_confirmed_name_groups(session, dataset_id)
     groups = [
         g
         for g in await mention_repo.unresolved_name_groups(dataset_id=dataset_id, entity_types=_NAME_TYPES)
@@ -573,6 +638,7 @@ async def resolve_entities_workflow(
     closed = await _reconcile_resolved_name_groups(session, dataset_id)
 
     counts = {
+        "decisions_applied": decisions_applied,
         "names_auto_resolved": totals["names_auto_resolved"],
         "names_in_review": totals["names_in_review"],
         "entities_created": totals["entities_created"],

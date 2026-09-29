@@ -38,6 +38,7 @@ from cipher.schemas._base.exceptions import EntityAlreadyExistsError, EntityNotF
 from cipher.utils.fastapi.health import ServiceHealthStatus, service_health
 from cipher.utils.fastapi.info import ServiceInfo, get_package_info
 from cipher.utils.fastapi.middleware import (
+    QueryCaseMiddleware,
     entity_exists_handler,
     entity_not_found_handler,
     log_middleware,
@@ -93,6 +94,7 @@ app = FastAPIOffline(
     lifespan=lifespan,
 )
 app.add_middleware(BaseHTTPMiddleware, dispatch=log_middleware)
+app.add_middleware(QueryCaseMiddleware)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(EntityAlreadyExistsError, entity_exists_handler)
 app.add_exception_handler(EntityNotFoundError, entity_not_found_handler)

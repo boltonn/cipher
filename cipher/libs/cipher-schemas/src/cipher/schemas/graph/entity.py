@@ -8,19 +8,23 @@ Type-specific detail lives in a 1:1 detail row (`organization`, `location`,
 from datetime import date, datetime
 from enum import StrEnum
 
-from pydantic import Field
+from pydantic import Field, SerializationInfo, computed_field, field_serializer
 
-from cipher.schemas._base.base import BaseModel
+from cipher.schemas._base.base import BaseModel, camelize_keys
 from cipher.schemas._base.common import PageParams, PaginatedResponse, SortOrder
 from cipher.schemas.content.message import TEXT_EMBEDDING_DIMENSION
 from cipher.schemas.graph.mention import Mention
 from cipher.schemas.graph.ontology import EntitySource, EntityType, RelationshipType, SelectorSubtype, SelectorType
+
+# Types the resolver can mint a provisional entity for (and `dedupe-entities` merges).
+NAME_ENTITY_TYPES = frozenset({EntityType.PERSON, EntityType.ORGANIZATION, EntityType.LOCATION})
 
 
 class EntitySortField(StrEnum):
     DISPLAY_NAME = "display_name"
     DATE_CREATED = "date_created"
     DATE_UPDATED = "date_updated"
+    MENTION_COUNT = "mention_count"
 
 
 class EntityBase(BaseModel):
@@ -66,6 +70,7 @@ class Entity(EntityBase):
     id: str
     display_name_normalized: str = Field(description="Case/diacritic-folded display_name for fuzzy match")
     person_id: str | None = Field(default=None, description="Bridge to the legacy person table, if any")
+    location_id: str | None = Field(default=None, description="Bridge to the location table, if any")
     selector_type: SelectorType | None = Field(
         default=None, description="Broad selector family; only set for entity_type=selector"
     )
@@ -76,6 +81,16 @@ class Entity(EntityBase):
     date_updated: datetime
 
     model_config = {"from_attributes": True}
+
+    @computed_field
+    @property
+    def is_provisional(self) -> bool:
+        """Minted by the resolver, not yet merged or promoted (mirrors SQL `is_canonical_entity`)."""
+        return (
+            self.entity_type in NAME_ENTITY_TYPES
+            and self.source != EntitySource.MANUAL
+            and not (self.person_id or self.location_id)
+        )
 
 
 class EntitySummary(BaseModel):
@@ -117,10 +132,21 @@ class EntitySearchResult(EntitySummary):
     score: float = Field(ge=0, le=1, description="Blended match confidence")
 
 
+class EntityListItem(Entity):
+    """An entity row in the dataset table, with the evidence behind it and its open review work."""
+
+    mention_count: int = Field(default=0, description="Mentions resolved to this entity in the dataset")
+    file_count: int = Field(default=0, description="Distinct files those mentions are in")
+    relationship_count: int = Field(default=0, description="Edges touching this entity")
+    pending_match_count: int = Field(
+        default=0, description="Pending entity_match rows naming this entity (Resolve queue + merge candidates)"
+    )
+
+
 class PaginatedEntitiesResponse(PaginatedResponse):
     """Paginated response for entities."""
 
-    data: list[Entity] = Field(description="List of entities")
+    data: list[EntityListItem] = Field(description="List of entities")
 
 
 class BreakdownItem(BaseModel):
@@ -219,3 +245,10 @@ class EntityProfile(BaseModel):
     selector_total: int = Field(default=0, description="Total linked selector entities")
     top_mentions: list[Mention] = Field(default_factory=list, description="A few representative mentions")
     face_ids: list[str] = Field(default_factory=list, description="Faces linked via the person bridge")
+
+    @field_serializer("detail")
+    def _camel_detail(self, detail: dict | None, info: SerializationInfo) -> dict | None:
+        return camelize_keys(detail) if detail is not None and info.by_alias else detail
+
+
+

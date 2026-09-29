@@ -17,7 +17,9 @@ Two passes per file, both writing `mention` rows that are already resolved to a
 
 Re-runnable: `queue_enrichments_by_filter` only queues files without a
 SELECTOR_EXTRACTION row, and a completed row is never revisited, so a second
-run is a no-op until `reset-entities` clears them.
+run is a no-op until `reset-entities` clears them. If the enrichment rows are
+cleared without the mentions, a pass that already wrote mentions for a file is
+skipped rather than duplicated (which would also discard Review decisions).
 """
 
 from typing import TYPE_CHECKING
@@ -118,7 +120,10 @@ async def _extract_file_selectors(
     mention_repo = PostgresMentionRepository(session=session)
     location_repo = PostgresLocationRepository(session=session)
     written = 0
-    if isinstance(extracted.metadata, EmailMetadata):
+    has_header_mentions = await mention_repo.has_extractor_mentions(
+        mentioned_id=extracted.id, extractor=_HEADER_EXTRACTOR
+    )
+    if isinstance(extracted.metadata, EmailMetadata) and not has_header_mentions:
         written += await _extract_email_selectors(
             dataset_id=dataset_id,
             file_id=file_id,
@@ -127,6 +132,8 @@ async def _extract_file_selectors(
             mention_repo=mention_repo,
             selector_cache=selector_cache,
         )
+    if await mention_repo.has_extractor_mentions(mentioned_id=extracted.id, extractor=_TEXT_EXTRACTOR):
+        return written
     written += await _extract_text_selectors(
         dataset_id=dataset_id,
         file_id=file_id,

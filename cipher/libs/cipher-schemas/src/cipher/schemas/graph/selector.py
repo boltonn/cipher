@@ -80,3 +80,21 @@ class SelectorRegion(BaseModel):
 
     code: str = Field(description="ISO-3166-1 alpha-2 country code")
     calling_code: int = Field(description="ITU E.164 country calling code, e.g. 1 for US")
+
+
+class SelectorOwner(BaseModel):
+    """An entity a selector is linked to by `has_selector`, and how that link was made."""
+
+    entity_id: str
+    display_name: str
+    source: str = Field(description="How the link was made, e.g. 'manual' or 'selector_inference'")
+
+
+class SelectorEvidence(BaseModel):
+    """What the data says about who uses a selector -- the basis for linking it to someone."""
+
+    entity_id: str = Field(description="The selector entity, e.g. an email address node")
+    display_name: str
+    email_count: int = Field(default=0, description="Emails with this address in a header")
+    names: list[str] = Field(default_factory=list, description="Display names seen next to it in headers")
+    linked_to: list[SelectorOwner] = Field(default_factory=list)

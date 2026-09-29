@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 from sqlalchemy import Float, asc, cast, delete, desc, exists, func, literal, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, defer
@@ -11,6 +13,7 @@ from cipher.schemas._base.common import SortOrder, UriResponse
 from cipher.schemas._base.exceptions import ValidationError
 from cipher.schemas.identity.face import (
     DEFAULT_FACE_MATCH_SIMILARITY,
+    DEFAULT_FACE_REJECT_SIMILARITY,
     BaseFaceSearchParameters,
     Face,
     FaceAssignment,
@@ -29,6 +32,7 @@ from cipher.schemas.identity.face import (
 from cipher.schemas.identity.face_match import FaceMatchStatus
 
 MAX_REPRESENTATIVE_FACES_PER_PERSON = 10
+MAX_AUTO_REJECT_NEIGHBOURS = 1000
 
 
 class PostgresFaceRepository:
@@ -142,6 +146,11 @@ class PostgresFaceRepository:
                 assignment_confidence=assignment.assignment_confidence if assignment.person_id else None,
                 is_representative=False,
                 is_primary=False,
+                **(
+                    dict(date_rejected=None, rejection_method=None, rejection_confidence=None)
+                    if assignment.person_id
+                    else {}
+                ),
             )
             .returning(FaceTable)
         )
@@ -224,6 +233,156 @@ class PostgresFaceRepository:
         await self.session.commit()
         return face
 
+    # --- Rejection ("not a face") -------------------------------------------
+    #
+    # Manually rejected faces double as negative exemplars: any unassigned face
+    # close enough to one (another photo of the same cat) is auto-rejected,
+    # flagged `automatic` with its similarity so an analyst can see why and undo.
+    # Auto-rejected faces never act as exemplars themselves, so it can't drift.
+
+    async def _reject_pending_matches(self, face_ids: list[str], reviewed_by: str | None) -> None:
+        await self.session.execute(
+            update(FaceMatchTable)
+            .where(FaceMatchTable.face_id.in_(face_ids), FaceMatchTable.status == FaceMatchStatus.PENDING)
+            .values(
+                status=FaceMatchStatus.REJECTED,
+                reviewed_by=reviewed_by,
+                reviewed_at=datetime.now(UTC),
+                review_note="not a face",
+            )
+        )
+
+    async def reject_faces(self, face_ids: list[str], *, reviewed_by: str | None = None) -> int:
+        """Mark faces not-a-face by hand: unassigns them and rejects their pending matches."""
+        result = await self.session.execute(
+            update(FaceTable)
+            .where(FaceTable.id.in_(face_ids))
+            .values(
+                person_id=None,
+                assignment_method=None,
+                assignment_confidence=None,
+                is_representative=False,
+                is_primary=False,
+                date_rejected=datetime.now(UTC),
+                rejection_method=FaceAssignmentMethod.MANUAL,
+                rejection_confidence=None,
+            )
+        )
+        await self._reject_pending_matches(face_ids, reviewed_by)
+        await self.session.commit()
+        return result.rowcount or 0
+
+    async def unreject_faces(
+        self, face_ids: list[str], *, min_similarity: float = DEFAULT_FACE_REJECT_SIMILARITY
+    ) -> int:
+        """Clear not-a-face on these faces, then release auto-rejections nothing supports any more."""
+        result = await self.session.execute(
+            update(FaceTable)
+            .where(FaceTable.id.in_(face_ids), FaceTable.date_rejected.is_not(None))
+            .values(date_rejected=None, rejection_method=None, rejection_confidence=None)
+        )
+        await self.session.commit()
+        return (result.rowcount or 0) + await self.release_unsupported_auto_rejections(min_similarity=min_similarity)
+
+    @staticmethod
+    def _manual_exemplars():
+        return select(FaceTable.id.label("id"), FaceTable.embedding.label("embedding")).where(
+            FaceTable.rejection_method == FaceAssignmentMethod.MANUAL,
+            FaceTable.date_rejected.is_not(None),
+            FaceTable.embedding.is_not(None),
+        )
+
+    async def release_unsupported_auto_rejections(
+        self, *, min_similarity: float = DEFAULT_FACE_REJECT_SIMILARITY
+    ) -> int:
+        """Un-reject automatic rejections no longer within `min_similarity` of any manual exemplar."""
+        exemplars = self._manual_exemplars().subquery("ex")
+        supported = exists(
+            select(literal(1)).where(-FaceTable.embedding.max_inner_product(exemplars.c.embedding) >= min_similarity)
+        )
+        result = await self.session.execute(
+            update(FaceTable)
+            .where(FaceTable.rejection_method == FaceAssignmentMethod.AUTOMATIC, ~supported)
+            .values(date_rejected=None, rejection_method=None, rejection_confidence=None)
+        )
+        await self.session.commit()
+        return result.rowcount or 0
+
+    async def auto_reject_similar(
+        self,
+        *,
+        exemplar_ids: list[str] | None = None,
+        image_ids: list[str] | None = None,
+        min_similarity: float = DEFAULT_FACE_REJECT_SIMILARITY,
+    ) -> list[str]:
+        """Auto-reject unassigned faces within `min_similarity` of a manually rejected face.
+
+        `image_ids` checks just the faces in those images against every exemplar
+        (brute force -- new detections vs. a small exemplar set). Otherwise each
+        exemplar (`exemplar_ids`, or all of them) walks the HNSW index for its
+        neighbours. Never touches assigned or already-rejected faces. Returns
+        the ids of the faces rejected.
+        """
+        candidate_filters = [
+            FaceTable.person_id.is_(None),
+            FaceTable.date_rejected.is_(None),
+            FaceTable.embedding.is_not(None),
+        ]
+        exemplar_q = self._manual_exemplars()
+        if exemplar_ids is not None:
+            exemplar_q = exemplar_q.where(FaceTable.id.in_(exemplar_ids))
+        exemplars = exemplar_q.subquery("ex")
+
+        if image_ids is not None:
+            if not image_ids:
+                return []
+            sim = func.max(-FaceTable.embedding.max_inner_product(exemplars.c.embedding))
+            stmt = (
+                select(FaceTable.id, sim)
+                .select_from(FaceTable)
+                .join(exemplars, literal(True))
+                .where(*candidate_filters, FaceTable.image_id.in_(image_ids))
+                .group_by(FaceTable.id)
+                .having(sim >= min_similarity)
+            )
+        else:
+            await self.session.execute(text("SET LOCAL hnsw.iterative_scan = relaxed_order"))
+            distance = FaceTable.embedding.max_inner_product(exemplars.c.embedding)
+            neighbours = (
+                select(FaceTable.id.label("id"), (-distance).label("sim"))
+                .where(*candidate_filters, distance <= -min_similarity)
+                .order_by(asc(distance))
+                .limit(MAX_AUTO_REJECT_NEIGHBOURS)
+                .lateral("nn")
+            )
+            stmt = (
+                select(neighbours.c.id, func.max(neighbours.c.sim))
+                .select_from(exemplars)
+                .join(neighbours, literal(True))
+                .group_by(neighbours.c.id)
+            )
+
+        hits = (await self.session.execute(stmt)).all()
+        if not hits:
+            return []
+        now = datetime.now(UTC)
+        await self.session.execute(
+            update(FaceTable),
+            [
+                {
+                    "id": face_id,
+                    "date_rejected": now,
+                    "rejection_method": FaceAssignmentMethod.AUTOMATIC,
+                    "rejection_confidence": max(0.0, min(1.0, float(similarity))),
+                }
+                for face_id, similarity in hits
+            ],
+        )
+        rejected_ids = [face_id for face_id, _ in hits]
+        await self._reject_pending_matches(rejected_ids, reviewed_by=None)
+        await self.session.commit()
+        return rejected_ids
+
     async def delete_face(self, face_id: str) -> bool:
         """Delete a face by ID."""
         result = await self.session.execute(delete(FaceTable).where(FaceTable.id == face_id))
@@ -240,7 +399,9 @@ class PostgresFaceRepository:
         candidate_person_name: str | None,
     ) -> FacePublic:
         """Build a FacePublic from a Face row plus its joined file uri and status inputs."""
-        if face.person_id and is_verified:
+        if face.date_rejected:
+            status = FaceStatus.REJECTED
+        elif face.person_id and is_verified:
             status = FaceStatus.VERIFIED
         elif face.person_id or candidate_person_id:
             status = FaceStatus.MATCHED
@@ -315,7 +476,7 @@ class PostgresFaceRepository:
         return func.least(width_px, height_px)
 
     def _filters(self, request: BaseFaceSearchParameters) -> list:
-        filters = []
+        filters = [FaceTable.date_rejected.is_not(None) if request.rejected_only else FaceTable.date_rejected.is_(None)]
         if request.image_id:
             filters.append(FaceTable.image_id == request.image_id)
         if request.person_id:
@@ -489,6 +650,7 @@ class PostgresFaceRepository:
         distance_expr = FaceTable.embedding.max_inner_product(embedding)
         where = [
             FaceTable.person_id.is_(None),
+            FaceTable.date_rejected.is_(None),
             FaceTable.id != face_id,
             distance_expr <= -min_similarity,
         ]
@@ -545,7 +707,7 @@ class PostgresFaceRepository:
             )
 
         anchor_q = select(anchor_face.id.label("id"), anchor_face.embedding.label("embedding")).where(
-            anchor_face.person_id.is_(None), anchor_face.embedding.is_not(None)
+            anchor_face.person_id.is_(None), anchor_face.date_rejected.is_(None), anchor_face.embedding.is_not(None)
         )
         if dataset_id:
             anchor_q = anchor_q.where(_in_dataset(anchor_face))
@@ -554,6 +716,7 @@ class PostgresFaceRepository:
         distance = neighbour.embedding.max_inner_product(anchor_q.c.embedding)
         neighbour_q = select(neighbour.id.label("id"), (-distance).label("sim")).where(
             neighbour.person_id.is_(None),
+            neighbour.date_rejected.is_(None),
             neighbour.embedding.is_not(None),
             neighbour.id != anchor_q.c.id,
         )

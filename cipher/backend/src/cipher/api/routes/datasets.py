@@ -115,14 +115,17 @@ async def get_dataset_enrichment_estimates(
     file_datastore: FileDatastoreDep,
     enrichment_datastore: EnrichmentDatastoreDep,
     run_datastore: EnrichmentRunDatastoreDep,
-    device: RunDevice = RunDevice.CPU,
+    accelerator: RunDevice = RunDevice.CUDA,
 ):
-    """Per-enrichment ETA from the staged inventory + measured throughput, for the request wizard."""
+    """Per-enrichment ETA from the staged inventory + measured throughput, each on the device it runs on.
+
+    `accelerator` only applies to analytics that accept `--device` (text/image embedding, face detection).
+    """
     if await dataset_datastore.get_dataset_by_id(dataset_id=id) is None:
         raise HTTPException(status_code=404, detail=f"Dataset not found: {id}")
     return await build_dataset_estimates(
         dataset_id=id,
-        device=device,
+        accelerator=accelerator,
         dataset_repo=dataset_datastore,
         file_repo=file_datastore,
         enrichment_repo=enrichment_datastore,

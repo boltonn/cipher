@@ -20,16 +20,21 @@ from cipher.api.agent.citations import (
     email_count_citation,
     entity_citation,
     mention_citation,
+    merge_proposal_citation,
     person_citation,
+    selector_link_proposal_citation,
     top_chunk,
 )
 from cipher.api.agent.deps import ChatDeps
+from cipher.names import AddressAgreement, address_name_agreement
+from cipher.schemas._base.review import ReviewStatus
 from cipher.schemas.content.email import EmailCountGroupBy, EmailCountRequest
 from cipher.schemas.content.search import ChunkFilters, GraphExpand, RetrievalMode, RetrievalQuery
 from cipher.schemas.graph.entity import Entity
+from cipher.schemas.graph.entity_match import EntityMatchCreate, EntityMatchMethod
 from cipher.schemas.graph.entity_relationship import TopConnectionsRequest, TraversalDirection
 from cipher.schemas.graph.mention import MentionSearchParameters
-from cipher.schemas.graph.ontology import EntityType, RelationshipType, SelectorType
+from cipher.schemas.graph.ontology import EntityType, RelationshipType, SelectorType, WeightedRelationshipType
 from cipher.schemas.identity.person import PersonSearchParameters
 from cipher.schemas.ingestion.dataset import DatasetsRequest
 
@@ -61,9 +66,8 @@ async def search_passages(
     ctx: RunContext[ChatDeps],
     query: str = "",
     mode: RetrievalMode = RetrievalMode.HYBRID,
-    entity_id: str | None = None,
+    entity_ids: list[str] | None = None,
     connected_hops: int = 0,
-    relationship_type: RelationshipType | None = None,
     selector_type: SelectorType | None = None,
     sent_from: list[str] | None = None,
     sent_to: list[str] | None = None,
@@ -83,26 +87,26 @@ async def search_passages(
     - `mode="hybrid"` -- both fused; the default.
     - `query=""` browses whatever the filters match, newest first.
 
-    Knowledge-graph filters:
-    - `entity_id` -- only passages mentioning this entity (a person/org/location, or a
-      selector such as an email address or phone). Includes mentions of the entity's own
-      selectors. Get ids from `find_entity`; a raw email/phone value also works.
-    - `connected_hops` (0-3) -- also include passages mentioning entities connected to
-      `entity_id` through the graph: 1 = direct contacts/affiliations, 2-3 = further out.
-      `relationship_type` limits which edges are followed (e.g. `emailed`).
+    Knowledge-graph filter:
+    - `entity_ids` -- ONE person/org/location/selector (ids from `find_entity`, or a raw
+      email/phone), plus any extra addresses the user confirmed are the same identity.
+      Keeps passages that mention it (or its linked addresses/phones) in the text, or
+      that are in an email it sent or received.
+    - `connected_hops` (0-3) -- widen that to everyone within N relationship hops
+      (1 = the people it emails / works with / is family of). Needs `entity_ids`.
     - `selector_type` -- only passages containing that kind of identifier ("phone",
       "crypto_address", "social_handle", ...).
 
     Email metadata filters (entity ids or raw email addresses; a person matches through
-    their addresses):
-    - `sent_from` -- the email's sender; `sent_to` -- to/cc/bcc recipients.
-    - `participants` -- in any header role; several = emails between all of them.
+    their linked addresses and their resolved header name):
+    - `sent_from` -- sent by any of these; `sent_to` -- to/cc/bcc any of these.
+    - `participants` -- ALL of these on the email, in any role ("between X and Y").
     - `date_from` / `date_to` -- inclusive ISO dates (YYYY-MM-DD) on when an email was
       sent or a document authored.
     - `filetype_group` -- "email" or "document" only.
 
     For counting ("who does X email most", "how many emails per month") use
-    `count_emails` instead -- this returns passages, not totals.
+    `count_emails` / `top_connections` instead -- this returns passages, not totals.
     """
     filters = ChunkFilters(
         dataset_id=ctx.deps.dataset_id,
@@ -115,16 +119,14 @@ async def search_passages(
         filetype_group=filetype_group,
     )
     graph_expand = None
-    if entity_id:
-        hops = max(0, min(connected_hops, _MAX_HOPS))
-        # One extra hop always crosses `has_selector`, so a person's own addresses count
-        # as "the entity", and their contacts (reached via those addresses) as hop 1.
+    if entity_ids:
+        hops = max(0, min(connected_hops, _MAX_HOPS - 1))
+        # The first hop always crosses `has_selector` (a person -> their addresses/phones),
+        # so hop 0 = the identity itself; each further hop follows any meaningful edge.
         graph_expand = GraphExpand(
-            seed_entity_id=await _entity_ref(ctx, entity_id),
-            max_depth=min(hops + 1, _MAX_HOPS),
-            relationship_types=[RelationshipType.HAS_SELECTOR, *([relationship_type] if relationship_type else [])]
-            if hops == 0 or relationship_type
-            else None,
+            seed_entity_ids=await _entity_refs(ctx, entity_ids),
+            max_depth=hops + 1,
+            relationship_types=[RelationshipType.HAS_SELECTOR] if hops == 0 else None,
         )
 
     text = query.strip()
@@ -188,7 +190,12 @@ async def count_emails(
             limit=max(1, min(limit, 100)),
         )
     )
-    out: dict = {"totalEmails": counts.total_emails, "groupBy": counts.group_by}
+    out: dict = {
+        "totalEmails": counts.total_emails,
+        "groupBy": counts.group_by,
+        "note": "Answer with the top 3-5 of THESE citations as a ranked list: name -- email count "
+        "(date span). List nothing that isn't in this result.",
+    }
     if group_by in (EmailCountGroupBy.SENDER, EmailCountGroupBy.RECIPIENT, EmailCountGroupBy.CORRESPONDENT):
         out["citations"] = [email_count_citation(b) for b in counts.buckets]
     else:
@@ -227,15 +234,20 @@ async def find_entity(
     selector_value: str | None = None,
     entity_type: EntityType | None = None,
     limit: int = 5,
-) -> list[dict]:
+) -> dict:
     """Resolve a name or an identifier to knowledge-graph entities.
 
     `name` fuzzy-matches people, organizations, locations and selectors by display
     name. `selector_value` is an email / phone / handle / crypto address / passport /
     ... as written -- it is normalized for you (phones match best in +E.164). Each
-    result's `targetId` is the entity id for `search_passages`, `count_emails`,
+    `citations` item's `targetId` is the entity id for `search_passages`, `count_emails`,
     `top_connections`, `entity_profile`, `entity_mentions` or `related_entities`. Searches the selected
     dataset, or every dataset when none is selected.
+
+    For a `name`, `otherAddresses` lists email addresses seen in headers under a similar
+    display name that don't belong to the best match (the first citation): `entityId`,
+    `address`, `names`, `emailCount`, `linkedTo` (owning entity, or null if unlinked). The
+    person may not be fully resolved yet, or may be resolved to the wrong entity.
     """
     if not name and not selector_value:
         raise ModelRetry("Provide either `name` or `selector_value`.")
@@ -253,14 +265,118 @@ async def find_entity(
             if full is not None:
                 found.append(full)
 
-    seen: set[str] = set()
-    out: list[dict] = []
-    for entity in found:
-        if entity.id in seen:
-            continue
-        seen.add(entity.id)
-        out.append(entity_citation(entity))
-    return out[:limit]
+    unique = list({entity.id: entity for entity in found}.values())[:limit]
+    other_addresses = (
+        await ctx.deps.mentions.header_addresses_for_name(
+            name=name, dataset_id=dataset_id, exclude_owner=unique[0].id if unique else None
+        )
+        if name
+        else []
+    )
+    # An address that spells someone else ("nbolton04" for Edmond) isn't a lead for this name.
+    other_addresses = [
+        row
+        for row in other_addresses
+        if address_name_agreement(row["address"], [name, *(e.display_name for e in unique[:1])])
+        != AddressAgreement.CONFLICT
+    ]
+    out: dict = {"citations": [entity_citation(entity) for entity in unique], "otherAddresses": other_addresses}
+    if other_addresses:
+        # Small models follow an in-result hint far more reliably than the system prompt.
+        out["note"] = (
+            "If the user already said which addresses belong to whom, just do that -- don't ask about these. "
+            "Otherwise, after answering, list otherAddresses for the user (address, email count, linked to) and ask "
+            "whether to include them; flag any linked to a different person as a possible resolution error. "
+            "If the user says one is theirs for good, use propose_selector_links (it only proposes)."
+        )
+    return out
+
+
+async def propose_selector_links(
+    ctx: RunContext[ChatDeps], entity_id: str, address_ids: list[str], reason: str
+) -> dict:
+    """Suggest that email addresses (or other selectors) belong to an entity. Changes NOTHING.
+
+    Returns a review link to the entity's page, where the analyst sees each address's
+    evidence (email count, names used, who it's linked to now) and confirms or dismisses
+    it. Use it after the user agrees an address is someone's -- e.g. `otherAddresses`
+    from `find_entity` -- or asks to fix a wrong link. `address_ids` are the addresses'
+    entity ids (or raw addresses); `reason` is one sentence of evidence for the analyst.
+    """
+    entity = await ctx.deps.entities.get_entity(await _entity_ref(ctx, entity_id))
+    if entity is None:
+        raise ModelRetry(f"No entity {entity_id!r}. Look it up with `find_entity` first.")
+    if entity.entity_type not in (EntityType.PERSON, EntityType.ORGANIZATION):
+        raise ModelRetry(
+            f"`entity_id` must be the person or organization that owns the addresses, not a "
+            f"{entity.entity_type} ({entity.display_name}). Find the owner with find_entity(name=...) first."
+        )
+    selector_ids = await _entity_refs(ctx, address_ids) or []
+    if not selector_ids:
+        raise ModelRetry("Pass at least one address id in `address_ids`.")
+    return {
+        "citations": [selector_link_proposal_citation(entity, selector_ids, reason)],
+        "note": "Nothing has been changed. Tell the user to use the 'Review & confirm' button below your "
+        "answer to confirm or dismiss each address. Don't write the link or any URL yourself.",
+    }
+
+
+def _is_curated(entity: Entity) -> bool:
+    """An analyst-curated identity (person bridge / verified / dataset-agnostic) -- the one that survives a merge."""
+    return bool(entity.person_id or entity.is_verified or entity.dataset_id is None)
+
+
+async def propose_entity_merge(ctx: RunContext[ChatDeps], entity_a: str, entity_b: str, reason: str) -> dict:
+    """Suggest that two entities are the same real-world person/org. Changes NOTHING.
+
+    Files (or finds) a pending merge proposal and returns a review link to the duplicate's
+    page, where the analyst merges it or keeps them separate. The curated entity (verified
+    or a Persons record) is kept and the other folds into it. Pass entity ids from
+    `find_entity`; `reason` is one sentence of evidence for the analyst.
+    """
+    a = await ctx.deps.entities.get_entity(await _entity_ref(ctx, entity_a))
+    b = await ctx.deps.entities.get_entity(await _entity_ref(ctx, entity_b))
+    if a is None or b is None:
+        raise ModelRetry("Both entities must exist -- look them up with `find_entity` first.")
+    if a.id == b.id:
+        raise ModelRetry("Those are the same entity already.")
+    if a.entity_type != b.entity_type or a.entity_type not in (EntityType.PERSON, EntityType.ORGANIZATION):
+        raise ModelRetry("Only two people or two organizations can be merged.")
+    if _is_curated(a) and _is_curated(b):
+        return {
+            "note": f"{a.display_name} and {b.display_name} are both curated identities; merging would delete "
+            "one. Tell the user to combine them in Persons instead -- nothing was proposed."
+        }
+    keep, duplicate = (a, b) if _is_curated(a) or not _is_curated(b) else (b, a)
+    dataset_id = duplicate.dataset_id or ctx.deps.dataset_id
+    if dataset_id is None:
+        raise ModelRetry("Select a dataset first -- merge proposals are reviewed per dataset.")
+
+    existing = next(
+        (m for m in await ctx.deps.entity_matches.list_for_provisional(provisional_entity_id=duplicate.id)
+         if m.entity_id == keep.id),
+        None,
+    )  # fmt: skip
+    if existing is None:
+        await ctx.deps.entity_matches.create_merge_match(
+            EntityMatchCreate(
+                dataset_id=dataset_id,
+                entity_id=keep.id,
+                provisional_entity_id=duplicate.id,
+                similarity_score=0.5,
+                match_method=EntityMatchMethod.ASSISTANT,
+            )
+        )
+    elif existing.status != ReviewStatus.PENDING:
+        return {
+            "note": f"An analyst already {existing.status} merging {duplicate.display_name} into "
+            f"{keep.display_name}. Tell the user; nothing was proposed."
+        }
+    return {
+        "citations": [merge_proposal_citation(duplicate, keep, reason)],
+        "note": "Nothing has been changed. Tell the user to use the 'Review & confirm' button below your answer "
+        "to merge or keep them separate. Don't write the link or any URL yourself.",
+    }
 
 
 async def entity_profile(ctx: RunContext[ChatDeps], entity_id: str) -> dict:
@@ -298,8 +414,8 @@ async def related_entities(
     Answers who it communicates with, works for, is a member of, or shares an
     identifier with.
     `depth=1` returns direct neighbours; up to 3 walks further out. Filter with
-    `relationship_type` (e.g. `emailed` for sender -> recipient email links,
-    `employed_by`/`member_of` for affiliation). Returns `{nodes, edges}`. To rank
+    `relationship_type` (any type in the ontology in your instructions, e.g. `emailed`,
+    `employed_by`, `member_of`). Returns `{nodes, edges}`. To rank
     the strongest connections ("who does X talk to most"), use `top_connections`.
     """
     types = [relationship_type] if relationship_type else None
@@ -313,7 +429,7 @@ async def related_entities(
 async def top_connections(
     ctx: RunContext[ChatDeps],
     entity_ids: list[str],
-    relationship_type: RelationshipType | None = None,
+    relationship_type: WeightedRelationshipType | None = None,
     direction: TraversalDirection = TraversalDirection.BOTH,
     limit: int = 15,
 ) -> dict:
@@ -321,17 +437,17 @@ async def top_connections(
 
     `entity_ids`: ids from `find_entity`/`find_person`, or raw emails / phones / handles. Pass a
     person (their resolved addresses are included) and/or the bare selectors themselves -- it
-    works before entity resolution. Filter with `relationship_type`: `emailed` (weight =
-    emails, directed sender -> recipient), `appears_in_photo_with` (shared photos), ...;
-    default ranks every weighted type. `direction` (directed types like `emailed`): "out" = the
-    seeds sent, "in" = they received, "both" = either. A neighbour's addresses are merged into the one person/org
-    that owns them when known (`via` lists them). Weights are all-time totals -- for date ranges or
-    volume over time use `count_emails`.
+    works before entity resolution. `relationship_type` picks one of the rankable types -- the
+    ontology in your instructions marks each with what its [weight] counts and whether it is
+    directed (->); omit it to rank all of them together. `direction` applies to directed types:
+    "out" = the seeds are the source, "in" = the destination, "both" = either. A neighbour's
+    addresses are merged into the one person/org that owns them when known (`via` lists them).
+    Weights are all-time totals -- for date ranges or volume over time use `count_emails`.
     """
     result = await ctx.deps.graph.top_connections(
         TopConnectionsRequest(
             entity_ids=await _entity_refs(ctx, entity_ids) or [],
-            relationship_types=[relationship_type] if relationship_type else None,
+            relationship_types=[RelationshipType(relationship_type)] if relationship_type else None,
             direction=direction,
             dataset_id=ctx.deps.dataset_id,
             limit=max(1, min(limit, 100)),
@@ -411,5 +527,7 @@ ALL_TOOLS = (
     related_entities,
     top_connections,
     explain_entity_resolution,
+    propose_selector_links,
+    propose_entity_merge,
     read_file,
 )

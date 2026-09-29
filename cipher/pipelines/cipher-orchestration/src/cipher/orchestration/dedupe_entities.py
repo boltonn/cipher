@@ -24,7 +24,7 @@ import asyncio
 from collections import Counter
 
 from loguru import logger
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from tqdm import tqdm
 
@@ -32,7 +32,7 @@ from cipher.datastores.postgres.repositories import (
     PostgresEntityMatchRepository,
     PostgresEntityRepository,
 )
-from cipher.datastores.postgres.tables.entity import EntityTable
+from cipher.datastores.postgres.tables.entity import EntityTable, is_canonical_entity
 from cipher.datastores.postgres.tables.mention import MentionTable
 from cipher.orchestration.entity_resolution import (
     CandidateScoringInput,
@@ -80,11 +80,7 @@ async def _canonical_ids(session: AsyncSession, entity_ids: list[str]) -> set[st
         await session.execute(
             select(EntityTable.id).where(
                 EntityTable.id.in_(entity_ids),
-                or_(
-                    EntityTable.person_id.is_not(None),
-                    EntityTable.location_id.is_not(None),
-                    EntityTable.source == EntitySource.MANUAL,
-                ),
+                is_canonical_entity(),
             )
         )
     ).scalars()

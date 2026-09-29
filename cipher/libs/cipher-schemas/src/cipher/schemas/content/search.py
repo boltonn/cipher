@@ -138,15 +138,16 @@ class CorrespondenceFilters(BaseModel):
 
     Each id is an entity id -- a person/organization or an email-address
     selector. A person also matches through the addresses it `has_selector`
-    and through its resolved header display name. Multiple ids in one field
-    are AND-ed (every one must appear in that role), so `participants=[a, b]`
-    means "emails between a and b". Dates are inclusive days, compared against
-    the email's `date_sent` (or a document's `date_content_created`).
+    and through its resolved header display name. `sent_from` / `sent_to` match
+    ANY of their ids (pass a person plus extra addresses confirmed to be theirs);
+    `participants` requires ALL of its ids, so `participants=[a, b]` means
+    "emails between a and b". Dates are inclusive days, compared against the
+    email's `date_sent` (or a document's `date_content_created`).
     """
 
-    sent_from: list[str] | None = Field(default=None, description="Sender (header from / sender) entity ids")
-    sent_to: list[str] | None = Field(default=None, description="Recipient (header to / cc / bcc) entity ids")
-    participants: list[str] | None = Field(default=None, description="Entity ids in any header role")
+    sent_from: list[str] | None = Field(default=None, description="Sender (header from / sender) -- any of")
+    sent_to: list[str] | None = Field(default=None, description="Recipient (header to / cc / bcc) -- any of")
+    participants: list[str] | None = Field(default=None, description="All of these in any header role")
     date_from: date | None = Field(default=None, description="Sent / authored on or after this day")
     date_to: date | None = Field(default=None, description="Sent / authored on or before this day")
 
@@ -240,11 +241,16 @@ class RetrievalMode(StrEnum):
 class GraphExpand(BaseModel):
     """Multi-hop graph-RAG expansion spec.
 
-    Walk the entity graph out from a seed, then keep only chunks that mention
-    some entity in that expansion.
+    Walk the entity graph out from the seeds, then keep only chunks from files that
+    mention some entity in that expansion -- in the text, or as an email's sender /
+    recipient (header participation).
     """
 
-    seed_entity_id: str = Field(description="Entity to expand from")
+    seed_entity_ids: list[str] = Field(
+        min_length=1,
+        description="One identity to expand from: an entity plus any extra ids (e.g. addresses) "
+        "confirmed to be the same person",
+    )
     max_depth: int = Field(1, ge=1, le=3, description="Relationship hops out from the seed")
     min_weight: float = Field(0.0, description="Ignore edges below this weight")
     relationship_types: list[str] | None = Field(

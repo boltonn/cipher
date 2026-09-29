@@ -40,6 +40,7 @@ class EntityMatchMethod(StrEnum):
     LLM = "llm"
     SPLINK = "splink"
     MANUAL = "manual"
+    ASSISTANT = "assistant"  # proposed from chat; still needs an analyst decision
 
 
 class DecisionSource(StrEnum):
@@ -102,7 +103,9 @@ class EntityMatchBatchItem(BaseModel):
 class EntityMatchBatchReview(BaseModel):
     """Resolve many candidates in one call -- the fast bulk-annotation path."""
 
-    reviewed_by: str
+    reviewed_by: str | None = Field(
+        default=None, description="Set server-side from the signed-in user; ignored from clients"
+    )
     decisions: list[EntityMatchBatchItem] = Field(min_length=1, max_length=500)
 
 
@@ -111,7 +114,9 @@ class NameGroupDismissRequest(BaseModel):
 
     dataset_id: str
     normalized_value: str
-    reviewed_by: str
+    reviewed_by: str | None = Field(
+        default=None, description="Set server-side from the signed-in user; ignored from clients"
+    )
     review_note: str | None = None
 
 
@@ -127,6 +132,12 @@ class EntityMatch(ReviewableMixin, EntityMatchBase):
     )
     provisional_name: str | None = Field(
         default=None, description="Display name of `provisional_entity_id` on a merge proposal (read-time only)"
+    )
+    entity_is_provisional: bool | None = Field(
+        default=None, description="`entity_id` is a provisional entity, not a canonical one (read-time only)"
+    )
+    entity_pending_merge_count: int | None = Field(
+        default=None, description="Pending merge proposals filed against a provisional `entity_id` (read-time only)"
     )
 
     model_config = {"from_attributes": True}
@@ -149,6 +160,10 @@ class PaginatedEntityMatchGroupsResponse(PaginatedResponse):
     """Grouped review queue -- one card per name, alternatives nested."""
 
     data: list[EntityMatchGroup] = Field(description="Name groups awaiting review")
+    hidden_provisional_total: int = Field(
+        default=0,
+        description="Name groups left out because their only candidates are provisional (auto-created) entities",
+    )
 
 
 class EntityMergeGroup(BaseModel):
@@ -189,6 +204,9 @@ class EntityMatchSearchParameters(PageParams):
     dataset_id: str | None = None
     status: ReviewStatus | None = Field(default=ReviewStatus.PENDING)
     min_similarity: float | None = Field(default=None, ge=0, le=1)
+    include_provisional_entities: bool = Field(
+        default=True, description="Also list candidates that are provisional entities (grouped queue only)"
+    )
     limit: int = Field(default=10, ge=1, le=100)
     sort_by: MatchSortField = Field(default=MatchSortField.SIMILARITY_SCORE)
 

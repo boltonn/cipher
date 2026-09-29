@@ -59,6 +59,7 @@ def get_async_engine_from_settings() -> AsyncEngine:
         database_url,
         pool_size=settings.postgres.pool_size,
         max_overflow=settings.postgres.max_overflow,
+        pool_pre_ping=True,
     )
     return engine
 

@@ -5,6 +5,11 @@ from pydantic import BaseModel as PydanticBaseModel, ConfigDict, model_validator
 from pydantic.alias_generators import to_camel, to_snake
 
 
+def camelize_keys(data: dict[str, Any]) -> dict[str, Any]:
+    """Top-level keys to camelCase -- for free-form dicts (e.g. a detail row) on the wire."""
+    return {to_camel(k): v for k, v in data.items()}
+
+
 class BaseModel(PydanticBaseModel):
     """Base model for all schemas.
 

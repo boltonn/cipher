@@ -18,6 +18,10 @@ class AsyncNerdModel(NerdModel):
         """Run the token-classification pipeline off the event loop (CPU/GPU bound)."""
         return await run_in_threadpool(self.infer, text, threshold)
 
+    async def infer_batch_async(self, texts: list[str], threshold: float = 0.5) -> list[list[EntitySpan]]:
+        """Packed multi-text inference off the event loop."""
+        return await run_in_threadpool(self.infer_batch, texts, threshold)
+
 
 @asynccontextmanager
 async def model_lifespan(app: FastAPI):
@@ -26,6 +30,8 @@ async def model_lifespan(app: FastAPI):
         model_dir=settings.resolved_model_dir,
         device=settings.model_device or ModelDevice.CPU,
         aggregation_strategy=settings.aggregation_strategy,
+        dtype=settings.model_dtype,
+        max_batch_tokens=settings.max_batch_tokens,
     )
     app.state.nerd_model = model
     logger.info("✅ nerd model ready.")

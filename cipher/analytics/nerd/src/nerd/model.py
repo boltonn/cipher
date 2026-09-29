@@ -21,6 +21,7 @@ ever sees real word boundaries, where the signal is meaningful.
 from __future__ import annotations
 
 import re
+from typing import Literal
 
 from loguru import logger
 
@@ -30,6 +31,8 @@ from nerd.schemas import EntitySpan
 
 _MAX_TOKENS = 512
 _STRIDE = 64
+
+CudaDtype = Literal["float16", "bfloat16", "float32"]
 
 # URLs were never a training label, so the model free-associates on their path
 # segments (query strings, %-encoded words) and emits junk location/org spans.
@@ -49,23 +52,29 @@ class NerdModel:
         model_dir: str,
         device: ModelDevice = ModelDevice.CPU,
         aggregation_strategy: str = "first",
+        dtype: CudaDtype = "float16",
+        max_batch_tokens: int = 16384,
     ):
         import torch
         from transformers import AutoModelForTokenClassification, AutoTokenizer
 
         if aggregation_strategy != "first":
-            raise ValueError(f"NerdModel only implements the 'first' aggregation strategy, got {aggregation_strategy!r}")
+            raise ValueError(
+                f"NerdModel only implements the 'first' aggregation strategy, got {aggregation_strategy!r}"
+            )
 
         self._torch = torch
         self._device = "cuda" if device == ModelDevice.CUDA else "cpu"
+        self._max_batch_tokens = max(max_batch_tokens, _MAX_TOKENS)
         self._tokenizer = AutoTokenizer.from_pretrained(model_dir, use_fast=True)
-        model = AutoModelForTokenClassification.from_pretrained(model_dir)
-        if self._device == "cuda":
-            model = model.half()
+        torch_dtype = getattr(torch, dtype) if self._device == "cuda" else torch.float32
+        model = AutoModelForTokenClassification.from_pretrained(
+            model_dir, dtype=torch_dtype, attn_implementation="sdpa"
+        )
         self._model = model.to(self._device).eval()
         self._id2label: dict[int, str] = self._model.config.id2label
         logger.info(
-            f"✅ nerd model loaded from {model_dir} ({self._device}, "
+            f"✅ nerd model loaded from {model_dir} ({self._device}, {torch_dtype}, "
             f"{len(self._id2label)} tags, offset-decoding)."
         )
 
@@ -182,54 +191,77 @@ class NerdModel:
 
     def infer(self, text: str, threshold: float = 0.5) -> list[EntitySpan]:
         """Predict entity spans over `text`, keeping spans scoring at/above `threshold`."""
-        if not text or not text.strip():
-            return []
+        return self.infer_batch([text], threshold=threshold)[0]
 
+    def _pack(self, lengths: list[int]) -> list[list[int]]:
+        """Group window indices, shortest first, into passes of at most `max_batch_tokens` padded tokens."""
+        batches: list[list[int]] = []
+        for w in sorted(range(len(lengths)), key=lengths.__getitem__):
+            if batches and (len(batches[-1]) + 1) * lengths[w] <= self._max_batch_tokens:
+                batches[-1].append(w)
+            else:
+                batches.append([w])
+        return batches
+
+    def infer_batch(self, texts: list[str], threshold: float = 0.5) -> list[list[EntitySpan]]:
+        """Predict entity spans for many texts, one result list per text.
+
+        Every text's 512-token windows are pooled across texts, length-sorted and
+        packed into shared forward passes, so short texts don't each pay for a
+        near-empty pass. Per-window decoding is identical to a single-text call.
+        """
         torch = self._torch
-        masked = _mask_urls(text)  # same length as `text` -- offsets below still index the original
-        enc = self._tokenizer(
-            masked,
-            return_offsets_mapping=True,
-            return_tensors="pt",
-            truncation=True,
-            max_length=_MAX_TOKENS,
-            stride=_STRIDE,
-            return_overflowing_tokens=True,
-            padding=True,
-        )
-        offset_windows = enc.pop("offset_mapping")
-        enc.pop("overflow_to_sample_mapping", None)
-        model_inputs = {k: v.to(self._device) for k, v in enc.items()}
-
-        with torch.inference_mode():
-            logits = self._model(**model_inputs).logits
-            probs = logits.softmax(-1)
-            conf, pred = probs.max(-1)
-
-        merged: dict[tuple[int, int, str], float] = {}
-        for w in range(pred.shape[0]):
-            offs = [tuple(o) for o in offset_windows[w].tolist()]
-            tags = [self._id2label[int(i)] for i in pred[w].tolist()]
-            scs = conf[w].tolist()
-            word_ids = enc.word_ids(batch_index=w)
-            offs, tags, scs = self._pool_words(offs, tags, scs, word_ids)
-            for start, end, label, score in self._merge(text, offs, tags, scs):
-                key = (start, end, label)
-                if score > merged.get(key, 0.0):
-                    merged[key] = score
-
-        out = [
-            EntitySpan(
-                surface_text=text[start:end],
-                label=normalize_label(label),
-                start_offset=start,
-                end_offset=end,
-                score=float(score),
+        live = [i for i, text in enumerate(texts) if text and text.strip()]
+        merged: list[dict[tuple[int, int, str], float]] = [{} for _ in texts]
+        if live:
+            enc = self._tokenizer(
+                [_mask_urls(texts[i]) for i in live],  # same length -- offsets still index the original
+                return_offsets_mapping=True,
+                truncation=True,
+                max_length=_MAX_TOKENS,
+                stride=_STRIDE,
+                return_overflowing_tokens=True,
             )
-            for (start, end, label), score in sorted(merged.items())
-            if score >= threshold
+            input_ids: list[list[int]] = enc["input_ids"]
+            window_text = [live[s] for s in enc["overflow_to_sample_mapping"]]
+            for batch in self._pack([len(ids) for ids in input_ids]):
+                width = len(input_ids[batch[-1]])
+                ids = torch.full((len(batch), width), self._tokenizer.pad_token_id, dtype=torch.long)
+                mask = torch.zeros((len(batch), width), dtype=torch.long)
+                for row, w in enumerate(batch):
+                    ids[row, : len(input_ids[w])] = torch.tensor(input_ids[w])
+                    mask[row, : len(input_ids[w])] = 1
+                with torch.inference_mode():
+                    logits = self._model(input_ids=ids.to(self._device), attention_mask=mask.to(self._device)).logits
+                    conf, pred = logits.float().softmax(-1).max(-1)
+                conf_rows, pred_rows = conf.cpu().tolist(), pred.cpu().tolist()
+
+                for row, w in enumerate(batch):
+                    n = len(input_ids[w])
+                    text = texts[window_text[w]]
+                    tags = [self._id2label[i] for i in pred_rows[row][:n]]
+                    offs, tags, scs = self._pool_words(
+                        [tuple(o) for o in enc["offset_mapping"][w]], tags, conf_rows[row][:n], enc.word_ids(w)
+                    )
+                    spans = merged[window_text[w]]
+                    for start, end, label, score in self._merge(text, offs, tags, scs):
+                        if score > spans.get((start, end, label), 0.0):
+                            spans[(start, end, label)] = score
+
+        return [
+            [
+                EntitySpan(
+                    surface_text=text[start:end],
+                    label=normalize_label(label),
+                    start_offset=start,
+                    end_offset=end,
+                    score=float(score),
+                )
+                for (start, end, label), score in sorted(spans.items())
+                if score >= threshold
+            ]
+            for text, spans in zip(texts, merged, strict=True)
         ]
-        return out
 
     def unload(self) -> None:
         """Release the model."""

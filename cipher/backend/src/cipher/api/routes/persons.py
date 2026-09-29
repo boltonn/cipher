@@ -3,7 +3,7 @@ from typing import Annotated
 from uuid import uuid4
 
 from face.api.deps import FaceModelDep
-from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile
 from filetyper.models.magic import MagicNumberFilterTyper
 from loguru import logger
 from PIL import Image as PILImage
@@ -417,7 +417,7 @@ async def get_person_representative_faces(id: str, datastore: FaceDatastoreDep):
 async def get_merge_candidates(
     id: str,
     datastore: PersonDatastoreDep,
-    min_similarity: float = 0.5,
+    min_similarity: Annotated[float, Query(alias="minSimilarity")] = 0.5,
     limit: int = 8,
 ) -> list[PersonMergeSuggestion]:
     """Rank other persons by how closely their representative faces match this one's."""

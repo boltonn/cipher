@@ -8,7 +8,7 @@ from cipher.utils.fastapi.middleware import (
     validation_exception_handler,
 )
 from nerd.api.deps import NerdModelDep, model_lifespan, settings
-from nerd.schemas import EntitySpan, NerdRequest
+from nerd.schemas import EntitySpan, NerdBatchRequest, NerdRequest
 
 service_info = get_package_info("nerd")
 
@@ -57,6 +57,12 @@ async def info() -> ServiceInfo:
 async def infer(request: NerdRequest, model: NerdModelDep) -> list[EntitySpan]:
     """Extract entity spans with the supervised token-classification model."""
     return await model.infer_async(text=request.text, threshold=request.threshold)
+
+
+@app.post("/infer/batch")
+async def infer_batch(request: NerdBatchRequest, model: NerdModelDep) -> list[list[EntitySpan]]:
+    """Extract entity spans for many texts in shared, length-packed forward passes."""
+    return await model.infer_batch_async(texts=request.texts, threshold=request.threshold)
 
 
 def main():

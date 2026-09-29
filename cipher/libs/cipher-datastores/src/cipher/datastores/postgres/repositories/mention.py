@@ -5,7 +5,7 @@ from sqlalchemy import asc, case, delete, desc, func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cipher.datastores.postgres.tables.mention import MentionTable
-from cipher.datastores.postgres.utils import strip_null_bytes
+from cipher.datastores.postgres.utils import normalize_name, strip_null_bytes
 from cipher.schemas._base.common import SortOrder
 from cipher.schemas.content.email import EmailCountBucket, EmailCountGroupBy, EmailCountRequest, EmailCounts
 from cipher.schemas.content.search import CorrespondenceFilters
@@ -19,6 +19,7 @@ from cipher.schemas.graph.mention import (
     PaginatedMentionsResponse,
 )
 from cipher.schemas.graph.ontology import EntityType
+from cipher.schemas.graph.selector import SelectorEvidence, SelectorOwner
 
 
 def provenance_case():
@@ -71,12 +72,18 @@ def correspondence_predicates(filters: CorrespondenceFilters, params: dict, *, f
         ("recipient", filters.sent_to),
         ("participant", filters.participants),
     ):
-        for index, entity_id in enumerate(entity_ids or []):
-            key = f"{role}_{index}"
-            params[key] = entity_id
+        keys = [f"{role}_{index}" for index in range(len(entity_ids or []))]
+        params.update(zip(keys, entity_ids or [], strict=True))
+        # sender / recipient: any of the ids (one person + their extra addresses);
+        # participants: every id must be on the email ("between a and b").
+        groups = [keys] if role != "participant" else [[key] for key in keys]
+        for group in groups:
+            if not group:
+                continue
+            identity = " UNION ".join(f"({_identity_sql(key)})" for key in group)
             predicates.append(
                 f"{file_column} IN (SELECT m.file_id FROM mention m WHERE {_ROLE_PATHS[role]} "
-                f"AND m.entity_id IN ({_identity_sql(key)}))"
+                f"AND m.entity_id IN ({identity}))"
             )
     date_conditions: list[str] = []
     if filters.date_from:
@@ -146,6 +153,7 @@ class PostgresMentionRepository:
         """Insert a single mention."""
         row = MentionTable(**strip_null_bytes(mention.model_dump(by_alias=False)))
         self.session.add(row)
+        await self.session.flush()
         result = Mention.model_validate(row)
         await self.session.commit()
         return result
@@ -495,6 +503,21 @@ class PostgresMentionRepository:
         await self.session.commit()
         return result.rowcount or 0
 
+    async def delete_by_entity(self, entity_id: str) -> int:
+        """Discard every mention resolved to one entity (analyst marks the entity invalid)."""
+        result = await self.session.execute(delete(MentionTable).where(MentionTable.entity_id == entity_id))
+        await self.session.commit()
+        return result.rowcount or 0
+
+    async def has_extractor_mentions(self, *, mentioned_id: str, extractor: str) -> bool:
+        """Whether one extractor already wrote mentions for this evidence row (re-run guard)."""
+        stmt = select(
+            select(MentionTable.id)
+            .where(MentionTable.mentioned_id == mentioned_id, MentionTable.extractor == extractor)
+            .exists()
+        )
+        return bool((await self.session.execute(stmt)).scalar())
+
     async def update_mention(self, mention_id: str, data: MentionUpdate) -> Mention | None:
         """Patch a mention (analyst relabel/correction)."""
         patch = strip_null_bytes(data.model_dump(exclude_unset=True, by_alias=False))
@@ -603,3 +626,89 @@ class PostgresMentionRepository:
         )
         rows = (await self.session.execute(text(sql), params)).mappings().all()
         return [EmailCountBucket(**r) for r in rows]
+
+    async def selector_evidence(self, selector_ids: list[str]) -> list[SelectorEvidence]:
+        """Header usage and current owners for each selector -- what an analyst weighs before linking it."""
+        if not selector_ids:
+            return []
+        usage = (
+            await self.session.execute(
+                text(
+                    "SELECT a.id, a.display_name, "
+                    "(SELECT count(DISTINCT m.file_id) FROM mention m "
+                    " WHERE m.entity_id = a.id AND m.field_path LIKE 'header.%') AS email_count, "
+                    "(SELECT coalesce((array_agg(n.surface_text ORDER BY n.cnt DESC))[1:4], '{}') FROM ("
+                    "   SELECT n.surface_text, count(*) AS cnt FROM mention m JOIN mention n "
+                    "   ON n.file_id = m.file_id AND n.field_path = m.field_path AND n.selector_type IS NULL "
+                    "   WHERE m.entity_id = a.id AND m.field_path LIKE 'header.%' GROUP BY n.surface_text) n) AS names "
+                    "FROM entity a WHERE a.id = ANY(cast(:ids AS text[]))"
+                ),
+                {"ids": selector_ids},
+            )
+        ).all()
+        owners = (
+            await self.session.execute(
+                text(
+                    "SELECT DISTINCT r.dst_entity_id, o.id, o.display_name, lower(r.source) AS source "
+                    "FROM entity_relationship r JOIN entity o ON o.id = r.src_entity_id "
+                    "WHERE r.relationship_type = 'HAS_SELECTOR' AND r.dst_entity_id = ANY(cast(:ids AS text[]))"
+                ),
+                {"ids": selector_ids},
+            )
+        ).all()
+        by_selector: dict[str, list[SelectorOwner]] = {}
+        for selector_id, owner_id, owner_name, source in owners:
+            by_selector.setdefault(selector_id, []).append(
+                SelectorOwner(entity_id=owner_id, display_name=owner_name, source=source)
+            )
+        order = {selector_id: index for index, selector_id in enumerate(selector_ids)}
+        return sorted(
+            (
+                SelectorEvidence(
+                    entity_id=row.id,
+                    display_name=row.display_name,
+                    email_count=row.email_count,
+                    names=list(row.names),
+                    linked_to=by_selector.get(row.id, []),
+                )
+                for row in usage
+            ),
+            key=lambda evidence: order[evidence.entity_id],
+        )
+
+    async def header_addresses_for_name(
+        self, *, name: str, dataset_id: str | None, exclude_owner: str | None = None, limit: int = 6
+    ) -> list[dict]:
+        """Email addresses seen in headers under a display name like `name`, with who owns each.
+
+        The review surface for an identity that isn't (fully) resolved: e.g. "Nick Bolton" as the
+        display name on addresses no entity owns, or that are linked to a different entity.
+        Addresses owned by `exclude_owner` (the entity already matched) are left out. Each row:
+        `entityId` (the address selector), `address`, `names` (display names seen), `emailCount`,
+        `linkedTo` (the owning entity's name, or null when unlinked).
+        """
+        params: dict = {"name": normalize_name(name), "limit": limit, "owner": exclude_owner or ""}
+        dataset_filter = ""
+        if dataset_id:
+            params["dataset_id"] = dataset_id
+            dataset_filter = "AND n.dataset_id = :dataset_id"
+        sql = f"""
+            SELECT a.id AS "entityId", a.display_name AS address,
+                   (array_agg(DISTINCT n.surface_text))[1:3] AS names,
+                   count(DISTINCT n.file_id) AS "emailCount",
+                   (SELECT string_agg(DISTINCT o.display_name, ', ') FROM entity_relationship r
+                    JOIN entity o ON o.id = r.src_entity_id
+                    WHERE r.dst_entity_id = a.id AND r.relationship_type = 'HAS_SELECTOR') AS "linkedTo"
+            FROM mention n
+            JOIN mention m ON m.file_id = n.file_id AND m.field_path = n.field_path AND m.selector_type = 'EMAIL'
+            JOIN entity a ON a.id = m.entity_id
+            WHERE n.field_path LIKE 'header.%' AND n.selector_type IS NULL {dataset_filter}
+              AND n.normalized_value % :name AND similarity(n.normalized_value, :name) >= 0.6
+              AND a.id <> :owner
+              AND a.id NOT IN (SELECT r.dst_entity_id FROM entity_relationship r
+                               WHERE r.src_entity_id = :owner AND r.relationship_type = 'HAS_SELECTOR')
+            GROUP BY a.id, a.display_name
+            ORDER BY "emailCount" DESC
+            LIMIT :limit
+        """
+        return [dict(r) for r in (await self.session.execute(text(sql), params)).mappings().all()]

@@ -27,6 +27,7 @@ def get_async_engine(config: PostgresConfig) -> AsyncEngine:
         database_url,
         pool_size=config.pool_size,
         max_overflow=config.max_overflow,
+        pool_pre_ping=True,
     )
     return engine
 

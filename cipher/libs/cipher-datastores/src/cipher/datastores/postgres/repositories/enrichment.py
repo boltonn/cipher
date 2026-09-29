@@ -199,8 +199,22 @@ class PostgresEnrichmentRepository:
             update(EnrichmentTable).where(EnrichmentTable.id.in_(enrichment_ids)).values(**values)
         )
 
-    async def reset_stuck_enrichments(self, stuck_threshold_minutes: int = 60) -> int:
-        """Reset stuck enrichments and return row count."""
+    async def reset_stuck_enrichments(
+        self,
+        stuck_threshold_minutes: int = 60,
+        enrichment_type: EnrichmentType | None = None,
+        dataset_id: str | None = None,
+    ) -> int:
+        """Return orphaned PROCESSING claims (from an interrupted run) to PENDING.
+
+        Args:
+            stuck_threshold_minutes: Only reset claims older than this, so live runs keep theirs.
+            enrichment_type: Limit to one analytic.
+            dataset_id: Limit to file enrichments in one dataset.
+
+        Returns:
+            Number of rows reset.
+        """
         threshold = datetime.now(UTC) - timedelta(minutes=stuck_threshold_minutes)
         statement = (
             update(EnrichmentTable)
@@ -214,6 +228,13 @@ class PostgresEnrichmentRepository:
                 date_updated=datetime.now(UTC),
             )
         )
+        if enrichment_type:
+            statement = statement.where(EnrichmentTable.enrichment_type == enrichment_type)
+        if dataset_id:
+            statement = statement.where(
+                EnrichmentTable.enrichable_type == EnrichableType.FILE,
+                EnrichmentTable.enrichable_id.in_(select(FileTable.id).where(FileTable.dataset_id == dataset_id)),
+            )
         result = await self.session.execute(statement)
         await self.session.commit()
         return result.rowcount or 0

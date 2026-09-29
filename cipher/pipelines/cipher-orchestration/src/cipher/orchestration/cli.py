@@ -16,7 +16,12 @@ from typing import Annotated
 import typer
 from loguru import logger
 
-from cipher.datastores.postgres.repositories import PostgresDatasetRepository, PostgresEnrichmentRepository
+from cipher.datastores.postgres.repositories import (
+    PostgresDatasetRepository,
+    PostgresEnrichmentRepository,
+    PostgresFaceRepository,
+    PostgresGraphRepository,
+)
 from cipher.orchestration.backfill_entity_name_keys import backfill_entity_name_keys_workflow
 from cipher.orchestration.backfill_exif_locations import backfill_exif_locations
 from cipher.orchestration.benchmark import benchmark_ingest, benchmark_storage
@@ -73,6 +78,7 @@ from cipher.orchestration.sync_chunk_entities import sync_chunk_entities_workflo
 from cipher.schemas._base.common import ModelDevice
 from cipher.schemas.content.email import EmailState
 from cipher.schemas.graph.entity_resolution import EntityResolutionConfig
+from cipher.schemas.identity.face import DEFAULT_FACE_REJECT_SIMILARITY
 from cipher.schemas.ingestion.enrichment import EnrichmentType
 from cipher.schemas.ingestion.estimation import WorkUnit
 
@@ -690,6 +696,30 @@ def match_faces_cmd(
     asyncio.run(_run())
 
 
+@app.command("reject-similar-faces")
+def reject_similar_faces_cmd(
+    similarity: Annotated[
+        float, typer.Option(help="Min cosine similarity to a manually rejected face to auto-reject")
+    ] = DEFAULT_FACE_REJECT_SIMILARITY,
+):
+    """Auto-reject unassigned faces resembling ones an analyst marked "not a face".
+
+    Also releases automatic rejections no manual exemplar supports at --similarity,
+    so re-running with a higher value tightens the set. Rejecting in the UI and
+    `detect-faces` already do this incrementally; use this after tuning.
+    """
+
+    async def _run():
+        async with get_session_context() as session:
+            face_repo = PostgresFaceRepository(session=session)
+            released = await face_repo.release_unsupported_auto_rejections(min_similarity=similarity)
+            rejected_ids = await face_repo.auto_reject_similar(min_similarity=similarity)
+            await PostgresGraphRepository(session=session).recompute_face_cooccurrence_for_faces(rejected_ids)
+            typer.echo(json.dumps({"auto_rejected": len(rejected_ids), "released": released}, indent=2))
+
+    asyncio.run(_run())
+
+
 @app.command("cluster-faces")
 def cluster_faces_cmd(
     dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to (persons stay global)")] = None,
@@ -888,6 +918,9 @@ def extract_entities_cmd(
     ] = None,
     no_relations: Annotated[bool, typer.Option(help="Do not persist mention relations")] = False,
     device: Annotated[ModelDevice, typer.Option(help="Inference device (gliner / nerd)")] = ModelDevice.CPU,
+    batch_size: Annotated[
+        int, typer.Option(help="Files per batch; nerd packs a whole batch into shared GPU passes")
+    ] = 25,
 ):
     """Run NER + relation extraction over a dataset's extracted text.
 
@@ -924,6 +957,7 @@ def extract_entities_cmd(
                     threshold=threshold,
                     persist_relations=not no_relations,
                     device=device,
+                    batch_size=batch_size,
                 )
             logger.success(f"Extracted entity mentions for {run.units} files")
 
@@ -953,7 +987,7 @@ def resolve_entities_cmd(
     concurrency: Annotated[
         int,
         typer.Option(help="Score this many name groups in parallel (own session each); ~Nx faster on a big mailbox"),
-    ] = 1,
+    ] = 8,
 ):
     """Sweep unresolved name mentions -> entities: block -> score -> decide -> emit.
 
@@ -1289,7 +1323,12 @@ def stats(
 def estimate_cmd(
     dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
     dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
-    device: Annotated[str, typer.Option(help="Device class the run would use: cpu | cuda | mps | na")] = "cpu",
+    device: Annotated[
+        str,
+        typer.Option(
+            help="Device for analytics that take --device (text/image embedding, face detection): cpu | cuda | mps"
+        ),
+    ] = "cpu",
 ):
     """Rough wall-time estimate per enrichment for a staged dataset.
 
@@ -1309,13 +1348,14 @@ def estimate_cmd(
         estimate_workload,
         format_duration,
         resolve_rate,
+        run_device,
         total_estimate_seconds,
     )
 
     async def _run():
         async with get_session_context() as session:
             resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
-            run_device = RunDevice(device)
+            accelerator = RunDevice(device)
 
             staging = await PostgresDatasetRepository(session=session).get_staging_summary(resolved_id)
             if not staging.is_staged:
@@ -1329,7 +1369,11 @@ def estimate_cmd(
             estimates = []
             for enrichment_type in ESTIMATE_ORDER:
                 workload = estimate_workload(enrichment_type=enrichment_type, inventory=inventory)
-                rate = resolve_rate(enrichment_type=enrichment_type, device=run_device, measured=rates)
+                rate = resolve_rate(
+                    enrichment_type=enrichment_type,
+                    device=run_device(enrichment_type, accelerator=accelerator),
+                    measured=rates,
+                )
                 stats = await enr_repo.get_enrichment_stats(dataset_id=resolved_id, enrichment_type=enrichment_type)
                 counts = stats.get(enrichment_type, {})
                 done = sum(counts.values())

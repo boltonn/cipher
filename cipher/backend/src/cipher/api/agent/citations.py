@@ -114,6 +114,33 @@ def entity_citation(entity: Entity) -> dict:
     )
 
 
+def selector_link_proposal_citation(entity: Entity, selector_ids: list[str], reason: str) -> dict:
+    """A proposed `has_selector` link -- opens the entity's page with the proposal to review and confirm."""
+    count = len(selector_ids)
+    return _dump(
+        ChatCitation(
+            kind="action",
+            target_id=entity.id,
+            href=f"/entities/{entity.id}?propose={','.join(selector_ids)}",
+            display_name=f"Review: link {count} address{'es' if count != 1 else ''} to {entity.display_name}",
+            snippet=reason,
+        )
+    )
+
+
+def merge_proposal_citation(duplicate: Entity, keep: Entity, reason: str) -> dict:
+    """A proposed entity merge -- opens the duplicate's page, where the merge panel asks to confirm."""
+    return _dump(
+        ChatCitation(
+            kind="action",
+            target_id=duplicate.id,
+            href=f"/entities/{duplicate.id}",
+            display_name=f"Review: merge {duplicate.display_name} into {keep.display_name}",
+            snippet=reason,
+        )
+    )
+
+
 def email_count_citation(bucket: EmailCountBucket) -> dict:
     """A sender / recipient / correspondent from `count_emails` -- navigates to its dossier page."""
     span = " → ".join(d.date().isoformat() for d in (bucket.date_first, bucket.date_last) if d)

@@ -286,6 +286,11 @@ class PostgresChunkRetrievalRepository(ChunkRetrievalRepository):
             parts.append("(c.file_id = :fid OR c.duplicate_file_ids @> to_jsonb(cast(:fid as text)))")
             p["fid"] = f.file_id
         parts.extend(correspondence_predicates(f, p, file_column="c.file_id"))
+        if q.graph_expand and self._expand_files is not None:
+            # Pre-resolved file ids (see `_resolve_expand`): pg_search rejects the
+            # equivalent `IN (SELECT ... FROM mention)` once the expansion grows.
+            p["expand_files"] = self._expand_files
+            parts.append("c.file_id = ANY(cast(:expand_files AS text[]))")
         return " AND ".join(parts)
 
     def _mention_sql(self, q: RetrievalQuery, p: dict) -> list[str]:
@@ -314,11 +319,6 @@ class PostgresChunkRetrievalRepository(ChunkRetrievalRepository):
                 out.append(
                     f"EXISTS (SELECT 1 FROM mention m WHERE m.chunk_id = c.id AND m.{field} = ANY(:{key}))"
                 )
-        if q.graph_expand and getattr(self, "_expand_ids", None):
-            p["expand_ids"] = self._expand_ids
-            out.append(
-                "EXISTS (SELECT 1 FROM mention m WHERE m.chunk_id = c.id AND m.entity_id = ANY(:expand_ids))"
-            )
         return out
 
     def _keyword_predicate(self, p: dict) -> str:
@@ -333,19 +333,37 @@ class PostgresChunkRetrievalRepository(ChunkRetrievalRepository):
         )
 
     async def _resolve_expand(self, q: RetrievalQuery) -> None:
+        """Walk the graph from the seeds, then resolve to the files that involve the expansion.
+
+        A file involves an entity when it mentions it in the text or has it as an email's
+        sender/recipient (header mentions carry no chunk_id, so matching is at file level).
+        """
         self._expand_ids = None
+        self._expand_files = None
         if not q.graph_expand or self.graph_repo is None:
             return
         g = q.graph_expand
-        graph = await self.graph_repo.traverse(
-            start_entity_id=g.seed_entity_id,
-            max_depth=g.max_depth,
-            min_weight=g.min_weight,
-            relationship_types=g.relationship_types,
-            limit=self.graph_expand_entity_cap,
-        )
-        ids = {n.id for n in graph.nodes} | {g.seed_entity_id}
+        ids = set(g.seed_entity_ids)
+        for seed in g.seed_entity_ids:
+            graph = await self.graph_repo.traverse(
+                start_entity_id=seed,
+                max_depth=g.max_depth,
+                min_weight=g.min_weight,
+                relationship_types=g.relationship_types,
+                limit=self.graph_expand_entity_cap,
+            )
+            ids |= {n.id for n in graph.nodes}
         self._expand_ids = list(ids)[: self.graph_expand_entity_cap]
+        params = {"ids": self._expand_ids, "dataset_id": q.filters.dataset_id}
+        dataset_filter = "AND dataset_id = :dataset_id" if q.filters.dataset_id else ""
+        rows = await self.session.execute(
+            sa_text(
+                "SELECT DISTINCT file_id FROM mention WHERE file_id IS NOT NULL "
+                f"AND entity_id = ANY(cast(:ids AS text[])) {dataset_filter}"
+            ),
+            params,
+        )
+        self._expand_files = list(rows.scalars().all())
 
     async def search(self, query: RetrievalQuery) -> PaginatedResponse:
         """Rank chunks (keyword / semantic / hybrid / browse), filter, group by file."""
@@ -390,7 +408,7 @@ class PostgresChunkRetrievalRepository(ChunkRetrievalRepository):
         if browse:
             f = query.filters
             browse_ids = None
-            if f.entity_ids or f.entity_types or f.selector_types or f.selector_subtypes or self._expand_ids:
+            if f.entity_ids or f.entity_types or f.selector_types or f.selector_subtypes:
                 # Not `pool`: this resolves the *whole* matching set (up to the
                 # cap) so the subsequent ORDER BY date DESC LIMIT pool picks the
                 # true most-recent matches -- capping at `pool` here first would
@@ -402,7 +420,6 @@ class PostgresChunkRetrievalRepository(ChunkRetrievalRepository):
                     entity_types=f.entity_types,
                     selector_types=f.selector_types,
                     selector_subtypes=f.selector_subtypes,
-                    graph_entity_ids=self._expand_ids,
                     limit=self.graph_expand_entity_cap,
                 )
             browse_where = scope

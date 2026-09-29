@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, String
+from sqlalchemy import Boolean, ColumnElement, DateTime, Enum, ForeignKey, Index, String, or_
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -83,3 +83,18 @@ class EntityTable(Base):
         Index("ix_entity_dataset_type", "dataset_id", "entity_type"),
         Index("ix_entity_tags_gin", "tags", postgresql_using="gin"),
     )
+
+
+def is_canonical_entity(entity=EntityTable) -> ColumnElement[bool]:
+    """SQL test for a canonical entity -- bridged to a person / location, or analyst-made.
+
+    Everything else is *provisional*: minted by `resolve-entities` for a name group
+    with no match, awaiting a merge into a canonical entity or promotion. Takes the
+    table or an alias's ``.c``.
+    """
+    return or_(
+        entity.person_id.is_not(None),
+        entity.location_id.is_not(None),
+        entity.source == EntitySource.MANUAL,
+    )
+

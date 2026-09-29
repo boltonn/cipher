@@ -151,7 +151,9 @@ class MentionResolve(BaseModel):
     new_entity_detail: dict | None = Field(
         default=None, description="Optional type-specific detail row for the new entity (camelCase)"
     )
-    reviewed_by: str = Field(description="User id/name performing the resolution")
+    reviewed_by: str | None = Field(
+        default=None, description="Set server-side from the signed-in user; ignored from clients"
+    )
 
 
 class Mention(MentionBase):

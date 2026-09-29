@@ -367,7 +367,19 @@ partial-unique on `(dataset_id, normalized_value, entity_id)`) is migration
 `entity_id IS NULL`); `reset-entities` clears it via `delete_by_dataset_id`.
 `resolve_match` gained the `elif row.normalized_value:` branch that bulk-attaches
 via `attach_names`, and its provisional `_merge` now calls the shared
-`repoint_entity_references`.
+`fold_entity` (repoint + keep the provisional's name as a canonical alias, also on
+its person record, + re-key). The repointer drops `entity_match` rows that would
+collide on any of the three unique keys, so a merge never fails on a name group
+that proposed both entities.
+
+**Provisional candidates.** When a canonical candidate reaches the review band,
+the sweep drops provisional candidates for that group and re-bands the rest
+(`_drop_provisional_if_canonical`) -- the stub-vs-canonical question belongs to
+`dedupe-entities`. The Resolve queue also hides provisional candidates unless
+`include_provisional_entities`. Recommended order: `resolve-entities` →
+`dedupe-entities` → settle **Possible duplicate entities** (merge / promote /
+not an entity) → `resolve-entities` again, so the folded aliases send the
+remaining spellings straight to the canonical entity.
 
 ### Sweep cost (as built)
 
