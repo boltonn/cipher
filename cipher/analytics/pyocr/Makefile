@@ -33,6 +33,15 @@ start:
 start-vllm:
 	PORT=$(PORT) OCR__MODEL=$(MODEL) OCR__BACKEND=vllm $(VLLM_VENV)/bin/$(NAME)-api
 
+# One service per GPU on ports 8010, 8011, ... (GPUS=0,1): pass each to `cipher ocr --service-url`.
+# Independent replicas: linear scaling, and one GPU failing doesn't take the others down.
+GPUS ?= 0,1
+start-vllm-all:
+	i=0; for gpu in $$(echo $(GPUS) | tr , ' '); do \
+		CUDA_VISIBLE_DEVICES=$$gpu PORT=$$(($(PORT) + i)) OCR__MODEL=$(MODEL) OCR__BACKEND=vllm \
+			$(VLLM_VENV)/bin/$(NAME)-api > $(NAME)-gpu$$gpu.log 2>&1 & i=$$((i + 1)); \
+	done; wait
+
 test:
 	uvx pytest
 

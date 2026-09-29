@@ -1,4 +1,4 @@
-"""Text embedding workflow (Stage 2) -- chunk + embed extracted text into the unified ES index.
+"""Text embedding workflow (Stage 2) -- chunk + embed extracted text into the chunk store.
 
 Reads persisted `ExtractedText` rows (written by extract_emails.py /
 extract_documents.py) rather than re-parsing files. When prechunked spans
@@ -28,7 +28,6 @@ from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 from tqdm import tqdm
 
-from cipher.datastores.elasticsearch.repositories.text_chunk import ElasticsearchTextChunkRepository
 from cipher.datastores.postgres.repositories import (
     PostgresEnrichmentRepository,
     PostgresExtractedTextRepository,
@@ -45,6 +44,8 @@ from cipher.utils.retrieval import RetrievalBackend, load_retrieval_config
 if TYPE_CHECKING:
     from clir.models.pytorch import TextEmbeddingPytorchModel
     from clir.utils.text_chunk import PlainTextChunker
+
+    from cipher.datastores.elasticsearch.repositories.text_chunk import ElasticsearchTextChunkRepository
 
 # Both document and email files land here once their respective extraction
 # workflow (extract_emails.py / extract_documents.py) has completed.
@@ -197,7 +198,9 @@ def _build_chunk(
     raise ValueError(f"No document/email metadata to embed for file_id={extracted.file_id!r}")
 
 
-def _chunk_store(session: "AsyncSession", es_repo: ElasticsearchTextChunkRepository, *, use_pg: bool, ranker: str):
+def _chunk_store(
+    session: "AsyncSession", es_repo: "ElasticsearchTextChunkRepository | None", *, use_pg: bool, ranker: str
+):
     """The chunk store the embed pipeline writes to, bound to `session`.
 
     `postgres` -> `PostgresChunkRetrievalRepository`. `elasticsearch` ->
@@ -208,7 +211,8 @@ def _chunk_store(session: "AsyncSession", es_repo: ElasticsearchTextChunkReposit
     `list_by_file_id` surface `_consumer` / `dedupe_pending_text_embeddings` call.
     Must be rebuilt per session -- the producer and consumer each use their own
     `AsyncSession`, so a single pre-bound repo would write on one session while
-    another commits.
+    another commits. `es_repo` is only needed (and only opened by the CLI) for
+    the elasticsearch backend.
     """
     if use_pg:
         from cipher.datastores.postgres.repositories.chunk_retrieval import PostgresChunkRetrievalRepository
@@ -219,12 +223,14 @@ def _chunk_store(session: "AsyncSession", es_repo: ElasticsearchTextChunkReposit
         ElasticsearchChunkRetrievalRepository,
     )
 
+    if es_repo is None:
+        raise ValueError("RETRIEVAL__BACKEND=elasticsearch needs an Elasticsearch text-chunk repository")
     return ElasticsearchChunkRetrievalRepository(client=es_repo.client, session=session, index=es_repo.index)
 
 
 async def _find_embedded_duplicate(
     file_repo: PostgresFileRepository,
-    es_repo: ElasticsearchTextChunkRepository,
+    es_repo: "ElasticsearchTextChunkRepository",
     file_id: str,
     sha256: str,
 ) -> list[TextChunk] | None:
@@ -240,7 +246,7 @@ async def _find_embedded_duplicate(
 
 async def dedupe_pending_text_embeddings(
     session: "AsyncSession",
-    es_repo: ElasticsearchTextChunkRepository,
+    es_repo: "ElasticsearchTextChunkRepository",
     dataset_id: str | None = None,
     batch_size: int = 100,
     skip_email_states: frozenset[EmailState] = DEFAULT_SKIP_EMAIL_STATES,
@@ -452,7 +458,7 @@ async def _consumer(
     queue: "asyncio.Queue",
     session: "AsyncSession",
     model: "TextEmbeddingPytorchModel",
-    es_repo: ElasticsearchTextChunkRepository,
+    es_repo: "ElasticsearchTextChunkRepository",
     commit_batch_size: int,
     stats: dict,
     pbar: tqdm,
@@ -534,7 +540,7 @@ async def embed_text_workflow(
     session: "AsyncSession",
     dataset_id: str,
     model: "TextEmbeddingPytorchModel",
-    es_repo: ElasticsearchTextChunkRepository,
+    es_repo: "ElasticsearchTextChunkRepository | None" = None,
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     chunk_overlap: int = 0,
     min_chunk_tokens: int = 0,
@@ -544,7 +550,7 @@ async def embed_text_workflow(
     max_pages: int | None = None,
     skip_email_states: frozenset[EmailState] = DEFAULT_SKIP_EMAIL_STATES,
 ) -> int:
-    """Chunk (if needed) and embed a dataset's extracted text into the unified ES index.
+    """Chunk (if needed) and embed a dataset's extracted text into the chunk store (`RETRIEVAL__BACKEND`).
 
     Runs documents and emails as separate producer/consumer pipelines (each
     with its own progress bar) so CPU tokenization and GPU embedding overlap
@@ -561,7 +567,7 @@ async def embed_text_workflow(
     _cfg = load_retrieval_config()
     _use_pg = _cfg.backend == RetrievalBackend.POSTGRES
     _ranker = _cfg.text_ranker.value
-    es_repo = _chunk_store(session, es_repo, use_pg=_use_pg, ranker=_ranker)
+    chunk_store = _chunk_store(session, es_repo, use_pg=_use_pg, ranker=_ranker)
     enrichment_repo = PostgresEnrichmentRepository(session=session)
     _rebuild_search_indexes = False
 
@@ -584,13 +590,13 @@ async def embed_text_workflow(
 
     await queue_text_embedding_enrichments(session=session, dataset_id=dataset_id)
     await dedupe_pending_text_embeddings(
-        session=session, es_repo=es_repo, dataset_id=dataset_id, skip_email_states=skip_email_states
+        session=session, es_repo=chunk_store, dataset_id=dataset_id, skip_email_states=skip_email_states
     )
 
     # Drop HNSW / tsvector / BM25 before a real load (rebuilt after): per-batch
     # maintenance across thousands of small flushes is slow, and an interrupted
     # write can leave HNSW / pg_search structures corrupt. Only when there's work.
-    if _use_pg and hasattr(es_repo, "drop_search_indexes"):
+    if _use_pg and hasattr(chunk_store, "drop_search_indexes"):
         pending_total = 0
         for g in _EMBED_GROUPS:
             pending_total += await enrichment_repo.count_pending(
@@ -600,7 +606,7 @@ async def embed_text_workflow(
                 filetype_group_filter=g,
             )
         if pending_total:
-            await es_repo.drop_search_indexes()
+            await chunk_store.drop_search_indexes()
             _rebuild_search_indexes = True
 
     # The chunker needs its own tokenizer instance: a fast (Rust) tokenizer is
@@ -672,8 +678,8 @@ async def embed_text_workflow(
         total_chunks += stats["chunks"]
 
     logger.success(f"Embedded text for {total_count} files into {total_chunks} chunks ({total_failed} failed)")
-    if _rebuild_search_indexes and hasattr(es_repo, "ensure_schema"):
-        await es_repo.ensure_schema()  # rebuild HNSW / tsvector / BM25 now that the load is done
+    if _rebuild_search_indexes and hasattr(chunk_store, "ensure_schema"):
+        await chunk_store.ensure_schema()  # rebuild HNSW / tsvector / BM25 now that the load is done
     return total_count
 
 

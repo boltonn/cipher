@@ -25,6 +25,12 @@ export interface FileText {
   extractedTextId: string;
   text: string;
   chunkCount: number;
+  /** Pages with no usable text layer (scanned) -- candidates for a stronger OCR re-run. */
+  imagePages: number[];
+  /** Pages whose text came from OCR. */
+  ocrPages: number[];
+  /** OCR engine/model that produced `ocrPages`, e.g. "easyocr". */
+  ocrModel: string | null;
 }
 
 /** One extracted table's cells, split into a header row and (possibly capped) data rows. */

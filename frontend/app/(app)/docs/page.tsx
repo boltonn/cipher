@@ -476,7 +476,14 @@ const ONTOLOGY_RELATIONSHIPS: {
     to: "(same)",
     symmetric: true,
     description:
-      "Recorded email / call / message. Endpoints are people/orgs when resolved, otherwise the bare email or phone selector -- so sender-recipient links exist before names are known.",
+      "Two endpoints communicate, channel unspecified -- stated in text or asserted by an analyst. Recorded interactions use a directed channel type such as emailed.",
+  },
+  {
+    type: "emailed",
+    from: "person · organization · selector",
+    to: "(same)",
+    description:
+      "Sender emailed recipient (to/cc/bcc); weight = emails sent that way, a reply is its own edge back. Endpoints are the bare email selectors, so links exist before names are known.",
   },
   { type: "family_of", from: "person", to: "person", symmetric: true, description: "Two people are family." },
   {

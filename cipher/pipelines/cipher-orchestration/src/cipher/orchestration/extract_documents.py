@@ -10,6 +10,8 @@ first means any email attachments it persisted (with filetype_group
 get swept up in the same batch as everything else -- no special-casing.
 """
 
+import re
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
@@ -44,6 +46,11 @@ if TYPE_CHECKING:
 # `chunk_size` default so chunk boundaries don't drift depending on which
 # chunker produced them for otherwise-similar documents.
 DEFAULT_CHUNK_SIZE = 256
+# xberg's per-page `is_blank` is exact (any text layer at all is "not blank"), so a scan
+# carrying only a Bates stamp or page number would slip through; count it as image-based
+# when its text layer has fewer word characters than this (matches pyocr's rule).
+IMAGE_PAGE_MIN_CHARS = 20
+_WORD_CHAR_RE = re.compile(r"\w", re.UNICODE)
 
 
 class Chunker(StrEnum):
@@ -56,6 +63,27 @@ class Chunker(StrEnum):
 
     KREUZBERG = "kreuzberg"
     CLIR = "clir"
+
+
+class OcrBackend(StrEnum):
+    """OCR engine xberg runs over image-based PDF pages during `extract-text`."""
+
+    EASYOCR = "easyocr"
+    TESSERACT = "tesseract"
+    NONE = "none"
+
+
+@dataclass
+class XbergOcr:
+    """OCR settings for xberg's inline pass (a stronger model can re-run `image_pages` later via `ocr`).
+
+    `languages` are the backend's own codes (EasyOCR `en`/`fr`..., Tesseract `eng`/`fra`...).
+    `model_dir` points EasyOCR at pre-downloaded weights so it never reaches the network.
+    """
+
+    backend: OcrBackend = OcrBackend.EASYOCR
+    languages: list[str] = field(default_factory=lambda: ["en"])
+    model_dir: Path | None = None
 
 
 def _parse_xberg_datetime(value: str | None) -> datetime | None:
@@ -149,14 +177,31 @@ def _cells_to_markdown(cells: list[list[str]]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _image_pages(result: "ExtractionResult") -> list[int]:
+    """A PDF's image-based pages, from xberg's own no-OCR page output."""
+    if result.mime_type != "application/pdf":
+        return []
+    return [
+        page["page_number"]
+        for page in result.pages or []
+        if page.get("is_blank") or len(_WORD_CHAR_RE.findall(page["content"] or "")) < IMAGE_PAGE_MIN_CHARS
+    ]
+
+
 def _run_batch(
     paths: list[str],
     use_chunking: bool,
     tokenizer_model_dir: Path | None,
     chunk_size: int,
     max_concurrent_extractions: int | None = None,
-) -> "list[ExtractionResult]":
+    ocr: XbergOcr | None = None,
+) -> "list[tuple[ExtractionResult, list[int]]]":
     """CPU-bound worker: xberg's batched extraction call, run off the event loop.
+
+    Returns each result with its PDF's image-based pages, read from xberg's own
+    per-page output of a first, no-OCR pass. With `ocr` set, PDFs that have any are
+    re-extracted OCRing just those pages (`force_ocr_pages`) -- xberg's automatic OCR
+    decides per document, so on a mixed PDF it would re-read the text-layer pages too.
 
     xberg parallelizes internally (Rayon thread pool) across the batch --
     `max_concurrent_extractions` caps how many files it processes at once,
@@ -166,7 +211,16 @@ def _run_batch(
     `cipher benchmark-ingest`, if extraction is CPU-underutilized or
     memory-constrained on a given machine.
     """
-    from kreuzberg import ChunkingConfig, ExtractionConfig, HierarchyConfig, PdfConfig, batch_extract_files_sync
+    from kreuzberg import (
+        ChunkingConfig,
+        ExtractionConfig,
+        FileExtractionConfig,
+        HierarchyConfig,
+        OcrConfig,
+        PageConfig,
+        PdfConfig,
+        batch_extract_files_sync,
+    )
 
     chunking = None
     if use_chunking:
@@ -185,17 +239,50 @@ def _run_batch(
     # box data (result.document["nodes"]) for "highlight this in the original
     # document" UI. PDF hierarchy detection is what actually populates node
     # bounding boxes for PDFs.
-    config = ExtractionConfig(
-        chunking=chunking,
-        include_document_structure=True,
-        pdf_options=PdfConfig(hierarchy=HierarchyConfig(include_bbox=True)),
-        max_concurrent_extractions=max_concurrent_extractions,
-    )
-    return batch_extract_files_sync(paths, config=config)
+    use_ocr = ocr is not None and ocr.backend != OcrBackend.NONE
+    ocr_config = None
+    easyocr_kwargs = None
+    if use_ocr:
+        is_easyocr = ocr.backend == OcrBackend.EASYOCR
+        ocr_config = OcrConfig(
+            backend=ocr.backend.value, language=ocr.languages[0] if is_easyocr else "+".join(ocr.languages)
+        )
+        if is_easyocr:
+            easyocr_kwargs = {"languages": ocr.languages}
+            if ocr.model_dir:
+                easyocr_kwargs["model_storage_directory"] = str(ocr.model_dir)
+    base = {
+        "chunking": chunking,
+        "include_document_structure": True,
+        "pdf_options": PdfConfig(hierarchy=HierarchyConfig(include_bbox=True)),
+        "max_concurrent_extractions": max_concurrent_extractions,
+        # per-page output is what `_image_pages` reads, and xberg silently ignores
+        # `force_ocr_pages` without it
+        "pages": PageConfig(extract_pages=True),
+    }
+    results = batch_extract_files_sync(paths, config=ExtractionConfig(**base))
+    image_pages = [_image_pages(result) for result in results]
+
+    to_ocr = [i for i, pages in enumerate(image_pages) if pages] if use_ocr else []
+    if to_ocr:
+        ocr_results = batch_extract_files_sync(
+            [paths[i] for i in to_ocr],
+            config=ExtractionConfig(**base, ocr=ocr_config),
+            file_configs=[FileExtractionConfig(force_ocr_pages=image_pages[i]) for i in to_ocr],
+            easyocr_kwargs=easyocr_kwargs,
+        )
+        for i, result in zip(to_ocr, ocr_results, strict=True):
+            results[i] = result
+    return list(zip(results, image_pages, strict=False))
 
 
 def _build_extracted_text(
-    file_resource: dict, result: "ExtractionResult", use_chunking: bool, parent_email_metadata: EmailMetadata | None
+    file_resource: dict,
+    result: "ExtractionResult",
+    use_chunking: bool,
+    parent_email_metadata: EmailMetadata | None,
+    image_pages: list[int] | None = None,
+    ocr_backend: OcrBackend = OcrBackend.NONE,
 ) -> ExtractedTextCreate:
     error = result.metadata.get("error")
     if error:
@@ -227,6 +314,9 @@ def _build_extracted_text(
         page_count=result.get_page_count(),
         tables=tables or None,
         document_structure=_document_structure_from_kreuzberg(result.document, page_width, page_height),
+        image_pages=image_pages or [],
+        ocr_pages=image_pages if image_pages and ocr_backend != OcrBackend.NONE else [],
+        ocr_model=ocr_backend.value if image_pages and ocr_backend != OcrBackend.NONE else None,
         sent_from=parent_email_metadata.sent_from if parent_email_metadata else None,
         sent_to=parent_email_metadata.sent_to if parent_email_metadata else [],
     )
@@ -363,8 +453,12 @@ async def extract_documents_workflow(
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     batch_size: int = 50,
     max_concurrent_extractions: int | None = None,
+    ocr: XbergOcr | None = None,
 ) -> int:
     """Extract text for a dataset's documents in xberg-batched passes. Returns files processed.
+
+    Every PDF's image-based pages are recorded (`metadata.image_pages`) whether or
+    not `ocr` is set; with it, xberg OCRs just those pages inline.
 
     `max_concurrent_extractions` caps xberg's own internal parallelism per
     batch; left None, xberg defaults to `num_cpus * 2`. Tune this (and
@@ -430,13 +524,19 @@ async def extract_documents_workflow(
                 paths = [item.resource["path"] for item in resolvable]
                 try:
                     results = await anyio.to_thread.run_sync(
-                        _run_batch, paths, use_chunking, tokenizer_model_dir, chunk_size, max_concurrent_extractions
+                        _run_batch,
+                        paths,
+                        use_chunking,
+                        tokenizer_model_dir,
+                        chunk_size,
+                        max_concurrent_extractions,
+                        ocr,
                     )
                 except Exception as e:
                     logger.error(f"Batch extraction failed for {len(paths)} files: {e}")
                     results = []
 
-                for item, result in zip(resolvable, results, strict=False):
+                for item, (result, image_pages) in zip(resolvable, results, strict=False):
                     try:
                         parent_email_metadata = None
                         if parent_id := item.resource.get("parent_id"):
@@ -449,6 +549,8 @@ async def extract_documents_workflow(
                             result=result,
                             use_chunking=use_chunking,
                             parent_email_metadata=parent_email_metadata,
+                            image_pages=image_pages,
+                            ocr_backend=ocr.backend if ocr else OcrBackend.NONE,
                         )
                         await extracted_text_repo.upsert(extracted)
                         completed.append(item.enrichment.id)

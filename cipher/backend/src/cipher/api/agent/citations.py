@@ -7,7 +7,9 @@ shape camelCase to match the frontend's `ChatCitation` type.
 
 from cipher.datastores.elasticsearch.repositories.text_chunk import FileSearchResult, ScoredTextChunk
 from cipher.schemas.content.document import ScoredDocumentTextChunk
+from cipher.schemas.content.email import EmailAddress, EmailCountBucket
 from cipher.schemas.graph.entity import Entity
+from cipher.schemas.graph.entity_relationship import TopConnection
 from cipher.schemas.graph.mention import Mention
 from cipher.schemas.identity.person import Person
 from cipher.schemas.ingestion.dataset import Dataset
@@ -23,9 +25,14 @@ def top_chunk(result: FileSearchResult) -> ScoredTextChunk:
     return next(c for c in result.chunks if c.id == result.top_chunk_id)
 
 
+def _participant(address: EmailAddress) -> str:
+    return f"{address.name} <{address.value}>" if address.name else address.value
+
+
 def chunk_citation(chunk: ScoredTextChunk) -> dict:
     """A retrieved passage -- opens the file viewer scrolled to the span."""
     is_document = isinstance(chunk, ScoredDocumentTextChunk)
+    sender = None if is_document else (chunk.sent_from or chunk.sender)
     return _dump(
         ChatCitation(
             kind="document" if is_document else "email",
@@ -39,6 +46,9 @@ def chunk_citation(chunk: ScoredTextChunk) -> dict:
             end_offset=chunk.end_offset,
             snippet=chunk.highlights[0] if chunk.highlights else chunk.text[:280],
             score=chunk.score,
+            sent_from=_participant(sender) if sender else None,
+            sent_to=None if is_document else [_participant(p) for p in (*chunk.sent_to, *chunk.cc)] or None,
+            date_sent=None if is_document else chunk.date_sent,
         )
     )
 
@@ -92,18 +102,55 @@ def dataset_citation(dataset: Dataset) -> dict:
 
 
 def entity_citation(entity: Entity) -> dict:
-    """An entity node.
-
-    No detail page exists yet, so it is linkable only when it bridges to a
-    person record; otherwise it renders as a static chip.
-    """
-    href = f"/persons/{entity.person_id}" if entity.person_id else None
+    """An entity node -- navigates to its dossier page."""
     return _dump(
         ChatCitation(
             kind="entity",
             target_id=entity.id,
-            href=href,
+            href=f"/entities/{entity.id}",
             display_name=entity.display_name,
             snippet=f"{entity.entity_type}" + (f" · {', '.join(entity.aliases)}" if entity.aliases else ""),
+        )
+    )
+
+
+def email_count_citation(bucket: EmailCountBucket) -> dict:
+    """A sender / recipient / correspondent from `count_emails` -- navigates to its dossier page."""
+    span = " → ".join(d.date().isoformat() for d in (bucket.date_first, bucket.date_last) if d)
+    return _dump(
+        ChatCitation(
+            kind="entity",
+            target_id=bucket.key,
+            href=f"/entities/{bucket.key}",
+            display_name=bucket.label,
+            snippet=" · ".join(filter(None, [f"{bucket.email_count} emails", span, ", ".join(bucket.addresses)])),
+            score=float(bucket.email_count),
+            count=bucket.email_count,
+        )
+    )
+
+
+def connection_citation(connection: TopConnection) -> dict:
+    """A ranked neighbour from `top_connections` -- navigates to its dossier page."""
+    entity = connection.entity
+    span = " → ".join(d.date().isoformat() for d in (connection.date_first, connection.date_last) if d)
+    return _dump(
+        ChatCitation(
+            kind="entity",
+            target_id=entity.id,
+            href=f"/entities/{entity.id}",
+            display_name=entity.display_name,
+            snippet=" · ".join(
+                filter(
+                    None,
+                    [
+                        f"weight {connection.weight:g}",
+                        ", ".join(connection.relationship_types),
+                        span,
+                        ", ".join(v.display_name for v in connection.via),
+                    ],
+                )
+            ),
+            score=connection.weight,
         )
     )

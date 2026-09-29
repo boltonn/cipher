@@ -1,6 +1,10 @@
 """Build a pydantic_ai model from `LLMSettings`, and enumerate the picker's options."""
 
-from pydantic_ai.models import Model
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
+
+from pydantic_ai.models import CompletedStreamedResponse, Model, StreamedResponse
+from pydantic_ai.models.wrapper import WrapperModel
 
 from cipher.schemas.interaction.llm import LOCAL_LLM_BASE_URL, LLMProvider, LLMSettings, ModelOption
 
@@ -33,6 +37,22 @@ AVAILABLE_MODELS: tuple[ModelOption, ...] = (
 )
 
 
+class BufferedStreamModel(WrapperModel):
+    """Answer streamed runs with a plain request, replayed as stream events.
+
+    vLLM's `mistral` tool parser doesn't recognise tool calls while streaming -- the call
+    JSON arrives as content deltas and the arguments come out mangled -- but parses them
+    fine in a non-streamed response. The chat UI still receives streamed events.
+    """
+
+    @asynccontextmanager
+    async def request_stream(
+        self, messages, model_settings, model_request_parameters, run_context=None
+    ) -> AsyncGenerator[StreamedResponse]:
+        response = await self.wrapped.request(messages, model_settings, model_request_parameters)
+        yield CompletedStreamedResponse(response, model_request_parameters=model_request_parameters, replay_events=True)
+
+
 def resolve_llm_settings(base: LLMSettings, model_id: str | None) -> LLMSettings:
     """Apply a `provider:model` picker id on top of the server's base settings.
 
@@ -51,7 +71,8 @@ def resolve_llm_settings(base: LLMSettings, model_id: str | None) -> LLMSettings
         return base
     update: dict[str, object] = {"provider": provider, "model": model_name}
     if provider == LLMProvider.LOCAL:
-        update["api_key"] = "local"
+        # Keep the server's key when it's the local server's own (an authenticated vLLM).
+        update["api_key"] = base.api_key if base.provider == LLMProvider.LOCAL and base.api_key else "local"
         update["base_url"] = base.base_url or LOCAL_LLM_BASE_URL
     elif provider != base.provider:
         update["api_key"] = None
@@ -69,7 +90,8 @@ def build_model(settings: LLMSettings) -> Model:
         from pydantic_ai.providers.openai import OpenAIProvider
 
         if settings.provider == LLMProvider.LOCAL:
-            provider = OpenAIProvider(base_url=settings.base_url or LOCAL_LLM_BASE_URL, api_key="local")
+            provider = OpenAIProvider(base_url=settings.base_url or LOCAL_LLM_BASE_URL, api_key=settings.api_key or "local")
+            return BufferedStreamModel(OpenAIChatModel(settings.model, provider=provider))
         elif settings.base_url:
             provider = OpenAIProvider(api_key=settings.api_key, base_url=settings.base_url)
         else:

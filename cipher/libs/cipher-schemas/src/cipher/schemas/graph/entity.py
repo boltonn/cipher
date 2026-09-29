@@ -146,7 +146,7 @@ class RelatedEntity(BaseModel):
     direction: str = Field(description="'out' if this entity is the edge source, else 'in'")
     attributes: dict = Field(default_factory=dict, description="Edge attributes, e.g. {'role': 'father'}")
     entity: EntitySummary
-    weight: int | None = Field(default=None, description="Edge weight (for communicates_with, the message count)")
+    weight: int | None = Field(default=None, description="Edge weight (for emailed, the emails sent that way)")
     mention_count: int | None = Field(
         default=None, description="For selector neighbours: mentions carrying the selector's normalized value"
     )

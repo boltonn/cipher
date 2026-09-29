@@ -1,4 +1,5 @@
 import bisect
+from datetime import timedelta
 
 from sqlalchemy import asc, case, delete, desc, func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -6,6 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cipher.datastores.postgres.tables.mention import MentionTable
 from cipher.datastores.postgres.utils import strip_null_bytes
 from cipher.schemas._base.common import SortOrder
+from cipher.schemas.content.email import EmailCountBucket, EmailCountGroupBy, EmailCountRequest, EmailCounts
+from cipher.schemas.content.search import CorrespondenceFilters
 from cipher.schemas.graph.mention import (
     Mention,
     MentionCreate,
@@ -28,6 +31,65 @@ def provenance_case():
         (MentionTable.extractor == "selectors", MentionProvenance.PATTERN.value),
         else_=MentionProvenance.TEXT.value,
     )
+
+
+# ---- correspondence: email header mentions (`field_path` = header.from / header.to[i] / ...) ----
+
+CONTENT_DATE_SQL = "coalesce(et.metadata->>'date_sent', et.metadata->>'date_content_created')"
+
+_ROLE_PATHS = {
+    "sender": "m.field_path IN ('header.from', 'header.sender')",
+    "recipient": r"m.field_path ~ '^header\.(to|cc|bcc)\['",
+    "participant": "m.field_path LIKE 'header.%'",
+}
+_PARTY_ROLE = {
+    EmailCountGroupBy.SENDER: "sender",
+    EmailCountGroupBy.RECIPIENT: "recipient",
+    EmailCountGroupBy.CORRESPONDENT: "participant",
+}
+_PERIOD_LENGTH = {EmailCountGroupBy.YEAR: 4, EmailCountGroupBy.MONTH: 7, EmailCountGroupBy.DAY: 10}
+_MAX_PERIODS = 1000
+
+
+def _identity_sql(key: str) -> str:
+    """An entity plus the email/phone/... selectors it `has_selector`."""
+    return (
+        f"SELECT cast(:{key} AS text) UNION SELECT r.dst_entity_id FROM entity_relationship r "
+        f"WHERE r.src_entity_id = :{key} AND r.relationship_type = 'HAS_SELECTOR'"
+    )
+
+
+def correspondence_predicates(filters: CorrespondenceFilters, params: dict, *, file_column: str) -> list[str]:
+    """SQL predicates restricting `file_column` to files matching the correspondence filters.
+
+    Uncorrelated `IN (subquery)` so they sit alongside a pg_search `@@@` or HNSW
+    scan in the candidate stage.
+    """
+    predicates: list[str] = []
+    for role, entity_ids in (
+        ("sender", filters.sent_from),
+        ("recipient", filters.sent_to),
+        ("participant", filters.participants),
+    ):
+        for index, entity_id in enumerate(entity_ids or []):
+            key = f"{role}_{index}"
+            params[key] = entity_id
+            predicates.append(
+                f"{file_column} IN (SELECT m.file_id FROM mention m WHERE {_ROLE_PATHS[role]} "
+                f"AND m.entity_id IN ({_identity_sql(key)}))"
+            )
+    date_conditions: list[str] = []
+    if filters.date_from:
+        params["date_from"] = filters.date_from.isoformat()
+        date_conditions.append(f"{CONTENT_DATE_SQL} >= :date_from")
+    if filters.date_to:
+        params["date_before"] = (filters.date_to + timedelta(days=1)).isoformat()
+        date_conditions.append(f"{CONTENT_DATE_SQL} < :date_before")
+    if date_conditions:
+        predicates.append(
+            f"{file_column} IN (SELECT et.file_id FROM extracted_text et WHERE {' AND '.join(date_conditions)})"
+        )
+    return predicates
 
 
 class PostgresMentionRepository:
@@ -146,7 +208,7 @@ class PostgresMentionRepository:
     async def chunk_ids_for_filter(
         self,
         *,
-        dataset_id: str,
+        dataset_id: str | None,
         entity_ids: list[str] | None = None,
         entity_types: list[str] | None = None,
         selector_types: list[str] | None = None,
@@ -172,8 +234,11 @@ class PostgresMentionRepository:
         if not any([entity_ids, entity_types, selector_types, selector_subtypes, graph_entity_ids]):
             return None
 
-        where = ["dataset_id = :ds", "chunk_id IS NOT NULL"]
-        params: dict = {"ds": dataset_id, "limit": limit}
+        where = ["chunk_id IS NOT NULL"]
+        params: dict = {"limit": limit}
+        if dataset_id:
+            where.append("dataset_id = :ds")
+            params["ds"] = dataset_id
 
         or_parts = []
         if entity_types:
@@ -462,3 +527,79 @@ class PostgresMentionRepository:
         result = await self.session.execute(delete(MentionTable).where(MentionTable.dataset_id == dataset_id))
         await self.session.commit()
         return result.rowcount or 0
+
+    async def count_emails(self, request: EmailCountRequest) -> EmailCounts:
+        """Count distinct emails matching `request`, bucketed by party or period.
+
+        Reads the `header.*` structured-field mentions `extract-selectors` writes per
+        header slot (the address selector + a display-name mention `resolve-entities`
+        links to a person/org), so a person or an address can be the filter or bucket.
+        """
+        params: dict = {"limit": request.limit}
+        where = ["f.filetype_group = 'email'", *correspondence_predicates(request, params, file_column="f.id")]
+        if request.dataset_id:
+            params["dataset_id"] = request.dataset_id
+            where.append("f.dataset_id = :dataset_id")
+        emails_cte = (
+            "emails AS (SELECT f.id AS file_id, coalesce(et.metadata->>'message_id', f.sha256) AS message_key, "
+            f"{CONTENT_DATE_SQL} AS date_sent FROM file f JOIN extracted_text et ON et.file_id = f.id "
+            f"WHERE {' AND '.join(where)})"
+        )
+        total = (
+            await self.session.execute(
+                text(f"WITH {emails_cte} SELECT count(DISTINCT message_key) FROM emails"), params
+            )
+        ).scalar_one()
+
+        if request.group_by in _PERIOD_LENGTH:
+            params["period_length"] = _PERIOD_LENGTH[request.group_by]
+            sql = (
+                f"WITH {emails_cte} SELECT substr(date_sent, 1, :period_length) AS key, "
+                "count(DISTINCT message_key) AS email_count, min(date_sent) AS date_first, max(date_sent) AS date_last "
+                f"FROM emails WHERE date_sent IS NOT NULL GROUP BY 1 ORDER BY 1 LIMIT {_MAX_PERIODS}"
+            )
+            rows = (await self.session.execute(text(sql), params)).mappings().all()
+            buckets = [EmailCountBucket(label=r["key"], **r) for r in rows]
+        else:
+            buckets = await self._party_buckets(request, params, emails_cte)
+        return EmailCounts(total_emails=total, group_by=request.group_by, buckets=buckets)
+
+    async def _party_buckets(self, request: EmailCountRequest, params: dict, emails_cte: str) -> list[EmailCountBucket]:
+        """Group by the entity in each header slot of the grouped role.
+
+        A slot resolves to its named entity (person/org from the display name),
+        else the owner of its address (`has_selector`), else the address itself.
+        """
+        seed_keys = [k for k in params if k.startswith(("sender_", "recipient_", "participant_"))]
+        # Exclude the filtered parties themselves -- including the owner of a filtered
+        # address, so "who does <address> email" doesn't list the address's own person.
+        seeds = (
+            " UNION ".join(
+                f"({_identity_sql(k)}) UNION (SELECT r.src_entity_id FROM entity_relationship r "
+                f"WHERE r.dst_entity_id = :{k} AND r.relationship_type = 'HAS_SELECTOR')"
+                for k in seed_keys
+            )
+            or "SELECT NULL::text WHERE false"
+        )
+        sql = (
+            f"WITH {emails_cte}, "
+            "slots AS (SELECT m.file_id, m.field_path, "
+            "  max(m.entity_id) FILTER (WHERE m.selector_type IS NULL) AS named_id, "
+            "  max(m.entity_id) FILTER (WHERE m.selector_type IS NOT NULL) AS address_id "
+            "  FROM mention m JOIN emails e ON e.file_id = m.file_id "
+            f"  WHERE {_ROLE_PATHS[_PARTY_ROLE[request.group_by]]} AND m.entity_id IS NOT NULL "
+            "  GROUP BY m.file_id, m.field_path), "
+            "keyed AS (SELECT s.file_id, s.address_id, coalesce(s.named_id, owner.src_entity_id, s.address_id) AS key "
+            "  FROM slots s LEFT JOIN LATERAL (SELECT r.src_entity_id FROM entity_relationship r "
+            "    WHERE r.dst_entity_id = s.address_id AND r.relationship_type = 'HAS_SELECTOR' LIMIT 1) owner ON true) "
+            "SELECT k.key, ent.display_name AS label, lower(ent.entity_type) AS entity_type, "
+            "  count(DISTINCT e.message_key) AS email_count, min(e.date_sent) AS date_first, "
+            "  max(e.date_sent) AS date_last, "
+            "  coalesce(array_agg(DISTINCT addr.display_name) FILTER (WHERE addr.id IS NOT NULL), '{}') AS addresses "
+            "FROM keyed k JOIN emails e ON e.file_id = k.file_id JOIN entity ent ON ent.id = k.key "
+            "LEFT JOIN entity addr ON addr.id = k.address_id "
+            f"WHERE k.key NOT IN ({seeds}) AND (k.address_id IS NULL OR k.address_id NOT IN ({seeds})) "
+            "GROUP BY 1, 2, 3 ORDER BY email_count DESC, label LIMIT :limit"
+        )
+        rows = (await self.session.execute(text(sql), params)).mappings().all()
+        return [EmailCountBucket(**r) for r in rows]

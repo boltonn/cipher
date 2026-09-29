@@ -314,11 +314,8 @@ async def dedupe_pending_ocr(session: "AsyncSession", dataset_id: str) -> tuple[
             file_id=item.resource["id"],
             sha256=item.resource["sha256"],
         )
-        if (
-            duplicate is None
-            or not isinstance(duplicate.metadata, DocumentMetadata)
-            or not duplicate.metadata.ocr_model
-        ):
+        # only reuse a pyocr result -- an xberg-inline (EasyOCR) one is what this pass replaces
+        if duplicate is None or duplicate.extractor != TextExtractor.PYOCR:
             continue
         existing = await extracted_text_repo.get_by_file_id(item.resource["id"])
         stale += await _write(session, _copy_for(duplicate, item.resource, existing), existing)
@@ -336,7 +333,7 @@ async def ocr_workflow(
     dataset_id: str,
     filetypes: list[str] | None = None,
     clip_filter: ClipTagFilter | None = None,
-    concurrency: int = 16,
+    concurrency: int = 32,
     min_chars: int = DEFAULT_MIN_CHARS,
     force: bool = False,
     figures: bool = False,

@@ -32,6 +32,13 @@ const COLLAPSE_AFTER = 6;
 const pillClass =
   "inline-flex h-6 max-w-[14rem] items-center gap-1.5 rounded-md border border-border bg-white/[0.02] px-2 text-[11px] text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
+const sentFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
+
+function formatSent(iso: string): string {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? iso : sentFormat.format(date);
+}
+
 function CitationBody({ citation }: { citation: ChatCitation }) {
   const Icon = KIND_ICON[citation.kind] ?? FileText;
   return (
@@ -45,6 +52,11 @@ function CitationBody({ citation }: { citation: ChatCitation }) {
           </span>
         )}
       </span>
+      {(citation.sentFrom || citation.dateSent) && (
+        <span className="truncate text-[11px] text-muted-foreground">
+          {[citation.sentFrom, citation.dateSent && formatSent(citation.dateSent)].filter(Boolean).join(" · ")}
+        </span>
+      )}
       {citation.headingPath && citation.headingPath.length > 0 && (
         <span className="truncate text-[11px] text-muted-foreground">
           {citation.headingPath.join(" › ")}
@@ -74,6 +86,11 @@ function CitationPill({
       <span className="font-mono text-[10px] text-muted-foreground/70">{index}</span>
       <Icon className="h-3 w-3 shrink-0" />
       <span className="truncate">{citation.displayName}</span>
+      {citation.count != null && (
+        <span className="shrink-0 rounded bg-primary/15 px-1 font-mono text-[10px] text-primary">
+          {citation.count.toLocaleString()}
+        </span>
+      )}
     </>
   );
 

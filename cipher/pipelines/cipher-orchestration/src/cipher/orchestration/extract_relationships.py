@@ -1,15 +1,14 @@
 """Relationship extraction workflow (RELATIONSHIP_EXTRACTION enrichment).
 
-Scope for now: **email `communicates_with` edges between address selectors.**
-For every email, an undirected `communicates_with` edge is asserted between the
-`from` address and each `to` / `cc` / `bcc` address, endpoint = the `email`
-selector entity `extract-selectors` already created. No name resolution is
-needed -- the ontology allows bare `selector <-> selector` comms endpoints, so
-this runs off header selectors alone.
+Scope for now: **directed email `emailed` edges between address selectors.**
+For every email, an `emailed` edge runs from the `from` address to each `to` /
+`cc` / `bcc` address, endpoint = the `email` selector entity `extract-selectors`
+already created. No name resolution is needed -- the ontology allows bare
+`selector -> selector` comms endpoints, so this runs off header selectors alone.
 
-Edges are deduped on the `(src, dst, relationship_type)` unique constraint and
-carry `weight` = number of messages observed between the pair, plus the
-`date_observed_start` / `_end` span of those messages. `source =
+A reply is its own edge the other way. Edges are deduped on the `(src, dst,
+relationship_type)` unique constraint and carry `weight` = emails sent src -> dst,
+plus the `date_observed_start` / `_end` span of those emails. `source =
 selector_inference`.
 
 Person/org `has_selector` edges (an address -> the human who uses it) are NOT
@@ -17,7 +16,8 @@ built here: they need a resolved person entity, which waits on
 `resolve-entities`.
 
 Re-runnable: enrichment-queue guarded, so a second run without `reset-entities`
-processes nothing and never double-counts `weight`.
+processes nothing and never double-counts `weight`; `rebuild=True` drops this
+workflow's edges and recomputes them.
 """
 
 from collections import defaultdict
@@ -26,7 +26,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from loguru import logger
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from tqdm import tqdm
 
@@ -45,11 +45,13 @@ if TYPE_CHECKING:
 
 _EMAIL_FILETYPE_GROUP = "email"
 _UPSERT_CHUNK = 1000
+# Relationship types this workflow owns (communicates_with: edges built before `emailed` existed).
+_OWNED_TYPES = (RelationshipType.EMAILED, RelationshipType.COMMUNICATES_WITH)
 
 
 @dataclass
 class _EdgeAgg:
-    """Per-run accumulation for one undirected selector pair."""
+    """Per-run accumulation for one sender -> recipient selector pair."""
 
     messages: int = 0
     dates: list[datetime] = field(default_factory=list)
@@ -90,8 +92,8 @@ async def _flush_edges(session: "AsyncSession", dataset_id: str, edges: dict[tup
                 "dataset_id": dataset_id,
                 "src_entity_id": src,
                 "dst_entity_id": dst,
-                "relationship_type": RelationshipType.COMMUNICATES_WITH,
-                "directed": False,
+                "relationship_type": RelationshipType.EMAILED,
+                "directed": True,
                 "weight": float(agg.messages),
                 "source": RelationshipSource.SELECTOR_INFERENCE,
                 "attributes": {},
@@ -122,7 +124,7 @@ async def _flush_edges(session: "AsyncSession", dataset_id: str, edges: dict[tup
 def _email_edges(
     metadata: EmailMetadata, selector_index: dict[str, str]
 ) -> tuple[list[tuple[str, str]], datetime | None, int]:
-    """Canonical undirected selector-id pairs for one email. Returns (pairs, date_sent, unmapped)."""
+    """(sender, recipient) selector-id pairs for one email. Returns (pairs, date_sent, unmapped)."""
     from pyselectors.normalize import normalize_email
 
     sender = metadata.sent_from or metadata.sender
@@ -143,7 +145,7 @@ def _email_edges(
         if dst == src or dst in seen:
             continue
         seen.add(dst)
-        pairs.append((src, dst) if src < dst else (dst, src))
+        pairs.append((src, dst))
     return pairs, metadata.date_sent, unmapped
 
 
@@ -159,17 +161,37 @@ async def queue_relationship_extraction_enrichments(session: "AsyncSession", dat
     return count
 
 
+async def reset_selector_communication_edges(session: "AsyncSession", dataset_id: str) -> int:
+    """Drop this workflow's edges and its enrichments so the next run recomputes them. Returns edges dropped."""
+    result = await session.execute(
+        delete(EntityRelationshipTable).where(
+            EntityRelationshipTable.dataset_id == dataset_id,
+            EntityRelationshipTable.relationship_type.in_(_OWNED_TYPES),
+            EntityRelationshipTable.source == RelationshipSource.SELECTOR_INFERENCE,
+        )
+    )
+    await PostgresEnrichmentRepository(session=session).delete_by_type(
+        dataset_id, EnrichmentType.RELATIONSHIP_EXTRACTION
+    )
+    await session.commit()
+    return result.rowcount or 0
+
+
 async def extract_relationships_workflow(
     session: "AsyncSession",
     dataset_id: str,
     batch_size: int = 200,
+    rebuild: bool = False,
 ) -> int:
-    """Build email `communicates_with` edges between address selectors. Returns emails processed.
+    """Build directed email `emailed` edges between address selectors. Returns emails processed.
 
     Run `extract-selectors` first -- the edge endpoints are the `email`
     selector entities it creates; emails whose addresses have no selector
     entity are skipped.
     """
+    if rebuild:
+        dropped = await reset_selector_communication_edges(session=session, dataset_id=dataset_id)
+        logger.info(f"Dropped {dropped} email edges to rebuild")
     await queue_relationship_extraction_enrichments(session=session, dataset_id=dataset_id)
 
     enrichment_repo = PostgresEnrichmentRepository(session=session)
@@ -241,7 +263,7 @@ async def extract_relationships_workflow(
             pbar.update(len(completed) + len(failed))
 
     logger.success(
-        f"Built {len(seen_pairs)} communicates_with edges from {count} emails "
+        f"Built {len(seen_pairs)} emailed edges from {count} emails "
         f"({failed_count} failed, {unmapped_count} addresses with no selector entity)"
     )
     return count

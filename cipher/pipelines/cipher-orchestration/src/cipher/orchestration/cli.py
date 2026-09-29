@@ -9,6 +9,7 @@ embedded/detected once.
 
 import asyncio
 import json
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
 
@@ -21,16 +22,15 @@ from cipher.orchestration.backfill_exif_locations import backfill_exif_locations
 from cipher.orchestration.benchmark import benchmark_ingest, benchmark_storage
 from cipher.orchestration.cluster_faces import cluster_faces_workflow, reset_face_clusters
 from cipher.orchestration.dedupe_entities import dedupe_entities_workflow
-from cipher.orchestration.detect_faces import (
-    detect_faces_workflow,
-    get_face_detection_stats,
-)
 from cipher.orchestration.embed_images import embed_images_workflow, get_embedding_stats
 from cipher.orchestration.embed_text import DEFAULT_SKIP_EMAIL_STATES, embed_text_workflow, get_text_embedding_stats
+from cipher.orchestration.environments import ensure_stage_env
 from cipher.orchestration.extract_contact_entities import extract_contact_entities_workflow
 from cipher.orchestration.extract_documents import (
     DEFAULT_CHUNK_SIZE,
     Chunker,
+    OcrBackend,
+    XbergOcr,
     extract_documents_workflow,
     get_extraction_stats,
 )
@@ -50,7 +50,6 @@ from cipher.orchestration.extract_llm import (
     LlmPassTooLargeError,
     extract_llm_workflow,
 )
-from cipher.orchestration.extract_message_selectors import extract_message_selectors_workflow
 from cipher.orchestration.extract_relationships import (
     extract_relationships_workflow,
     get_relationship_extraction_stats,
@@ -62,13 +61,6 @@ from cipher.orchestration.link_face_cooccurrence import (
     link_face_cooccurrence_workflow,
 )
 from cipher.orchestration.match_faces import match_faces_workflow, reset_face_matches
-from cipher.orchestration.ocr import (
-    DEFAULT_CLIP_NEGATIVE_TAGS,
-    DEFAULT_CLIP_TAGS,
-    ClipTagFilter,
-    get_ocr_stats,
-    ocr_workflow,
-)
 from cipher.orchestration.refresh_selectors import refresh_selectors_workflow
 from cipher.orchestration.reset_entities import reset_entities
 from cipher.orchestration.reset_events import reset_events
@@ -85,6 +77,23 @@ from cipher.schemas.ingestion.enrichment import EnrichmentType
 from cipher.schemas.ingestion.estimation import WorkUnit
 
 app = typer.Typer(help="Test-drive ingestion, embedding, and face detection against a local dataset.")
+
+
+@asynccontextmanager
+async def _text_chunk_es_repo():
+    """The ES `text_chunks` repo when `RETRIEVAL__BACKEND=elasticsearch`, else None (ES never opened)."""
+    from cipher.utils.retrieval import RetrievalBackend, load_retrieval_config
+
+    if load_retrieval_config().backend == RetrievalBackend.POSTGRES:
+        yield None
+        return
+    from cipher.datastores.elasticsearch.repositories.text_chunk import ElasticsearchTextChunkRepository
+    from cipher.schemas.content.message import TEXT_EMBEDDING_DIMENSION
+
+    async with get_elasticsearch_client_context() as client:
+        es_repo = ElasticsearchTextChunkRepository(client=client)
+        await es_repo.create_index(embedding_size=TEXT_EMBEDDING_DIMENSION)
+        yield es_repo
 
 
 async def _resolve_dataset_id(session, dataset_id: str | None, dataset_name: str | None) -> str:
@@ -151,6 +160,7 @@ def load_files_cmd(
     limit: Annotated[int | None, typer.Option(help="Max number of files to load")] = None,
 ):
     """Stage a directory of files into a dataset via file typing (File rows only; no analysis)."""
+    ensure_stage_env("staging")
     from filetyper.models.main import FileTyper
 
     async def _run():
@@ -178,10 +188,9 @@ def embed_images_cmd(
 ):
     """Run CLIP image embedding over a dataset's image files.
 
-    Requires the `setfitcv` package's dependencies: run this from an
-    environment where `uv sync --extra setfitcv` (or equivalent) has
-    installed it. Independent of `detect-faces` — either can run first.
+    Independent of `detect-faces` -- either can run first.
     """
+    ensure_stage_env("image-embedding")
     from setfitcv.model import CLIP
 
     async def _run():
@@ -206,6 +215,7 @@ def extract_locations_cmd(
     dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
 ):
     """Read EXIF GPS from a dataset's image files and write `location` rows (no model)."""
+    ensure_stage_env("exif-location")
 
     async def _run():
         async with get_session_context() as session:
@@ -230,13 +240,11 @@ def detect_faces_cmd(
     dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
     device: Annotated[ModelDevice, typer.Option(help="Inference device")] = ModelDevice.CPU,
 ):
-    """Run face detection over a dataset's image files.
-
-    Requires the `face` package's dependencies (`analytics/face`): run this
-    from an environment where `uv sync --extra face` (or equivalent) has
-    installed InsightFace.
-    """
+    """Run face detection over a dataset's image files."""
+    ensure_stage_env("face-detection")
     from face.api.deps import AsyncInsightFaceModel
+
+    from cipher.orchestration.detect_faces import detect_faces_workflow
 
     async def _run():
         async with get_session_context() as session:
@@ -282,16 +290,30 @@ def extract_text_cmd(
         int | None,
         typer.Option(help="Cap xberg's internal batch parallelism -- default is xberg's own num_cpus*2"),
     ] = None,
+    ocr_backend: Annotated[
+        OcrBackend, typer.Option(help="OCR for image-based PDF pages during extraction (none = record them only)")
+    ] = OcrBackend.EASYOCR,
+    ocr_language: Annotated[
+        list[str] | None, typer.Option(help="OCR language code, repeatable (EasyOCR: en, fr...; Tesseract: eng...)")
+    ] = None,
+    ocr_model_dir: Annotated[
+        Path | None,
+        typer.Option(envvar="EASYOCR_MODEL_DIR", help="Pre-downloaded EasyOCR weights, so OCR never downloads"),
+    ] = None,
 ):
     """Extract text (and structure) from a dataset's eligible files.
 
     Runs emails first (pyparse) -- which also persists any attachments as
     their own files, linked via `parent_id` -- then documents (xberg,
     batched), so attachments discovered this run are swept up in the same
-    pass. Requires the `pyxberg`/`pyparse[email]` packages: run this from an
-    environment where `uv sync --extra cli` (cipher-orchestration's `cli`
-    extra) has installed them.
+    pass. PDF pages without a usable text layer are recorded as
+    `metadata.image_pages` and OCR'd inline (EasyOCR by default); re-run just
+    those with a stronger model via `cipher ocr`.
     """
+    ensure_stage_env("text-extraction")
+    ocr = XbergOcr(backend=ocr_backend, languages=ocr_language or ["en"], model_dir=ocr_model_dir)
+    if ocr_backend == OcrBackend.EASYOCR and ocr_model_dir is None:
+        logger.warning("No --ocr-model-dir / EASYOCR_MODEL_DIR -- EasyOCR will try to download its weights")
 
     async def _run():
         async with get_session_context() as session:
@@ -301,7 +323,7 @@ def extract_text_cmd(
                 dataset_id=resolved_id,
                 device="na",
                 unit=WorkUnit.TEXT_FILE,
-                params={"chunker": chunker.value, "chunk_size": chunk_size},
+                params={"chunker": chunker.value, "chunk_size": chunk_size, "ocr_backend": ocr_backend.value},
             ) as run:
                 email_count = await extract_emails_workflow(
                     session=session, dataset_id=resolved_id, attachments_dir=attachments_dir
@@ -314,6 +336,7 @@ def extract_text_cmd(
                     tokenizer_model_dir=model_dir,
                     chunk_size=chunk_size,
                     max_concurrent_extractions=max_concurrent_extractions,
+                    ocr=ocr,
                 )
                 logger.success(f"Extracted text for {doc_count} document files")
                 run.units = email_count + doc_count
@@ -329,8 +352,13 @@ def ocr_cmd(
         list[str] | None,
         typer.Option(help="Filetype(s) to OCR, repeatable (e.g. pdf, heif). Default: every PDF + supported image"),
     ] = None,
-    service_url: Annotated[str, typer.Option(help="pyocr service base URL")] = "http://localhost:8010",
-    concurrency: Annotated[int, typer.Option(help="Files in flight; the service decodes all their pages at once")] = 16,
+    service_url: Annotated[
+        list[str] | None,
+        typer.Option(help="pyocr service URL, repeatable -- one per GPU (`make start-vllm-all`). Default :8010"),
+    ] = None,
+    concurrency: Annotated[
+        int, typer.Option(help="Files in flight across all services; each decodes its files' pages together")
+    ] = 32,
     min_chars: Annotated[int, typer.Option(help="PDF pages with fewer text-layer word chars are OCR'd")] = 20,
     force: Annotated[bool, typer.Option(help="OCR every PDF page, not just image-based ones")] = False,
     figures: Annotated[bool, typer.Option(help="Also locate + caption figures (grounding prompt)")] = False,
@@ -348,7 +376,16 @@ def ocr_cmd(
     embeddings `embed-images` already stored, so only likely text-bearing images
     (screenshots, scans, receipts, signs...) are sent to the model.
     """
+    ensure_stage_env("ocr")
     from pyocr.client import OcrClient
+
+    from cipher.orchestration.ocr import (
+        DEFAULT_CLIP_NEGATIVE_TAGS,
+        DEFAULT_CLIP_TAGS,
+        ClipTagFilter,
+        get_ocr_stats,
+        ocr_workflow,
+    )
 
     clip_filter = None
     if clip_model_dir:
@@ -362,7 +399,7 @@ def ocr_cmd(
         )
 
     async def _run():
-        client = OcrClient(base_url=service_url)
+        client = OcrClient(base_urls=service_url)
         try:
             async with get_session_context() as session:
                 resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
@@ -424,50 +461,41 @@ def embed_text_cmd(
         ),
     ] = None,
 ):
-    """Chunk (if needed) and embed a dataset's extracted text into the unified `text_chunks` search index.
+    """Chunk (if needed) and embed a dataset's extracted text into the chunk store (`RETRIEVAL__BACKEND`).
 
     Run `extract-text` first -- this reads persisted `ExtractedText` rows,
-    it doesn't parse files itself. Requires the `cli` extra (for `clir`) and
-    Elasticsearch configured in `.env`.
+    it doesn't parse files itself. Elasticsearch is only opened when
+    `RETRIEVAL__BACKEND=elasticsearch`.
     """
+    ensure_stage_env("text-embedding")
     from clir.models.pytorch import TextEmbeddingPytorchModel
-
-    from cipher.datastores.elasticsearch.repositories.text_chunk import ElasticsearchTextChunkRepository
-    from cipher.schemas.content.message import TEXT_EMBEDDING_DIMENSION
 
     async def _run():
         model = TextEmbeddingPytorchModel(model_dir=model_dir, device=device.value)
-        async with get_elasticsearch_client_context() as client:
-            es_repo = ElasticsearchTextChunkRepository(client=client)
-            # Same embedding dimension constant messages already index with --
-            # keeps the door open to one day merging into a single search
-            # surface without a dimension mismatch.
-            await es_repo.create_index(embedding_size=TEXT_EMBEDDING_DIMENSION)
-
-            async with get_session_context() as session:
-                resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
-                async with record_run(
-                    enrichment_type=EnrichmentType.TEXT_EMBEDDING,
+        async with _text_chunk_es_repo() as es_repo, get_session_context() as session:
+            resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
+            async with record_run(
+                enrichment_type=EnrichmentType.TEXT_EMBEDDING,
+                dataset_id=resolved_id,
+                device=device.value,
+                unit=WorkUnit.TEXT_FILE,
+                params={"chunk_size": chunk_size, "max_pages": max_pages},
+            ) as run:
+                run.units = await embed_text_workflow(
+                    session=session,
                     dataset_id=resolved_id,
-                    device=device.value,
-                    unit=WorkUnit.TEXT_FILE,
-                    params={"chunk_size": chunk_size, "max_pages": max_pages},
-                ) as run:
-                    run.units = await embed_text_workflow(
-                        session=session,
-                        dataset_id=resolved_id,
-                        model=model,
-                        es_repo=es_repo,
-                        chunk_size=chunk_size,
-                        chunk_overlap=chunk_overlap,
-                        min_chunk_tokens=min_chunk_tokens,
-                        embed_batch_size=embed_batch_size,
-                        max_pages=max_pages,
-                        skip_email_states=(
-                            frozenset(skip_email_state) if skip_email_state is not None else DEFAULT_SKIP_EMAIL_STATES
-                        ),
-                    )
-                logger.success(f"Embedded text for {run.units} files")
+                    model=model,
+                    es_repo=es_repo,
+                    chunk_size=chunk_size,
+                    chunk_overlap=chunk_overlap,
+                    min_chunk_tokens=min_chunk_tokens,
+                    embed_batch_size=embed_batch_size,
+                    max_pages=max_pages,
+                    skip_email_states=(
+                        frozenset(skip_email_state) if skip_email_state is not None else DEFAULT_SKIP_EMAIL_STATES
+                    ),
+                )
+            logger.success(f"Embedded text for {run.units} files")
 
     asyncio.run(_run())
 
@@ -485,7 +513,7 @@ def extract_selectors_cmd(
     text for phone / email / ip / iban / imei / crypto / social-handle spans
     with real offsets, kind attributes, and a context-scored confidence. Run
     `extract-text` first -- this reads persisted `ExtractedText`, it does not
-    parse source files. Requires the `cli` extra (for `pyselectors`).
+    parse source files.
     """
 
     async def _run():
@@ -555,14 +583,16 @@ def sync_chunk_entities_cmd(
 def extract_relationships_cmd(
     dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
     dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
+    rebuild: Annotated[
+        bool, typer.Option(help="Drop and recompute this dataset's email edges (e.g. pre-`emailed` ones)")
+    ] = False,
 ):
-    """Build `communicates_with` edges between a dataset's email address selectors.
+    """Build directed `emailed` edges between a dataset's email address selectors.
 
-    Currently the email-header path only: an undirected edge between the `from`
-    selector and each `to`/`cc`/`bcc` selector, `weight` = messages observed,
-    `source = selector_inference`. Run `extract-selectors` first -- the edge
-    endpoints are the selector entities it creates. Person `has_selector` edges
-    wait on `resolve-entities`.
+    Currently the email-header path only: an edge from the `from` selector to each
+    `to`/`cc`/`bcc` selector, `weight` = emails sent that way, `source =
+    selector_inference`. Run `extract-selectors` first -- the edge endpoints are the
+    selector entities it creates. Person `has_selector` edges wait on `resolve-entities`.
     """
 
     async def _run():
@@ -574,7 +604,9 @@ def extract_relationships_cmd(
                 device="na",
                 unit=WorkUnit.LLM_FILE,
             ) as run:
-                run.units = await extract_relationships_workflow(session=session, dataset_id=resolved_id)
+                run.units = await extract_relationships_workflow(
+                    session=session, dataset_id=resolved_id, rebuild=rebuild
+                )
             logger.success(f"Extracted relationships for {run.units} emails")
 
     asyncio.run(_run())
@@ -739,8 +771,9 @@ def extract_events_cmd(
     (`extractor = llm`, typed `details` / `url` / `confidence`), deduped on `uid`
     then `(title, start date)` / `(type, start date, place)`. Both leave
     unresolved participant / place links for `resolve-event-links`. Requires the
-    `cli` extra (for `pyparse`); `--llm` also needs `pyprompt`.
+    `event-extraction` stage (for `pyparse`); `--llm` also needs an `LLM__*` config.
     """
+    ensure_stage_env("event-extraction")
 
     async def _run():
         async with get_session_context() as session:
@@ -805,6 +838,7 @@ def extract_llm_cmd(
     `gemma-3n-E2B` run ~20-40x slower under vLLM. Follow with `resolve-entities`
     then `resolve-event-links`.
     """
+    ensure_stage_env("event-extraction")
     task_set = {t.strip().lower() for t in tasks.split(",") if t.strip()}
 
     async def _run():
@@ -867,6 +901,8 @@ def extract_entities_cmd(
     `gliner` needs `--gliner-model-dir` (entities + relations in one joint pass);
     `nerd` needs `--nerd-model-dir` (entities only).
     """
+    if extractor in ("gliner", "nerd"):
+        ensure_stage_env(extractor)
 
     async def _run():
         async with get_session_context() as session:
@@ -915,7 +951,8 @@ def resolve_entities_cmd(
         bool, typer.Option(help="Also match against other datasets' entities (review-only; never auto)")
     ] = False,
     concurrency: Annotated[
-        int, typer.Option(help="Score this many name groups in parallel (own session each); ~Nx faster on a big mailbox")
+        int,
+        typer.Option(help="Score this many name groups in parallel (own session each); ~Nx faster on a big mailbox"),
     ] = 1,
 ):
     """Sweep unresolved name mentions -> entities: block -> score -> decide -> emit.
@@ -985,13 +1022,14 @@ def extract_contact_entities_cmd(
     dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
     dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
 ):
-    """Turn a dataset's `Contact` (vCard / address-book) rows into resolver-ready mentions.
+    """Parse a dataset's vCard files into `contact` rows, then turn contacts into resolver-ready mentions.
 
     Each contact emits a person `name` mention plus its email/phone `selector`
     mentions under one shared `field_path`, so `resolve-entities` links the name
     to the identifier exactly as it does an email header. A `Contact.organization`
     also emits an org name mention + a `member_of` relation. Re-runnable.
     """
+    ensure_stage_env("contact-extraction")
 
     async def _run():
         async with get_session_context() as session:
@@ -1004,27 +1042,6 @@ def extract_contact_entities_cmd(
             ) as run:
                 counts = await extract_contact_entities_workflow(session=session, dataset_id=resolved_id)
                 run.units = counts.get("contacts", 0)
-            typer.echo(json.dumps(counts, indent=2))
-
-    asyncio.run(_run())
-
-
-@app.command("extract-message-selectors")
-def extract_message_selectors_cmd(
-    dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
-    dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
-):
-    """Turn a dataset's `Message` sender/recipient phones into `phone` selector mentions.
-
-    Feeds the graph, not name resolution directly: once a contact or header
-    resolves a person to one of those numbers (`has_selector`), the conversation
-    is connected to them. Re-runnable.
-    """
-
-    async def _run():
-        async with get_session_context() as session:
-            resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
-            counts = await extract_message_selectors_workflow(session=session, dataset_id=resolved_id)
             typer.echo(json.dumps(counts, indent=2))
 
     asyncio.run(_run())
@@ -1171,7 +1188,7 @@ def reset_text_cmd(
 
     async def _run():
         cfg = load_retrieval_config()
-        async with get_elasticsearch_client_context() as client, get_session_context() as session:
+        async with _text_chunk_es_repo() as es_repo, get_session_context() as session:
             if cfg.backend == RetrievalBackend.POSTGRES:
                 from cipher.datastores.postgres.repositories.chunk_retrieval import (
                     PostgresChunkRetrievalRepository,
@@ -1183,7 +1200,7 @@ def reset_text_cmd(
                     ElasticsearchChunkRetrievalRepository,
                 )
 
-                chunk_store = ElasticsearchChunkRetrievalRepository(client=client, session=session)
+                chunk_store = ElasticsearchChunkRetrievalRepository(client=es_repo.client, session=session)
 
             resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
             deleted_chunks = await chunk_store.delete_by_dataset_id(resolved_id)
@@ -1230,6 +1247,8 @@ def stats(
             embedding_stats = await get_embedding_stats(session=session, dataset_id=resolved_id)
             typer.echo("Image embedding:")
             typer.echo(f"  {dict(embedding_stats.get(EnrichmentType.IMAGE_EMBEDDING, {}))}")
+
+            from cipher.orchestration.detect_faces import get_face_detection_stats
 
             face_stats = await get_face_detection_stats(session=session, dataset_id=resolved_id)
             typer.echo("Face detection:")
@@ -1321,7 +1340,9 @@ def estimate_cmd(
             for e in estimates:
                 eta = format_duration(e.estimate_seconds) if e.estimate_seconds is not None else "n/a"
                 units = f"{e.eligible.unit_count} {e.eligible.unit.value}" if e.eligible.estimable else "-"
-                typer.echo(f"  {e.enrichment_type.value:<{width}}  {eta:>9}  [{e.confidence.value:<8}] {units:<18} {e.basis}")
+                typer.echo(
+                    f"  {e.enrichment_type.value:<{width}}  {eta:>9}  [{e.confidence.value:<8}] {units:<18} {e.basis}"
+                )
             typer.echo(f"\n  {'TOTAL (sequential)':<{width}}  {format_duration(total_estimate_seconds(estimates)):>9}")
 
     asyncio.run(_run())

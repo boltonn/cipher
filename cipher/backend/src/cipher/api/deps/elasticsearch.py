@@ -8,12 +8,10 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from loguru import logger
 
 from cipher.api.settings import Settings
+from cipher.datastores.base.retrieval import ChunkRetrievalRepository
 from cipher.datastores.elasticsearch.client import get_async_client
 from cipher.datastores.elasticsearch.repositories.message import (
     ElasticsearchMessageRepository,
-)
-from cipher.datastores.elasticsearch.repositories.text_chunk import (
-    ElasticsearchTextChunkRepository,
 )
 from cipher.schemas.content.message import Message
 
@@ -105,9 +103,7 @@ async def get_text_chunk_repository(request: Request):
         )
 
 
-TextChunkDatastoreDep = Annotated[
-    ElasticsearchTextChunkRepository, Depends(get_text_chunk_repository)
-]
+TextChunkDatastoreDep = Annotated[ChunkRetrievalRepository, Depends(get_text_chunk_repository)]
 
 
 __all__ = [

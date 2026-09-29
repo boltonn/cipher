@@ -142,8 +142,7 @@ async def search_semantic(
     model: TextEmbeddingModelDep,
 ):
     """Embed a query string and perform kNN search — no pre-computed embedding needed."""
-    embedding = await model.infer(text=params.query, task="retrieval", prompt="Query: ")
-    # embedding = await model.infer(text=params.query, prompt="query: ", task="retrieval")
+    embedding = await model.infer(text=params.query, task="retrieval")
 
     if embedding is None:
         raise HTTPException(status_code=503, detail="Embedding model unavailable")
@@ -167,7 +166,7 @@ async def search_hybrid_by_query(
     model: TextEmbeddingModelDep,
 ):
     """Embed a query string and run hybrid RRF search — no pre-computed embedding needed."""
-    embedding = await model.infer(text=params.query, prompt="query: ", task="retrieval")
+    embedding = await model.infer(text=params.query, task="retrieval")
     if embedding is None:
         raise HTTPException(status_code=503, detail="Embedding model unavailable")
 

@@ -28,6 +28,7 @@ Multilingual page OCR for PDFs and images (PNG/JPEG/TIFF/WebP/HEIF/…), built a
 make download-deps           # hf download jinaai/jina-ocr-v1
 make install-vllm            # separate .venv-vllm: vLLM pins its own torch
 make start-vllm              # http://localhost:8010  (make start = transformers backend)
+make start-vllm-all          # one service per GPU: :8010, :8011 ... (GPUS=0,1)
 ```
 
 ```bash

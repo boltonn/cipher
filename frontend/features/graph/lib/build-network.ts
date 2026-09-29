@@ -79,7 +79,7 @@ export function buildNetwork({
     });
   });
 
-  // Edge thickness encodes weight (e.g. message count on communicates_with).
+  // Edge thickness encodes weight (e.g. emails sent on emailed).
   // Weight 1 (the default -- most typed edges have none) sits at a thin
   // baseline; only genuinely weighted edges scale up, so a heavy edge reads as
   // heavy rather than everything looking the same.

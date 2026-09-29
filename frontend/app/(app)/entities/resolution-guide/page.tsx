@@ -353,7 +353,7 @@ const SLIDES: { title: string; body: ReactNode }[] = [
           <li>Its mentions now point at the entity and show on the entity dossier.</li>
           <li>
             Graph edges get built — <code>has_selector</code> (person ↔ address),{" "}
-            <code>communicates_with</code> (who emailed whom).
+            <code>emailed</code> (who emailed whom).
           </li>
           <li>
             Auto-attached rows carry a{" "}

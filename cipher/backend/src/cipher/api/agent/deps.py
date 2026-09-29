@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from clir.api.deps import AsyncTextEmbeddingModel
 
-from cipher.datastores.elasticsearch.repositories.text_chunk import ElasticsearchTextChunkRepository
+from cipher.datastores.base.retrieval import ChunkRetrievalRepository
 from cipher.datastores.postgres.repositories.dataset import PostgresDatasetRepository
 from cipher.datastores.postgres.repositories.entity import PostgresEntityRepository
 from cipher.datastores.postgres.repositories.entity_match import PostgresEntityMatchRepository
@@ -18,12 +18,11 @@ from cipher.datastores.postgres.repositories.person import PostgresPersonReposit
 class ChatDeps:
     """Everything the agent's tools need to answer a turn.
 
-    `dataset_id` scopes retrieval to one dataset when the user picks one in the
-    chat UI; it is required for the entity tools (entities are per-dataset) and
-    an optional filter for chunk search.
+    `dataset_id` scopes every tool to one dataset when the user picks one in the
+    chat UI; None searches across all datasets.
     """
 
-    chunks: ElasticsearchTextChunkRepository
+    chunks: ChunkRetrievalRepository
     embedding_model: AsyncTextEmbeddingModel
     persons: PostgresPersonRepository
     datasets: PostgresDatasetRepository

@@ -23,12 +23,15 @@ import { cn } from "@/lib/utils";
 import {
   ChevronLeft,
   ChevronRight,
+  ExternalLink,
   HardDrive,
   Loader2,
   MessageSquare,
+  ScanText,
   ScrollText,
   Waypoints,
 } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import { filesService, useFile, useFileText } from "../api";
 import type { FileBrowserItem, FileLocationTarget } from "../types";
@@ -105,7 +108,17 @@ export function FileViewerDialog({
                 {file.filetype.toUpperCase()}
               </span>
             </div>
-            {file.id && <CopyableId id={file.id} />}
+            {file.id && (
+              <div className="flex items-center justify-between gap-2">
+                <CopyableId id={file.id} />
+                <Link
+                  href={`/files/${file.id}`}
+                  className="inline-flex items-center gap-1 text-[10px] uppercase tracking-widest text-primary hover:underline shrink-0"
+                >
+                  Open file page <ExternalLink size={10} />
+                </Link>
+              </div>
+            )}
           </DialogHeader>
 
           <Separator className="bg-white/5" />
@@ -268,6 +281,14 @@ function FileTextTab({ fileId }: { fileId?: string }) {
 
   return (
     <div className="space-y-2">
+      {data.imagePages.length > 0 && (
+        <p className="flex items-center gap-1.5 text-[10px] text-annotation">
+          <ScanText size={12} />
+          {data.imagePages.length} image-based page{data.imagePages.length === 1 ? "" : "s"} (
+          {data.imagePages.join(", ")}) ·{" "}
+          {data.ocrModel ? `text by OCR (${data.ocrModel})` : "no OCR text yet"}
+        </p>
+      )}
       {file?.datasetId && (
         <label className="flex items-center justify-end gap-2 text-[10px] uppercase tracking-widest text-muted-foreground">
           <Waypoints size={12} /> Entities

@@ -113,7 +113,7 @@ async def search_semantic(
     regardless of relevance, so without a threshold `has_more` would stay
     true well past the point where results still match the query.
     """
-    embedding = await model.infer(text=params.query, task="retrieval", prompt="Query: ")
+    embedding = await model.infer(text=params.query, task="retrieval")
     if embedding is None:
         raise HTTPException(status_code=503, detail="Embedding model unavailable")
 

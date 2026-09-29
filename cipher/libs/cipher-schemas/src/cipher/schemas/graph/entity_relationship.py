@@ -140,3 +140,45 @@ class GraphResponse(BaseModel):
 
     nodes: list[EntitySummary] = Field(default_factory=list)
     edges: list[EntityRelationship] = Field(default_factory=list)
+
+
+class TopConnectionsRequest(BaseModel):
+    """Rank the strongest neighbours of a set of seed nodes by edge weight."""
+
+    entity_ids: list[str] = Field(
+        min_length=1,
+        description="Seed nodes. A person/org also seeds the selectors it `has_selector`-owns; bare selectors "
+        "work on their own, so no entity resolution is required",
+    )
+    relationship_types: list[RelationshipType] | None = Field(
+        default=None, description="Edge types to rank; default every type except `has_selector` and co-mention noise"
+    )
+    direction: TraversalDirection = Field(
+        default=TraversalDirection.BOTH, description="out = seed -> neighbour, in = neighbour -> seed"
+    )
+    roll_up: bool = Field(
+        default=True, description="Merge a neighbour's selectors into the one person/org that owns them, if any"
+    )
+    dataset_id: str | None = Field(default=None)
+    limit: int = Field(default=15, ge=1, le=100)
+
+
+class TopConnection(BaseModel):
+    """One ranked neighbour and the summed weight of its edges to the seeds."""
+
+    entity: EntitySummary
+    weight: float
+    relationship_types: list[RelationshipType]
+    via: list[EntitySummary] = Field(default=[], description="Neighbour nodes merged into `entity` by roll-up")
+    date_first: datetime | None = Field(default=None)
+    date_last: datetime | None = Field(default=None)
+
+
+class TopConnectionsResponse(BaseModel):
+    """Seeds (after `has_selector` expansion) and their ranked connections."""
+
+    seeds: list[EntitySummary]
+    connections: list[TopConnection]
+    edges_without_direction: int = Field(
+        default=0, description="Undirected edges skipped because `direction` was out/in"
+    )

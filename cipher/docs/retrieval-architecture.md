@@ -382,7 +382,7 @@ configured ranker whose extension is missing downgrades silently, visible at
 | **P0** | `chunk` table, `mention.chunk_id`, `chunk_id_for` wired into `TextChunk.id`, migration `0019`. |
 | **P1a** | `RetrievalConfig` (`RETRIEVAL__*`), startup log, `GET /search/config`, extension bootstrap. |
 | **P1b** | `chunk.embedding`/`text_tsv` + HNSW/GIN/BM25 indexes (migration `0023`); `RetrievalQuery`/`GraphExpand` schema; `ChunkRetrievalRepository` ABC; `PostgresChunkRetrievalRepository`; embed pipeline writes `chunk` rows; `TextChunkDatastoreDep` factory. |
-| **P2** | `mention.chunk_id` set inline at extraction time (`_assign_chunk_ids`, works for either backend); `backfill-mention-chunks` for pre-existing data; `search_graph` agent tool (`graph_expand`). |
+| **P2** | `mention.chunk_id` set inline at extraction time (`_assign_chunk_ids`, works for either backend); `backfill-mention-chunks` for pre-existing data; `graph_expand` agent tool (now `search_passages(entity_id, connected_hops)`; correspondence filters + `count_emails` added 2026-09-29). |
 | **P3** | Re-embedded `rag` into Postgres end-to-end; found and fixed real bugs under real load (§10); `ElasticsearchChunkRetrievalRepository` built to the same ABC, live-resolved entity/graph filtering (§6), validated against a live ES cluster; both backends now switch with one setting. |
 
 Switching backends is a **re-embed**, not a migration: reset the `TEXT_EMBEDDING`

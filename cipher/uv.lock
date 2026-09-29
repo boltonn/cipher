@@ -726,6 +726,8 @@ dependencies = [
     { name = "cipher-schemas" },
     { name = "cipher-utils" },
     { name = "loguru" },
+    { name = "pyprompt" },
+    { name = "pyselectors" },
     { name = "tqdm" },
     { name = "typer" },
 ]
@@ -734,49 +736,84 @@ dependencies = [
 cli = [
     { name = "clir" },
     { name = "face" },
+    { name = "face", extra = ["cuda"], marker = "(extra == 'extra-4-clir-cpu' and extra == 'extra-4-clir-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-4-face-cuda') or (extra != 'extra-4-clir-cpu' and extra == 'extra-4-face-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-4-nerd-cpu' and extra == 'extra-4-nerd-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-8-pygliner-cpu' and extra == 'extra-8-pygliner-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-8-setfitcv-cpu' and extra == 'extra-8-setfitcv-cuda') or (extra != 'extra-4-clir-cpu' and extra == 'extra-4-nerd-cpu' and extra == 'extra-4-nerd-cuda') or (extra != 'extra-4-clir-cpu' and extra == 'extra-8-pygliner-cpu' and extra == 'extra-8-pygliner-cuda') or (extra != 'extra-4-clir-cpu' and extra == 'extra-8-setfitcv-cpu' and extra == 'extra-8-setfitcv-cuda')" },
     { name = "filetyper" },
     { name = "pyocr" },
-    { name = "pyparse", extra = ["email"] },
-    { name = "pyprompt" },
-    { name = "pyselectors" },
+    { name = "pyparse", extra = ["contacts", "email"] },
     { name = "pyxberg" },
     { name = "setfitcv" },
 ]
-messages = [
-    { name = "clir" },
-    { name = "numpy" },
-    { name = "pandas" },
+contact-extraction = [
+    { name = "pyparse", extra = ["contacts"] },
+]
+event-extraction = [
+    { name = "pyparse" },
+]
+exif-location = [
+    { name = "setfitcv" },
+]
+face-detection = [
+    { name = "face" },
+    { name = "face", extra = ["cuda"], marker = "(extra == 'extra-4-clir-cpu' and extra == 'extra-4-clir-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-4-face-cuda') or (extra != 'extra-4-clir-cpu' and extra == 'extra-4-face-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-4-nerd-cpu' and extra == 'extra-4-nerd-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-8-pygliner-cpu' and extra == 'extra-8-pygliner-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-8-setfitcv-cpu' and extra == 'extra-8-setfitcv-cuda') or (extra != 'extra-4-clir-cpu' and extra == 'extra-4-nerd-cpu' and extra == 'extra-4-nerd-cuda') or (extra != 'extra-4-clir-cpu' and extra == 'extra-8-pygliner-cpu' and extra == 'extra-8-pygliner-cuda') or (extra != 'extra-4-clir-cpu' and extra == 'extra-8-setfitcv-cpu' and extra == 'extra-8-setfitcv-cuda')" },
+]
+gliner = [
+    { name = "pygliner" },
+]
+image-embedding = [
+    { name = "setfitcv" },
 ]
 ner = [
     { name = "nerd" },
     { name = "pygliner" },
+]
+nerd = [
+    { name = "nerd" },
+]
+ocr = [
+    { name = "pyocr" },
+    { name = "pyxberg" },
+    { name = "setfitcv" },
+]
+staging = [
+    { name = "filetyper" },
+]
+text-embedding = [
+    { name = "clir" },
+]
+text-extraction = [
+    { name = "pyparse", extra = ["email"] },
+    { name = "pyxberg" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "anyio" },
     { name = "cipher-datastores", extras = ["postgres", "elasticsearch"], editable = "libs/cipher-datastores" },
+    { name = "cipher-orchestration", extras = ["gliner", "nerd"], marker = "extra == 'ner'", editable = "pipelines/cipher-orchestration" },
+    { name = "cipher-orchestration", extras = ["staging", "text-extraction", "ocr", "text-embedding", "image-embedding", "face-detection", "contact-extraction", "event-extraction"], marker = "extra == 'cli'", editable = "pipelines/cipher-orchestration" },
     { name = "cipher-schemas", editable = "libs/cipher-schemas" },
     { name = "cipher-utils", editable = "libs/cipher-utils" },
-    { name = "clir", marker = "extra == 'cli'", editable = "analytics/clir" },
-    { name = "clir", marker = "extra == 'messages'", editable = "analytics/clir" },
-    { name = "face", marker = "extra == 'cli'", editable = "analytics/face" },
-    { name = "filetyper", marker = "extra == 'cli'", editable = "analytics/filetyper" },
+    { name = "clir", marker = "extra == 'text-embedding'", editable = "analytics/clir" },
+    { name = "face", extras = ["cuda"], marker = "extra == 'face-detection'", editable = "analytics/face" },
+    { name = "filetyper", marker = "extra == 'staging'", editable = "analytics/filetyper" },
     { name = "loguru" },
-    { name = "nerd", marker = "extra == 'ner'", editable = "analytics/nerd" },
-    { name = "numpy", marker = "extra == 'messages'" },
-    { name = "pandas", marker = "extra == 'messages'" },
-    { name = "pygliner", marker = "extra == 'ner'", editable = "analytics/pygliner" },
-    { name = "pyocr", marker = "extra == 'cli'", editable = "analytics/pyocr" },
-    { name = "pyparse", extras = ["email"], marker = "extra == 'cli'", editable = "analytics/pyparse" },
-    { name = "pyprompt", marker = "extra == 'cli'", editable = "analytics/pyprompt" },
-    { name = "pyselectors", marker = "extra == 'cli'", editable = "analytics/pyselectors" },
-    { name = "pyxberg", marker = "extra == 'cli'", editable = "analytics/pyxberg" },
-    { name = "setfitcv", marker = "extra == 'cli'", editable = "analytics/setfitcv" },
+    { name = "nerd", marker = "extra == 'nerd'", editable = "analytics/nerd" },
+    { name = "pygliner", marker = "extra == 'gliner'", editable = "analytics/pygliner" },
+    { name = "pyocr", marker = "extra == 'ocr'", editable = "analytics/pyocr" },
+    { name = "pyparse", marker = "extra == 'event-extraction'", editable = "analytics/pyparse" },
+    { name = "pyparse", extras = ["contacts"], marker = "extra == 'contact-extraction'", editable = "analytics/pyparse" },
+    { name = "pyparse", extras = ["email"], marker = "extra == 'text-extraction'", editable = "analytics/pyparse" },
+    { name = "pyprompt", editable = "analytics/pyprompt" },
+    { name = "pyselectors", editable = "analytics/pyselectors" },
+    { name = "pyxberg", marker = "extra == 'ocr'", editable = "analytics/pyxberg" },
+    { name = "pyxberg", marker = "extra == 'text-extraction'", editable = "analytics/pyxberg" },
+    { name = "setfitcv", marker = "extra == 'exif-location'", editable = "analytics/setfitcv" },
+    { name = "setfitcv", marker = "extra == 'image-embedding'", editable = "analytics/setfitcv" },
+    { name = "setfitcv", marker = "extra == 'ocr'", editable = "analytics/setfitcv" },
     { name = "tqdm" },
     { name = "typer" },
 ]
-provides-extras = ["messages", "cli", "ner"]
+provides-extras = ["staging", "text-extraction", "ocr", "text-embedding", "image-embedding", "exif-location", "face-detection", "contact-extraction", "event-extraction", "gliner", "nerd", "cli", "ner"]
 
 [[package]]
 name = "cipher-schemas"
@@ -3861,6 +3898,7 @@ cli = [
 ]
 contacts = [
     { name = "phonenumbers" },
+    { name = "python-dateutil" },
     { name = "vobject" },
 ]
 doc = [
@@ -3974,6 +4012,7 @@ requires-dist = [
     { name = "pyparse", extras = ["html"], marker = "extra == 'text'", editable = "analytics/pyparse" },
     { name = "pyparse", extras = ["mbox", "rar"], marker = "extra == 'archives'", editable = "analytics/pyparse" },
     { name = "pyparse", extras = ["pptx"], marker = "extra == 'ppt'", editable = "analytics/pyparse" },
+    { name = "python-dateutil", marker = "extra == 'contacts'" },
     { name = "python-dateutil", marker = "extra == 'docx'" },
     { name = "python-dateutil", marker = "extra == 'pdf'" },
     { name = "python-docx", marker = "extra == 'docx'" },

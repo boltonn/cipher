@@ -106,6 +106,7 @@ export const RELATIONSHIP_TYPES = [
   "subsidiary_of",
   "located_in",
   "communicates_with",
+  "emailed",
   "family_of",
   "associate_of",
   "same_as",
@@ -221,7 +222,7 @@ export interface RelatedEntity {
   direction: "out" | "in";
   attributes: Record<string, unknown>;
   entity: EntitySummary;
-  /** edge weight -- for communicates_with, the message count */
+  /** edge weight -- for emailed, the emails sent that way */
   weight?: number | null;
   /** for selector neighbours: mentions carrying the selector's normalized value */
   mentionCount?: number | null;

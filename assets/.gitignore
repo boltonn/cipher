@@ -1,0 +1,3 @@
+models/*/model.safetensors
+models/*/tokenizer.json
+models/*/training_args.bin

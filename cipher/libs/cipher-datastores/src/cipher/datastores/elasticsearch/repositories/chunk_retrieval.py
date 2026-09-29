@@ -140,6 +140,8 @@ class ElasticsearchChunkRetrievalRepository(ChunkRetrievalRepository):
 
     async def search(self, query: RetrievalQuery) -> PaginatedResponse:
         """Rank chunks (keyword / semantic / hybrid / browse), filter, group by file."""
+        if query.filters.has_correspondence_filter():
+            raise ValueError("sent_from / sent_to / participants / date filters need the postgres retrieval backend")
         extra_filter, _ = await self._resolve_extra_filter(query)
 
         has_text = bool(query.text and query.text.strip())

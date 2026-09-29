@@ -20,7 +20,7 @@ async def search_chunks(
 
     Raises `RuntimeError` if the embedding model is unavailable.
     """
-    embedding = await embedding_model.infer(text=params.query, task="retrieval", prompt="Query: ")
+    embedding = await embedding_model.infer(text=params.query, task="retrieval")
     if embedding is None:
         raise RuntimeError("Embedding model unavailable")
 

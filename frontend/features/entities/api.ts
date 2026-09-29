@@ -167,7 +167,7 @@ export const entitiesService = {
       .then((res) => res.data),
 
   // Paginated neighbours of an entity, each with its connecting edge; sortable
-  // by edge weight (message count for communicates_with). Powers the entity
+  // by edge weight (emails sent for emailed). Powers the entity
   // dossier's Relationships and Selectors sections.
   getRelated: (
     id: string,

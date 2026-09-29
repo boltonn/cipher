@@ -16,6 +16,9 @@ from cipher.schemas.graph.entity_relationship import (
     GraphResponse,
     PaginatedRelationshipsResponse,
     RelationshipSearchParameters,
+    TopConnection,
+    TopConnectionsRequest,
+    TopConnectionsResponse,
     TraversalDirection,
 )
 from cipher.schemas.graph.ontology import (
@@ -34,6 +37,17 @@ _EDGE_INSERT_CHUNK = 2000
 # they share at least this many photos. Edges backed by a *pending* face match
 # (a lead) are kept regardless of count. Set to 1 to keep every co-occurrence.
 _DEFAULT_MIN_VERIFIED_PHOTOS = 2
+
+
+def _directional_weight(
+    edge: EntityRelationshipTable, *, seed_is_src: bool, direction: TraversalDirection
+) -> float | None:
+    """The edge's weight as seen from the seed end; None for an undirected edge when a direction is asked."""
+    if direction == TraversalDirection.BOTH:
+        return edge.weight
+    if not edge.directed:
+        return None
+    return edge.weight if seed_is_src == (direction == TraversalDirection.OUT) else 0.0
 
 
 class PostgresGraphRepository(GraphRepository):
@@ -182,6 +196,108 @@ class PostgresGraphRepository(GraphRepository):
             frontier = next_frontier
 
         return GraphResponse(nodes=await self._nodes(visited), edges=all_edges)
+
+    async def top_connections(self, request: TopConnectionsRequest) -> TopConnectionsResponse:
+        """Rank the seeds' neighbours by summed edge weight (see `TopConnectionsRequest`)."""
+        seeds = set(request.entity_ids) | await self._owned_selectors(set(request.entity_ids))
+        where = [
+            or_(EntityRelationshipTable.src_entity_id.in_(seeds), EntityRelationshipTable.dst_entity_id.in_(seeds)),
+            EntityRelationshipTable.weight.is_not(None),
+        ]
+        if request.relationship_types:
+            where.append(EntityRelationshipTable.relationship_type.in_(request.relationship_types))
+        else:
+            excluded = [RelationshipType.HAS_SELECTOR, *LOW_SIGNAL_RELATIONSHIPS]
+            where.append(EntityRelationshipTable.relationship_type.notin_(excluded))
+        if request.dataset_id:
+            where.append(
+                or_(
+                    EntityRelationshipTable.dataset_id == request.dataset_id,
+                    EntityRelationshipTable.dataset_id.is_(None),
+                )
+            )
+        edges = (await self.session.execute(select(EntityRelationshipTable).where(*where))).scalars().all()
+
+        by_neighbour: dict[str, TopConnection] = {}
+        without_direction = 0
+        for edge in edges:
+            if edge.src_entity_id in seeds and edge.dst_entity_id in seeds:
+                continue
+            seed_is_src = edge.src_entity_id in seeds
+            weight = _directional_weight(edge, seed_is_src=seed_is_src, direction=request.direction)
+            if weight is None:
+                without_direction += 1
+                continue
+            if weight <= 0:
+                continue
+            neighbour = edge.dst_entity_id if seed_is_src else edge.src_entity_id
+            conn = by_neighbour.setdefault(
+                neighbour,
+                TopConnection(
+                    entity=EntitySummary(id=neighbour, entity_type=EntityType.SELECTOR, display_name=neighbour),
+                    weight=0,
+                    relationship_types=[],
+                ),
+            )
+            conn.weight += weight
+            if edge.relationship_type not in conn.relationship_types:
+                conn.relationship_types.append(edge.relationship_type)
+            conn.date_first = min(filter(None, [conn.date_first, edge.date_observed_start]), default=None)
+            conn.date_last = max(filter(None, [conn.date_last, edge.date_observed_end]), default=None)
+
+        owners = await self._sole_owners(set(by_neighbour)) if request.roll_up else {}
+        merged: dict[str, TopConnection] = {}
+        for neighbour, conn in by_neighbour.items():
+            key = owners.get(neighbour, neighbour)
+            if key in seeds:
+                continue  # another address of the seed itself
+            target = merged.setdefault(key, conn.model_copy(update={"weight": 0, "relationship_types": [], "via": []}))
+            target.weight += conn.weight
+            target.relationship_types = list(dict.fromkeys([*target.relationship_types, *conn.relationship_types]))
+            target.date_first = min(filter(None, [target.date_first, conn.date_first]), default=None)
+            target.date_last = max(filter(None, [target.date_last, conn.date_last]), default=None)
+            if key != neighbour:
+                target.via.append(conn.entity)
+
+        ranked = sorted(merged.items(), key=lambda kv: kv[1].weight, reverse=True)[: request.limit]
+        nodes = {
+            n.id: n
+            for n in await self._nodes(seeds | {key for key, _ in ranked} | {v.id for _, c in ranked for v in c.via})
+        }
+        connections = [
+            conn.model_copy(
+                update={"entity": nodes.get(key, conn.entity), "via": [nodes.get(v.id, v) for v in conn.via]}
+            )
+            for key, conn in ranked
+        ]
+        return TopConnectionsResponse(
+            seeds=[nodes[i] for i in seeds if i in nodes],
+            connections=connections,
+            edges_without_direction=without_direction,
+        )
+
+    async def _owned_selectors(self, entity_ids: set[str]) -> set[str]:
+        """Selectors the given actors `has_selector`-own (empty until resolution links any)."""
+        rows = await self.session.execute(
+            select(EntityRelationshipTable.dst_entity_id).where(
+                EntityRelationshipTable.src_entity_id.in_(entity_ids),
+                EntityRelationshipTable.relationship_type == RelationshipType.HAS_SELECTOR,
+            )
+        )
+        return set(rows.scalars())
+
+    async def _sole_owners(self, selector_ids: set[str]) -> dict[str, str]:
+        """Selector -> its owner, only where exactly one actor owns it (a shared mailbox stays a selector)."""
+        rows = await self.session.execute(
+            select(EntityRelationshipTable.dst_entity_id, EntityRelationshipTable.src_entity_id).where(
+                EntityRelationshipTable.dst_entity_id.in_(selector_ids),
+                EntityRelationshipTable.relationship_type == RelationshipType.HAS_SELECTOR,
+            )
+        )
+        owners: dict[str, set[str]] = {}
+        for selector_id, owner_id in rows.all():
+            owners.setdefault(selector_id, set()).add(owner_id)
+        return {sel: next(iter(o)) for sel, o in owners.items() if len(o) == 1}
 
     async def _edges_from(
         self,

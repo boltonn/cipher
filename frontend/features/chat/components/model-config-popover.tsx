@@ -29,12 +29,15 @@ import { Settings2Icon } from "lucide-react";
 import { useState } from "react";
 import { useAgentConfig } from "../api";
 import { useChatStore } from "../hooks/use-chat-store";
-import { MODELS, PROVIDER_LABELS } from "../lib/models";
+import { useModelOptions } from "../hooks/use-model-options";
+import { PROVIDER_LABELS } from "../lib/models";
 // Planned: replace Select with Combobox for searchable model picker
 const _modelCombobox = Combobox;
 
 export function ModelConfigPopover() {
-  const { keys, model, setKey, setModel } = useChatStore();
+  const { keys, model: storedModel, setKey, setModel } = useChatStore();
+  const { options, labelFor, effectiveModel } = useModelOptions();
+  const model = effectiveModel(storedModel);
   const [open, setOpen] = useState(false);
 
   // Initialize directly from master store data
@@ -68,7 +71,7 @@ export function ModelConfigPopover() {
     setOpen(false);
   };
 
-  const currentModelLabel = MODELS.find((m) => m.id === model)?.label ?? model;
+  const currentModelLabel = labelFor(model);
 
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
@@ -98,7 +101,7 @@ export function ModelConfigPopover() {
                   <p className="px-2 pt-2 pb-1 text-xs font-medium text-muted-foreground">
                     {PROVIDER_LABELS[provider]}
                   </p>
-                  {MODELS.flatMap((m) =>
+                  {options.flatMap((m) =>
                     m.provider === provider
                       ? [
                           <SelectItem key={m.id} value={m.id}>

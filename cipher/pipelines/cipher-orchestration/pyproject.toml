@@ -10,21 +10,36 @@ dependencies = [
     "cipher-datastores[postgres,elasticsearch]",
     "cipher-utils",
     "loguru",
+    "pyprompt",
+    "pyselectors",
     "tqdm",
     "typer",
 ]
 
+# One extra per stage: `ensure_stage_env` (environments.py) re-launches a command
+# under `uv run --extra <stage>`, so an environment only holds the analytics it has
+# actually run. Names follow the enrichment type they serve.
 [project.optional-dependencies]
-messages = ["clir", "numpy", "pandas"]
-cli = ["filetyper", "face", "setfitcv", "pyxberg", "pyparse[email]", "pyselectors", "pyprompt", "pyocr", "clir"]
-# Heavy NER model backends for `extract-entities --extractor gliner|nerd`; install
-# alongside `cli` only in an environment that will run that stage.
-ner = ["pygliner", "nerd"]
+staging = ["filetyper"]
+text-extraction = ["pyxberg", "pyparse[email]"]
+ocr = ["pyocr", "pyxberg", "setfitcv"]
+text-embedding = ["clir"]
+image-embedding = ["setfitcv"]
+exif-location = ["setfitcv"]
+face-detection = ["face[cuda]"]
+contact-extraction = ["pyparse[contacts]"]
+event-extraction = ["pyparse"]
+gliner = ["pygliner"]
+nerd = ["nerd"]
+# Everything at once (a full dev / all-in-one box).
+cli = ["cipher-orchestration[staging,text-extraction,ocr,text-embedding,image-embedding,face-detection,contact-extraction,event-extraction]"]
+ner = ["cipher-orchestration[gliner,nerd]"]
 
 [project.scripts]
 cipher = "cipher.orchestration.cli:app"
 
 [tool.uv.sources]
+cipher-orchestration = { workspace = true }
 cipher-schemas = { workspace = true }
 cipher-datastores = { workspace = true }
 cipher-utils = { workspace = true }

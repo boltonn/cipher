@@ -1,6 +1,7 @@
 from io import BytesIO
 
 from fastapi import APIRouter, HTTPException, Query, Response
+from pydantic import Field
 from pyparse.parsers.email import EmlParser
 
 from cipher.api.deps.elasticsearch import TextChunkDatastoreDep
@@ -10,7 +11,6 @@ from cipher.schemas._base.base import BaseModel
 from cipher.schemas.content.document import DocumentMetadata
 from cipher.schemas.content.email import EmailBase
 from cipher.schemas.content.image import ImagePublic
-from cipher.schemas.content.search import ChunkFilters
 from cipher.schemas.ingestion.file import File
 
 router = APIRouter(
@@ -119,6 +119,9 @@ class FileText(BaseModel):
     extracted_text_id: str
     text: str
     chunk_count: int
+    image_pages: list[int] = Field(default=[], description="Pages with no usable text layer (scanned)")
+    ocr_pages: list[int] = Field(default=[], description="Pages whose text came from OCR")
+    ocr_model: str | None = Field(default=None, description="OCR engine/model that produced `ocr_pages`")
 
 
 @router.get(
@@ -142,8 +145,16 @@ async def get_file_text(
     if extracted is None:
         raise HTTPException(status_code=404, detail=f"No extracted text found for file: {id}")
 
-    chunk_count = await chunk_datastore.count(filters=ChunkFilters(file_id=id))
-    return FileText(extracted_text_id=extracted.id, text=extracted.content, chunk_count=chunk_count)
+    chunk_count = len(await chunk_datastore.spans_for_file(id))
+    metadata = extracted.metadata if isinstance(extracted.metadata, DocumentMetadata) else None
+    return FileText(
+        extracted_text_id=extracted.id,
+        text=extracted.content,
+        chunk_count=chunk_count,
+        image_pages=metadata.image_pages if metadata else [],
+        ocr_pages=metadata.ocr_pages if metadata else [],
+        ocr_model=metadata.ocr_model if metadata else None,
+    )
 
 
 # Caps the rows returned per sheet regardless of how large the underlying table

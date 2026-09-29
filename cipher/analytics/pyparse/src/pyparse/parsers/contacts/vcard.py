@@ -10,7 +10,7 @@ from dateutil import parser as date_parser
 from dateutil.parser import ParserError
 from loguru import logger
 
-from cipher.schemas import Contact
+from cipher.schemas.content.contact import ContactCreate
 from pyparse.utils.mobile import normalize_phone_number
 
 
@@ -129,7 +129,7 @@ class VcardParser:
                     contact["raw_header"][name] = value
 
     @classmethod
-    def stream(cls, stream: BinaryIO, encoding: str = "utf-8") -> Generator[Contact, None, None]:
+    def stream(cls, stream: BinaryIO, encoding: str = "utf-8") -> Generator[ContactCreate, None, None]:
         """Stream contacts from a VCF file one at a time, yielding dictionaries."""
         text_stream = io.TextIOWrapper(stream, encoding=encoding, errors="ignore", newline="")
         current_contact = None
@@ -148,7 +148,7 @@ class VcardParser:
             if name == "END" and value == "VCARD":
                 if current_contact:
                     # Convert back to standard dict for clean output
-                    yield Contact.model_validate(dict(current_contact))
+                    yield ContactCreate.model_validate(dict(current_contact))
                 current_contact = None
                 continue
 
@@ -158,7 +158,7 @@ class VcardParser:
         text_stream.detach()
 
     @classmethod
-    def parse(cls, file: bytes | Path, encoding: str = "utf-8") -> list[Contact]:
+    def parse(cls, file: bytes | Path, encoding: str = "utf-8") -> list[ContactCreate]:
         """Get all contacts from a VCF file at once.
 
         Warning: This will load the entire file into memory, so it's not recommended for large files.

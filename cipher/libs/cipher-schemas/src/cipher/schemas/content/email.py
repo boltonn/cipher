@@ -8,7 +8,7 @@ from typing import Literal, Self, TypedDict
 from pydantic import Field
 
 from cipher.schemas._base.base import BaseModel
-from cipher.schemas.content.search import TextChunk
+from cipher.schemas.content.search import CorrespondenceFilters, TextChunk
 from cipher.schemas.ingestion.file import FileBase
 
 
@@ -206,3 +206,46 @@ class ScoredEmailTextChunk(EmailTextChunk):
         default_factory=list,
         description="Matched words/phrases from Elasticsearch highlighting; empty for pure kNN results",
     )
+
+
+class EmailCountGroupBy(StrEnum):
+    """How `EmailCountRequest` buckets the matching emails."""
+
+    SENDER = "sender"
+    RECIPIENT = "recipient"
+    CORRESPONDENT = "correspondent"
+    DAY = "day"
+    MONTH = "month"
+    YEAR = "year"
+
+
+class EmailCountRequest(CorrespondenceFilters):
+    """Count emails matching correspondence filters, grouped by a party or a period.
+
+    Emails are counted once per message (`message_id`, else content hash), so
+    the same message in several mailboxes isn't double counted. Party buckets
+    exclude the filtered entities themselves -- `sent_from=[x]` grouped by
+    `recipient` is "who does x email the most".
+    """
+
+    dataset_id: str | None = None
+    group_by: EmailCountGroupBy = EmailCountGroupBy.CORRESPONDENT
+    limit: int = Field(default=20, ge=1, le=500)
+
+
+class EmailCountBucket(BaseModel):
+    """One party or period and how many emails fall in it."""
+
+    key: str = Field(description="Entity id for a party bucket; 'YYYY', 'YYYY-MM' or 'YYYY-MM-DD' for a period")
+    label: str = Field(description="Entity display name or the period")
+    entity_type: str | None = None
+    addresses: list[str] = Field(default_factory=list, description="Email addresses this party used in these emails")
+    email_count: int
+    date_first: datetime | None = None
+    date_last: datetime | None = None
+
+
+class EmailCounts(BaseModel):
+    total_emails: int = Field(description="Distinct emails matching the filters")
+    group_by: EmailCountGroupBy
+    buckets: list[EmailCountBucket] = Field(default_factory=list)

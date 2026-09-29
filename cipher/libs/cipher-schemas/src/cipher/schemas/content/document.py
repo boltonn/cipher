@@ -67,6 +67,11 @@ class DocumentMetadata(BaseModel):
         description="xberg's hierarchical layout nodes (heading/paragraph/table/etc, with page + bounding box), "
         "when extracted with document-structure detection enabled",
     )
+    image_pages: list[int] = Field(
+        default_factory=list,
+        description="1-indexed pages with no usable text layer (image-based/scanned); their text can only come "
+        "from OCR, so these are the pages to re-run with a stronger OCR model",
+    )
     ocr_pages: list[int] = Field(
         default_factory=list, description="1-indexed pages whose text came from OCR rather than a text layer"
     )

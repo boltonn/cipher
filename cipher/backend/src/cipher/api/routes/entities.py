@@ -49,6 +49,8 @@ from cipher.schemas.graph.entity_relationship import (
     RelationshipCandidateSearchParameters,
     RelationshipReview,
     RelationshipSearchParameters,
+    TopConnectionsRequest,
+    TopConnectionsResponse,
     TraversalDirection,
 )
 from cipher.schemas.graph.location import LocationUpdate
@@ -518,6 +520,14 @@ async def list_entity_relationships(
             page=page,
         )
     )
+
+
+@router.post(
+    "/top-connections", summary="Rank strongest connections", response_model=TopConnectionsResponse, **_BY_ALIAS
+)
+async def top_connections(request: TopConnectionsRequest, datastore: GraphDatastoreDep) -> TopConnectionsResponse:
+    """Rank the seeds' neighbours by summed edge weight; seeds may be actors or bare selectors."""
+    return await datastore.top_connections(request)
 
 
 @router.get("/{entity_id}/graph", summary="Bounded graph traversal", response_model=GraphResponse, **_BY_ALIAS)

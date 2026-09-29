@@ -13,6 +13,8 @@ from cipher.schemas.graph.entity_relationship import (
     GraphResponse,
     PaginatedRelationshipsResponse,
     RelationshipSearchParameters,
+    TopConnectionsRequest,
+    TopConnectionsResponse,
     TraversalDirection,
 )
 from cipher.schemas.graph.ontology import RelationshipType
@@ -59,6 +61,15 @@ class GraphRepository(ABC):
     ) -> GraphResponse:
         """Return the bounded subgraph reachable from a starting node.
 
-        `min_weight` drops weak weighted edges (e.g. low-count `communicates_with`)
+        `min_weight` drops weak weighted edges (e.g. low-count `emailed`)
         while always keeping unweighted typed edges.
+        """
+
+    @abstractmethod
+    async def top_connections(self, request: TopConnectionsRequest) -> TopConnectionsResponse:
+        """Rank a set of seed nodes' neighbours by summed edge weight, optionally per direction.
+
+        Seeds may be actors (expanded through `has_selector`) or bare selectors, so it
+        works before entity resolution; `roll_up` merges neighbour selectors into their
+        single owning actor when one exists.
         """

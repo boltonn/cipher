@@ -19,7 +19,11 @@ from sqlalchemy import text as sa_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cipher.datastores.base.retrieval import ChunkRetrievalRepository, ChunkSpan
-from cipher.datastores.postgres.repositories.mention import PostgresMentionRepository
+from cipher.datastores.postgres.repositories.mention import (
+    CONTENT_DATE_SQL,
+    PostgresMentionRepository,
+    correspondence_predicates,
+)
 from cipher.schemas._base.common import PaginatedResponse
 from cipher.schemas.content.document import ScoredDocumentTextChunk
 from cipher.schemas.content.email import ScoredEmailTextChunk
@@ -271,14 +275,17 @@ class PostgresChunkRetrievalRepository(ChunkRetrievalRepository):
     def _index_scope(self, q: RetrievalQuery, p: dict) -> str:
         """Cheap equality filters safe to run alongside the primary index (incl. pg_search)."""
         f = q.filters
-        parts = ["c.dataset_id = :dataset_id"]
-        p["dataset_id"] = f.dataset_id
+        parts = ["true"]
+        if f.dataset_id:
+            parts.append("c.dataset_id = :dataset_id")
+            p["dataset_id"] = f.dataset_id
         if f.filetype_group:
             parts.append("c.filetype_group = :ftg")
             p["ftg"] = f.filetype_group
         if f.file_id:
             parts.append("(c.file_id = :fid OR c.duplicate_file_ids @> to_jsonb(cast(:fid as text)))")
             p["fid"] = f.file_id
+        parts.extend(correspondence_predicates(f, p, file_column="c.file_id"))
         return " AND ".join(parts)
 
     def _mention_sql(self, q: RetrievalQuery, p: dict) -> list[str]:
@@ -360,6 +367,11 @@ class PostgresChunkRetrievalRepository(ChunkRetrievalRepository):
         pool = max(_MIN_POOL, (query.offset + query.limit) * 10)
         p["pool"] = pool
         scope = self._index_scope(query, p)
+        if has_vec:
+            # HNSW otherwise stops at `hnsw.ef_search` (40) rows, starving the pool
+            # and any filter applied alongside it; iterative scan (pgvector 0.8+)
+            # keeps walking the graph until LIMIT is met.
+            await self.session.execute(sa_text("SET LOCAL hnsw.iterative_scan = relaxed_order"))
 
         # Stage A -- candidates (id, score). Only index-safe scope filters here:
         # pg_search rejects a custom-scan query with correlated mention subqueries.
@@ -397,8 +409,13 @@ class PostgresChunkRetrievalRepository(ChunkRetrievalRepository):
             if browse_ids is not None:
                 p["browse_ids"] = browse_ids
                 browse_where += " AND c.id = ANY(cast(:browse_ids as text[]))"
-            cand = f"SELECT c.id, extract(epoch FROM c.date_created) AS score FROM chunk c WHERE {browse_where} " \
-                   f"ORDER BY c.date_created DESC LIMIT :pool"
+            # Newest content first (email date_sent / document authored date), not ingest time.
+            cand = (
+                f"SELECT c.id, (:pool - row_number() OVER (ORDER BY {CONTENT_DATE_SQL} DESC NULLS LAST, "
+                f"c.date_created DESC))::float AS score FROM chunk c "
+                f"LEFT JOIN extracted_text et ON et.file_id = c.file_id WHERE {browse_where} "
+                f"ORDER BY score DESC LIMIT :pool"
+            )
         elif mode == RetrievalMode.KEYWORD:
             cand = f"SELECT c.id, {self._keyword_score()} AS score FROM chunk c " \
                    f"WHERE {scope} AND {self._keyword_predicate(p)} ORDER BY score DESC LIMIT :pool"

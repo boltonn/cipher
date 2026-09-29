@@ -430,7 +430,7 @@ class PostgresEntityRepository:
     async def search_by_name(
         self,
         *,
-        dataset_id: str,
+        dataset_id: str | None,
         query: str,
         limit: int = 10,
         entity_type: EntityType | None = None,
@@ -445,16 +445,17 @@ class PostgresEntityRepository:
         score = func.similarity(EntityTable.display_name_normalized, normalized)
         substring = EntityTable.display_name_normalized.ilike(f"%{normalized}%")
         name_match = or_(substring, score >= _NAME_TRGM_FLOOR) if len(normalized) >= 2 else score >= _NAME_TRGM_FLOOR
-        where = [
-            or_(
-                EntityTable.dataset_id == dataset_id,
-                and_(
-                    EntityTable.dataset_id.is_(None),
-                    EntityTable.id.in_(select(MentionTable.entity_id).where(MentionTable.dataset_id == dataset_id)),
-                ),
-            ),
-            name_match,
-        ]
+        where = [name_match]
+        if dataset_id is not None:
+            where.append(
+                or_(
+                    EntityTable.dataset_id == dataset_id,
+                    and_(
+                        EntityTable.dataset_id.is_(None),
+                        EntityTable.id.in_(select(MentionTable.entity_id).where(MentionTable.dataset_id == dataset_id)),
+                    ),
+                )
+            )
         if entity_type:
             where.append(EntityTable.entity_type == entity_type)
 
@@ -971,9 +972,9 @@ class PostgresEntityRepository:
     ) -> PaginatedRelatedEntitiesResponse:
         """Paginated neighbours of an entity, each with its connecting edge.
 
-        Unions the outbound and inbound legs so an undirected edge (e.g.
-        `communicates_with`, stored with a canonical endpoint order) surfaces
-        regardless of which side this entity sits on.
+        Unions the outbound and inbound legs so an edge surfaces regardless of which
+        side this entity sits on -- undirected ones (e.g. `communicates_with`, stored
+        with a canonical endpoint order) and both directions of `emailed`.
         """
         rel = EntityRelationshipTable
         low_signal = list(LOW_SIGNAL_RELATIONSHIPS)

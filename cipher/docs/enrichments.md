@@ -2,7 +2,8 @@
 
 How a staged dataset is turned into an enrichment plan with rough time
 estimates, so a triager can decide what is worth running. Vocabulary is in
-`docs/glossary.md`.
+`docs/glossary.md`; the step-by-step commands and run order are in
+`docs/running-analytics.md`.
 
 **One-line version:** staging (files loaded + typed) fixes the file inventory;
 each enrichment's eligible slice of that inventory times a measured per-unit
@@ -86,11 +87,29 @@ them from `cipher rates` output as runs accumulate.
 | `EnrichmentEstimates` card on `datasets/[id]` (`features/datasets/components/enrichment-estimates.tsx`) | **the only estimate UI.** ETA + eligible count + in-flight % per analytic, CPU/GPU toggle, "remaining to run" total, not-staged notice. Display-only -- no run trigger yet. |
 | Dataset-request wizard (`features/datasets/components/dataset-create-form.tsx`) | **no estimates.** Fires before the dataset exists, so there's no inventory to estimate against. Collects an analytics *wishlist* (no numbers) for the GitHub issue, with dependency auto-enable/disable and required-param checks. |
 
-## OCR (`cipher ocr`)
+## OCR
 
-Multilingual OCR for image-based PDF pages and images (incl. HEIF), via the `pyocr`
-analytic (jina-ocr-v1 on vLLM; `make start-vllm` in `analytics/pyocr`). Run after
-`extract-text` (and `embed-images` if filtering), before `embed-text`:
+Two tiers, so a dataset is searchable without a GPU service and the heavy model is
+only spent where it's needed.
+
+**1. Inline, during `extract-text` (default, offline).** Every PDF's image-based pages
+are recorded as `DocumentMetadata.image_pages` -- always, whatever OCR runs. They come
+from xberg's own no-OCR per-page output: a page is image-based when xberg marks it
+`is_blank`, or when its text layer has < 20 word chars (`is_blank` is exact, so a scan
+carrying only a Bates stamp would otherwise slip through). PDFs with any are then
+re-extracted OCRing *just those pages* with EasyOCR (`force_ocr_pages`; xberg's automatic
+OCR decides per document and would re-read a mixed PDF's text-layer pages too) and records
+`ocr_pages` / `ocr_model = "easyocr"`. Weights load from `--ocr-model-dir` /
+`EASYOCR_MODEL_DIR` (`~/models/docling/EasyOcr`), so nothing is downloaded.
+`--ocr-backend tesseract|none` switches engine or only records the pages;
+`--ocr-language` is repeatable (EasyOCR codes: `en`, `fr`, …). The file viewer's text
+tab flags image-based pages and which OCR produced them.
+
+**2. `cipher ocr` (re-run with something better).** Multilingual OCR for image-based
+PDF pages and images (incl. HEIF), via the `pyocr` analytic (jina-ocr-v1 on vLLM;
+`make start-vllm` in `analytics/pyocr`). It replaces the EasyOCR text page-by-page
+(only pyocr output is reused across duplicates). Run after `extract-text` (and
+`embed-images` if filtering), before `embed-text` -- or later, then re-run `embed-text`:
 
 ```bash
 cipher ocr --dataset-name X                                  # every PDF + supported image
@@ -116,10 +135,16 @@ cipher ocr --dataset-name X --clip-model-dir ~/models/transformers/clip-vit-base
   `embed-text` only *processes* `image`-group rows, OCR is what queues them). Mention
   producers (selectors/entities/events) are re-queued only for files that had no text
   before; files whose existing mentions now point at replaced text are reported.
-- **Speed:** a rolling window of `--concurrency` files (default 16) keeps the GPU fed;
-  the service decodes every page of every in-flight file together. Content-identical
-  files (sha256) are OCR'd once -- across runs and within a run. Measured on one RTX
-  3090: 4.2 pages/s (138 dense scanned pages in 32 s); 1.2 pages/s one file at a time.
+- **Speed:** a rolling window of `--concurrency` files (default 32) keeps the GPUs fed;
+  each service decodes every page of every in-flight file together. Content-identical
+  files (sha256) are OCR'd once -- across runs and within a run. Multi-GPU = one service
+  per GPU (`make start-vllm-all`, then one `--service-url` each); the client sends each
+  file to the service with the fewest pages in flight. Measured on dense scanned pages
+  (828 pages): 1× RTX 3090 5.6 pages/s, 2× 10.5 pages/s, both GPUs 99% busy, CPU ~30%.
+  PDF rendering is 32 ms/page (~31 pages/s, overlapped) -- not the bottleneck.
+  FastMTP speculative decoding is neutral at full batch (it mainly helps latency).
+- **Photos without text:** jina-ocr-v1 writes a scene *description* instead of returning
+  empty (seen on a pagoda photo) -- use the CLIP tag filter when a dataset has photos.
 - `reset-text` also clears `ocr` rows (re-extraction overwrites the merged text).
 
 ## Adding an enrichment

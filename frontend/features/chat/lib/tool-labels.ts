@@ -4,27 +4,43 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** A non-empty string arg; bare UUIDs read as "entity" -- the sources carry the names. */
 function str(value: unknown): string | undefined {
-  return typeof value === "string" && value.length > 0 ? value : undefined;
+  if (typeof value !== "string" || value.length === 0) return undefined;
+  return UUID.test(value) ? "entity" : value;
+}
+
+const FILTER_KEYS = ["entity_id", "sent_from", "sent_to", "participants", "date_from", "date_to"] as const;
+
+/** `sent_from=… date_from=…` for whichever correspondence / entity filters a call set. */
+function describeFilters(input: Record<string, unknown>): string | undefined {
+  const parts = FILTER_KEYS.flatMap((key) => {
+    const value = input[key];
+    const shown = Array.isArray(value) ? value.map(str).filter(Boolean).join(", ") : str(value);
+    return shown ? [`${key}=${shown}`] : [];
+  });
+  return parts.length ? parts.join(" ") : undefined;
 }
 
 const TOOL_LABELS: Record<string, string> = {
-  search_text: "Keyword search",
-  search_semantic: "Semantic search",
-  search_hybrid: "Search",
+  search_passages: "Search",
+  count_emails: "Counting emails",
   find_person: "Looking up person",
   list_datasets: "Listing datasets",
   find_entity: "Resolving entity",
   entity_profile: "Entity profile",
   entity_mentions: "Entity mentions",
   related_entities: "Graph traversal",
+  explain_entity_resolution: "Explaining resolution",
   read_file: "Reading file",
 };
 
 const TOOL_DETAILS: Record<string, (input: Record<string, unknown>) => string | undefined> = {
-  search_text: (input) => str(input.query),
-  search_semantic: (input) => str(input.query),
-  search_hybrid: (input) => str(input.query),
+  search_passages: (input) =>
+    [str(input.query), str(input.mode), describeFilters(input)].filter(Boolean).join(" · ") || undefined,
+  count_emails: (input) => [str(input.group_by), describeFilters(input)].filter(Boolean).join(" · ") || undefined,
   find_person: (input) => str(input.name),
   find_entity: (input) => str(input.name) ?? str(input.selector_value),
   entity_profile: (input) => str(input.entity_id),

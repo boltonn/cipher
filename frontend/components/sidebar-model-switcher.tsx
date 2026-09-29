@@ -10,12 +10,15 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 import { useChatStore } from "@/features/chat/hooks/use-chat-store";
-import { MODELS, PROVIDER_LABELS, getModelLabel } from "@/features/chat/lib/models";
+import { useModelOptions } from "@/features/chat/hooks/use-model-options";
+import { PROVIDER_LABELS } from "@/features/chat/lib/models";
 import { Sparkles } from "lucide-react";
 
 export function SidebarModelSwitcher() {
-  const { model, setModel } = useChatStore();
-  const currentLabel = getModelLabel(model);
+  const { model: storedModel, setModel } = useChatStore();
+  const { options, labelFor, effectiveModel } = useModelOptions();
+  const model = effectiveModel(storedModel);
+  const currentLabel = labelFor(model);
 
   return (
     <SidebarMenuItem>
@@ -47,7 +50,7 @@ export function SidebarModelSwitcher() {
                 <DropdownMenuLabel>
                   {PROVIDER_LABELS[provider]}
                 </DropdownMenuLabel>
-                {MODELS.filter((m) => m.provider === provider).map((m) => (
+                {options.filter((m) => m.provider === provider).map((m) => (
                   <DropdownMenuRadioItem key={m.id} value={m.id}>
                     {m.label}
                   </DropdownMenuRadioItem>

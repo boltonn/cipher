@@ -99,11 +99,11 @@ Email is a selector kind, and the pipeline uses it to wire up communication:
     `"header.to[1]"`, …), and, when a name is present, a mention of the person;
   - a resolved/candidate **`email` selector** entity for the address;
   - a **`has_selector`** edge from the participant (person/org) to that selector.
-- Between the sender and each recipient of the same message it emits a
-  **`communicates_with`** edge. Endpoints are the resolved people/orgs when
-  known, otherwise the bare `email` selectors — so sender↔recipient links exist
-  even before names are resolved. (`COMMUNICATES_WITH` allows
-  `person|organization|selector` on both ends; it is symmetric/undirected.)
+- From the sender to each recipient of the same message it emits a directed
+  **`emailed`** edge (weight = emails sent that way; a reply is its own edge back).
+  Endpoints are the bare `email` selectors — so sender→recipient links exist
+  even before names are resolved; `has_selector` rolls them up to people/orgs.
+  (`EMAILED` allows `person|organization|selector` on both ends.)
 
 The same pattern covers phone selectors from `Contact.phone_numbers`,
 `Device.phone_numbers/imeis`, and mobile‑message dumps (`Message.sender/recipient`).
@@ -175,7 +175,8 @@ allowed source/destination entity types:
 | `member_of`, `employed_by` | person → org | |
 | `part_of`, `subsidiary_of` | org → org | **org sub‑units** (a regional office is itself an `organization` that is `part_of` the parent) |
 | `located_in` | person\|org\|location → location | |
-| `communicates_with` | person\|org\|selector ↔ same | symmetric; email/call/message links |
+| `communicates_with` | person\|org\|selector ↔ same | symmetric, channel unspecified (stated in text / analyst-asserted) |
+| `emailed` | person\|org\|selector → same | directed sender → recipient, `weight` = emails. Built by `extract-relationships`. Future channels get their own type (`called`, `messaged`) |
 | `family_of`, `associate_of` | actor ↔ actor | symmetric; `associate_of` is co‑mention‑derived |
 | `appears_in_photo_with` | person ↔ person | symmetric; two people whose faces are in the same image (either face may still be a *pending* match). `weight` = shared photos, `attributes.evidence` lists them (`verified`/`potential`). Two already-identified people are linked only once they share ≥ `--min-verified-photos` (default 2); a pair with a pending-match lead is linked from the first photo. Built by `link-face-cooccurrence`; excluded from default traversal |
 | `same_as` | any ↔ any | asserted identity |
@@ -297,7 +298,7 @@ dropped), then the provisional node is deleted.
 | **`Person` / `Face` / `FaceMatch`** | `entity.person_id` bridges a `person`‑type entity to its `person` row; faces are surfaced on the entity profile via that bridge. No schema change to these tables. |
 | **`ExtractedText.content`** | text mentions store char offsets into it (same contract as `TextChunk.start/end_offset`); the extractor already anticipated "future entity extraction" as a consumer. |
 | **`TextChunk` (Elasticsearch)** | Phase 2 denormalizes `entity_ids` + `selector_values` onto chunks so the agent can do "semantic search restricted to files mentioning entity X". |
-| **Email `NamedParticipant` / `EmailMetadata`** | header participants become `email`/`phone` selector entities + `has_selector` + `communicates_with` edges (see §3). |
+| **Email `NamedParticipant` / `EmailMetadata`** | header participants become `email`/`phone` selector entities + `has_selector` + `emailed` edges (see §3). |
 | **`Contact`, `Device`** | their `emails` / `phone_numbers` / `imeis` become `structured_field` mentions and selector entities; a person sharing a selector value shows up on the entity profile. |
 | **`Image` EXIF GPS** | Phase 3: EXIF coordinates become `location` entities with `source = exif`, linked to the image. |
 | **`Enrichment`** | new `EnrichmentType` members `selector_extraction`, `entity_extraction`, `relationship_extraction` gate the per‑file extraction stages; resolution is a separate sweep. |
@@ -315,7 +316,7 @@ load-files → extract-text → embed-text
           → resolve-entities       (sweep: blocking + scoring + auto-link / candidates; then promotes
                                     every mention_relationship whose endpoints both resolved into an
                                     entity_relationship_candidate, endpoint types validated)
-          → [extract-relationships](email communicates_with edges — selector-only; independent)
+          → [extract-relationships](directed email `emailed` edges — selector-only; independent)
 ```
 
 **`extract-llm` — one call for entities + events.** `cipher extract-llm --tasks

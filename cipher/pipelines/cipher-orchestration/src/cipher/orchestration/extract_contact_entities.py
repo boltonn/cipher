@@ -7,17 +7,22 @@ identifier and can resolve it. A `Contact.organization` also emits an
 organization name mention + a `member_of` `mention_relationship`, so a vCard's
 `ORG` field flows exactly like a signature's name<->org link.
 
-A dataset-wide sweep (not enrichment-gated). Re-runnable: skips contacts that
-already have a mention.
+First parses the dataset's vCard files into `contact` rows (enrichment-gated per
+file, deterministic ids), then sweeps contacts into mentions. Re-runnable: skips
+contacts that already have a mention.
 """
 
+from pathlib import Path
 from typing import TYPE_CHECKING
+from uuid import NAMESPACE_URL, uuid5
 
 from loguru import logger
 from sqlalchemy import exists, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from tqdm import tqdm
 
 from cipher.datastores.postgres.repositories import (
+    PostgresEnrichmentRepository,
     PostgresEntityRepository,
     PostgresMentionRelationshipRepository,
     PostgresMentionRepository,
@@ -29,12 +34,63 @@ from cipher.datastores.postgres.utils import normalize_name
 from cipher.schemas.graph.mention import MentionCreate, MentionedType
 from cipher.schemas.graph.mention_relationship import MentionRelationshipCreate
 from cipher.schemas.graph.ontology import EntityType, RelationshipType, SelectorType
+from cipher.schemas.ingestion.enrichment import EnrichableType, EnrichmentType
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
 _FIELD_PATH = "contact.name"
 _EXTRACTOR = "contacts"
+_VCARD_FILETYPES = ["vcard"]
+
+
+async def load_vcard_contacts(session: "AsyncSession", dataset_id: str, batch_size: int = 50) -> int:
+    """Parse a dataset's vCard files into `contact` rows (id = uuid5(file_id, index), so re-runs no-op)."""
+    from pyparse.parsers.contacts.vcard import VcardParser
+
+    enrichment_repo = PostgresEnrichmentRepository(session=session)
+    unqueued = await enrichment_repo.get_unqueued_files(
+        dataset_id=dataset_id, enrichment_type=EnrichmentType.CONTACT_EXTRACTION, filetypes=_VCARD_FILETYPES
+    )
+    await enrichment_repo.queue_enrichments_for_files(
+        file_ids=[f["id"] for f in unqueued], enrichment_type=EnrichmentType.CONTACT_EXTRACTION
+    )
+    await session.commit()
+
+    count = 0
+    while batch := await enrichment_repo.get_pending_batch(
+        enrichment_type=EnrichmentType.CONTACT_EXTRACTION,
+        enrichable_type=EnrichableType.FILE,
+        batch_size=batch_size,
+        dataset_id=dataset_id,
+        filetype_group_filter="contact",
+    ):
+        completed, failed = [], []
+        for item in batch:
+            file_id = item.resource["id"]
+            try:
+                contacts = VcardParser.parse(Path(item.resource["path"]))
+            except Exception as e:
+                logger.error(f"vCard parse failed for file {file_id}: {e}")
+                failed.append(item.enrichment.id)
+                continue
+            rows = [
+                {**c.model_dump(), "id": str(uuid5(NAMESPACE_URL, f"{file_id}:{i}")), "file_id": file_id}
+                for i, c in enumerate(contacts)
+            ]
+            if rows:
+                await session.execute(
+                    pg_insert(ContactTable).values(rows).on_conflict_do_nothing(index_elements=["id"])
+                )
+            completed.append(item.enrichment.id)
+            count += len(rows)
+        if completed:
+            await enrichment_repo.mark_completed_batch(completed)
+        if failed:
+            await enrichment_repo.mark_failed_batch(failed, increment_retry=True)
+        await session.commit()
+    logger.info(f"Loaded {count} contacts from vCard files")
+    return count
 
 
 def _contact_name(row) -> str:
@@ -62,7 +118,8 @@ def _name_mention(
 
 
 async def extract_contact_entities_workflow(session: "AsyncSession", dataset_id: str) -> dict[str, int]:
-    """Emit name + selector mentions (and a member_of relation) for a dataset's contacts."""
+    """Load the dataset's vCards, then emit name + selector mentions (and a member_of relation) per contact."""
+    await load_vcard_contacts(session=session, dataset_id=dataset_id)
     mention_repo = PostgresMentionRepository(session=session)
     entity_repo = PostgresEntityRepository(session=session)
     rel_repo = PostgresMentionRelationshipRepository(session=session)

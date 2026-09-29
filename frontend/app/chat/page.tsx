@@ -23,7 +23,7 @@ import type {
   FileBrowserItem,
   FileLocationTarget,
 } from "@/features/files/types";
-import { getModelLabel } from "@/features/chat/lib/models";
+import { useModelOptions } from "@/features/chat/hooks/use-model-options";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { baseURL } from "@/lib/api-client";
 import { useChat } from "@ai-sdk/react";
@@ -45,7 +45,9 @@ function splitErrorTrace(message: string): { summary: string; trace?: string } {
 }
 
 export default function ChatPage() {
-  const { keys, model, datasetId, setDatasetId } = useChatStore();
+  const { keys, model: storedModel, datasetId, setDatasetId } = useChatStore();
+  const { labelFor, effectiveModel } = useModelOptions();
+  const model = effectiveModel(storedModel);
   const isStoreHydrated = useChatStoreHydrated(); // Reusable hydration state
   const [keyDialogOpen, setKeyDialogOpen] = useState(false);
   const [openCitation, setOpenCitation] = useState<ChatCitation | null>(null);
@@ -145,7 +147,8 @@ export default function ChatPage() {
     if (!text) return;
 
     clearError();
-    setMessages(messages.slice(0, messages.length - lastUserIndex));
+    // Drop the last user message too -- sendMessage re-appends it.
+    setMessages(messages.slice(0, messages.length - lastUserIndex - 1));
     sendMessage({ text }, requestOptions());
   };
 
@@ -165,7 +168,7 @@ export default function ChatPage() {
           </span>
           <span className="flex items-center gap-1.5 font-mono text-xs text-primary/80">
             <MessageSquareIcon className="h-3 w-3" />
-            {getModelLabel(model)}
+            {labelFor(model)}
             {datasetId && (
               <span className="text-muted-foreground">· scoped</span>
             )}

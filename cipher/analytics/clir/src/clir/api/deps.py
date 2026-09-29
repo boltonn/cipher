@@ -36,10 +36,14 @@ class AsyncTextEmbeddingModel:
         max_chunks: int = 10,
         normalized: bool = True,
         average: bool = True,
-        prompt: str | None = None,
+        is_query: bool = True,
         task: str | None = None,
     ) -> list[float]:
-        """Batch inference for text embedding model."""
+        """Batch inference for text embedding model.
+
+        `is_query` states intent -- a search query (default) vs a document passage (e.g.
+        "find similar" to a section) -- and the model applies its own prefix template.
+        """
 
         @batch(
             max_batch_size=settings.max_batch_size,
@@ -57,7 +61,7 @@ class AsyncTextEmbeddingModel:
         )
         chunks = chunker.split_text(text=text)[:max_chunks]
         logger.debug(f"Split text into {len(chunks)} chunks")
-        model_inputs = self._model.preprocess(chunks, prompt=prompt)
+        model_inputs = self._model.preprocess(chunks, is_query=is_query)
         embeddings = self._model.infer(model_inputs, task=task)
         # embeddings = [await handle_batch(c) for c in model_inputs]
 

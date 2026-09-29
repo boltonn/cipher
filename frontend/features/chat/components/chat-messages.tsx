@@ -45,8 +45,12 @@ import { ChatMessageActions } from "./chat-message-actions";
 import { Citations } from "./citations";
 import { ThinkingIndicator } from "./thinking-indicator";
 
-/** A tool output is a citation list if it's a non-empty array of citation-shaped objects. */
+/** A tool output is a citation list if it's a non-empty array of citation-shaped objects,
+ * or an object carrying one under `citations` (e.g. `count_emails` totals + people). */
 function asCitationList(output: unknown): ChatCitation[] | null {
+  if (typeof output === "object" && output !== null && "citations" in output) {
+    return asCitationList(output.citations);
+  }
   if (!Array.isArray(output) || output.length === 0) return null;
   const first = output[0];
   if (typeof first !== "object" || first === null) return null;
@@ -77,12 +81,25 @@ function isToolPart(
   return part.type === "dynamic-tool" || part.type.startsWith("tool-");
 }
 
+/** Tools whose citations are lookup candidates, not evidence -- shown only when nothing else cited. */
+const LOOKUP_TOOLS = new Set(["find_entity"]);
+
+function toolName(part: ToolPart): string {
+  return part.type === "dynamic-tool" ? part.toolName : part.type.replace(/^tool-/, "");
+}
+
 /** Every citation the message's tool calls returned, de-duplicated, in call order. */
 function collectCitations(message: UIMessage): ChatCitation[] {
+  const toolParts = message.parts.filter(
+    (part): part is ToolPart => isToolPart(part) && part.state === "output-available"
+  );
+  const hasEvidence = toolParts.some(
+    (part) => !LOOKUP_TOOLS.has(toolName(part)) && asCitationList(part.output)
+  );
   const seen = new Set<string>();
   const out: ChatCitation[] = [];
-  for (const part of message.parts) {
-    if (!isToolPart(part) || part.state !== "output-available") continue;
+  for (const part of toolParts) {
+    if (hasEvidence && LOOKUP_TOOLS.has(toolName(part))) continue;
     const list = asCitationList(part.output);
     if (!list) continue;
     for (const citation of list) {

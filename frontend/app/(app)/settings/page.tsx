@@ -13,7 +13,8 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { useChatStore } from "@/features/chat/hooks/use-chat-store";
-import { MODELS, PROVIDER_LABELS } from "@/features/chat/lib/models";
+import { useModelOptions } from "@/features/chat/hooks/use-model-options";
+import { PROVIDER_LABELS } from "@/features/chat/lib/models";
 import { useMe } from "@/features/users/hooks/use-me";
 import { getInitials } from "@/features/users/utils";
 import {
@@ -125,7 +126,9 @@ function ProfileSection() {
 }
 
 function ModelSection() {
-  const { model, keys, setModel, setKey } = useChatStore();
+  const { model: storedModel, keys, setModel, setKey } = useChatStore();
+  const { options, effectiveModel } = useModelOptions();
+  const model = effectiveModel(storedModel);
   const provider = model.split(":")[0];
 
   return (
@@ -146,7 +149,7 @@ function ModelSection() {
                 <p className="px-2 pt-2 pb-1 text-xs font-medium text-muted-foreground">
                   {PROVIDER_LABELS[p]}
                 </p>
-                {MODELS.filter((m) => m.provider === p).map((m) => (
+                {options.filter((m) => m.provider === p).map((m) => (
                   <SelectItem key={m.id} value={m.id}>
                     {m.label}
                   </SelectItem>

@@ -1,178 +1,202 @@
 """Tools the chat agent can call to retrieve and cite from the triaged data.
 
 Each tool is a plain async function taking `RunContext[ChatDeps]`; `core.py`
-registers them on the agent. Retrieval tools return lists of `ChatCitation`
-wire dicts (rendered as source cards by the frontend); the entity/graph tools
-return structured dicts the model chains into follow-up calls.
+registers them on the agent. `search_passages` returns a list of `ChatCitation`
+wire dicts (rendered as source cards by the frontend); the entity/graph/count
+tools return structured dicts the model chains into follow-up calls.
 """
+
+from datetime import date
+from typing import Literal
 
 from pydantic_ai import ModelRetry, RunContext
 from pydantic_core import to_jsonable_python
+from pyselectors.extract import extract_selectors
 
 from cipher.api.agent.citations import (
     chunk_citation,
+    connection_citation,
     dataset_citation,
+    email_count_citation,
     entity_citation,
     mention_citation,
     person_citation,
     top_chunk,
 )
 from cipher.api.agent.deps import ChatDeps
-from cipher.api.services.search import search_chunks
-from cipher.schemas.content.search import (
-    ChunkFilters,
-    ChunkSemanticSearchRequest,
-    ChunkTextSearchRequest,
-)
+from cipher.schemas.content.email import EmailCountGroupBy, EmailCountRequest
+from cipher.schemas.content.search import ChunkFilters, GraphExpand, RetrievalMode, RetrievalQuery
 from cipher.schemas.graph.entity import Entity
+from cipher.schemas.graph.entity_relationship import TopConnectionsRequest, TraversalDirection
 from cipher.schemas.graph.mention import MentionSearchParameters
-from cipher.schemas.graph.ontology import EntityType, RelationshipType
+from cipher.schemas.graph.ontology import EntityType, RelationshipType, SelectorType
 from cipher.schemas.identity.person import PersonSearchParameters
 from cipher.schemas.ingestion.dataset import DatasetsRequest
 
 _MAX_FILE_CHARS = 6000
+_MAX_HOPS = 3
 
 
-def _chunk_filters(
+def _selector_candidates(value: str) -> list[str]:
+    """`value` as typed plus every normalized selector pyselectors finds in it."""
+    return list(dict.fromkeys([value.strip(), *(s.normalized_value for s in extract_selectors(value))]))
+
+
+async def _entity_ref(ctx: RunContext[ChatDeps], ref: str) -> str:
+    """An entity id, or the id of the selector entity for a raw email / phone / handle."""
+    if await ctx.deps.entities.get_entity(ref) is not None:
+        return ref
+    for candidate in _selector_candidates(ref):
+        entity = await ctx.deps.entities.search_by_selector(dataset_id=ctx.deps.dataset_id, normalized_value=candidate)
+        if entity is not None:
+            return entity.id
+    raise ModelRetry(f"{ref!r} is not a known entity id or selector value. Look it up with `find_entity` first.")
+
+
+async def _entity_refs(ctx: RunContext[ChatDeps], refs: list[str] | None) -> list[str] | None:
+    return [await _entity_ref(ctx, r) for r in refs] if refs else None
+
+
+async def search_passages(
     ctx: RunContext[ChatDeps],
-    *,
+    query: str = "",
+    mode: RetrievalMode = RetrievalMode.HYBRID,
     entity_id: str | None = None,
-    selector_type: str | None = None,
-) -> ChunkFilters:
-    """Dataset scope plus an optional entity / selector-type restriction.
+    connected_hops: int = 0,
+    relationship_type: RelationshipType | None = None,
+    selector_type: SelectorType | None = None,
+    sent_from: list[str] | None = None,
+    sent_to: list[str] | None = None,
+    participants: list[str] | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    filetype_group: Literal["document", "email"] | None = None,
+    limit: int = 8,
+) -> list[dict]:
+    """Find document and email passages, ranked by text and/or narrowed by entities and email metadata.
 
-    `entity_id` and `selector_type` are matched against the entity metadata
-    `sync-chunk-entities` denormalizes onto each chunk, so they compose with the
-    BM25 / kNN query instead of being a separate lookup.
+    Every argument is optional and they all combine (AND).
+
+    Ranking (`query` + `mode`):
+    - `mode="keyword"` -- BM25 on exact words: names, quoted phrases, ids, codes.
+    - `mode="semantic"` -- meaning, for paraphrased/conceptual asks ("worried about money").
+    - `mode="hybrid"` -- both fused; the default.
+    - `query=""` browses whatever the filters match, newest first.
+
+    Knowledge-graph filters:
+    - `entity_id` -- only passages mentioning this entity (a person/org/location, or a
+      selector such as an email address or phone). Includes mentions of the entity's own
+      selectors. Get ids from `find_entity`; a raw email/phone value also works.
+    - `connected_hops` (0-3) -- also include passages mentioning entities connected to
+      `entity_id` through the graph: 1 = direct contacts/affiliations, 2-3 = further out.
+      `relationship_type` limits which edges are followed (e.g. `emailed`).
+    - `selector_type` -- only passages containing that kind of identifier ("phone",
+      "crypto_address", "social_handle", ...).
+
+    Email metadata filters (entity ids or raw email addresses; a person matches through
+    their addresses):
+    - `sent_from` -- the email's sender; `sent_to` -- to/cc/bcc recipients.
+    - `participants` -- in any header role; several = emails between all of them.
+    - `date_from` / `date_to` -- inclusive ISO dates (YYYY-MM-DD) on when an email was
+      sent or a document authored.
+    - `filetype_group` -- "email" or "document" only.
+
+    For counting ("who does X email most", "how many emails per month") use
+    `count_emails` instead -- this returns passages, not totals.
     """
-    return ChunkFilters(
+    filters = ChunkFilters(
         dataset_id=ctx.deps.dataset_id,
-        entity_ids=[entity_id] if entity_id else None,
         selector_types=[selector_type] if selector_type else None,
+        sent_from=await _entity_refs(ctx, sent_from),
+        sent_to=await _entity_refs(ctx, sent_to),
+        participants=await _entity_refs(ctx, participants),
+        date_from=date_from,
+        date_to=date_to,
+        filetype_group=filetype_group,
     )
-
-
-async def search_text(
-    ctx: RunContext[ChatDeps],
-    query: str,
-    limit: int = 5,
-    entity_id: str | None = None,
-    selector_type: str | None = None,
-) -> list[dict]:
-    """Keyword (BM25) search over document and email text.
-
-    Use this when the user's words are likely to appear verbatim -- names,
-    quoted phrases, error strings, identifiers, exact terminology. It will not
-    match paraphrases or synonyms; for those use `search_semantic`.
-
-    Pass `entity_id` (from `find_entity`) to only return passages that mention
-    that entity, or `selector_type` (e.g. "phone", "crypto_address",
-    "social_handle") to only return passages containing that kind of identifier
-    -- both compose with `query`, and `query` may be "" to browse them.
-    """
-    result = await ctx.deps.chunks.search_text(
-        ChunkTextSearchRequest(
-            query=query, limit=limit, filters=_chunk_filters(ctx, entity_id=entity_id, selector_type=selector_type)
+    graph_expand = None
+    if entity_id:
+        hops = max(0, min(connected_hops, _MAX_HOPS))
+        # One extra hop always crosses `has_selector`, so a person's own addresses count
+        # as "the entity", and their contacts (reached via those addresses) as hop 1.
+        graph_expand = GraphExpand(
+            seed_entity_id=await _entity_ref(ctx, entity_id),
+            max_depth=min(hops + 1, _MAX_HOPS),
+            relationship_types=[RelationshipType.HAS_SELECTOR, *([relationship_type] if relationship_type else [])]
+            if hops == 0 or relationship_type
+            else None,
         )
-    )
-    return [chunk_citation(top_chunk(r)) for r in result.data]
 
-
-async def search_semantic(
-    ctx: RunContext[ChatDeps],
-    query: str,
-    limit: int = 5,
-    entity_id: str | None = None,
-    selector_type: str | None = None,
-) -> list[dict]:
-    """Meaning-based (vector) search over document and email text.
-
-    Use this for conceptual questions where the wording won't match -- "concerns
-    about the merger timeline", "anyone unhappy with the vendor". Matches on
-    meaning, not exact words. For verbatim terms use `search_text`; when unsure
-    use `search_hybrid`.
-
-    `entity_id` / `selector_type` restrict the results the same way as in
-    `search_text`.
-    """
-    embedding = await ctx.deps.embedding_model.infer(text=query, task="retrieval", prompt="Query: ")
-    if embedding is None:
-        raise ModelRetry("The embedding model is unavailable, so semantic search can't run right now.")
-    result = await ctx.deps.chunks.search_semantic(
-        ChunkSemanticSearchRequest(
-            embedding=embedding,
-            limit=limit,
-            filters=_chunk_filters(ctx, entity_id=entity_id, selector_type=selector_type),
-        )
-    )
-    return [chunk_citation(top_chunk(r)) for r in result.data]
-
-
-async def search_hybrid(
-    ctx: RunContext[ChatDeps],
-    query: str,
-    limit: int = 5,
-    entity_id: str | None = None,
-    selector_type: str | None = None,
-) -> list[dict]:
-    """Combined keyword + vector search over documents and emails (RRF fusion).
-
-    The safe default when you want relevant passages to ground an answer and
-    don't have a specific reason to prefer keyword-only or meaning-only.
-
-    `entity_id` / `selector_type` restrict the results the same way as in
-    `search_text`.
-    """
+    text = query.strip()
+    embedding = None
+    if text and mode != RetrievalMode.KEYWORD:
+        try:
+            embedding = await ctx.deps.embedding_model.infer(text=text, task="retrieval")
+        except Exception as exc:  # noqa: BLE001 -- degrade to keyword rather than fail the turn
+            raise ModelRetry(f"Semantic search failed ({type(exc).__name__}); retry with mode='keyword'.") from exc
+        if embedding is None:
+            raise ModelRetry("The embedding model is unavailable; retry with mode='keyword'.")
     try:
-        result = await search_chunks(
-            params=ChunkTextSearchRequest(
-                query=query,
-                limit=limit,
-                filters=_chunk_filters(ctx, entity_id=entity_id, selector_type=selector_type),
-            ),
-            datastore=ctx.deps.chunks,
-            embedding_model=ctx.deps.embedding_model,
+        result = await ctx.deps.chunks.search(
+            RetrievalQuery(
+                mode=mode,
+                text=text or None,
+                embedding=embedding,
+                filters=filters,
+                graph_expand=graph_expand,
+                limit=max(1, min(limit, 25)),
+            )
         )
-    except RuntimeError as exc:
+    except ValueError as exc:
         raise ModelRetry(str(exc)) from exc
     return [chunk_citation(top_chunk(r)) for r in result.data]
 
 
-async def search_graph(
+async def count_emails(
     ctx: RunContext[ChatDeps],
-    entity_id: str,
-    query: str = "",
-    hops: int = 1,
-    relationship_type: str | None = None,
-    limit: int = 5,
-) -> list[dict]:
-    """Graph-RAG: retrieve passages that mention an entity **or anyone it's connected to**.
+    group_by: EmailCountGroupBy,
+    sent_from: list[str] | None = None,
+    sent_to: list[str] | None = None,
+    participants: list[str] | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    limit: int = 15,
+) -> dict:
+    """Count emails -- who emails whom most, and when. Returns totals, not passages.
 
-    Expands the knowledge graph out from `entity_id` (from `find_entity`) by
-    `hops` (1-3) relationships -- optionally only `relationship_type`
-    (`communicates_with`, `employed_by`, ...) -- then returns passages mentioning
-    any entity in that neighbourhood, ranked by `query` (leave `query` empty to
-    just browse them). Use when a question is about a person *and their circle*,
-    not only direct mentions of them. Requires the Postgres retrieval backend.
+    Filters are the same as `search_passages` (entity ids or raw email addresses; a
+    person matches through their addresses). `group_by`:
+    - "recipient" -- with `sent_from=[X]`: who X emails most.
+    - "sender" -- with `sent_to=[X]`: who emails X most.
+    - "correspondent" -- with `participants=[X]`: X's top contacts either direction.
+    - "day" / "month" / "year" -- volume over time for the filtered emails.
+
+    `totalEmails` is the count for the filters overall. People come back as entity
+    `citations` (`targetId` = entity id, `score` = email count, `snippet` = count, date
+    span and addresses used); periods come back as `periods`. Each message is counted
+    once even if it appears in several mailboxes.
     """
-    from cipher.schemas.content.search import GraphExpand, RetrievalMode, RetrievalQuery
-
-    if not hasattr(ctx.deps.chunks, "search"):
-        raise ModelRetry("Graph-scoped search needs the Postgres retrieval backend; use `related_entities` instead.")
-    result = await ctx.deps.chunks.search(
-        RetrievalQuery(
-            mode=RetrievalMode.KEYWORD,
-            text=query or None,
-            filters=_chunk_filters(ctx),
-            graph_expand=GraphExpand(
-                seed_entity_id=entity_id,
-                max_depth=max(1, min(hops, 3)),
-                relationship_types=[relationship_type] if relationship_type else None,
-            ),
-            limit=limit,
+    counts = await ctx.deps.mentions.count_emails(
+        EmailCountRequest(
+            dataset_id=ctx.deps.dataset_id,
+            sent_from=await _entity_refs(ctx, sent_from),
+            sent_to=await _entity_refs(ctx, sent_to),
+            participants=await _entity_refs(ctx, participants),
+            date_from=date_from,
+            date_to=date_to,
+            group_by=group_by,
+            limit=max(1, min(limit, 100)),
         )
     )
-    return [chunk_citation(top_chunk(r)) for r in result.data]
+    out: dict = {"totalEmails": counts.total_emails, "groupBy": counts.group_by}
+    if group_by in (EmailCountGroupBy.SENDER, EmailCountGroupBy.RECIPIENT, EmailCountGroupBy.CORRESPONDENT):
+        out["citations"] = [email_count_citation(b) for b in counts.buckets]
+    else:
+        out["periods"] = [
+            {"period": b.key, "emailCount": b.email_count, "dateFirst": b.date_first, "dateLast": b.date_last}
+            for b in counts.buckets
+        ]
+    return to_jsonable_python(out)
 
 
 async def find_person(ctx: RunContext[ChatDeps], name: str, limit: int = 5) -> list[dict]:
@@ -197,15 +221,6 @@ async def list_datasets(ctx: RunContext[ChatDeps]) -> list[dict]:
     return [dataset_citation(d) for d in result.data]
 
 
-def _require_dataset(ctx: RunContext[ChatDeps]) -> str:
-    if ctx.deps.dataset_id is None:
-        raise ModelRetry(
-            "This tool needs a dataset. Ask the user to pick one with the dataset selector next "
-            "to the chat input, then retry."
-        )
-    return ctx.deps.dataset_id
-
-
 async def find_entity(
     ctx: RunContext[ChatDeps],
     name: str | None = None,
@@ -213,19 +228,21 @@ async def find_entity(
     entity_type: EntityType | None = None,
     limit: int = 5,
 ) -> list[dict]:
-    """Resolve a name or a strong identifier to entities extracted from the data.
+    """Resolve a name or an identifier to knowledge-graph entities.
 
-    `selector_value` is a normalized phone/email/passport/handle/etc. Returns
-    entity citations; each result's `targetId` is the entity id -- pass it to
-    `entity_profile`, `entity_mentions`, or `related_entities`. Requires a
-    selected dataset (entities are per-dataset).
+    `name` fuzzy-matches people, organizations, locations and selectors by display
+    name. `selector_value` is an email / phone / handle / crypto address / passport /
+    ... as written -- it is normalized for you (phones match best in +E.164). Each
+    result's `targetId` is the entity id for `search_passages`, `count_emails`,
+    `top_connections`, `entity_profile`, `entity_mentions` or `related_entities`. Searches the selected
+    dataset, or every dataset when none is selected.
     """
-    dataset_id = _require_dataset(ctx)
     if not name and not selector_value:
         raise ModelRetry("Provide either `name` or `selector_value`.")
+    dataset_id = ctx.deps.dataset_id
     found: list[Entity] = []
-    if selector_value:
-        entity = await ctx.deps.entities.search_by_selector(dataset_id=dataset_id, normalized_value=selector_value)
+    for candidate in _selector_candidates(selector_value) if selector_value else []:
+        entity = await ctx.deps.entities.search_by_selector(dataset_id=dataset_id, normalized_value=candidate)
         if entity is not None:
             found.append(entity)
     if name:
@@ -281,8 +298,9 @@ async def related_entities(
     Answers who it communicates with, works for, is a member of, or shares an
     identifier with.
     `depth=1` returns direct neighbours; up to 3 walks further out. Filter with
-    `relationship_type` (e.g. `communicates_with` for email/call links,
-    `employed_by`/`member_of` for affiliation). Returns `{nodes, edges}`.
+    `relationship_type` (e.g. `emailed` for sender -> recipient email links,
+    `employed_by`/`member_of` for affiliation). Returns `{nodes, edges}`. To rank
+    the strongest connections ("who does X talk to most"), use `top_connections`.
     """
     types = [relationship_type] if relationship_type else None
     if depth <= 1:
@@ -290,6 +308,42 @@ async def related_entities(
     else:
         graph = await ctx.deps.graph.traverse(start_entity_id=entity_id, max_depth=depth, relationship_types=types)
     return to_jsonable_python(graph, by_alias=True)
+
+
+async def top_connections(
+    ctx: RunContext[ChatDeps],
+    entity_ids: list[str],
+    relationship_type: RelationshipType | None = None,
+    direction: TraversalDirection = TraversalDirection.BOTH,
+    limit: int = 15,
+) -> dict:
+    """Rank who/what is most strongly connected to some nodes, by edge weight -- the generic "most" question.
+
+    `entity_ids`: ids from `find_entity`/`find_person`, or raw emails / phones / handles. Pass a
+    person (their resolved addresses are included) and/or the bare selectors themselves -- it
+    works before entity resolution. Filter with `relationship_type`: `emailed` (weight =
+    emails, directed sender -> recipient), `appears_in_photo_with` (shared photos), ...;
+    default ranks every weighted type. `direction` (directed types like `emailed`): "out" = the
+    seeds sent, "in" = they received, "both" = either. A neighbour's addresses are merged into the one person/org
+    that owns them when known (`via` lists them). Weights are all-time totals -- for date ranges or
+    volume over time use `count_emails`.
+    """
+    result = await ctx.deps.graph.top_connections(
+        TopConnectionsRequest(
+            entity_ids=await _entity_refs(ctx, entity_ids) or [],
+            relationship_types=[relationship_type] if relationship_type else None,
+            direction=direction,
+            dataset_id=ctx.deps.dataset_id,
+            limit=max(1, min(limit, 100)),
+        )
+    )
+    return to_jsonable_python(
+        {
+            "seeds": [s.display_name for s in result.seeds],
+            "citations": [connection_citation(c) for c in result.connections],
+            "edgesWithoutDirection": result.edges_without_direction,
+        }
+    )
 
 
 async def explain_entity_resolution(ctx: RunContext[ChatDeps], mention_id: str) -> dict:
@@ -347,16 +401,15 @@ async def read_file(
 
 
 ALL_TOOLS = (
-    search_text,
-    search_semantic,
-    search_hybrid,
-    search_graph,
+    search_passages,
+    count_emails,
     find_person,
     list_datasets,
     find_entity,
     entity_profile,
     entity_mentions,
     related_entities,
+    top_connections,
     explain_entity_resolution,
     read_file,
 )

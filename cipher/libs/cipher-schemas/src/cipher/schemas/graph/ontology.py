@@ -165,6 +165,7 @@ class RelationshipType(StrEnum):
     SUBSIDIARY_OF = "subsidiary_of"
     LOCATED_IN = "located_in"
     COMMUNICATES_WITH = "communicates_with"
+    EMAILED = "emailed"
     FAMILY_OF = "family_of"
     ASSOCIATE_OF = "associate_of"
     APPEARS_IN_PHOTO_WITH = "appears_in_photo_with"
@@ -403,8 +404,20 @@ RELATIONSHIPS: dict[RelationshipType, RelationshipSpec] = {
         allowed_src=_COMMS_ENDPOINT_TYPES,
         allowed_dst=_COMMS_ENDPOINT_TYPES,
         description=(
-            "Two endpoints are recorded communicating (email, calls, messages). Endpoints are "
-            "people/orgs when resolved, otherwise the bare email or phone selector."
+            "Two endpoints communicate, channel unspecified (stated in text or asserted by an analyst). "
+            "Recorded interactions use a directed channel type instead, e.g. `emailed`."
+        ),
+    ),
+    RelationshipType.EMAILED: RelationshipSpec(
+        relationship_type=RelationshipType.EMAILED,
+        directed=True,
+        symmetric=False,
+        allowed_src=_COMMS_ENDPOINT_TYPES,
+        allowed_dst=_COMMS_ENDPOINT_TYPES,
+        inverse_label="emailed_by",
+        description=(
+            "The source sent the destination email (to/cc/bcc); weight = emails sent that way. Endpoints are "
+            "people/orgs when resolved, otherwise the bare email selector."
         ),
     ),
     RelationshipType.FAMILY_OF: RelationshipSpec(
@@ -754,6 +767,7 @@ RELATIONSHIP_LABELS: dict[RelationshipType, str] = {
     RelationshipType.SUBSIDIARY_OF: "Subsidiary of",
     RelationshipType.LOCATED_IN: "Located in",
     RelationshipType.COMMUNICATES_WITH: "Communicates with",
+    RelationshipType.EMAILED: "Emailed",
     RelationshipType.FAMILY_OF: "Family",
     RelationshipType.ASSOCIATE_OF: "Associate of",
     RelationshipType.APPEARS_IN_PHOTO_WITH: "Appears in photo with",

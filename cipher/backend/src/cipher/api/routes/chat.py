@@ -11,6 +11,7 @@ from collections.abc import AsyncIterator
 
 from clir.api.deps import TextEmbeddingModelDep
 from fastapi import APIRouter, Header, HTTPException
+from pydantic_ai.exceptions import ModelHTTPError
 from pydantic_ai.ui.vercel_ai import VercelAIAdapter, VercelAIEventStream
 from pydantic_ai.ui.vercel_ai.response_types import BaseChunk, ErrorChunk
 from starlette.requests import Request
@@ -35,7 +36,7 @@ from cipher.api.deps.postgres import (
     PersonDatastoreDep,
 )
 from cipher.api.settings import Settings
-from cipher.schemas.interaction.llm import AgentConfig
+from cipher.schemas.interaction.llm import AgentConfig, LLMProvider, ModelOption
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -59,6 +60,21 @@ def chat_config() -> AgentConfig:
     models = [
         m.model_copy(update={"has_key": can_build(resolve_llm_settings(settings.llm, m.id))})
         for m in AVAILABLE_MODELS
+        if m.provider != LLMProvider.LOCAL
+    ]
+    # The local entry is whatever model the configured local server hosts.
+    local_model = settings.llm.model if settings.llm.provider == LLMProvider.LOCAL else None
+    models += [
+        m.model_copy(update={"has_key": True})
+        if local_model is None
+        else ModelOption(
+            id=f"local:{local_model}",
+            provider=LLMProvider.LOCAL,
+            label=f"{local_model.rsplit('/', 1)[-1]} (local)",
+            has_key=True,
+        )
+        for m in AVAILABLE_MODELS
+        if m.provider == LLMProvider.LOCAL
     ]
     return AgentConfig(
         has_server_key=can_build(settings.llm),
@@ -71,7 +87,21 @@ class _TracebackVercelAIEventStream(VercelAIEventStream):
     """Appends a full traceback to the error chunk instead of pydantic_ai's default `str(error)`."""
 
     async def on_error(self, error: Exception) -> AsyncIterator[BaseChunk]:
-        yield ErrorChunk(error_text=f"{error}\n\n{TRACE_MARKER}\n{traceback.format_exc()}")
+        yield ErrorChunk(error_text=f"{_short_error(error)}\n\n{TRACE_MARKER}\n{error}\n\n{traceback.format_exc()}")
+
+
+def _short_error(error: Exception) -> str:
+    """One readable line for the banner; the raw provider payload stays in the traceback."""
+    if not isinstance(error, ModelHTTPError):
+        return str(error)
+    body = error.body if isinstance(error.body, dict) else {}
+    detail = body.get("error", body) if isinstance(body.get("error", body), dict) else {}
+    message = str(detail.get("message") or error.message or "").split("\n")[0].strip()
+    if error.status_code == 429:
+        return f"{error.model_name} is out of quota or rate limited -- pick another model or retry shortly. {message}"
+    if error.status_code >= 500:
+        return f"{error.model_name} is unavailable right now (HTTP {error.status_code}) -- retry or pick another model."
+    return f"{error.model_name} returned HTTP {error.status_code}: {message}"
 
 
 class _TracebackVercelAIAdapter(VercelAIAdapter[ChatDeps, str]):

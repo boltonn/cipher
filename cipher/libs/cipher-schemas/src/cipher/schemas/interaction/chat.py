@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Literal
 
 from pydantic import Field
@@ -38,6 +39,10 @@ class ChatCitation(BaseModel):
     )
     start_offset: int | None = Field(default=None, description="Start char offset within the file's extracted text")
     end_offset: int | None = Field(default=None, description="End char offset within the file's extracted text")
+    sent_from: str | None = Field(default=None, description="Email-only: sender, 'Name <address>'")
+    sent_to: list[str] | None = Field(default=None, description="Email-only: to / cc recipients")
+    date_sent: datetime | None = Field(default=None, description="Email-only: when it was sent")
+    count: int | None = Field(default=None, description="For a counted party (count_emails): its email count")
 
     # Record citations (kind in {person, dataset, entity}).
     target_id: str | None = Field(default=None, description="Id of the linked record")

@@ -1,5 +1,5 @@
 import hashlib
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from enum import StrEnum
 from typing import Annotated, Literal
 
@@ -133,7 +133,29 @@ class ChunkSortField(StrEnum):
     SCORE = "score"
 
 
-class ChunkFilters(BaseModel):
+class CorrespondenceFilters(BaseModel):
+    """Who-sent-what-to-whom-when filters, matched against email header mentions.
+
+    Each id is an entity id -- a person/organization or an email-address
+    selector. A person also matches through the addresses it `has_selector`
+    and through its resolved header display name. Multiple ids in one field
+    are AND-ed (every one must appear in that role), so `participants=[a, b]`
+    means "emails between a and b". Dates are inclusive days, compared against
+    the email's `date_sent` (or a document's `date_content_created`).
+    """
+
+    sent_from: list[str] | None = Field(default=None, description="Sender (header from / sender) entity ids")
+    sent_to: list[str] | None = Field(default=None, description="Recipient (header to / cc / bcc) entity ids")
+    participants: list[str] | None = Field(default=None, description="Entity ids in any header role")
+    date_from: date | None = Field(default=None, description="Sent / authored on or after this day")
+    date_to: date | None = Field(default=None, description="Sent / authored on or before this day")
+
+    def has_correspondence_filter(self) -> bool:
+        """Whether any sender / recipient / participant / date filter is set."""
+        return bool(self.sent_from or self.sent_to or self.participants or self.date_from or self.date_to)
+
+
+class ChunkFilters(CorrespondenceFilters):
     """Reusable filter set for the unified document+email chunk search index."""
 
     dataset_id: str | None = None

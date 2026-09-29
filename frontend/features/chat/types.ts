@@ -28,6 +28,14 @@ export interface ChatCitation {
   headingPath?: string[];
   startOffset?: number;
   endOffset?: number;
+  /** Email-only: sender, "Name <address>". */
+  sentFrom?: string;
+  /** Email-only: to / cc recipients. */
+  sentTo?: string[];
+  /** Email-only: ISO datetime it was sent. */
+  dateSent?: string;
+  /** For a counted party (`count_emails`): its email count. */
+  count?: number;
 
   // Record citations (kind in {person, dataset, entity}).
   targetId?: string;
