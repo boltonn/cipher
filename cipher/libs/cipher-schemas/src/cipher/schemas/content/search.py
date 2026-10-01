@@ -7,6 +7,7 @@ from pydantic import Field, model_validator
 
 from cipher.schemas._base.base import BaseModel
 from cipher.schemas._base.common import PageParams
+from cipher.schemas.graph.mention import MentionProvenance
 
 
 def chunk_id_for(*, dataset_id: str, sha256: str, chunk_index: int, start_offset: int) -> str:
@@ -133,6 +134,15 @@ class ChunkSortField(StrEnum):
     SCORE = "score"
 
 
+class MentionSpan(BaseModel):
+    """Where a filtered entity or mention value occurs, in extracted-text offsets."""
+
+    entity_id: str | None = Field(default=None, description="Set when the span matched an `entity_ids` filter")
+    normalized_value: str | None = Field(default=None, description="Set when it matched a `mention_values` filter")
+    start_offset: int
+    end_offset: int
+
+
 class CorrespondenceFilters(BaseModel):
     """Who-sent-what-to-whom-when filters, matched against email header mentions.
 
@@ -169,6 +179,16 @@ class ChunkFilters(CorrespondenceFilters):
     # Entity-aware filters (composable with a text/kNN query; require `sync-chunk-entities`).
     entity_ids: list[str] | None = Field(
         default=None, description="Only chunks that mention every one of these resolved entities"
+    )
+    mention_values: list[str] | None = Field(
+        default=None,
+        description="Only files with a mention of every one of these `normalized_value`s, resolved or not "
+        "(an IP, a name group) -- file-level, so email header mentions count",
+    )
+    mention_provenance: list[MentionProvenance] | None = Field(
+        default=None,
+        description="Where a `mention_values` hit must be found: `text`/`pattern` (written in the body) vs "
+        "`email_header` / `metadata` fields; omit for anywhere",
     )
     entity_types: list[str] | None = Field(default=None, description="Only chunks mentioning one of these entity types")
     selector_types: list[str] | None = Field(

@@ -187,7 +187,7 @@ async def _groups_with_key_signal(session: AsyncSession, groups: list[dict]) -> 
 
 
 _EMPLOYER_RELS = (RelationshipType.EMPLOYED_BY, RelationshipType.MEMBER_OF)
-_NEIGHBOUR_EXCLUDE = frozenset({RelationshipType.APPEARS_IN_PHOTO_WITH, RelationshipType.ASSOCIATE_OF})
+_NEIGHBOUR_EXCLUDE = frozenset({RelationshipType.APPEARS_IN_PHOTO_WITH, RelationshipType.CO_MENTION_OF})
 
 
 class _CandDetail(NamedTuple):

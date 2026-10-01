@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 
 from sqlalchemy import Float, asc, cast, delete, desc, exists, func, literal, or_, select, text, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, defer
 
@@ -29,7 +30,7 @@ from cipher.schemas.identity.face import (
     PaginatedFaceSimilarityResponse,
     PaginatedFacesResponse,
 )
-from cipher.schemas.identity.face_match import FaceMatchStatus
+from cipher.schemas.identity.face_match import FaceMatchMethod, FaceMatchStatus
 
 MAX_REPRESENTATIVE_FACES_PER_PERSON = 10
 MAX_AUTO_REJECT_NEIGHBOURS = 1000
@@ -130,13 +131,60 @@ class PostgresFaceRepository:
             return UriResponse(uri=uri, mime_type=mime_type)
         return None
 
-    async def assign_person(self, face_id: str, assignment: FaceAssignment) -> Face | None:
+    async def _record_assignment_decision(
+        self, face_id: str, assignment: FaceAssignment, reviewed_by: str | None
+    ) -> None:
+        """Keep an analyst's (re)assignment as `face_match` decisions rather than losing it.
+
+        Taking a face off a person leaves a rejected match ("this face is not that
+        person"), which also stops the matcher re-proposing it; assigning it leaves
+        a confirmed one. `face_match` is thus the full record of manual decisions.
+        """
+        previous = (
+            await self.session.execute(
+                select(FaceTable.person_id, FaceTable.assignment_confidence).where(FaceTable.id == face_id)
+            )
+        ).one_or_none()
+        review = {"reviewed_by": reviewed_by, "reviewed_at": datetime.now(UTC)}
+        if previous and previous.person_id and previous.person_id != assignment.person_id:
+            rejected = {"status": FaceMatchStatus.REJECTED, "review_note": "unassigned", **review}
+            await self.session.execute(
+                pg_insert(FaceMatchTable)
+                .values(
+                    face_id=face_id,
+                    person_id=previous.person_id,
+                    similarity_score=previous.assignment_confidence or 0.0,
+                    match_method=FaceMatchMethod.MANUAL,
+                    **rejected,
+                )
+                .on_conflict_do_update(constraint="uq_face_match_face_person", set_=rejected)
+            )
+        if assignment.person_id:
+            confirmed = {"status": FaceMatchStatus.CONFIRMED, "review_note": None, **review}
+            await self.session.execute(
+                pg_insert(FaceMatchTable)
+                .values(
+                    face_id=face_id,
+                    person_id=assignment.person_id,
+                    similarity_score=assignment.assignment_confidence or 0.0,
+                    match_method=FaceMatchMethod.MANUAL,
+                    **confirmed,
+                )
+                .on_conflict_do_update(constraint="uq_face_match_face_person", set_=confirmed)
+            )
+
+    async def assign_person(
+        self, face_id: str, assignment: FaceAssignment, *, reviewed_by: str | None = None
+    ) -> Face | None:
         """Link (or unlink) a face to a person.
 
         Reassigning always clears representative/primary status, since
         that curation is specific to the previously assigned person and
-        must be re-applied deliberately via `set_representative`.
+        must be re-applied deliberately via `set_representative`. A manual
+        change is kept as `face_match` decisions (see `_record_assignment_decision`).
         """
+        if assignment.assignment_method == FaceAssignmentMethod.MANUAL:
+            await self._record_assignment_decision(face_id, assignment, reviewed_by)
         stmt = (
             update(FaceTable)
             .where(FaceTable.id == face_id)

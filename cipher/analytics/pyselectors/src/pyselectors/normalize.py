@@ -10,6 +10,7 @@ import re
 import phonenumbers
 
 from cipher.schemas.graph.ontology import SelectorSubtype, SelectorType
+from pyselectors.domains import registrable_domain
 
 # Loose language -> default phone region. Only used when no explicit region is
 # given and a number carries no country code of its own.
@@ -169,6 +170,7 @@ NORMALIZERS = {
     "national_id": lambda raw, *, country=None, subtype=None: normalize_national_id(raw),
     "crypto_address": lambda raw, *, country=None, subtype=None: normalize_crypto_address(raw, subtype=subtype),
     "social_handle": lambda raw, *, country=None, subtype=None: normalize_social_handle(raw, subtype=subtype),
+    "domain": lambda raw, *, country=None, subtype=None: registrable_domain(raw),
 }
 
 

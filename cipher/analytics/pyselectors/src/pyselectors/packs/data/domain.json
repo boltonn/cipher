@@ -1,0 +1,47 @@
+{
+  "selector_type": "domain",
+  "priority": 40,
+  "base_confidence": 0.7,
+  "max_confidence": 0.95,
+  "normalizer": "domain",
+  "validator": null,
+  "patterns": [
+    {
+      "name": "url",
+      "regex": "(?i)(?<![\\w@./-])(?:https?://|www\\d?\\.)[a-z0-9.-]+\\.[a-z]{2,24}(?::\\d{2,5})?(?:/[^\\s<>\\\"'()\\[\\]]*[^\\s<>\\\"'()\\[\\].,;:!?])?",
+      "base_confidence": 0.85
+    },
+    {
+      "name": "bare",
+      "regex": "(?i)(?<![\\w@./-])(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+(?:com|org|net|edu|gov|mil|int|io|co|ai|app|dev|info|biz|me|tv|ly|us|uk|ca|au|de|fr|es|it|nl|se|no|dk|fi|ch|at|be|ie|pl|ru|ua|cn|jp|kr|in|br|mx|nz|za|eu|xyz|tech|online|site|store|shop|news|blog|cloud|ir|il|tr|sg|hk|tw)(?![\\w-])(?:/[^\\s<>\\\"'()\\[\\]]*[^\\s<>\\\"'()\\[\\].,;:!?])?"
+    }
+  ],
+  "context": {
+    "window_before": 30,
+    "window_after": 10,
+    "terms": {
+      "en": [
+        {
+          "term": "visit",
+          "weight": 0.1
+        },
+        {
+          "term": "website",
+          "weight": 0.15
+        },
+        {
+          "term": "site",
+          "weight": 0.08
+        },
+        {
+          "term": "e.g.",
+          "weight": -0.3
+        },
+        {
+          "term": "example",
+          "weight": -0.3
+        }
+      ]
+    }
+  }
+}

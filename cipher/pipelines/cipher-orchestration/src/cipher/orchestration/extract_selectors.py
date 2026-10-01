@@ -269,8 +269,9 @@ async def _extract_text_selectors(
     entity_repo: PostgresEntityRepository,
     mention_repo: PostgresMentionRepository,
     selector_cache: dict[tuple, str],
+    types: set[SelectorType] | None = None,
 ) -> int:
-    """Run `pyselectors.extract_selectors` over `ExtractedText.content`.
+    """Run `pyselectors.extract_selectors` over `ExtractedText.content` (only ``types``, when given).
 
     Offsets are char positions into `content`, the same contract NER uses.
     `DocumentMetadata.detected_language` seeds the context lexicon and phone
@@ -286,7 +287,7 @@ async def _extract_text_selectors(
         return 0
 
     language = extracted.metadata.detected_language if isinstance(extracted.metadata, DocumentMetadata) else None
-    spans = await asyncio.to_thread(extract_selectors, content, language=language)
+    spans = await asyncio.to_thread(extract_selectors, content, language=language, types=types)
     if not spans:
         return 0
 
@@ -342,8 +343,8 @@ async def _extract_text_coordinates(
 
     Coordinates are an NER-style output: each one becomes an *unresolved*
     `LOCATION` mention (`entity_attribute="coordinate"`, shows on the file text
-    view, searchable) plus a `location` row (`source="text_mention"`) so the
-    point lands on the map. Re-run safe: the file's `text_mention` points are
+    view, searchable) plus a `location` row (`source="coordinate_mention"`) so the
+    point lands on the map. Re-run safe: the file's `coordinate_mention` points are
     replaced wholesale.
     """
     import asyncio
@@ -361,14 +362,14 @@ async def _extract_text_coordinates(
 
     await location_repo.replace_file_locations(
         file_id=file_id,
-        source=LocationSource.TEXT_MENTION,
+        source=LocationSource.COORDINATE_MENTION,
         rows=[
             LocationCreate(
                 file_id=file_id,
                 dataset_id=dataset_id,
                 latitude=c.latitude,
                 longitude=c.longitude,
-                source=LocationSource.TEXT_MENTION,
+                source=LocationSource.COORDINATE_MENTION,
                 source_id=f"{c.latitude:.6f},{c.longitude:.6f}",
                 attributes={"format": c.coordinate_format, "raw": c.raw_value[:120]},
             )
@@ -476,7 +477,13 @@ async def extract_selectors_workflow(
             pbar.set_postfix(failed=failed_count, mentions=mention_count)
             pbar.update(len(completed) + len(failed))
 
-    logger.success(f"Extracted {mention_count} selector mentions from {count} files ({failed_count} failed)")
+    from cipher.orchestration.reclassify_domains import link_domain_selectors
+
+    linked = await link_domain_selectors(session, dataset_id)
+    logger.success(
+        f"Extracted {mention_count} selector mentions from {count} files ({failed_count} failed); "
+        f"linked {linked} websites to organizations"
+    )
     return count
 
 

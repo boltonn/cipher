@@ -11,7 +11,6 @@ from cipher.schemas.identity.face_match import FaceMatchMethod, FaceMatchStatus
 
 if TYPE_CHECKING:
     from cipher.datastores.postgres.tables.face import FaceTable
-    from cipher.datastores.postgres.tables.person import PersonTable
     from cipher.datastores.postgres.tables.user import UserTable
 
 
@@ -28,12 +27,8 @@ class FaceMatchTable(Base):
         nullable=False,
         index=True,
     )
-    person_id: Mapped[str] = mapped_column(
-        String,
-        ForeignKey("person.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
+    # No FK: a reviewed decision outlives its person, whose id still groups the faces it was made about.
+    person_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
 
     similarity_score: Mapped[float] = mapped_column(Float, nullable=False)
     match_method: Mapped[FaceMatchMethod] = mapped_column(
@@ -57,7 +52,6 @@ class FaceMatchTable(Base):
     )
 
     face: Mapped["FaceTable"] = relationship(back_populates="match_candidates", lazy="select")
-    person: Mapped["PersonTable"] = relationship(back_populates="face_matches", lazy="select")
     reviewer: Mapped["UserTable | None"] = relationship(lazy="select")
 
     __table_args__ = (

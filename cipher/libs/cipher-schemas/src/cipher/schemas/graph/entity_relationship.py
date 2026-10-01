@@ -13,7 +13,7 @@ from cipher.schemas._base.base import BaseModel
 from cipher.schemas._base.common import PageParams, PaginatedResponse
 from cipher.schemas._base.review import ReviewableMixin, ReviewDecision, ReviewStatus
 from cipher.schemas.graph.entity import EntitySummary
-from cipher.schemas.graph.ontology import RelationshipSource, RelationshipType
+from cipher.schemas.graph.ontology import GraphNodeType, RelationshipSource, RelationshipType
 
 # Back-compat alias -- prefer `ReviewStatus` from `cipher.schemas._base.review`.
 RelationshipCandidateStatus = ReviewStatus
@@ -135,10 +135,16 @@ class PaginatedRelationshipCandidatesResponse(PaginatedResponse):
     data: list[RelationshipCandidate] = Field(description="List of relationship candidates")
 
 
+class GraphNode(EntitySummary):
+    """A traversal node: an entity, or an event reached through a `participant_in` edge."""
+
+    entity_type: GraphNodeType
+
+
 class GraphResponse(BaseModel):
     """Result of a bounded graph traversal."""
 
-    nodes: list[EntitySummary] = Field(default_factory=list)
+    nodes: list[GraphNode] = Field(default_factory=list)
     edges: list[EntityRelationship] = Field(default_factory=list)
 
 

@@ -3,6 +3,8 @@ import unicodedata
 from typing import Any
 
 _WS_RE = re.compile(r"\s+")
+# Quotes / trailing punctuation around a display name ("'Nick Bolton'", "Nick B.") aren't part of it.
+_EDGE_PUNCT = "'\"`\u2018\u2019\u201c\u201d.,;:()<>[]_- "
 
 
 def normalize_name(value: str) -> str:
@@ -10,11 +12,14 @@ def normalize_name(value: str) -> str:
 
     Decomposes accents (NFKD, drops combining marks), casefolds, and collapses
     whitespace. Latin diacritics are removed; non-Latin scripts (Cyrillic, Han)
-    are left intact -- fuzzy matching there relies on the name embedding.
+    are left intact -- fuzzy matching there relies on the name embedding. Quotes and
+    punctuation at either end are dropped, so "'Nick Bolton'" and "Nick B." join the
+    "nick bolton" / "nick b" name groups.
     """
     decomposed = unicodedata.normalize("NFKD", value)
     stripped = "".join(ch for ch in decomposed if not unicodedata.combining(ch))
-    return _WS_RE.sub(" ", stripped.casefold()).strip()
+    folded = _WS_RE.sub(" ", stripped.casefold()).strip()
+    return folded.strip(_EDGE_PUNCT) or folded
 
 
 def strip_null_bytes(value: Any) -> Any:

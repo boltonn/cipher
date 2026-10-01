@@ -66,11 +66,13 @@ from cipher.orchestration.link_face_cooccurrence import (
     link_face_cooccurrence_workflow,
 )
 from cipher.orchestration.match_faces import match_faces_workflow, reset_face_matches
+from cipher.orchestration.reclassify_domains import reclassify_domains_workflow
 from cipher.orchestration.refresh_selectors import refresh_selectors_workflow
 from cipher.orchestration.reset_entities import reset_entities
 from cipher.orchestration.reset_events import reset_events
 from cipher.orchestration.resolve_entities import resolve_entities_workflow
 from cipher.orchestration.resolve_event_links import resolve_event_links_workflow
+from cipher.orchestration.resolve_locations import resolve_locations_workflow
 from cipher.orchestration.run_recorder import record_run
 from cipher.orchestration.schema import create_tables
 from cipher.orchestration.session import get_elasticsearch_client_context, get_session_context
@@ -988,6 +990,9 @@ def resolve_entities_cmd(
         int,
         typer.Option(help="Score this many name groups in parallel (own session each); ~Nx faster on a big mailbox"),
     ] = 8,
+    skip_locations: Annotated[
+        bool, typer.Option(help="Skip the gazetteer pass over location mentions (see `resolve-locations`)")
+    ] = False,
 ):
     """Sweep unresolved name mentions -> entities: block -> score -> decide -> emit.
 
@@ -1019,6 +1024,29 @@ def resolve_entities_cmd(
                 link_selectors=not skip_selector_links,
                 concurrency=concurrency,
             )
+            if not skip_locations:
+                counts["locations"] = await resolve_locations_workflow(session=session, dataset_id=resolved_id)
+            typer.echo(json.dumps(counts, indent=2))
+
+    asyncio.run(_run())
+
+
+@app.command("resolve-locations")
+def resolve_locations_cmd(
+    dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
+    dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
+):
+    """Attach unresolved location mentions to global place entities via the offline gazetteer.
+
+    Per-mention lookup (countries, US/CA states, cities, regions) using the text
+    around each mention; ambiguous names are left unresolved. Needs the index
+    from `cipher-places-build`. Also runs at the end of `resolve-entities`.
+    """
+
+    async def _run():
+        async with get_session_context() as session:
+            resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
+            counts = await resolve_locations_workflow(session=session, dataset_id=resolved_id)
             typer.echo(json.dumps(counts, indent=2))
 
     asyncio.run(_run())
@@ -1046,6 +1074,29 @@ def dedupe_entities_cmd(
             resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
             config = EntityResolutionConfig(review_low=review_low)
             counts = await dedupe_entities_workflow(session=session, dataset_id=resolved_id, config=config)
+            typer.echo(json.dumps(counts, indent=2))
+
+    asyncio.run(_run())
+
+
+@app.command("reclassify-domains")
+def reclassify_domains_cmd(
+    dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
+    dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
+    dry_run: Annotated[bool, typer.Option(help="Only count the website name mentions it would move")] = False,
+):
+    """Move websites out of people/organizations and into `domain` selectors (one-off repair).
+
+    Deletes name mentions that are a URL / domain (`Udemy.com`) or were cut from one
+    (`Towards` in `towardsdatascience.com`), scans the dataset's text for domains, folds
+    each website-named entity into the same-named organization (else drops it when it's
+    auto-created and now empty), and links domains to organizations by name. Idempotent.
+    """
+
+    async def _run():
+        async with get_session_context() as session:
+            resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
+            counts = await reclassify_domains_workflow(session=session, dataset_id=resolved_id, dry_run=dry_run)
             typer.echo(json.dumps(counts, indent=2))
 
     asyncio.run(_run())

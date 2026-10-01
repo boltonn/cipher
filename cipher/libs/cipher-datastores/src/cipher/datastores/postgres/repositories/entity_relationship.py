@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from sqlalchemy import and_, asc, delete, desc, func, or_, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -6,6 +8,8 @@ from cipher.datastores.base.graph import GraphRepository
 from cipher.datastores.postgres.repositories.selector_links import HeaderEvidence, decide_header_links
 from cipher.datastores.postgres.tables.entity import EntityTable
 from cipher.datastores.postgres.tables.entity_relationship import EntityRelationshipTable
+from cipher.datastores.postgres.tables.event import EventTable
+from cipher.datastores.postgres.tables.event_participant import EventParticipantTable
 from cipher.datastores.postgres.tables.face import FaceTable
 from cipher.datastores.postgres.tables.face_match import FaceMatchTable
 from cipher.datastores.postgres.tables.mention import MentionTable
@@ -14,6 +18,7 @@ from cipher.schemas.graph.entity import EntitySummary
 from cipher.schemas.graph.entity_relationship import (
     EntityRelationship,
     EntityRelationshipCreate,
+    GraphNode,
     GraphResponse,
     PaginatedRelationshipsResponse,
     RelationshipSearchParameters,
@@ -26,6 +31,7 @@ from cipher.schemas.graph.ontology import (
     LOW_SIGNAL_RELATIONSHIPS,
     WEIGHTED_RELATIONSHIPS,
     EntityType,
+    GraphNodeType,
     RelationshipSource,
     RelationshipType,
 )
@@ -52,11 +58,17 @@ def _directional_weight(
     return edge.weight if seed_is_src == (direction == TraversalDirection.OUT) else 0.0
 
 
+def _edge_sort_key(edge: EntityRelationship) -> tuple[float, datetime]:
+    return (-(edge.weight or 0.0), edge.date_created)
+
+
 class PostgresGraphRepository(GraphRepository):
     """Recursive-CTE-free bounded traversal over `entity_relationship` rows.
 
     Traversal is breadth-first with an explicit visited set, so it is
-    cycle-safe and bounded by `max_depth` (<= 3) and `limit`.
+    cycle-safe and bounded by `max_depth` (<= 3) and `limit`. Resolved
+    `event_participant` rows join the walk as `participant_in` edges to event
+    nodes (read-time only, never stored), so person -> event -> person is two hops.
     """
 
     def __init__(self, session: AsyncSession):
@@ -151,7 +163,7 @@ class PostgresGraphRepository(GraphRepository):
         for e in edges:
             node_ids.add(e.src_entity_id)
             node_ids.add(e.dst_entity_id)
-        return GraphResponse(nodes=await self._nodes(node_ids), edges=edges)
+        return GraphResponse(nodes=await self._graph_nodes(node_ids), edges=edges)
 
     async def traverse(
         self,
@@ -197,7 +209,7 @@ class PostgresGraphRepository(GraphRepository):
                         next_frontier.add(nid)
             frontier = next_frontier
 
-        return GraphResponse(nodes=await self._nodes(visited), edges=all_edges)
+        return GraphResponse(nodes=await self._graph_nodes(visited), edges=all_edges)
 
     async def top_connections(self, request: TopConnectionsRequest) -> TopConnectionsResponse:
         """Rank the seeds' neighbours by summed edge weight (see `TopConnectionsRequest`)."""
@@ -345,7 +357,62 @@ class PostgresGraphRepository(GraphRepository):
             .limit(max(limit, 0))
         )
         result = await self.session.execute(stmt)
-        return [EntityRelationship.model_validate(r) for r in result.scalars().all()]
+        edges = [EntityRelationship.model_validate(r) for r in result.scalars().all()]
+        wants_events = (
+            not relationship_types or RelationshipType.PARTICIPANT_IN in relationship_types
+        ) and RelationshipType.PARTICIPANT_IN not in excluded
+        if wants_events:
+            edges += await self._participant_edges(frontier=frontier, direction=direction, limit=limit)
+            edges = sorted(edges, key=_edge_sort_key)[: max(limit, 0)]
+        return edges
+
+    async def _participant_edges(
+        self, *, frontier: set[str], direction: TraversalDirection, limit: int
+    ) -> list[EntityRelationship]:
+        """Resolved `event_participant` rows touching the frontier, as `participant_in` edges (entity -> event)."""
+        ids = list(frontier)
+        touches = {
+            TraversalDirection.OUT: EventParticipantTable.entity_id.in_(ids),
+            TraversalDirection.IN: EventParticipantTable.event_id.in_(ids),
+            TraversalDirection.BOTH: or_(
+                EventParticipantTable.entity_id.in_(ids), EventParticipantTable.event_id.in_(ids)
+            ),
+        }[direction]
+        stmt = (
+            select(EventParticipantTable, EventTable)
+            .join(EventTable, EventTable.id == EventParticipantTable.event_id)
+            .where(touches, EventParticipantTable.entity_id.is_not(None), EventParticipantTable.is_resource.is_(False))
+            .order_by(desc(EventTable.date_start))
+            .limit(max(limit, 0))
+        )
+        return [
+            EntityRelationship(
+                id=participant.id,
+                dataset_id=event.dataset_id,
+                src_entity_id=participant.entity_id,
+                dst_entity_id=event.id,
+                relationship_type=RelationshipType.PARTICIPANT_IN,
+                source=RelationshipSource.EXTRACTION if event.extractor else RelationshipSource.MANUAL,
+                attributes={"role": participant.role, "rsvp_status": participant.rsvp_status},
+                date_observed_start=event.date_start,
+                date_observed_end=event.date_end or event.date_start,
+                date_created=participant.date_created,
+                date_updated=participant.date_created,
+            )
+            for participant, event in (await self.session.execute(stmt)).tuples().all()
+        ]
+
+    async def _graph_nodes(self, node_ids: set[str]) -> list[GraphNode]:
+        """Entity nodes plus the event nodes `participant_in` edges point at."""
+        entities = [GraphNode.model_validate(n.model_dump()) for n in await self._nodes(node_ids)]
+        missing = list(node_ids - {n.id for n in entities})
+        if not missing:
+            return entities
+        events = (await self.session.execute(select(EventTable).where(EventTable.id.in_(missing)))).scalars().all()
+        return entities + [
+            GraphNode(id=e.id, entity_type=GraphNodeType.EVENT, display_name=e.title, is_verified=e.is_verified)
+            for e in events
+        ]
 
     async def _nodes(self, entity_ids: set[str]) -> list[EntitySummary]:
         if not entity_ids:

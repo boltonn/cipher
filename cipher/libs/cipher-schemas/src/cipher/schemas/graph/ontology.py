@@ -58,6 +58,7 @@ class SelectorType(StrEnum):
     SOCIAL_HANDLE = "social_handle"
     CRYPTO_ADDRESS = "crypto_address"
     LICENSE_PLATE = "license_plate"
+    DOMAIN = "domain"  # a website's registrable domain (`target.com`); an organization's, never a name
 
 
 class SelectorSubtype(StrEnum):
@@ -148,8 +149,8 @@ def selector_type_of(subtype: SelectorSubtype) -> SelectorType:
 class LocationSource(StrEnum):
     """Where a location's coordinates/address came from."""
 
-    NAMED_MENTION = "named_mention"
-    TEXT_MENTION = "text_mention"
+    NAME_MENTION = "name_mention"
+    COORDINATE_MENTION = "coordinate_mention"
     EXIF = "exif"
     GEOCODED = "geocoded"
     DEVICE_GPS = "device_gps"
@@ -164,13 +165,23 @@ class RelationshipType(StrEnum):
     PART_OF = "part_of"
     SUBSIDIARY_OF = "subsidiary_of"
     LOCATED_IN = "located_in"
-    COMMUNICATES_WITH = "communicates_with"
     EMAILED = "emailed"
     FAMILY_OF = "family_of"
-    ASSOCIATE_OF = "associate_of"
     APPEARS_IN_PHOTO_WITH = "appears_in_photo_with"
+    CO_MENTION_OF = "co_mention_of"
     SAME_AS = "same_as"
     OWNS = "owns"
+    PARTICIPANT_IN = "participant_in"
+
+
+class GraphNodeType(StrEnum):
+    """A graph node's kind: every `EntityType`, plus `event` (reached only through a `participant_in` edge)."""
+
+    PERSON = "person"
+    ORGANIZATION = "organization"
+    LOCATION = "location"
+    SELECTOR = "selector"
+    EVENT = "event"
 
 
 class RelationshipSource(StrEnum):
@@ -316,6 +327,7 @@ ONTOLOGY: dict[EntityType, TypeSpec] = {
                 SelectorType.IBAN,
                 SelectorType.BANK_CARD,
                 SelectorType.IP,
+                SelectorType.DOMAIN,
             }
         ),
         mention_attributes=frozenset({"name"}),
@@ -399,17 +411,6 @@ RELATIONSHIPS: dict[RelationshipType, RelationshipSpec] = {
         inverse_label="contains",
         description="An entity is located at / within a location.",
     ),
-    RelationshipType.COMMUNICATES_WITH: RelationshipSpec(
-        relationship_type=RelationshipType.COMMUNICATES_WITH,
-        directed=False,
-        symmetric=True,
-        allowed_src=_COMMS_ENDPOINT_TYPES,
-        allowed_dst=_COMMS_ENDPOINT_TYPES,
-        description=(
-            "Two endpoints communicate, channel unspecified (stated in text or asserted by an analyst). "
-            "Recorded interactions use a directed channel type instead, e.g. `emailed`."
-        ),
-    ),
     RelationshipType.EMAILED: RelationshipSpec(
         relationship_type=RelationshipType.EMAILED,
         directed=True,
@@ -431,14 +432,6 @@ RELATIONSHIPS: dict[RelationshipType, RelationshipSpec] = {
         allowed_dst=frozenset({EntityType.PERSON}),
         description="Two people are family.",
     ),
-    RelationshipType.ASSOCIATE_OF: RelationshipSpec(
-        relationship_type=RelationshipType.ASSOCIATE_OF,
-        directed=False,
-        symmetric=True,
-        allowed_src=_ACTOR_TYPES,
-        allowed_dst=_ACTOR_TYPES,
-        description="Two actors are associated, often inferred from co-mention. Excluded from default graph traversal.",
-    ),
     RelationshipType.APPEARS_IN_PHOTO_WITH: RelationshipSpec(
         relationship_type=RelationshipType.APPEARS_IN_PHOTO_WITH,
         directed=False,
@@ -450,6 +443,18 @@ RELATIONSHIPS: dict[RelationshipType, RelationshipSpec] = {
             "face may still be an unconfirmed (pending) match. Excluded from default graph traversal."
         ),
         weight="shared photos",
+    ),
+    RelationshipType.CO_MENTION_OF: RelationshipSpec(
+        relationship_type=RelationshipType.CO_MENTION_OF,
+        directed=False,
+        symmetric=True,
+        allowed_src=_ALL_TYPES,
+        allowed_dst=_ALL_TYPES,
+        description=(
+            "Two entities are mentioned in the same chunk of text (source `co_mention`) -- the classic "
+            "co-occurrence knowledge graph. No producer ships yet. Excluded from default graph traversal."
+        ),
+        weight="shared chunks",
     ),
     RelationshipType.SAME_AS: RelationshipSpec(
         relationship_type=RelationshipType.SAME_AS,
@@ -470,10 +475,18 @@ RELATIONSHIPS: dict[RelationshipType, RelationshipSpec] = {
     ),
 }
 
-# Co-mention style edges that should not be walked by default relationship traversal,
+# `participant_in` is derived from `event_participant` rows at read time, never stored in
+# `entity_relationship` -- so it is not in `RELATIONSHIPS` (the add-connection registry).
+PARTICIPANT_IN_DESCRIPTION = (
+    "A person/org takes part in an event (meeting, trip, call, ...); `attributes.role` is organizer, attendee, "
+    "traveler, host or guest, `attributes.rsvp_status` the invite response, and the observed dates are the event's. "
+    "Walk two hops (person -> event -> person) for who met whom."
+)
+
+# Co-occurrence edges that should not be walked by default relationship traversal,
 # because they make the graph dense and low-signal for multi-hop questions.
 LOW_SIGNAL_RELATIONSHIPS: frozenset[RelationshipType] = frozenset(
-    {RelationshipType.ASSOCIATE_OF, RelationshipType.APPEARS_IN_PHOTO_WITH}
+    {RelationshipType.APPEARS_IN_PHOTO_WITH, RelationshipType.CO_MENTION_OF}
 )
 
 
@@ -735,9 +748,7 @@ RELATION_LABEL_TO_TYPE: dict[str, RelationshipType] = {
     "part of organization": RelationshipType.PART_OF,
     "subsidiary of": RelationshipType.SUBSIDIARY_OF,
     "located in": RelationshipType.LOCATED_IN,
-    "communicates with": RelationshipType.COMMUNICATES_WITH,
     "family of": RelationshipType.FAMILY_OF,
-    "associate of": RelationshipType.ASSOCIATE_OF,
     "owns": RelationshipType.OWNS,
 }
 
@@ -769,13 +780,13 @@ RELATIONSHIP_LABELS: dict[RelationshipType, str] = {
     RelationshipType.PART_OF: "Part of",
     RelationshipType.SUBSIDIARY_OF: "Subsidiary of",
     RelationshipType.LOCATED_IN: "Located in",
-    RelationshipType.COMMUNICATES_WITH: "Communicates with",
     RelationshipType.EMAILED: "Emailed",
     RelationshipType.FAMILY_OF: "Family",
-    RelationshipType.ASSOCIATE_OF: "Associate of",
     RelationshipType.APPEARS_IN_PHOTO_WITH: "Appears in photo with",
+    RelationshipType.CO_MENTION_OF: "Co-mentioned with",
     RelationshipType.SAME_AS: "Same as",
     RelationshipType.OWNS: "Owns",
+    RelationshipType.PARTICIPANT_IN: "Participant in",
 }
 
 
@@ -844,6 +855,7 @@ def ontology_summary_for_llm() -> str:
         arrow = "->" if spec.directed else "<->"
         weight = f" [weight = {spec.weight}]" if spec.weight else ""
         lines.append(f"  - {spec.relationship_type} ({src} {arrow} {dst}){weight}: {spec.description}")
+    lines.append(f"  - {RelationshipType.PARTICIPANT_IN} (person|organization -> event): {PARTICIPANT_IN_DESCRIPTION}")
     return "\n".join(lines)
 
 

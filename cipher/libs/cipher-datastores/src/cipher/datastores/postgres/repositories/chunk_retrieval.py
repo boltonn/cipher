@@ -13,6 +13,7 @@ index paths are added.
 """
 
 import json
+from datetime import UTC, datetime
 
 from loguru import logger
 from sqlalchemy import text as sa_text
@@ -20,15 +21,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cipher.datastores.base.retrieval import ChunkRetrievalRepository, ChunkSpan
 from cipher.datastores.postgres.repositories.mention import (
-    CONTENT_DATE_SQL,
     PostgresMentionRepository,
     correspondence_predicates,
 )
+from cipher.datastores.postgres.utils import normalize_name
 from cipher.schemas._base.common import PaginatedResponse
 from cipher.schemas.content.document import ScoredDocumentTextChunk
 from cipher.schemas.content.email import ScoredEmailTextChunk
-from cipher.schemas.content.results import FileSearchResult
-from cipher.schemas.content.search import RetrievalMode, RetrievalQuery, TextChunk
+from cipher.schemas.content.results import FileSearchResult, PaginatedFileSearchResponse
+from cipher.schemas.content.search import MentionSpan, RetrievalMode, RetrievalQuery, TextChunk
 
 _BM25_INDEX = "ix_chunk_text_bm25"
 _HNSW_INDEX = "ix_chunk_embedding_hnsw"
@@ -44,7 +45,12 @@ _MAX_CHUNKS_PER_FILE = 50
 _MIN_POOL = 500
 
 
-def _scored_chunk(row: dict, meta: dict, score: float, highlights: list[str]):
+def _as_utc(value: datetime | None) -> datetime | None:
+    """Content dates are parsed naive from metadata; store them as UTC."""
+    return value.replace(tzinfo=UTC) if value is not None and value.tzinfo is None else value
+
+
+def _scored_chunk(row: dict, meta: dict, score: float, mention_spans: list[MentionSpan]):
     """Rebuild a Scored{Document,Email}TextChunk from a `chunk` row + `extracted_text.metadata`."""
     common = dict(
         id=row["id"],
@@ -59,7 +65,7 @@ def _scored_chunk(row: dict, meta: dict, score: float, highlights: list[str]):
         text=row["text"],
         date_created=row["date_created"],
         score=score,
-        highlights=highlights,
+        mention_spans=mention_spans,
     )
     if row["filetype_group"] == "email":
         return ScoredEmailTextChunk(**common, **{k: v for k, v in meta.items() if k not in common})
@@ -82,6 +88,7 @@ class PostgresChunkRetrievalRepository(ChunkRetrievalRepository):
         self.graph_repo = graph_repo
         self.graph_expand_entity_cap = graph_expand_entity_cap
         self.mentions = PostgresMentionRepository(session=session)
+        self._value_files: list[str] | None = None
 
     # ---- lifecycle -------------------------------------------------------
 
@@ -157,6 +164,7 @@ class PostgresChunkRetrievalRepository(ChunkRetrievalRepository):
                 "language": getattr(c, "detected_language", None),
                 "embedding": (str(list(c.embedding)) if c.embedding else None) if include_embedding else None,
                 "title": getattr(c, "title", None) or getattr(c, "subject", None),
+                "date_content": _as_utc(getattr(c, "date_sent", None) or getattr(c, "date_content_created", None)),
             }
             for c in chunks
         ]
@@ -164,11 +172,12 @@ class PostgresChunkRetrievalRepository(ChunkRetrievalRepository):
         await self.session.execute(
             sa_text(
                 "INSERT INTO chunk (id,dataset_id,file_id,sha256,filetype_group,duplicate_file_ids,"
-                "chunk_index,start_offset,end_offset,text,language,embedding) VALUES "
+                "chunk_index,start_offset,end_offset,text,language,embedding,date_content) VALUES "
                 "(:id,:dataset_id,:file_id,:sha256,:filetype_group,CAST(:duplicate_file_ids AS jsonb),"
-                ":chunk_index,:start_offset,:end_offset,:text,:language,:embedding) "
+                ":chunk_index,:start_offset,:end_offset,:text,:language,:embedding,:date_content) "
                 "ON CONFLICT (id) DO UPDATE SET "
                 f"text=EXCLUDED.text, {embedding_set_clause}language=EXCLUDED.language, "
+                "date_content=EXCLUDED.date_content, "
                 "end_offset=EXCLUDED.end_offset, "
                 # union, not replace: content-identical files in a dataset upsert the
                 # same chunk id (deterministic), each contributing its own file_id
@@ -285,7 +294,11 @@ class PostgresChunkRetrievalRepository(ChunkRetrievalRepository):
         if f.file_id:
             parts.append("(c.file_id = :fid OR c.duplicate_file_ids @> to_jsonb(cast(:fid as text)))")
             p["fid"] = f.file_id
-        parts.extend(correspondence_predicates(f, p, file_column="c.file_id"))
+        parts.extend(correspondence_predicates(f, p, file_column="c.file_id", date_column="c.date_content"))
+        if f.mention_values:
+            # Pre-resolved like `_expand_files`; file-level so header/metadata mentions (no chunk) count.
+            p["value_files"] = self._value_files or []
+            parts.append("c.file_id = ANY(cast(:value_files AS text[]))")
         if q.graph_expand and self._expand_files is not None:
             # Pre-resolved file ids (see `_resolve_expand`): pg_search rejects the
             # equivalent `IN (SELECT ... FROM mention)` once the expansion grows.
@@ -365,9 +378,53 @@ class PostgresChunkRetrievalRepository(ChunkRetrievalRepository):
         )
         self._expand_files = list(rows.scalars().all())
 
+    async def _mention_spans(
+        self, *, chunk_ids: list[str], entity_ids: list[str] | None, mention_values: list[str] | None
+    ) -> dict[str, list[MentionSpan]]:
+        """The filtered entities'/values' mention offsets per chunk -- the "why it matched" marks.
+
+        Matched by offset containment rather than `mention.chunk_id`, which is unset until backfilled.
+        """
+        if not chunk_ids or not (entity_ids or mention_values):
+            return {}
+        rows = await self.session.execute(
+            sa_text(
+                "SELECT DISTINCT c.id, m.entity_id, m.normalized_value, m.start_offset, m.end_offset "
+                "FROM chunk c JOIN mention m ON m.file_id = c.file_id AND m.mentioned_type = 'EXTRACTED_TEXT' "
+                "AND m.start_offset >= c.start_offset AND m.start_offset < c.end_offset "
+                "WHERE c.id = ANY(cast(:chunk_ids as text[])) AND m.end_offset IS NOT NULL "
+                "AND (m.entity_id = ANY(cast(:entity_ids as text[])) "
+                "OR m.normalized_value = ANY(cast(:values as text[]))) ORDER BY m.start_offset"
+            ),
+            {
+                "chunk_ids": chunk_ids,
+                "entity_ids": list(entity_ids or []),
+                "values": [*(mention_values or []), *(normalize_name(v) for v in mention_values or [])],
+            },
+        )
+        entity_set = set(entity_ids or [])
+        spans: dict[str, list[MentionSpan]] = {}
+        for chunk_id, entity_id, normalized_value, start_offset, end_offset in rows.all():
+            spans.setdefault(chunk_id, []).append(
+                MentionSpan(
+                    entity_id=entity_id if entity_id in entity_set else None,
+                    normalized_value=None if entity_id in entity_set else normalized_value,
+                    start_offset=start_offset,
+                    end_offset=end_offset,
+                )
+            )
+        return spans
+
     async def search(self, query: RetrievalQuery) -> PaginatedResponse:
         """Rank chunks (keyword / semantic / hybrid / browse), filter, group by file."""
         await self._resolve_expand(query)
+        self._value_files = None
+        if query.filters.mention_values:
+            self._value_files = await self.mentions.file_ids_for_values(
+                dataset_id=query.filters.dataset_id,
+                values=query.filters.mention_values,
+                provenance=query.filters.mention_provenance,
+            )
         p: dict = {}
         has_text = bool(query.text and query.text.strip())
         has_vec = query.embedding is not None
@@ -428,10 +485,9 @@ class PostgresChunkRetrievalRepository(ChunkRetrievalRepository):
                 browse_where += " AND c.id = ANY(cast(:browse_ids as text[]))"
             # Newest content first (email date_sent / document authored date), not ingest time.
             cand = (
-                f"SELECT c.id, (:pool - row_number() OVER (ORDER BY {CONTENT_DATE_SQL} DESC NULLS LAST, "
-                f"c.date_created DESC))::float AS score FROM chunk c "
-                f"LEFT JOIN extracted_text et ON et.file_id = c.file_id WHERE {browse_where} "
-                f"ORDER BY score DESC LIMIT :pool"
+                f"SELECT c.id, (:pool - row_number() OVER (ORDER BY c.date_content DESC NULLS LAST, "
+                f"c.date_created DESC))::float AS score FROM chunk c WHERE {browse_where} "
+                f"ORDER BY c.date_content DESC NULLS LAST, c.date_created DESC LIMIT :pool"
             )
         elif mode == RetrievalMode.KEYWORD:
             cand = f"SELECT c.id, {self._keyword_score()} AS score FROM chunk c " \
@@ -469,10 +525,8 @@ class PostgresChunkRetrievalRepository(ChunkRetrievalRepository):
             f"WITH cand AS ({cand}), "
             f"refined AS (SELECT cand.id, cand.score FROM cand JOIN chunk c ON c.id = cand.id{refine_where}) "
             "SELECT c.id, c.dataset_id, c.file_id, c.sha256, c.duplicate_file_ids, c.filetype_group, "
-            "c.chunk_index, c.start_offset, c.end_offset, c.text, c.date_created, "
-            "et.metadata AS meta, refined.score AS score "
+            "c.chunk_index, c.start_offset, c.end_offset, c.text, c.date_created, refined.score AS score "
             "FROM refined JOIN chunk c ON c.id = refined.id "
-            "LEFT JOIN extracted_text et ON et.file_id = c.file_id "
             "ORDER BY refined.score DESC"
         )
         rows = (await self.session.execute(sa_text(sql), p)).mappings().all()
@@ -485,15 +539,58 @@ class PostgresChunkRetrievalRepository(ChunkRetrievalRepository):
             by_file.items(), key=lambda kv: max(c["score"] for c in kv[1]), reverse=True
         )
         total = len(ordered_files)
+        total_is_exact = browse or (mode == RetrievalMode.KEYWORD and has_text)
+        if mode == RetrievalMode.KEYWORD and has_text:
+            # every file with a keyword match that passes the filters, not just the ranked pool's
+            total = (
+                await self.session.execute(
+                    sa_text(
+                        f"WITH matched AS (SELECT c.id, c.file_id FROM chunk c WHERE {scope} "
+                        f"AND {self._keyword_predicate(p)}) "
+                        f"SELECT count(*) FROM (SELECT DISTINCT matched.file_id FROM matched "
+                        f"JOIN chunk c ON c.id = matched.id{refine_where}) files"
+                    ),
+                    p,
+                )
+            ).scalar_one()
+        elif browse:
+            # The pool is the newest `pool` *chunks*, so counting its files undercounts;
+            # count every file the filters admit instead.
+            total = (
+                await self.session.execute(
+                    sa_text(f"SELECT count(*) FROM (SELECT DISTINCT c.file_id FROM chunk c WHERE {browse_where}) files"), p
+                )
+            ).scalar_one()
         page_files = ordered_files[query.offset : query.offset + query.limit]
+        mention_spans = await self._mention_spans(
+            chunk_ids=[cr["id"] for _, chunk_rows in page_files for cr in chunk_rows],
+            entity_ids=query.filters.entity_ids,
+            mention_values=query.filters.mention_values,
+        )
+        # Display metadata for the page's files only -- the JSONB is large (tables, document structure),
+        # so detoasting it for the whole candidate pool cost more than the search itself.
+        meta_rows = await self.session.execute(
+            sa_text(
+                "SELECT file_id, metadata - 'tables' - 'document_structure' AS meta FROM extracted_text "
+                "WHERE file_id = ANY(cast(:file_ids AS text[]))"
+            ),
+            {"file_ids": [file_id for file_id, _ in page_files]},
+        )
+        meta_by_file = {file_id: meta or {} for file_id, meta in meta_rows.all()}
 
         results: list[FileSearchResult] = []
         for file_id, chunk_rows in page_files:
+            if browse and query.filters.mention_values:
+                # A value filter matches whole files: show the passages holding the value, or the
+                # opening chunk when it's only in a header / metadata field.
+                chunk_rows = [cr for cr in chunk_rows if cr["id"] in mention_spans] or [
+                    min(chunk_rows, key=lambda c: c["chunk_index"])
+                ]
             chunk_rows.sort(key=lambda c: -c["score"])
             top = chunk_rows[0]
             capped = sorted(chunk_rows[:_MAX_CHUNKS_PER_FILE], key=lambda c: c["chunk_index"])
             scored = [
-                _scored_chunk(cr, cr.get("meta") or {}, cr["score"], [])
+                _scored_chunk(cr, meta_by_file.get(file_id, {}), cr["score"], mention_spans.get(cr["id"], []))
                 for cr in capped
             ]
             results.append(
@@ -505,7 +602,9 @@ class PostgresChunkRetrievalRepository(ChunkRetrievalRepository):
                     chunks=scored,
                 )
             )
-        return PaginatedResponse(total=total, page=query.page, limit=query.limit, data=results)
+        return PaginatedFileSearchResponse(
+            total=total, total_is_exact=total_is_exact, page=query.page, limit=query.limit, data=results
+        )
 
     # ---- legacy request-model shims (so existing /search routes are untouched) ----
 

@@ -1,0 +1,23 @@
+[project]
+name = "cipher-places"
+description = "Offline multilingual gazetteer (countries, states/provinces, cities, regions) for CIPHER location resolution."
+keywords = ["gazetteer", "geonames", "natural-earth", "entity-resolution", "cipher"]
+version = "0.0.1"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2",
+    "pymorphy3>=2",
+    "pymorphy3-dicts-ru",
+    "pymorphy3-dicts-uk",
+]
+
+[project.scripts]
+cipher-places-build = "cipher.places.build:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cipher"]

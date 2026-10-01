@@ -28,6 +28,7 @@ import asyncio
 from typing import TYPE_CHECKING, Protocol
 
 from loguru import logger
+from pyselectors.domains import web_host_containing
 from tqdm import tqdm
 
 from cipher.datastores.postgres.repositories import (
@@ -193,6 +194,10 @@ def _to_mention(
 
     surface = span.surface_text.strip()
     if not surface:
+        return None
+    # `Udemy.com`, or `Towards` cut from `towardsdatascience.com`: a website is a `domain`
+    # selector (the pattern pass records it), never a person/organization name
+    if target.attribute == "name" and web_host_containing(content, span.start_offset, span.end_offset):
         return None
 
     return MentionCreate(

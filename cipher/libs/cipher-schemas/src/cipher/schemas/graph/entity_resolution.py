@@ -157,6 +157,13 @@ class EntityResolutionConfig(BaseModel):
         description="Blocking tags eligible for auto-resolve at all",
     )
     create_provisional: bool = True
+    no_name_evidence_cap: float = Field(
+        default=0.6,
+        ge=0,
+        le=1,
+        description="Score ceiling for a candidate with no name evidence at all (only a shared "
+        "address, co-mention, ...) -- 'friend <nbolton04@...>' stays a suggestion, not a near-certain one.",
+    )
     require_name_agreement_for_auto: bool = Field(
         default=True,
         description="A selector-backed auto also needs a real name match (any name_* exact, or "

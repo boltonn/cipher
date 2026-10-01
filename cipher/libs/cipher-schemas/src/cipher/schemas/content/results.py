@@ -7,6 +7,7 @@ adapters can reference one result contract.
 from pydantic import Field
 
 from cipher.schemas._base.base import BaseModel
+from cipher.schemas._base.common import PaginatedResponse
 from cipher.schemas.content.document import ScoredDocumentTextChunk
 from cipher.schemas.content.email import ScoredEmailTextChunk
 
@@ -27,3 +28,15 @@ class FileSearchResult(BaseModel):
     top_chunk_id: str = Field(description="id of the best-matching chunk within `chunks`")
     match_count: int = Field(description="Total matching chunks in this file, may exceed len(chunks) if capped")
     chunks: list[ScoredTextChunk] = Field(description="Matching chunks, in reading order, capped per file")
+
+
+class PaginatedFileSearchResponse(PaginatedResponse):
+    """A page of file results; `total` is exact for browse / keyword search.
+
+    Semantic and hybrid ranking has no natural cut-off (every chunk has *some*
+    similarity), so `total` there only counts files in the candidate pool and
+    `total_is_exact` is false -- callers shouldn't present it as a result count.
+    """
+
+    data: list[FileSearchResult]
+    total_is_exact: bool = Field(default=True, description="False when `total` is only the candidate pool's files")

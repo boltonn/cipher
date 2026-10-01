@@ -60,7 +60,7 @@ class LocationTable(Base):
     source: Mapped[LocationSource] = mapped_column(
         Enum(LocationSource, native_enum=False),
         nullable=False,
-        default=LocationSource.NAMED_MENTION,
+        default=LocationSource.NAME_MENTION,
         index=True,
     )
     source_id: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -78,14 +78,14 @@ class LocationTable(Base):
 
     __table_args__ = (
         # One point per (file, source) for single-fix sources (EXIF, device GPS);
-        # `text_mention` is exempt -- a document can name many coordinates. The
+        # `coordinate_mention` is exempt -- a document can name many coordinates. The
         # column is a non-native Enum, so it stores the member *name*.
         Index(
             "uq_location_file_source",
             "file_id",
             "source",
             unique=True,
-            postgresql_where=text("source <> 'TEXT_MENTION'"),
+            postgresql_where=text("source <> 'COORDINATE_MENTION'"),
         ),
         Index("ix_location_geom", "geom", postgresql_using="gist"),
         Index("ix_location_source_source_id", "source", "source_id"),

@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, text as sa_text
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -63,13 +63,19 @@ class ChunkTable(Base):
     # ranker; NULL under pg_search / pgroonga / pg_bigm.
     text_tsv: Mapped[str | None] = mapped_column(TSVECTOR, nullable=True)
 
+    # When the content was written (email `date_sent` / document `date_content_created`),
+    # copied from the file's extracted-text metadata so browse ordering + date filters
+    # read an indexed column instead of detoasting that JSONB per chunk.
+    date_content: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     date_created: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
 
     __table_args__ = (
         Index("ix_chunk_file_offset", "file_id", "start_offset"),
-        Index("ix_chunk_dataset_group", "dataset_id", "filetype_group"),
+        Index("ix_chunk_dataset_date_content", "dataset_id", sa_text("date_content DESC NULLS LAST")),
+        # covers browse's distinct-file total as an index-only scan
+        Index("ix_chunk_dataset_group_file", "dataset_id", "filetype_group", "file_id"),
         Index(
             "ix_chunk_embedding_hnsw",
             "embedding",

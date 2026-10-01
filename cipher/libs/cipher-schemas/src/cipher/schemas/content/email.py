@@ -8,7 +8,7 @@ from typing import Literal, Self, TypedDict
 from pydantic import Field
 
 from cipher.schemas._base.base import BaseModel
-from cipher.schemas.content.search import CorrespondenceFilters, TextChunk
+from cipher.schemas.content.search import CorrespondenceFilters, MentionSpan, TextChunk
 from cipher.schemas.ingestion.file import FileBase
 
 
@@ -205,6 +205,9 @@ class ScoredEmailTextChunk(EmailTextChunk):
     highlights: list[str] = Field(
         default_factory=list,
         description="Matched words/phrases from Elasticsearch highlighting; empty for pure kNN results",
+    )
+    mention_spans: list[MentionSpan] = Field(
+        default_factory=list, description="Mentions of the filtered entities inside this chunk"
     )
 
 

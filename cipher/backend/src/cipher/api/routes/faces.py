@@ -304,9 +304,13 @@ async def assign_face(
     assignment: FaceAssignment,
     datastore: FaceDatastoreDep,
     graph_datastore: GraphDatastoreDep,
+    user: CurrentUserDep,
 ):
-    """Assign a face to a person, or clear its assignment when person_id is None."""
-    face = await datastore.assign_person(face_id=id, assignment=assignment)
+    """Assign a face to a person, or clear its assignment when person_id is None.
+
+    Taking a face off a person keeps a rejected match for that pair, so the decision isn't lost.
+    """
+    face = await datastore.assign_person(face_id=id, assignment=assignment, reviewed_by=user.id)
     if face is None:
         raise HTTPException(status_code=404, detail=f"Face not found: {id}")
     await graph_datastore.recompute_face_cooccurrence_for_faces([id])

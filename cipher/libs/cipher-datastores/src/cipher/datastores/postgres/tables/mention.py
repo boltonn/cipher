@@ -54,7 +54,7 @@ class MentionTable(Base):
 
     start_offset: Mapped[int | None] = mapped_column(Integer, nullable=True)
     end_offset: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    bounding_box: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    bounding_box: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
     field_path: Mapped[str | None] = mapped_column(String, nullable=True)
 
     context: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -77,12 +77,8 @@ class MentionTable(Base):
         Index("ix_mention_entity_attribute", "entity_id", "entity_attribute"),
         Index("ix_mention_file", "file_id"),
         Index("ix_mention_mentioned", "mentioned_type", "mentioned_id"),
-        Index(
-            "ix_mention_selector_value",
-            "dataset_id",
-            "normalized_value",
-            postgresql_where=text("selector_type IS NOT NULL"),
-        ),
+        # Every mention, not just selectors: name groups and the search mention-value filter key on it.
+        Index("ix_mention_value", "dataset_id", "normalized_value"),
         Index(
             "ix_mention_unresolved",
             "dataset_id",

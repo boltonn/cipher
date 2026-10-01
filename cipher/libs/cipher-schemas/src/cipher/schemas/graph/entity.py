@@ -25,6 +25,7 @@ class EntitySortField(StrEnum):
     DATE_CREATED = "date_created"
     DATE_UPDATED = "date_updated"
     MENTION_COUNT = "mention_count"
+    RELEVANCE = "relevance"
 
 
 class EntityBase(BaseModel):
@@ -62,6 +63,30 @@ class EntityUpdate(BaseModel):
     tags: list[str] | None = Field(default=None)
     notes: str | None = Field(default=None)
     is_verified: bool | None = Field(default=None)
+
+
+class EntityBatchRequest(BaseModel):
+    """A set of entities to act on at once (bulk verify)."""
+
+    entity_ids: list[str] = Field(min_length=1, max_length=500)
+
+
+class EntityRetypeRequest(EntityBatchRequest):
+    """Auto-created entities to change to another type (person <-> organization)."""
+
+    entity_type: EntityType
+
+
+class EntityMergeRequest(BaseModel):
+    """Auto-created entities to fold into the path entity."""
+
+    source_ids: list[str] = Field(min_length=1, max_length=100)
+
+
+class UnresolveNameRequest(BaseModel):
+    """A resolved name group to send back to the Resolve queue."""
+
+    normalized_value: str
 
 
 class Entity(EntityBase):
@@ -116,8 +141,11 @@ class EntitySearchParameters(PageParams):
     )
     tags: list[str] | None = Field(default=None)
     is_verified: bool | None = Field(default=None)
+    provisional: bool | None = Field(
+        default=None, description="Auto-created by the resolver and not yet verified or merged (selectors excluded)"
+    )
     country: str | None = Field(default=None, description="Detail-row country (organization or location)")
-    org_type: str | None = Field(default=None, description="Organization detail org_type")
+    category: str | None = Field(default=None, description="Organization detail category")
     date_of_birth_from: date | None = Field(default=None, description="Person detail: born on/after")
     date_of_birth_to: date | None = Field(default=None, description="Person detail: born on/before")
     limit: int = Field(default=10, ge=1, le=100)
@@ -249,6 +277,3 @@ class EntityProfile(BaseModel):
     @field_serializer("detail")
     def _camel_detail(self, detail: dict | None, info: SerializationInfo) -> dict | None:
         return camelize_keys(detail) if detail is not None and info.by_alias else detail
-
-
-

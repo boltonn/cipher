@@ -13,7 +13,7 @@ Claude Code use it to stay consistent with the data model; the in-app docs page
 (`filetype_group`, `selector_type`). The frontend uses the same words in
 `camelCase` (`filetypeGroup`, `selectorType`). Only the casing changes across the
 boundary — never the word. Enum *values* are lowercase strings
-(`"document"`, `"communicates_with"`); the Postgres enum columns store the member
+(`"document"`, `"has_selector"`); the Postgres enum columns store the member
 *name* (uppercase) because they use `Enum(native_enum=False)`.
 
 This file is living. Add a term the first time it needs defending in review.
@@ -51,6 +51,7 @@ This file is living. Add a term the first time it needs defending in review.
 | **semantic search** | k-NN over chunk embeddings. Matches meaning, not words. |
 | **hybrid search** | Fused keyword + semantic ranking (RRF). The default when neither lexical nor semantic is clearly preferable. |
 | **entity search** / **knowledge-graph search** | Retrieval filtered or expanded by the entity graph — "passages that mention entity X", "… or anyone X communicates with". |
+| **mention value filter** | `mention_values` / UI `?mentionValue=` — files with a mention of a `normalized_value`, resolved or not (an IP, a name group). File-level, so header mentions count; a typed name is also matched in its folded form. `mention_provenance` narrows where the hit counts — body text (`text`/`pattern`) vs `email_header` vs `metadata` — so "mentions Nick in the text" differs from **correspondence filters**' sender/recipient. The sibling of the entity filter for evidence that has no entity. |
 | **graph RAG** | Retrieval that starts from a seed entity, expands across relationships (bounded depth/weight), then gathers the evidence passages for that expanded set. |
 | **correspondence filters** | `sent_from` / `sent_to` / `participants` / `date_from` / `date_to` — who sent what to whom, when. Matched against email header mentions; a person matches through its resolved header name and the addresses it `has_selector`. Shared by chunk search and email counts. |
 | **email counts** | `count_emails` — counts of distinct emails (deduped by `message_id`) matching correspondence filters, grouped by `sender` / `recipient` / `correspondent` or by `day` / `month` / `year`. Answers "who does X email the most". |
@@ -64,24 +65,52 @@ This file is living. Add a term the first time it needs defending in review.
 |---|---|
 | **entity** | A resolved thing in the knowledge graph. Supertype `entity` row + one typed detail table: `person`, `organization`, `location`, or `selector`. |
 | **entity_type** | `person` \| `organization` \| `location` \| `selector`. (`device` is a schema/table but not an entity type.) |
-| **selector** | An entity that is a strong identifier — phone, email, ip, passport, national_id, imei, imsi, iban, bank_card, social handle, crypto address, license plate. |
-| **selector_type** | The broad selector class (12 members: `phone`, `email`, `ip`, …). First-class queryable column. |
+| **category** | Free-text kind of an organization (company, agency, division, office, branch) or location — same field name on both. Not an enum yet. |
+| **location source** | `location.source` — where a point's coordinates came from. `name_mention`: a place *name* in text, located by the gazetteer (`resolve-locations`). `coordinate_mention`: a lat/long written in text (`extract-selectors`). Both are text mentions; the names mirror the mention's `entity_attribute` (`name` / `coordinate`). Also `exif`, `geocoded`, `device_gps`. The map shows **observed points** only: a gazetteer place (a `name_mention` row with no file — a city or country centroid) is its entity's detail, not a point. UI: *Place name in text*, *Coordinates in text*. |
+| **parent organization** / **sub-unit** | `organization.parent_id`: the organization this one is part of. Mirrored as one `part_of` edge; an org has at most one parent. Sub-units are the orgs `part_of` it. Shown as the breadcrumb + **Structure** section on an organization page. |
+| **selector** | An entity that is a strong identifier — phone, email, ip, passport, national_id, imei, imsi, iban, bank_card, social handle, crypto address, license plate, domain. |
+| **selector_type** | The broad selector class (13 members: `phone`, `email`, `ip`, …). First-class queryable column. |
+| **domain** | A website as a selector: the registrable domain (`target.com`) a URL or bare domain reduces to. An organization `has_selector` its domain; a website is never a person/organization name. Shown as “Website” in the UI. |
 | **selector_subtype** | The specific variant within a type (`telegram`, `btc_address`, `ru_inn`, `ir_code_melli`, …). First-class queryable column, `NULL` when the type has no meaningful subdivision. |
 | **mention** | An evidence-anchored assertion that a span of a file fills one attribute of one entity. Carries offsets, `entity_attribute`, `extractor`, `provenance`, `extraction_confidence`, and (for selectors) `selector_type`/`selector_subtype`, `normalized_value`. |
 | **entity_attribute** | Which attribute a mention fills: `person.name`, `selector.value`, `location.address`, `location.coordinate`, … |
 | **mention provenance** | The evidence *class* of a mention, coarser than where its anchor is: `text` (NER over body), `email_header`, `metadata`, `image`, `pattern` (deterministic/regex). Computed, not stored raw. |
-| **relationship** / **entity_relationship** | A typed edge between two entities: `communicates_with`, `emailed`, `has_selector`, `employed_by`, `member_of`, `appears_in_photo_with`, … Carries `weight`, `source`, `date_observed_start`/`end`. Undirected pairs use a canonical (sorted) id order. |
-| **channel edge** | A directed, weighted relationship type for one recorded interaction channel: `emailed` (sender → recipient, weight = emails) today; `called` / `messaged` when those producers exist. Distinct from `communicates_with`, the symmetric channel-less "these two talk" relation (stated in text or asserted by an analyst). A reply is its own edge the other way. |
+| **relationship** / **entity_relationship** | A typed edge between two entities: `emailed`, `has_selector`, `employed_by`, `member_of`, `appears_in_photo_with`, `co_mention_of` (same chunk; for co-occurrence graphs, no producer yet), … Carries `weight`, `source`, `date_observed_start`/`end`. Undirected pairs use a canonical (sorted) id order. |
+| **participant_in** | The graph edge from a person/org to an **event** node. Not stored: the graph repository reads it from resolved `event_participant` rows (role, RSVP) at traversal time. Graph nodes are entities plus `event` (`GraphNodeType`). |
+| **channel edge** | A directed, weighted relationship type for one recorded interaction channel: `emailed` (sender → recipient, weight = emails) today; `called` / `messaged` when those producers exist. A reply is its own edge the other way. |
 | **top connections** | Ranking a set of seed nodes' neighbours by summed edge `weight` (one direction for directed types like `emailed`), for any *rankable* relationship type — one whose ontology `RelationshipSpec.weight` says what it counts (`WEIGHTED_RELATIONSHIPS`; the agent tool's choices are generated from it). Seeds can be a person/org (expanded through `has_selector`) or bare selectors, so it works before resolution; `roll_up` merges a neighbour's selectors into their single owner. All-time totals — date-bounded counts are **email counts**. |
 | **relationship source** | *How* an edge was derived (`selector_inference`, `manual`, …). Distinct from a mention's **provenance** — do not conflate the two fields. |
 | **canonical entity** | An entity that other names resolve *into*: bridged to a `person` / `location` record, or analyst-made (`source=manual`). SQL: `is_canonical_entity()`. |
-| **provisional entity** | A person / organization / location entity `resolve-entities` minted for a name group with no match — a real `entity` row holding that group's mentions, but not canonical. Settled by **merge** (fold into a canonical entity; its name becomes an alias), **promote** (make it canonical — a person gains a person record), or **not an entity** (delete). API: `Entity.is_provisional`; the Resolve queue hides provisional candidates unless `include_provisional_entities`. |
-| **entity_match** | A candidate resolution (mention or provisional entity → canonical entity), scored and pending analyst review. |
+| **provisional entity** / **auto-created entity** | A person / organization / location entity `resolve-entities` created for a name group with no match — a real `entity` row holding that group's mentions, but not canonical. Settled on the **Verify** tab by **verify** (keep it as canonical — API `promote`; a person gains a person record), **merge** (fold it into the canonical entity it duplicates; its name becomes an alias), or **mark invalid**. UI label: *auto-created*. API: `Entity.is_provisional`, list filter `provisional=true`. |
+| **resolution** / **entity_match** | A proposal that a name group (or a provisional entity) *is* a given entity, scored by the resolver and pending until an analyst **accepts** or **rejects** it. Stored as `entity_match`; `match_method` says what proposed it (`name_exact`, `selector_blocking`, …, `assistant` for chat). |
 | **ontology** | The registry: entity types and their allowed attributes / selector types, plus relationship types and their endpoint rules and roles. Catalogued in `docs/ontology.md` and the app docs page; source of truth is `cipher/schemas/graph/ontology.py`. |
 | **person (curated)** | The `Person` table — analyst-curated identities (faces, manual identification). Distinct from an extracted `entity` of type `person`; the two are bridged by a shared id when `entity.person_id` is set. |
 | **rejected face** ("not a face") | A `face` row the detector got wrong (a pet, a pattern), marked by `date_rejected`. `rejection_method` is `manual` (analyst) or `automatic` (within `DEFAULT_FACE_REJECT_SIMILARITY` of a manual one — manual rejections are the negative exemplars). Excluded from search, matching, clustering and co-occurrence; never assigned; reversible. |
-| **name group** | In Review: one distinct unresolved name and every mention of it across all files, counted together. |
-| **mark invalid** | Analyst verdict on an existing entity. *Not an entity* deletes it and its mentions (they don't return to Review); *wrong entity* deletes it and unresolves its mentions back to Review. `DELETE /entities/{id}?discardMentions=`. |
+| **name group** | Every still-unresolved mention of one name (by `normalized_value`) across all files, counted together — "dell": 639 mentions. The unit of the **Resolve** queue: one decision applies to all of its mentions. |
+| **mark invalid** | Analyst verdict on an existing entity. *Not an entity* deletes it and its mentions (they don't return to the Resolve queue); *wrong entity* deletes it and unresolves its mentions back to the Resolve queue. `DELETE /entities/{id}?discardMentions=`. On an **event**: deletes it (`DELETE /events/{id}`); re-extraction skips the file, so it does not return. |
+| **mentions corrected** | A text in which an analyst drew, relabelled (span / type), or deleted a mention: `extracted_text.is_mentions_corrected`, with `mentions_reviewed_by`. Its current mentions are retraining material; a relabelled mention becomes `extractor = manual`. Bulk verdicts (*not an entity*) do not set it. |
+
+## Resolution workflow (Entities page)
+
+Turning extracted names into entities, in the words the app uses. **Verify** first, then **Resolve**.
+
+| Term | Meaning |
+|---|---|
+| **mention** | One occurrence of a name or identifier in a file — "Dell" in one email's From header. |
+| **name group** | Every unresolved mention of one name, counted together — see above. |
+| **entity** | The single record for the real thing (Dell the company) that mentions resolve to. |
+| **resolve** | Decide which entity a name group refers to. Every mention in the group then points at that entity. |
+| **accept** | Take a suggested **resolution**: the name group resolves to that entity. Other suggestions for the name are rejected. |
+| **reject** | Say a suggested resolution is wrong. The name group stays unresolved for another decision. |
+| **resolve to another entity** | Pick an existing entity the resolver didn't suggest. |
+| **create new entity** | Make a new person / organization / location entity from the name group and resolve the group to it. |
+| **alias** | A curated alternate name of an entity (Nicholas Bolton, Nick Bolton). Resolving a name group does **not** add it as an alias: typos ("Nick BI"), punctuation variants, a bare surname or "friend" resolve to Nick but aren't his names. Add aliases from the entity page's **Names in the evidence** list. |
+| **names in the evidence** | Every name group resolved to an entity, with mention counts — how the evidence refers to it. The source aliases are picked from. |
+| **not an entity** | Discard the name group (a newsletter slogan, a greeting). Its mentions are dismissed. |
+| **verify** | On an **auto-created** entity: keep it as a real, canonical entity (API `promote`). Dismisses its possible-duplicate suggestions. |
+| **merge** | Fold a duplicate entity (Dell Inc) into the one it repeats (Dell). Mentions, edges and resolutions move over; the duplicate's name becomes an alias. |
+| **Verify tab** | Auto-created entities, biggest first, plus pending merge proposals. Check these before resolving more names to them. |
+| **Resolve tab** | The queue of name groups. Each card shows suggested resolutions (accept / reject) and the other choices: another entity, create new entity, not an entity. |
 
 ## Identifiers on a selector
 

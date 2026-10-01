@@ -1,15 +1,19 @@
 import bisect
-from datetime import timedelta
+from datetime import UTC, date, datetime, time, timedelta
 
 from sqlalchemy import asc, case, delete, desc, func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cipher.datastores.postgres.tables.entity_match import EntityMatchTable
+from cipher.datastores.postgres.tables.extracted_text import ExtractedTextTable
 from cipher.datastores.postgres.tables.mention import MentionTable
 from cipher.datastores.postgres.utils import normalize_name, strip_null_bytes
 from cipher.schemas._base.common import SortOrder
 from cipher.schemas.content.email import EmailCountBucket, EmailCountGroupBy, EmailCountRequest, EmailCounts
 from cipher.schemas.content.search import CorrespondenceFilters
+from cipher.schemas.graph.entity_match import EntityMatchStatus
 from cipher.schemas.graph.mention import (
+    MANUAL_EXTRACTOR,
     Mention,
     MentionCreate,
     MentionedType,
@@ -21,17 +25,30 @@ from cipher.schemas.graph.mention import (
 from cipher.schemas.graph.ontology import EntityType
 from cipher.schemas.graph.selector import SelectorEvidence, SelectorOwner
 
+# Changing any of these is a relabel: the mention becomes analyst-authored.
+_LABEL_FIELDS = ("start_offset", "end_offset", "surface_text", "entity_type", "selector_type", "selector_subtype")
+
 
 def provenance_case():
     """SQL expression mirroring `schemas.graph.mention.mention_provenance` (first match wins)."""
     return case(
         (MentionTable.field_path.like("header.%"), MentionProvenance.EMAIL_HEADER.value),
         (MentionTable.mentioned_type == MentionedType.IMAGE, MentionProvenance.IMAGE.value),
-        (MentionTable.bounding_box.is_not(None), MentionProvenance.IMAGE.value),
+        # jsonb_typeof, not IS NOT NULL: rows written before `none_as_null` hold JSON `null`
+        (func.jsonb_typeof(MentionTable.bounding_box) == "object", MentionProvenance.IMAGE.value),
         (MentionTable.mentioned_type == MentionedType.STRUCTURED_FIELD, MentionProvenance.METADATA.value),
         (MentionTable.extractor == "selectors", MentionProvenance.PATTERN.value),
         else_=MentionProvenance.TEXT.value,
     )
+
+
+# `provenance_case` as raw SQL over alias `m`, for the text()-built queries.
+_PROVENANCE_SQL = (
+    "CASE WHEN m.field_path LIKE 'header.%' THEN 'email_header' "
+    "WHEN m.mentioned_type = 'IMAGE' OR jsonb_typeof(m.bounding_box) = 'object' THEN 'image' "
+    "WHEN m.mentioned_type = 'STRUCTURED_FIELD' THEN 'metadata' "
+    "WHEN m.extractor = 'selectors' THEN 'pattern' ELSE 'text' END"
+)
 
 
 # ---- correspondence: email header mentions (`field_path` = header.from / header.to[i] / ...) ----
@@ -60,11 +77,14 @@ def _identity_sql(key: str) -> str:
     )
 
 
-def correspondence_predicates(filters: CorrespondenceFilters, params: dict, *, file_column: str) -> list[str]:
+def correspondence_predicates(
+    filters: CorrespondenceFilters, params: dict, *, file_column: str, date_column: str | None = None
+) -> list[str]:
     """SQL predicates restricting `file_column` to files matching the correspondence filters.
 
     Uncorrelated `IN (subquery)` so they sit alongside a pg_search `@@@` or HNSW
-    scan in the candidate stage.
+    scan in the candidate stage. `date_column` (e.g. `chunk.date_content`) compares
+    dates directly instead of through the extracted-text metadata.
     """
     predicates: list[str] = []
     for role, entity_ids in (
@@ -85,14 +105,22 @@ def correspondence_predicates(filters: CorrespondenceFilters, params: dict, *, f
                 f"{file_column} IN (SELECT m.file_id FROM mention m WHERE {_ROLE_PATHS[role]} "
                 f"AND m.entity_id IN ({identity}))"
             )
+
+    # The metadata path compares ISO strings (they sort like dates); a timestamptz column takes datetimes.
+    def bound(day: date):
+        return day.isoformat() if date_column is None else datetime.combine(day, time(), tzinfo=UTC)
+
+    date_value = date_column or CONTENT_DATE_SQL
     date_conditions: list[str] = []
     if filters.date_from:
-        params["date_from"] = filters.date_from.isoformat()
-        date_conditions.append(f"{CONTENT_DATE_SQL} >= :date_from")
+        params["date_from"] = bound(filters.date_from)
+        date_conditions.append(f"{date_value} >= :date_from")
     if filters.date_to:
-        params["date_before"] = (filters.date_to + timedelta(days=1)).isoformat()
-        date_conditions.append(f"{CONTENT_DATE_SQL} < :date_before")
-    if date_conditions:
+        params["date_before"] = bound(filters.date_to + timedelta(days=1))
+        date_conditions.append(f"{date_value} < :date_before")
+    if date_conditions and date_column:
+        predicates.extend(date_conditions)
+    elif date_conditions:
         predicates.append(
             f"{file_column} IN (SELECT et.file_id FROM extracted_text et WHERE {' AND '.join(date_conditions)})"
         )
@@ -149,14 +177,63 @@ class PostgresMentionRepository:
         result = await self.session.execute(select(func.count(MentionTable.id)))
         return result.scalar_one()
 
-    async def add_mention(self, mention: MentionCreate) -> Mention:
-        """Insert a single mention."""
+    async def add_mention(self, mention: MentionCreate, *, reviewed_by: str | None = None) -> Mention:
+        """Insert a single analyst-drawn mention, replacing any mentions its span overlaps."""
+        await self._assign_chunk_ids([mention])
         row = MentionTable(**strip_null_bytes(mention.model_dump(by_alias=False)))
         self.session.add(row)
         await self.session.flush()
+        await self._delete_overlapping(
+            mentioned_type=mention.mentioned_type,
+            mentioned_id=mention.mentioned_id,
+            start_offset=mention.start_offset,
+            end_offset=mention.end_offset,
+            keep_mention_id=row.id,
+        )
+        await self._mark_corrected(
+            mentioned_type=mention.mentioned_type, mentioned_id=mention.mentioned_id, reviewed_by=reviewed_by
+        )
         result = Mention.model_validate(row)
         await self.session.commit()
         return result
+
+    async def _delete_overlapping(
+        self,
+        *,
+        mentioned_type: MentionedType,
+        mentioned_id: str,
+        start_offset: int | None,
+        end_offset: int | None,
+        keep_mention_id: str,
+    ) -> None:
+        """Delete the other mentions on the same source row whose span overlaps `[start_offset, end_offset)`."""
+        if start_offset is None or end_offset is None:
+            return
+        await self.session.execute(
+            delete(MentionTable).where(
+                MentionTable.mentioned_type == mentioned_type,
+                MentionTable.mentioned_id == mentioned_id,
+                MentionTable.start_offset < end_offset,
+                MentionTable.end_offset > start_offset,
+                MentionTable.id != keep_mention_id,
+            )
+        )
+
+    async def _mark_corrected(
+        self, *, mentioned_type: MentionedType, mentioned_id: str, reviewed_by: str | None
+    ) -> None:
+        """Flag the text an analyst just corrected a mention in -- its mentions are now worth retraining on."""
+        if mentioned_type != MentionedType.EXTRACTED_TEXT:
+            return
+        await self.session.execute(
+            update(ExtractedTextTable)
+            .where(ExtractedTextTable.id == mentioned_id)
+            .values(
+                is_mentions_corrected=True,
+                mentions_reviewed_by=reviewed_by,
+                date_last_updated=ExtractedTextTable.date_last_updated,
+            )
+        )
 
     async def _assign_chunk_ids(self, mentions: list[MentionCreate]) -> None:
         """Materialize the chunk<->mention join: set `chunk_id` on text-anchored mentions.
@@ -200,18 +277,26 @@ class PostgresMentionRepository:
         containment (through `duplicate_file_ids`). For datasets extracted before
         the extract-time assignment, or re-run after a re-embed. Returns rows set.
         """
-        res = await self.session.execute(
+        # Two equality joins, not one `file_id = ... OR duplicate_file_ids @> ...`: the OR
+        # defeats the index and turned a seconds-long update into a many-minute one.
+        span = "AND m.start_offset >= c.start_offset AND m.start_offset < c.end_offset"
+        unlinked = "m.dataset_id = :ds AND m.chunk_id IS NULL AND m.start_offset IS NOT NULL"
+        own = await self.session.execute(
+            text(
+                f"UPDATE mention m SET chunk_id = c.id FROM chunk c WHERE {unlinked} AND c.file_id = m.file_id {span}"
+            ),
+            {"ds": dataset_id},
+        )
+        shared = await self.session.execute(
             text(
                 "UPDATE mention m SET chunk_id = c.id "
-                "FROM chunk c "
-                "WHERE m.dataset_id = :ds AND m.chunk_id IS NULL AND m.start_offset IS NOT NULL "
-                "  AND (c.file_id = m.file_id OR c.duplicate_file_ids @> to_jsonb(m.file_id)) "
-                "  AND m.start_offset >= c.start_offset AND m.start_offset < c.end_offset"
+                "FROM chunk c CROSS JOIN LATERAL jsonb_array_elements_text(c.duplicate_file_ids) AS d(file_id) "
+                f"WHERE {unlinked} AND c.dataset_id = :ds AND d.file_id = m.file_id {span}"
             ),
             {"ds": dataset_id},
         )
         await self.session.commit()
-        return res.rowcount or 0
+        return (own.rowcount or 0) + (shared.rowcount or 0)
 
     async def chunk_ids_for_filter(
         self,
@@ -277,6 +362,38 @@ class PostgresMentionRepository:
 
         rows = (await self.session.execute(text(sql), params)).all()
         return [r[0] for r in rows]
+
+    async def file_ids_for_values(
+        self, *, dataset_id: str | None, values: list[str], provenance: list[MentionProvenance] | None = None
+    ) -> list[str]:
+        """Files with a mention of every one of `values` (by `normalized_value`, resolved or not).
+
+        Each value also matches its folded-name form, so a typed "Nick B" finds the "nick b" name group.
+        `provenance` limits which evidence counts -- body text vs email header vs metadata fields.
+        """
+        params: dict = {
+            "raw": values,
+            "folded": [normalize_name(value) for value in values],
+            "n": len(set(values)),
+        }
+        dataset_filter = ""
+        if dataset_id:
+            dataset_filter = "AND m.dataset_id = :ds"
+            params["ds"] = dataset_id
+        if provenance:
+            params["provenance"] = [p.value for p in provenance]
+            dataset_filter += f" AND ({_PROVENANCE_SQL}) = ANY(cast(:provenance AS text[]))"
+        rows = await self.session.execute(
+            text(
+                "SELECT m.file_id FROM mention m "
+                "JOIN unnest(cast(:raw AS text[]), cast(:folded AS text[])) WITH ORDINALITY AS v(raw, folded, i) "
+                "ON m.normalized_value IN (v.raw, v.folded) "
+                f"WHERE m.file_id IS NOT NULL {dataset_filter} "
+                "GROUP BY m.file_id HAVING count(DISTINCT v.raw) = :n"
+            ),
+            params,
+        )
+        return list(rows.scalars().all())
 
     async def add_mentions_batch(self, mentions: list[MentionCreate]) -> int:
         """Bulk-insert mentions, returning the number written."""
@@ -422,7 +539,14 @@ class PostgresMentionRepository:
         ]
 
     async def unresolved_name_group_page(
-        self, *, dataset_id: str, query: str | None = None, limit: int = 25, page: int = 1
+        self,
+        *,
+        dataset_id: str,
+        query: str | None = None,
+        has_resolution: bool | None = None,
+        entity_id: str | None = None,
+        limit: int = 25,
+        page: int = 1,
     ) -> dict:
         """Paginated distinct-name view of the review queue.
 
@@ -439,6 +563,32 @@ class PostgresMentionRepository:
         ]
         if query and query.strip():
             where.append(MentionTable.normalized_value.ilike(f"%{query.strip().lower()}%"))
+        if has_resolution is not None:
+            # a pending name-group resolution (name -> entity) exists for this name
+            pending = (
+                select(EntityMatchTable.id)
+                .where(
+                    EntityMatchTable.dataset_id == dataset_id,
+                    EntityMatchTable.mention_id.is_(None),
+                    EntityMatchTable.normalized_value == MentionTable.normalized_value,
+                    EntityMatchTable.status == EntityMatchStatus.PENDING,
+                )
+                .exists()
+            )
+            where.append(pending if has_resolution else ~pending)
+        if entity_id:
+            # only names with a pending resolution to this entity (its "N to resolve" badge)
+            where.append(
+                select(EntityMatchTable.id)
+                .where(
+                    EntityMatchTable.dataset_id == dataset_id,
+                    EntityMatchTable.mention_id.is_(None),
+                    EntityMatchTable.normalized_value == MentionTable.normalized_value,
+                    EntityMatchTable.status == EntityMatchStatus.PENDING,
+                    EntityMatchTable.entity_id == entity_id,
+                )
+                .exists()
+            )
 
         grouped = (
             select(
@@ -518,11 +668,34 @@ class PostgresMentionRepository:
         )
         return bool((await self.session.execute(stmt)).scalar())
 
-    async def update_mention(self, mention_id: str, data: MentionUpdate) -> Mention | None:
-        """Patch a mention (analyst relabel/correction)."""
+    async def update_mention(
+        self, mention_id: str, data: MentionUpdate, *, reviewed_by: str | None = None
+    ) -> Mention | None:
+        """Patch a mention (analyst relabel/correction).
+
+        A changed span or type makes it analyst-authored (`extractor = manual`) and flags its
+        text as corrected; a moved span replaces any mentions it now overlaps.
+        """
         patch = strip_null_bytes(data.model_dump(exclude_unset=True, by_alias=False))
-        if not patch:
-            return await self.get_mention(mention_id)
+        current = await self.get_mention(mention_id)
+        if current is None or not patch:
+            return current
+        if any(field in patch and patch[field] != getattr(current, field) for field in _LABEL_FIELDS):
+            patch |= {"extractor": MANUAL_EXTRACTOR, "extraction_model": None, "extraction_confidence": None}
+            await self._mark_corrected(
+                mentioned_type=current.mentioned_type, mentioned_id=current.mentioned_id, reviewed_by=reviewed_by
+            )
+        if "start_offset" in patch or "end_offset" in patch:
+            span = {key: patch.get(key, getattr(current, key)) for key in ("start_offset", "end_offset")}
+            moved = MentionCreate.model_validate({**current.model_dump(by_alias=False), **span, "chunk_id": None})
+            await self._assign_chunk_ids([moved])
+            patch["chunk_id"] = moved.chunk_id
+            await self._delete_overlapping(
+                mentioned_type=current.mentioned_type,
+                mentioned_id=current.mentioned_id,
+                keep_mention_id=mention_id,
+                **span,
+            )
         stmt = update(MentionTable).where(MentionTable.id == mention_id).values(**patch).returning(MentionTable)
         result = await self.session.execute(stmt)
         row = result.scalar_one_or_none()
@@ -530,11 +703,17 @@ class PostgresMentionRepository:
         await self.session.commit()
         return mention
 
-    async def delete_mention(self, mention_id: str) -> bool:
-        """Delete a single mention by id."""
-        result = await self.session.execute(delete(MentionTable).where(MentionTable.id == mention_id))
+    async def delete_mention(self, mention_id: str, *, reviewed_by: str | None = None) -> bool:
+        """Delete a single mention by id (analyst says it isn't one), flagging its text as corrected."""
+        current = await self.get_mention(mention_id)
+        if current is None:
+            return False
+        await self.session.execute(delete(MentionTable).where(MentionTable.id == mention_id))
+        await self._mark_corrected(
+            mentioned_type=current.mentioned_type, mentioned_id=current.mentioned_id, reviewed_by=reviewed_by
+        )
         await self.session.commit()
-        return bool(result.rowcount)
+        return True
 
     async def count_unresolved(self, dataset_id: str) -> int:
         """Count mentions still awaiting resolution in a dataset."""
@@ -712,3 +891,22 @@ class PostgresMentionRepository:
             LIMIT :limit
         """
         return [dict(r) for r in (await self.session.execute(text(sql), params)).mappings().all()]
+
+    async def names_for_entity(self, entity_id: str, *, limit: int = 50) -> list[dict]:
+        """Name groups resolved to an entity, most mentions first: `normalized_value`, `surface`, `mention_count`."""
+        rows = await self.session.execute(
+            select(
+                MentionTable.normalized_value,
+                func.mode().within_group(MentionTable.surface_text).label("surface"),
+                func.count(MentionTable.id).label("mention_count"),
+            )
+            .where(
+                MentionTable.entity_id == entity_id,
+                MentionTable.entity_attribute == "name",
+                MentionTable.normalized_value.is_not(None),
+            )
+            .group_by(MentionTable.normalized_value)
+            .order_by(desc("mention_count"))
+            .limit(limit)
+        )
+        return [dict(row._mapping) for row in rows]

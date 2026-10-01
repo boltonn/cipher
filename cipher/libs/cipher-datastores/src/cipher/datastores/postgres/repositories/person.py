@@ -7,6 +7,7 @@ from cipher.datastores.postgres.tables.face import FaceTable
 from cipher.datastores.postgres.tables.face_match import FaceMatchTable
 from cipher.datastores.postgres.tables.person import PersonTable
 from cipher.schemas._base.common import SortOrder
+from cipher.schemas.identity.face_match import FaceMatchStatus
 from cipher.schemas.identity.person import (
     PaginatedPersonSimilarityResponse,
     PaginatedPersonsResponse,
@@ -69,16 +70,34 @@ class PostgresPersonRepository:
     async def delete_person(self, person_id: str) -> bool:
         """Delete a person by ID.
 
-        Assigned faces are kept (just unlinked via the FK) rather than
-        deleted, but their representative/primary flags must be cleared
-        first -- the DB forbids a representative face with no person.
+        Assigned faces are kept, just unlinked. Reviewed `face_match` decisions
+        (confirmed / rejected) are kept too -- the person's id still groups the
+        faces they were made about; only its pending matches go.
         """
-        await self.session.execute(
-            update(FaceTable).where(FaceTable.person_id == person_id).values(is_representative=False, is_primary=False)
-        )
+        await self._release_faces([person_id])
         result = await self.session.execute(delete(PersonTable).where(PersonTable.id == person_id))
         await self.session.commit()
         return bool(result.rowcount)
+
+    async def _release_faces(self, person_ids: list[str]) -> int:
+        """Unlink the faces of persons about to be deleted and drop their pending matches. Returns faces unlinked."""
+        faces = await self.session.execute(
+            update(FaceTable)
+            .where(FaceTable.person_id.in_(person_ids))
+            .values(
+                person_id=None,
+                assignment_method=None,
+                assignment_confidence=None,
+                is_representative=False,
+                is_primary=False,
+            )
+        )
+        await self.session.execute(
+            delete(FaceMatchTable).where(
+                FaceMatchTable.person_id.in_(person_ids), FaceMatchTable.status == FaceMatchStatus.PENDING
+            )
+        )
+        return faces.rowcount or 0
 
     async def merge_persons(self, *, target_id: str, source_id: str) -> PersonMergeResult:
         """Fold ``source_id`` into ``target_id`` and delete the source, atomically.
@@ -192,22 +211,12 @@ class PostgresPersonRepository:
         if not person_ids:
             return {"persons": 0, "faces": 0}
 
-        faces = await self.session.execute(
-            update(FaceTable)
-            .where(FaceTable.person_id.in_(person_ids))
-            .values(
-                person_id=None,
-                assignment_method=None,
-                assignment_confidence=None,
-                is_representative=False,
-                is_primary=False,
-            )
-        )
+        faces_unlinked = await self._release_faces(person_ids)
         # Drop the shared-id entity bridge nodes too (entity.id == person.id).
         await self.session.execute(delete(EntityTable).where(EntityTable.id.in_(person_ids)))
         await self.session.execute(delete(PersonTable).where(PersonTable.id.in_(person_ids)))
         await self.session.commit()
-        return {"persons": len(person_ids), "faces": faces.rowcount or 0}
+        return {"persons": len(person_ids), "faces": faces_unlinked}
 
     async def search_persons(self, request: PersonSearchParameters) -> PaginatedPersonsResponse:
         """Query persons with filtering, pagination, and sorting."""

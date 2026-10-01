@@ -1,6 +1,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Query
+from pyselectors.normalize import normalize_selector
 
 from cipher.api.deps.authentication import CurrentUserDep
 from cipher.api.deps.postgres import (
@@ -9,11 +10,14 @@ from cipher.api.deps.postgres import (
     GraphDatastoreDep,
     MentionDatastoreDep,
 )
+from cipher.datastores.postgres.utils import normalize_name
 from cipher.schemas._base.exceptions import EntityNotFoundError
 from cipher.schemas.graph.entity import EntityCreate
+from cipher.schemas.graph.entity_match import PaginatedResolveQueueResponse
 from cipher.schemas.graph.entity_resolution import EntityMatchRef, MentionResolution
 from cipher.schemas.graph.location import LocationCreate
 from cipher.schemas.graph.mention import (
+    MANUAL_EXTRACTOR,
     DismissNameGroupRequest,
     Mention,
     MentionCreate,
@@ -21,11 +25,10 @@ from cipher.schemas.graph.mention import (
     MentionSearchParameters,
     MentionUpdate,
     PaginatedMentionsResponse,
-    PaginatedUnresolvedNamesResponse,
     ResolveNameGroupRequest,
     ResolveNameGroupResult,
 )
-from cipher.schemas.graph.ontology import EntitySource, EntityType, guess_actor_type
+from cipher.schemas.graph.ontology import EntitySource, EntityType, SelectorType, guess_actor_type
 from cipher.schemas.graph.organization import OrganizationCreate
 from cipher.schemas.graph.selector import SelectorCreate
 
@@ -40,6 +43,23 @@ _DETAIL_CREATE_MODEL = {
 }
 
 
+def _normalized_value(*, surface_text: str, selector_type: SelectorType | None) -> str:
+    """The name-group / selector key an analyst-drawn span joins -- same folding the extractors apply."""
+    if selector_type is not None:
+        value, _ = normalize_selector(selector_type, surface_text)
+        return value or surface_text.strip()
+    return normalize_name(surface_text)
+
+
+def _trimmed_span(*, surface_text: str, start_offset: int | None, end_offset: int | None) -> dict:
+    """An analyst-highlighted span without the whitespace swept up at either edge."""
+    stripped = surface_text.strip()
+    if start_offset is None or end_offset is None or end_offset - start_offset != len(surface_text):
+        return {"surface_text": stripped}
+    start_offset += len(surface_text) - len(surface_text.lstrip())
+    return {"surface_text": stripped, "start_offset": start_offset, "end_offset": start_offset + len(stripped)}
+
+
 @router.get("", summary="List mentions", response_model=PaginatedMentionsResponse, **_BY_ALIAS)
 async def list_mentions(
     params: Annotated[MentionSearchParameters, Query()], datastore: MentionDatastoreDep
@@ -49,33 +69,66 @@ async def list_mentions(
 
 
 @router.post("", summary="Create a mention", response_model=Mention, **_BY_ALIAS)
-async def create_mention(mention: MentionCreate, datastore: MentionDatastoreDep) -> Mention:
-    """Record an analyst-authored mention span."""
-    return await datastore.add_mention(mention)
+async def create_mention(mention: MentionCreate, datastore: MentionDatastoreDep, user: CurrentUserDep) -> Mention:
+    """Record an analyst-authored mention span, keyed into its name group / selector value.
+
+    Whitespace at the span's edges is trimmed, and mentions the span overlaps are replaced.
+    """
+    is_selector = mention.selector_type is not None or mention.entity_type == EntityType.SELECTOR
+    mention = mention.model_copy(
+        update=_trimmed_span(
+            surface_text=mention.surface_text, start_offset=mention.start_offset, end_offset=mention.end_offset
+        )
+    )
+    mention = mention.model_copy(
+        update={
+            "normalized_value": mention.normalized_value
+            or _normalized_value(surface_text=mention.surface_text, selector_type=mention.selector_type),
+            "entity_attribute": mention.entity_attribute or ("value" if is_selector else "name"),
+            "extractor": mention.extractor or MANUAL_EXTRACTOR,
+        }
+    )
+    return await datastore.add_mention(mention, reviewed_by=user.id)
 
 
 @router.get(
     "/unresolved-names",
     summary="Review queue, grouped by name",
-    response_model=PaginatedUnresolvedNamesResponse,
+    response_model=PaginatedResolveQueueResponse,
     **_BY_ALIAS,
 )
 async def list_unresolved_names(
     datastore: MentionDatastoreDep,
     dataset_id: Annotated[str, Query(alias="datasetId")],
+    matches: EntityMatchDatastoreDep,
     q: Annotated[str | None, Query(description="Filter by name substring")] = None,
+    has_resolution: Annotated[
+        bool | None,
+        Query(alias="hasResolution", description="Only names with (true) / without (false) a pending resolution"),
+    ] = None,
+    entity_id: Annotated[
+        str | None, Query(alias="entityId", description="Only names with a pending resolution to this entity")
+    ] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 25,
     page: Annotated[int, Query(ge=1)] = 1,
-) -> PaginatedUnresolvedNamesResponse:
-    """Distinct unresolved `name` values awaiting a person/organization decision.
+) -> PaginatedResolveQueueResponse:
+    """The Resolve queue: distinct unresolved names, each with its pending resolutions.
 
-    One row per name (not per mention), so "Nick Bolton" seen in 900 emails is a
-    single reviewable item. `suggestedType` is a heuristic guess only.
+    One row per name group (not per mention), so "Nick Bolton" seen in 900 emails is a
+    single item. `resolutions` are the entities the resolver proposes the name is, best
+    first -- accept or reject them, or create a new entity. `suggestedType` is a
+    heuristic guess only.
     """
-    result = await datastore.unresolved_name_group_page(dataset_id=dataset_id, query=q, limit=limit, page=page)
+    result = await datastore.unresolved_name_group_page(
+        dataset_id=dataset_id, query=q, has_resolution=has_resolution, entity_id=entity_id, limit=limit, page=page
+    )
+    resolutions = await matches.pending_resolutions(
+        dataset_id=dataset_id, names=[row["normalized_value"] for row in result["data"]]
+    )
     for row in result["data"]:
         row["suggested_type"] = guess_actor_type(row["surface"])
-    return PaginatedUnresolvedNamesResponse.model_validate(result)
+        row["resolutions"] = resolutions.get(row["normalized_value"], [])[:3]
+    return PaginatedResolveQueueResponse.model_validate(result)
 
 
 @router.post(
@@ -182,18 +235,37 @@ async def get_mention_resolution(
 
 
 @router.patch("/{mention_id}", summary="Update a mention", response_model=Mention, **_BY_ALIAS)
-async def update_mention(mention_id: str, data: MentionUpdate, datastore: MentionDatastoreDep) -> Mention:
-    """Relabel or correct a mention (predicted type, surface text, or resolved entity)."""
-    mention = await datastore.update_mention(mention_id, data)
+async def update_mention(
+    mention_id: str, data: MentionUpdate, datastore: MentionDatastoreDep, user: CurrentUserDep
+) -> Mention:
+    """Relabel or correct a mention (predicted type, span, surface text, or resolved entity).
+
+    A new `surface_text` is trimmed and re-keys the mention into the matching name group unless
+    `normalized_value` is sent. A changed span or type makes the mention analyst-authored.
+    """
+    if data.surface_text is not None:
+        trimmed = _trimmed_span(
+            surface_text=data.surface_text, start_offset=data.start_offset, end_offset=data.end_offset
+        )
+        for field, value in trimmed.items():
+            setattr(data, field, value)
+    if data.surface_text is not None and "normalized_value" not in data.model_fields_set:
+        current = await datastore.get_mention(mention_id)
+        if current is None:
+            raise EntityNotFoundError("Mention", mention_id)
+        data.normalized_value = _normalized_value(
+            surface_text=data.surface_text, selector_type=data.selector_type or current.selector_type
+        )
+    mention = await datastore.update_mention(mention_id, data, reviewed_by=user.id)
     if mention is None:
         raise EntityNotFoundError("Mention", mention_id)
     return mention
 
 
 @router.delete("/{mention_id}", summary="Delete a mention")
-async def delete_mention(mention_id: str, datastore: MentionDatastoreDep) -> dict:
+async def delete_mention(mention_id: str, datastore: MentionDatastoreDep, user: CurrentUserDep) -> dict:
     """Delete a mention span."""
-    deleted = await datastore.delete_mention(mention_id)
+    deleted = await datastore.delete_mention(mention_id, reviewed_by=user.id)
     if not deleted:
         raise EntityNotFoundError("Mention", mention_id)
     return {"deleted": True}

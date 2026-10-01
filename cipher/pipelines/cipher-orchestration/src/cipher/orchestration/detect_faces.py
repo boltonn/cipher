@@ -156,6 +156,7 @@ async def _consumer(
                         annotation,
                         image_id=image.id,
                         detector_model="insightface-buffalo_l",
+                        embedding_model="insightface-buffalo_l",
                     )
                     for annotation in annotations
                 )

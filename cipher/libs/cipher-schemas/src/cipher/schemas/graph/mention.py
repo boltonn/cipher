@@ -31,6 +31,10 @@ class MentionedType(StrEnum):
     STRUCTURED_FIELD = "structured_field"
 
 
+MANUAL_EXTRACTOR = "manual"
+"""`extractor` of a mention an analyst drew or relabelled -- the gold labels."""
+
+
 class MentionProvenance(StrEnum):
     """How a mention was found -- its evidence class, coarser than `MentionedType`.
 
@@ -132,8 +136,10 @@ class MentionUpdate(BaseModel):
     entity_attribute: str | None = Field(default=None, description="Corrected attribute, e.g. name -> alias")
     selector_type: SelectorType | None = Field(default=None)
     selector_subtype: SelectorSubtype | None = Field(default=None)
-    normalized_value: str | None = Field(default=None)
+    normalized_value: str | None = Field(default=None, description="Recomputed from `surface_text` when omitted")
     surface_text: str | None = Field(default=None)
+    start_offset: int | None = Field(default=None, ge=0, description="Moved span start (send with `end_offset`)")
+    end_offset: int | None = Field(default=None, ge=0, description="Moved span end")
     context: str | None = Field(default=None)
 
 
@@ -254,3 +260,17 @@ class DismissNameGroupRequest(BaseModel):
 
     dataset_id: str
     normalized_value: str
+
+
+class ResolvedName(BaseModel):
+    """One name the evidence uses for an entity (a resolved name group), and whether it's a curated alias.
+
+    Resolving a name group points its mentions at the entity; it does not make the name an
+    alias. Misspellings, punctuation variants, a bare surname or "friend" all resolve here,
+    but only the names an analyst adds become aliases.
+    """
+
+    normalized_value: str
+    surface: str = Field(description="Most common way the name is written")
+    mention_count: int
+    is_alias: bool = False

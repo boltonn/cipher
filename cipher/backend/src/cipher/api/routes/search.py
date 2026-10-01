@@ -113,6 +113,8 @@ async def search_semantic(
     regardless of relevance, so without a threshold `has_more` would stay
     true well past the point where results still match the query.
     """
+    if not params.query.strip():
+        return await datastore.search_text(request=params)  # nothing to embed: browse
     embedding = await model.infer(text=params.query, task="retrieval")
     if embedding is None:
         raise HTTPException(status_code=503, detail="Embedding model unavailable")
@@ -134,6 +136,8 @@ async def search_hybrid(
     model: TextEmbeddingModelDep,
 ):
     """Embed a query string and run hybrid RRF search -- no pre-computed embedding needed."""
+    if not params.query.strip():
+        return await datastore.search_text(request=params)  # nothing to embed: browse
     try:
         return await search_chunks(params=params, datastore=datastore, embedding_model=model)
     except RuntimeError as exc:

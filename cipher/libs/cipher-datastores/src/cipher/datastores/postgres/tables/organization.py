@@ -21,7 +21,13 @@ class OrganizationTable(Base):
 
     legal_name: Mapped[str | None] = mapped_column(String, nullable=True)
     aliases: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
-    org_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Same free-text vocabulary style as `location.category` ('company', 'agency', 'office', ...).
+    category: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    # The organization this one is a unit of (division, office, branch). Mirrored as a
+    # `part_of` edge so the hierarchy shows in the graph.
+    parent_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("entity.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     country: Mapped[str | None] = mapped_column(String, nullable=True)
     notes: Mapped[str | None] = mapped_column(String, nullable=True)
 

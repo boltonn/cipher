@@ -47,7 +47,7 @@ class LocationBase(BaseModel):
     attributes: dict[str, str] = Field(default_factory=dict, description="Raw source key/values")
 
     source: LocationSource = Field(
-        default=LocationSource.NAMED_MENTION, description="Where the coordinates/address came from"
+        default=LocationSource.NAME_MENTION, description="Where the coordinates/address came from"
     )
     source_id: str | None = Field(default=None, description="The provider's own identifier for this place")
     date_recorded: datetime | None = Field(
@@ -105,9 +105,10 @@ class LocationQuery(BaseModel):
     )
     dataset_ids: list[str] = Field(default_factory=list)
     sources: list[LocationSource] = Field(default_factory=list)
+    categories: list[str] = Field(default_factory=list)
     date_from: datetime | None = Field(default=None, description="Keep points with date_recorded at or after this")
     date_to: datetime | None = Field(default=None, description="Keep points with date_recorded at or before this")
-    limit: int = Field(default=2000, ge=1, le=10000)
+    limit: int = Field(default=2_000, ge=1, le=10_000)
     page: int = Field(default=1, ge=1)
 
 

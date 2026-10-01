@@ -14,13 +14,17 @@ from cipher.api.deps.postgres import (
     MentionDatastoreDep,
     RelationshipCandidateDatastoreDep,
 )
+from cipher.datastores.postgres.utils import normalize_name
 from cipher.schemas._base.base import camelize_keys
 from cipher.schemas._base.exceptions import EntityNotFoundError
 from cipher.schemas.graph.entity import (
     Entity,
+    EntityBatchRequest,
     EntityBreakdown,
     EntityCreate,
+    EntityMergeRequest,
     EntityProfile,
+    EntityRetypeRequest,
     EntitySearchParameters,
     EntitySearchResult,
     EntitySummary,
@@ -30,6 +34,7 @@ from cipher.schemas.graph.entity import (
     RelatedEntitySearchParameters,
     RelatedEntitySort,
     SelectorMention,
+    UnresolveNameRequest,
 )
 from cipher.schemas.graph.entity_match import (
     EntityMatch,
@@ -61,6 +66,7 @@ from cipher.schemas.graph.mention import (
     MentionProvenance,
     MentionSearchParameters,
     PaginatedMentionsResponse,
+    ResolvedName,
 )
 from cipher.schemas.graph.ontology import (
     RELATIONSHIP_ROLE_ENUM,
@@ -72,7 +78,7 @@ from cipher.schemas.graph.ontology import (
     build_ontology,
     validate_relationship,
 )
-from cipher.schemas.graph.organization import OrganizationUpdate
+from cipher.schemas.graph.organization import OrganizationStructure, OrganizationUpdate
 from cipher.schemas.graph.selector import SelectorEvidence, SelectorLinkRequest, SelectorRegion, SelectorUpdate
 from cipher.schemas.interaction.comment import CommentableType
 
@@ -331,10 +337,29 @@ async def update_entity_detail(entity_id: str, body: dict, datastore: EntityData
         data = model.model_validate(body)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    detail = await datastore.update_detail(entity_id, data)
+    try:
+        detail = await datastore.update_detail(entity_id, data)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     if detail is None:
         raise EntityNotFoundError("Entity detail", entity_id)
     return camelize_keys(detail)
+
+
+@router.get(
+    "/{entity_id}/structure",
+    summary="An organization's hierarchy, locations and people",
+    response_model=OrganizationStructure,
+    **_BY_ALIAS,
+)
+async def get_organization_structure(entity_id: str, datastore: EntityDatastoreDep) -> OrganizationStructure:
+    """Parent chain (`part_of` upward), sub-units, `located_in` locations and `employed_by`/`member_of` people."""
+    entity = await datastore.get_entity(entity_id)
+    if entity is None:
+        raise EntityNotFoundError("Entity", entity_id)
+    if entity.entity_type != EntityType.ORGANIZATION:
+        raise HTTPException(status_code=400, detail="Only organizations have a structure")
+    return await datastore.organization_structure(entity_id)
 
 
 @router.delete("/{entity_id}", summary="Delete an entity")
@@ -385,6 +410,65 @@ async def promote_entity(entity_id: str, user: CurrentUserDep, datastore: Entity
     if entity is None:
         raise EntityNotFoundError("Entity", entity_id)
     return entity
+
+
+@router.post("/promote-batch", summary="Verify many auto-created entities")
+async def promote_entities_batch(body: EntityBatchRequest, user: CurrentUserDep, datastore: EntityDatastoreDep) -> dict:
+    """Bulk Verify -- keep each auto-created entity as a real one (see `promote`)."""
+    promoted = [await datastore.promote_entity(entity_id, reviewed_by=user.id) for entity_id in body.entity_ids]
+    return {"promoted": sum(entity is not None for entity in promoted)}
+
+
+@router.post("/retype", summary="Change the type of auto-created entities")
+async def retype_entities(body: EntityRetypeRequest, datastore: EntityDatastoreDep) -> dict:
+    """Person <-> organization for auto-created entities (e.g. `Idylwood Towers` minted as a person).
+
+    Their name mentions follow; edges the new type can't have are removed. Verified entities
+    are refused -- edit those by hand.
+    """
+    totals = {"retyped": 0, "mentions": 0, "edges_removed": 0}
+    for entity_id in dict.fromkeys(body.entity_ids):
+        try:
+            counts = await datastore.retype_entity(entity_id, body.entity_type)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        if counts is None:
+            raise EntityNotFoundError("Entity", entity_id)
+        totals["retyped"] += 1
+        totals["mentions"] += counts["mentions"]
+        totals["edges_removed"] += counts["edges_removed"]
+    return camelize_keys(totals)
+
+
+@router.post("/{entity_id}/merge", summary="Merge auto-created entities into this one")
+async def merge_into_entity(entity_id: str, body: EntityMergeRequest, datastore: EntityDatastoreDep) -> dict:
+    """Fold each auto-created source into the path entity: mentions, edges and reviews move, its names become aliases.
+
+    Sources must be auto-created (provisional) and share the target's type -- a verified
+    entity is never deleted by a merge from this endpoint.
+    """
+    target = await datastore.get_entity(entity_id)
+    if target is None:
+        raise EntityNotFoundError("Entity", entity_id)
+    source_ids = [source_id for source_id in dict.fromkeys(body.source_ids) if source_id != entity_id]
+    for source_id in source_ids:
+        source = await datastore.get_entity(source_id)
+        if source is None:
+            raise EntityNotFoundError("Entity", source_id)
+        if not source.is_provisional or source.entity_type != target.entity_type:
+            raise HTTPException(
+                status_code=422, detail=f"{source.display_name} must be an auto-created {target.entity_type}"
+            )
+    for source_id in source_ids:
+        await datastore.merge_entities(canonical_id=entity_id, provisional_id=source_id)
+    return {"merged": len(source_ids)}
+
+
+@router.post("/{entity_id}/names/unresolve", summary="Send a resolved name back to the Resolve queue")
+async def unresolve_entity_name(entity_id: str, body: UnresolveNameRequest, datastore: EntityMatchDatastoreDep) -> dict:
+    """Undo a name-group resolution: its mentions detach and its resolution returns to pending."""
+    detached = await datastore.unresolve_name_group(entity_id=entity_id, normalized_value=body.normalized_value)
+    return {"detached": detached}
 
 
 @router.get(
@@ -487,6 +571,26 @@ async def attach_selector(
         normalized_value=normalized,
         mention_count=matching.total,
     )
+
+
+@router.get(
+    "/{entity_id}/names",
+    summary="Names the evidence uses for an entity",
+    response_model=list[ResolvedName],
+    **_BY_ALIAS,
+)
+async def entity_names(
+    entity_id: str, datastore: EntityDatastoreDep, mentions: MentionDatastoreDep
+) -> list[ResolvedName]:
+    """Resolved name groups, most mentions first, each flagged if it is one of the entity's curated aliases."""
+    entity = await datastore.get_entity(entity_id)
+    if entity is None:
+        raise EntityNotFoundError("Entity", entity_id)
+    aliases = {normalize_name(a) for a in (entity.aliases or [])} | {normalize_name(entity.display_name)}
+    return [
+        ResolvedName(**row, is_alias=row["normalized_value"] in aliases)
+        for row in await mentions.names_for_entity(entity_id)
+    ]
 
 
 @router.get(
@@ -660,6 +764,7 @@ async def create_entity_relationship(
     """Manually assert a typed edge; validated against the ontology's endpoint rules."""
     if relationship.src_entity_id != entity_id:
         raise HTTPException(status_code=422, detail="src_entity_id must match the path entity")
+    relationship = relationship.model_copy(update={"source": RelationshipSource.MANUAL})
     src = await entities.get_entity(relationship.src_entity_id)
     dst = await entities.get_entity(relationship.dst_entity_id)
     if src is None or dst is None:
@@ -683,6 +788,24 @@ async def create_entity_relationship(
         except ValueError as exc:
             valid = ", ".join(r.value for r in role_enum)
             raise HTTPException(status_code=422, detail=f"role must be one of: {valid}") from exc
+
+    if relationship.relationship_type == RelationshipType.PART_OF:
+        try:
+            await entities.set_organization_parent(entity_id, relationship.dst_entity_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return next(
+            r
+            for r in (
+                await datastore.list_relationships(
+                    RelationshipSearchParameters(
+                        entity_id=entity_id,
+                        direction=TraversalDirection.OUT,
+                        relationship_type=RelationshipType.PART_OF,
+                    )
+                )
+            ).data
+        )
 
     # An edge does not belong to a dataset -- it's just a link between two nodes,
     # visible whenever both nodes are. Manual edges leave dataset_id NULL.

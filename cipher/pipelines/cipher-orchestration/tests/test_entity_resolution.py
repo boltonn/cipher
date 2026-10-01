@@ -127,7 +127,7 @@ def test_shared_mailbox_bare_surname_is_review_not_auto():
     sc = score_candidate(m, c, CFG)
     decide([sc], CFG)
     assert not sc.vetoed
-    assert sc.score >= CFG.auto_threshold  # selector alone still scores high
+    assert sc.score == CFG.no_name_evidence_cap  # a shared address with no name evidence is capped
     assert sc.band is ResolutionBand.REVIEW  # but no first name to agree on -> held
 
 
@@ -141,8 +141,8 @@ def test_shared_mailbox_with_real_name_match_still_autos():
 
 
 def test_name_agreement_guard_can_be_disabled():
-    """`require_name_agreement_for_auto=False` restores selector-only auto (no name conflict)."""
-    cfg = CFG.model_copy(update={"require_name_agreement_for_auto": False})
+    """Lifting the name guard and the no-name-evidence cap restores selector-only auto."""
+    cfg = CFG.model_copy(update={"require_name_agreement_for_auto": False, "no_name_evidence_cap": 1.0})
     m = _mention("Bolton", provenance="email_header", selector_values=frozenset({"x@y.com"}))
     c = _candidate("Edmond Bolton", selector_values=frozenset({"x@y.com"}), blocked_by=("selector",))
     sc = score_candidate(m, c, cfg)
@@ -188,3 +188,14 @@ def test_build_explanation_shape():
     assert exp.blocking == ["selector"]
     assert all(f.level is not FeatureLevel.NONE for f in exp.features)
     assert any(f.name == "selector_overlap" for f in exp.features)
+
+
+def test_no_name_evidence_is_capped_but_still_suggested():
+    """'friend <nbolton04@...>' shares Nick's address but says nothing about his name: a weak suggestion."""
+    m = _mention("friend", provenance="email_header", selector_values=frozenset({"nbolton04@gmail.com"}))
+    c = _candidate("Nick B", selector_values=frozenset({"nbolton04@gmail.com"}), blocked_by=("selector",))
+    sc = score_candidate(m, c, CFG)
+    decide([sc], CFG)
+    assert not sc.vetoed
+    assert sc.score == CFG.no_name_evidence_cap
+    assert sc.band is ResolutionBand.REVIEW

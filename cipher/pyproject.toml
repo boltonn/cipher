@@ -7,6 +7,7 @@ requires-python = ">=3.12"
 
 dependencies = [
     "cipher-names",
+    "cipher-places",
     "cipher-schemas",
     "cipher-utils",
 ]
@@ -29,6 +30,7 @@ all-cuda = [
 [tool.uv.sources]
 cipher-datastores = { workspace = true }
 cipher-names = { workspace = true }
+cipher-places = { workspace = true }
 cipher-schemas = { workspace = true }
 cipher-utils = { workspace = true }
 cipher-backend = { workspace = true }
@@ -49,6 +51,7 @@ clir = { workspace = true }
 members = [
     "libs/cipher-datastores",
     "libs/cipher-names",
+    "libs/cipher-places",
     "libs/cipher-schemas",
     "libs/cipher-utils",
     "pipelines/cipher-orchestration",

@@ -177,7 +177,12 @@ async def _create_reference_face(
         file_id=file_record.id,
     )
 
-    face_create = face_annotation_to_face_create(best, image_id=image_record.id, detector_model="insightface-buffalo_l")
+    face_create = face_annotation_to_face_create(
+        best,
+        image_id=image_record.id,
+        detector_model="insightface-buffalo_l",
+        embedding_model="insightface-buffalo_l",
+    )
     return await face_datastore.add_face(face_create)
 
 
@@ -495,7 +500,8 @@ async def delete_person(
 ) -> bool:
     """Delete a person and their bridged entity node.
 
-    Faces are unlinked (``person_id`` set null) and face matches cascade-delete;
+    Faces are unlinked and pending face matches dropped; confirmed / rejected
+    match decisions are kept (the id still groups the faces they were about);
     mentions/relationships on the bridge entity unresolve/cascade the same way
     they would for any entity. Comments on either the person or the bridge
     entity (``entity.id == person.id``) reference it polymorphically, so both

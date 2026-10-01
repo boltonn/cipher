@@ -257,6 +257,8 @@ def score_candidate(
     prior = config.base_prior.get(mention.provenance, -3.5)
     total = prior + sum(f.contribution for f in features)
     score = 0.0 if vetoed else _logistic(total)
+    if not vetoed and not any(f.name in _NAME_FEATURES and f.level != FeatureLevel.NONE for f in features):
+        score = min(score, config.no_name_evidence_cap)
 
     positive = [f for f in features if f.contribution > 0]
     method = (

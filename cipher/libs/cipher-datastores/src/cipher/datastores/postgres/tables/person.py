@@ -13,7 +13,6 @@ from cipher.schemas.identity.person import PersonSource
 if TYPE_CHECKING:
     from cipher.datastores.postgres.tables.entity import EntityTable
     from cipher.datastores.postgres.tables.face import FaceTable
-    from cipher.datastores.postgres.tables.face_match import FaceMatchTable
 
 
 class PersonTable(Base):
@@ -52,9 +51,6 @@ class PersonTable(Base):
     )
 
     faces: Mapped[list["FaceTable"]] = relationship(back_populates="person", lazy="select")
-    face_matches: Mapped[list["FaceMatchTable"]] = relationship(
-        back_populates="person", cascade="all, delete-orphan", lazy="select"
-    )
     # Bridge to the knowledge-graph node. The FK lives on `entity.person_id`, so
     # this adds no column to `person` -- only the reverse accessor.
     entity: Mapped["EntityTable | None"] = relationship(back_populates="person", uselist=False, lazy="select")

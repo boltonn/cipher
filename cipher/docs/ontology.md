@@ -94,7 +94,7 @@ A place: an address, a named place, or a geolocation from text or EXIF.
 | `latitude` | float \| None | −90..90 |
 | `longitude` | float \| None | −180..180 |
 | `geohash` | str(≤12) \| None | for coarse proximity matching |
-| `source` | enum | `named_mention` \| `exif` \| `geocoded` \| `device_gps` |
+| `source` | enum | `name_mention` \| `coordinate_mention` \| `exif` \| `geocoded` \| `device_gps` |
 | `precision_m` | float \| None | approx positional uncertainty (metres) |
 | `country` | str \| None | |
 | `admin_area` | str \| None | state / province / region |
@@ -154,11 +154,13 @@ as bidirectional.
 | `part_of` | directed (`has_part`) | `organization` → `organization` | no | A sub-unit (e.g. a regional office) is part of a parent org. |
 | `subsidiary_of` | directed (`parent_of`) | `organization` → `organization` | no | An organization is a subsidiary of another. |
 | `located_in` | directed (`contains`) | `person` `organization` `location` → `location` | no | An entity is located at / within a location. |
-| `communicates_with` | undirected | `person` `organization` `selector` ↔ same | yes | Recorded communication (email, calls, messages). Endpoints are people/orgs when resolved, else the bare email/phone selector. |
+| `emailed` | directed (`emailed_by`) | `person` `organization` `selector` → same | no | Sender emailed recipient (to/cc/bcc); `weight` = emails. Endpoints are people/orgs when resolved, else the bare email selector. Other channels get their own directed type (`called`, `messaged`) when their producers exist. |
 | `family_of` | undirected | `person` ↔ `person` | yes | Two people are family. |
-| `associate_of` | undirected | `person` `organization` ↔ same | yes | Associated, usually inferred from co-mention. **Excluded from default graph traversal.** |
+| `appears_in_photo_with` | undirected | `person` ↔ `person` | yes | Faces of both people appear in the same image; `weight` = shared photos. **Excluded from default graph traversal.** |
+| `co_mention_of` | undirected | any ↔ any | yes | Mentioned in the same chunk (source `co_mention`); `weight` = shared chunks. For co-occurrence-style knowledge graphs; no producer ships yet. **Excluded from default graph traversal.** |
 | `same_as` | undirected | any ↔ any | yes | Two nodes asserted to be the same real-world thing. |
 | `owns` | directed (`owned_by`) | `person` `organization` → any | no | An actor owns an asset, account, or other entity. |
+| `participant_in` | directed | `person` `organization` → `event` | no | The actor takes part in an event; `attributes.role` / `rsvp_status`, observed dates = the event's. **Derived at read time from resolved `event_participant` rows, never stored** in `entity_relationship`, so it is not offered in the add-connection UI. Event nodes appear in graph traversal (`kind` `event`), so person → event → person is two hops. |
 
 Edge attributes (`entity_relationship` table): `directed`, `weight`, `source`
 (`manual` \| `extraction` \| `selector_inference` \| `co_mention` \| `import`),

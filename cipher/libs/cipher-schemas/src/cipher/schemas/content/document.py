@@ -6,7 +6,7 @@ from pydantic import Field
 from cipher.schemas._base.base import BaseModel
 from cipher.schemas._base.detection import BoundingBox
 from cipher.schemas.content.email import NamedParticipant
-from cipher.schemas.content.search import TextChunk
+from cipher.schemas.content.search import MentionSpan, TextChunk
 
 
 class ExtractedTableInfo(BaseModel):
@@ -114,4 +114,7 @@ class ScoredDocumentTextChunk(DocumentTextChunk):
     highlights: list[str] = Field(
         default_factory=list,
         description="Matched words/phrases from Elasticsearch highlighting; empty for pure kNN results",
+    )
+    mention_spans: list[MentionSpan] = Field(
+        default_factory=list, description="Mentions of the filtered entities inside this chunk"
     )

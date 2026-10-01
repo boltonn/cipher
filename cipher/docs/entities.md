@@ -39,14 +39,14 @@ entity(id, dataset_id, entity_type, display_name, display_name_normalized,
        location_id → location.id, date_*)
 
   ├─ person        (the EXISTING person table; entity.person_id bridges to it)
-  ├─ organization  (entity_id, legal_name, aliases[], org_type, country, notes)
+  ├─ organization  (entity_id, legal_name, aliases[], category, parent_id, country, notes)
   ├─ location      (STANDALONE, bridged by shared id like person: entity.location_id,
   │                 location.id == entity.id. Also usable with no entity at all --
   │                 an EXIF photo point is just a location row with file_id set.
   │                 geom geometry(4326) NOT NULL, latitude, longitude, altitude,
   │                 geohash, name, category, address, city, admin_area, country,
   │                 tags[], attributes, file_id, dataset_id, source_id,
-  │                 source ∈ named_mention|exif|geocoded|device_gps, date_recorded, ...
+  │                 source ∈ name_mention|coordinate_mention|exif|geocoded|device_gps, date_recorded, ...
   │                 UNIQUE(file_id, source))
   └─ selector      (entity_id, dataset_id, selector_kind, raw_value,
                     normalized_value, region_hint)
@@ -173,19 +173,19 @@ allowed source/destination entity types:
 |---|---|---|
 | `has_selector` | person\|org → selector | an actor uses this identifier |
 | `member_of`, `employed_by` | person → org | |
-| `part_of`, `subsidiary_of` | org → org | **org sub‑units** (a regional office is itself an `organization` that is `part_of` the parent) |
+| `part_of`, `subsidiary_of` | org → org | **org sub‑units** (a regional office is itself an `organization` that is `part_of` the parent). An org has **one** parent: `organization.parent_id` is the source of truth and is mirrored as its single manual `part_of` edge (set in Edit, or by asserting `part_of`; cycles are rejected). `GET /entities/{id}/structure` returns the parent chain, sub-units, `located_in` locations and `employed_by`/`member_of` people — the organization page's **Structure** section |
 | `located_in` | person\|org\|location → location | |
-| `communicates_with` | person\|org\|selector ↔ same | symmetric, channel unspecified (stated in text / analyst-asserted) |
 | `emailed` | person\|org\|selector → same | directed sender → recipient, `weight` = emails. Built by `extract-relationships`. Future channels get their own type (`called`, `messaged`) |
-| `family_of`, `associate_of` | actor ↔ actor | symmetric; `associate_of` is co‑mention‑derived |
+| `family_of` | person ↔ person | symmetric |
 | `appears_in_photo_with` | person ↔ person | symmetric; two people whose faces are in the same image (either face may still be a *pending* match). `weight` = shared photos, `attributes.evidence` lists them (`verified`/`potential`). Two already-identified people are linked only once they share ≥ `--min-verified-photos` (default 2); a pair with a pending-match lead is linked from the first photo. Built by `link-face-cooccurrence`; excluded from default traversal |
+| `co_mention_of` | any ↔ any | symmetric; mentioned in the same chunk, `weight` = shared chunks, source `co_mention`. Available for co-occurrence knowledge graphs; no producer ships yet. Excluded from default traversal |
 | `same_as` | any ↔ any | asserted identity |
 | `owns` | actor → any | |
 
 **Traversal** (`PostgresGraphRepository`, implements the
 `cipher.datastores.base.graph.GraphRepository` interface): breadth‑first with an
 explicit visited set, capped at depth ≤ 3 and a server‑side `limit`, cycle‑safe.
-`associate_of` (co‑mention) and `appears_in_photo_with` (face co‑occurrence) are
+`appears_in_photo_with` (face co‑occurrence) and `co_mention_of` (text co‑occurrence) are
 excluded from default traversal to keep multi‑hop answers useful. The
 `GraphRepository` interface exists so a `Neo4jGraphRepository` can be swapped in
 later without touching callers.
@@ -288,6 +288,29 @@ merges that provisional entity into the canonical one via
 relationship edges + candidates, `entity_match` rows, event participations and
 comment threads all move onto the canonical id (colliding / self-referential rows
 dropped), then the provisional node is deleted.
+
+### The analyst workflow: Verify, then Resolve
+
+Terms are defined in [`glossary.md`](./glossary.md#resolution-workflow-entities-page); this is
+how they fit together on the Entities page.
+
+1. **Extraction makes mentions.** Each mention is one occurrence of a name or identifier in a
+   file. Unresolved mentions of the same name form a **name group** ("dell": 639 mentions).
+2. **`resolve-entities` sorts the name groups.** For each, it resolves automatically (one safe
+   rule), files **suggested resolutions** (pending `entity_match` rows), **auto-creates** an
+   entity (a typed name with enough mentions and no match), or leaves the name with no entity yet.
+3. **Verify tab — check auto-created entities first.** Biggest first: **verify** keeps one as a
+   real entity (`POST /entities/{id}/promote`), **edit** fixes its name, **merge** folds a
+   duplicate ("Dell Inc") into the entity it repeats ("Dell"). Doing this first means later
+   resolutions point at checked entities.
+4. **Resolve tab — one decision per name group** (`GET /mentions/unresolved-names`, each row
+   carrying its `resolutions`). **Accept** a suggested resolution
+   (`POST /entities/matches/{id}/resolve {status:"confirmed"}`), **reject** it, resolve to
+   **another entity**, **create a new entity** (`POST /mentions/resolve-names`), or mark it
+   **not an entity**. Every choice applies to all of the group's mentions.
+
+A chat proposal never changes data: the assistant files a pending suggestion
+(`match_method=assistant`) or opens the entity page with `?propose=` for the analyst to decide.
 
 ---
 

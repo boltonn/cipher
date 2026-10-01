@@ -9,7 +9,7 @@ from cipher.datastores.postgres.repositories.entity_name_key import (
     refresh_entity_name_keys,
 )
 from cipher.datastores.postgres.repositories.mention import provenance_case
-from cipher.datastores.postgres.tables.entity import EntityTable
+from cipher.datastores.postgres.tables.entity import EntityTable, is_canonical_entity
 from cipher.datastores.postgres.tables.entity_match import EntityMatchTable
 from cipher.datastores.postgres.tables.entity_relationship import EntityRelationshipTable
 from cipher.datastores.postgres.tables.face import FaceTable
@@ -48,11 +48,18 @@ from cipher.schemas.graph.ontology import (
     LOW_SIGNAL_RELATIONSHIPS,
     EntitySource,
     EntityType,
+    RelationshipSource,
     RelationshipType,
     SelectorSubtype,
     SelectorType,
+    validate_relationship,
 )
-from cipher.schemas.graph.organization import OrganizationCreate, OrganizationUpdate
+from cipher.schemas.graph.organization import (
+    OrganizationCreate,
+    OrganizationMember,
+    OrganizationStructure,
+    OrganizationUpdate,
+)
 from cipher.schemas.graph.selector import Selector, SelectorCreate, SelectorUpdate
 from cipher.schemas.identity.person import Person, PersonSource
 
@@ -83,6 +90,23 @@ def _entity_with_selector(row) -> Entity:
     if row[1] is not None:
         entity = entity.model_copy(update={"selector_type": row[1], "selector_subtype": row[2]})
     return entity
+
+
+def _in_dataset(dataset_id: str):
+    """An entity belongs to a dataset: scoped to it, or dataset-agnostic and mentioned in it.
+
+    Dataset-agnostic nodes are person bridges and every location (shared PostGIS rows) --
+    without the second branch they vanish from a dataset's lists and counts.
+    """
+    return or_(
+        EntityTable.dataset_id == dataset_id,
+        and_(
+            EntityTable.dataset_id.is_(None),
+            select(MentionTable.id)
+            .where(MentionTable.dataset_id == dataset_id, MentionTable.entity_id == EntityTable.id)
+            .exists(),
+        ),
+    )
 
 
 class PostgresEntityRepository:
@@ -137,10 +161,12 @@ class PostgresEntityRepository:
                         latitude=detail_values["latitude"], longitude=detail_values["longitude"]
                     )
                 detail_values["id"] = row.id
-                row.location_id = row.id
             else:
                 detail_values["entity_id"] = row.id
             self.session.add(detail_table(**detail_values))
+            if entity.entity_type == EntityType.LOCATION:
+                await self.session.flush()  # the location row must exist before the FK points at it
+                row.location_id = row.id
 
         result = Entity.model_validate(row)
         await self.session.commit()
@@ -330,21 +356,16 @@ class PostgresEntityRepository:
             # entities have dataset_id NULL) that are actually mentioned in this
             # dataset -- otherwise a person who appears all over `rag` is
             # invisible on `rag`'s entity list.
-            where.append(
-                or_(
-                    EntityTable.dataset_id == request.dataset_id,
-                    and_(
-                        EntityTable.dataset_id.is_(None),
-                        select(MentionTable.id)
-                        .where(MentionTable.dataset_id == request.dataset_id, MentionTable.entity_id == EntityTable.id)
-                        .exists(),
-                    ),
-                )
-            )
+            where.append(_in_dataset(request.dataset_id))
         if request.entity_type:
             where.append(EntityTable.entity_type == request.entity_type)
         if request.is_verified is not None:
             where.append(EntityTable.is_verified == request.is_verified)
+        if request.provisional is not None:
+            # provisional = auto-created by the resolver, awaiting verification or a merge
+            where.append(~is_canonical_entity() if request.provisional else is_canonical_entity())
+            if request.provisional:
+                where.append(EntityTable.entity_type != EntityType.SELECTOR)
         if request.tags:
             where.append(EntityTable.tags.overlap(request.tags))
         if request.query:
@@ -378,10 +399,10 @@ class PostgresEntityRepository:
                     ),
                 )
             )
-        if request.org_type:
+        if request.category:
             where.append(
                 EntityTable.id.in_(
-                    select(OrganizationTable.entity_id).where(OrganizationTable.org_type.ilike(request.org_type))
+                    select(OrganizationTable.entity_id).where(OrganizationTable.category.ilike(request.category))
                 )
             )
         if request.date_of_birth_from or request.date_of_birth_to:
@@ -406,13 +427,30 @@ class PostgresEntityRepository:
         )
         if request.sort_by == EntitySortField.MENTION_COUNT:
             mention_totals = (
-                select(MentionTable.entity_id, func.count(MentionTable.id).label("mention_count"))
+                # count(*) not count(id): answerable from ix_mention_dataset_entity alone (index-only scan)
+                select(MentionTable.entity_id, func.count().label("mention_count"))
                 .where(*mention_where)
                 .group_by(MentionTable.entity_id)
                 .subquery()
             )
             sort_column = func.coalesce(mention_totals.c.mention_count, 0)
             stmt = stmt.outerjoin(mention_totals, mention_totals.c.entity_id == EntityTable.id)
+        elif request.sort_by == EntitySortField.RELEVANCE and request.query:
+            # typeahead: exact name, then prefix, then substring, then closest trigram (typo) match
+            floor = normalize_name(request.query)
+            name = EntityTable.display_name_normalized
+            result = await self.session.execute(
+                stmt.order_by(
+                    desc(name == floor),
+                    desc(name.startswith(floor, autoescape=True)),
+                    desc(name.contains(floor, autoescape=True)),
+                    desc(func.similarity(name, floor)),
+                    func.length(name),
+                )
+                .offset((request.page - 1) * request.limit)
+                .limit(request.limit)
+            )
+            return await self._list_page(request=request, total=total, rows=result.all(), mention_where=mention_where)
         else:
             sort_column = {
                 EntitySortField.DISPLAY_NAME: EntityTable.display_name_normalized,
@@ -426,14 +464,19 @@ class PostgresEntityRepository:
             .offset((request.page - 1) * request.limit)
             .limit(request.limit)
         )
-        entities = [_entity_with_selector(row) for row in result.all()]
+        return await self._list_page(request=request, total=total, rows=result.all(), mention_where=mention_where)
+
+    async def _list_page(
+        self, *, request: EntitySearchParameters, total: int, rows: list, mention_where: list
+    ) -> PaginatedEntitiesResponse:
+        entities = [_entity_with_selector(row) for row in rows]
         stats = await self._list_stats([e.id for e in entities], mention_where=mention_where)
         data = [EntityListItem(**e.model_dump(), **stats.get(e.id, {})) for e in entities]
         return PaginatedEntitiesResponse(total=total, page=request.page, limit=request.limit, data=data)
 
     async def entity_breakdown(self, *, dataset_id: str | None = None) -> EntityBreakdown:
         """Counts of a dataset's entities by type / selector type / selector subtype."""
-        ent_where = [EntityTable.dataset_id == dataset_id] if dataset_id else []
+        ent_where = [_in_dataset(dataset_id)] if dataset_id else []
         sel_where = [SelectorTable.dataset_id == dataset_id] if dataset_id else []
 
         by_type = (
@@ -778,6 +821,77 @@ class PostgresEntityRepository:
         await self.session.commit()
         return entity
 
+    async def retype_entity(self, entity_id: str, entity_type: EntityType) -> dict[str, int] | None:
+        """Change an auto-created entity's type (person <-> organization). None if it's missing.
+
+        Its name mentions take the new type, its name keys are rebuilt, an organization detail
+        row is dropped when it stops being one, and edges the new type can't have (a person's
+        `member_of` on an organization) are deleted.
+
+        Raises:
+            ValueError: if the entity isn't auto-created or the type isn't person/organization.
+        """
+        row = await self.session.get(EntityTable, entity_id)
+        if row is None:
+            return None
+        if not Entity.model_validate(row).is_provisional:
+            raise ValueError(f"{row.display_name} is verified; only auto-created entities can change type")
+        if entity_type not in (EntityType.PERSON, EntityType.ORGANIZATION):
+            raise ValueError("an auto-created entity can only become a person or an organization")
+        if row.entity_type == entity_type:
+            return {"mentions": 0, "edges_removed": 0}
+
+        if row.entity_type == EntityType.ORGANIZATION:
+            await self.session.execute(delete(OrganizationTable).where(OrganizationTable.entity_id == entity_id))
+        row.entity_type = entity_type
+        await refresh_entity_name_keys(
+            self.session,
+            entity_id=entity_id,
+            entity_type=entity_type,
+            display_name=row.display_name,
+            aliases=row.aliases or [],
+        )
+        mentions = await self.session.execute(
+            update(MentionTable)
+            .where(MentionTable.entity_id == entity_id, MentionTable.entity_attribute == "name")
+            .values(entity_type=entity_type)
+        )
+
+        other = EntityTable.__table__.alias("other")
+        edges = await self.session.execute(
+            select(
+                EntityRelationshipTable.id,
+                EntityRelationshipTable.relationship_type,
+                EntityRelationshipTable.src_entity_id,
+                other.c.entity_type,
+            )
+            .join(
+                other,
+                other.c.id
+                == case(
+                    (EntityRelationshipTable.src_entity_id == entity_id, EntityRelationshipTable.dst_entity_id),
+                    else_=EntityRelationshipTable.src_entity_id,
+                ),
+            )
+            .where(
+                or_(
+                    EntityRelationshipTable.src_entity_id == entity_id,
+                    EntityRelationshipTable.dst_entity_id == entity_id,
+                )
+            )
+        )
+        invalid = []
+        for edge_id, relationship_type, src_id, other_type in edges:
+            src_type, dst_type = (entity_type, other_type) if src_id == entity_id else (other_type, entity_type)
+            try:
+                validate_relationship(relationship_type=relationship_type, src_type=src_type, dst_type=dst_type)
+            except ValueError:
+                invalid.append(edge_id)
+        if invalid:
+            await self.session.execute(delete(EntityRelationshipTable).where(EntityRelationshipTable.id.in_(invalid)))
+        await self.session.commit()
+        return {"mentions": mentions.rowcount or 0, "edges_removed": len(invalid)}
+
     async def merge_entities(self, *, canonical_id: str, provisional_id: str) -> dict[str, int]:
         """Fold the provisional entity into the canonical one, then delete it.
 
@@ -814,12 +928,117 @@ class PostgresEntityRepository:
             patch.pop("geo_json", None)
             if patch.get("latitude") is not None and patch.get("longitude") is not None:
                 patch["geom"] = point_to_geom(latitude=patch["latitude"], longitude=patch["longitude"])
-        if patch:
+        if entity.entity_type == EntityType.ORGANIZATION:
+            if "parent_id" in patch:
+                await self._check_parent(entity_id, patch["parent_id"])
+            # Most organizations are auto-created without a detail row -- create it on first edit.
+            insert_stmt = pg_insert(OrganizationTable).values(entity_id=entity_id, **patch)
+            await self.session.execute(
+                insert_stmt.on_conflict_do_update(index_elements=["entity_id"], set_=patch)
+                if patch
+                else insert_stmt.on_conflict_do_nothing(index_elements=["entity_id"])
+            )
+            if "parent_id" in patch:
+                await self._sync_part_of(entity_id, patch["parent_id"])
+            await self.session.commit()
+        elif patch:
             await self.session.execute(
                 update(detail_table).where(_detail_key(entity.entity_type) == entity_id).values(**patch)
             )
             await self.session.commit()
         return await self._detail_dict(entity)
+
+    async def set_organization_parent(self, entity_id: str, parent_id: str | None) -> None:
+        """Make `parent_id` the organization `entity_id` is a unit of (None detaches it)."""
+        await self.update_detail(entity_id, OrganizationUpdate(parent_id=parent_id))
+
+    async def _check_parent(self, entity_id: str, parent_id: str | None) -> None:
+        """Reject a parent that isn't an organization, is the org itself, or sits below it."""
+        if parent_id is None:
+            return
+        if parent_id == entity_id:
+            raise ValueError("An organization can't be its own parent")
+        parent = await self.get_entity(parent_id)
+        if parent is None or parent.entity_type != EntityType.ORGANIZATION:
+            raise ValueError("The parent must be an organization")
+        seen, current = {entity_id}, parent_id
+        while current is not None:
+            if current in seen:
+                raise ValueError("That parent is already below this organization")
+            seen.add(current)
+            current = await self.session.scalar(
+                select(OrganizationTable.parent_id).where(OrganizationTable.entity_id == current)
+            )
+
+    async def _sync_part_of(self, entity_id: str, parent_id: str | None) -> None:
+        """Mirror `organization.parent_id` as the org's single `part_of` edge."""
+        await self.session.execute(
+            delete(EntityRelationshipTable).where(
+                EntityRelationshipTable.src_entity_id == entity_id,
+                EntityRelationshipTable.relationship_type == RelationshipType.PART_OF,
+            )
+        )
+        if parent_id is not None:
+            self.session.add(
+                EntityRelationshipTable(
+                    src_entity_id=entity_id,
+                    dst_entity_id=parent_id,
+                    relationship_type=RelationshipType.PART_OF,
+                    directed=True,
+                    source=RelationshipSource.MANUAL,
+                    attributes={},
+                )
+            )
+
+    async def organization_structure(self, entity_id: str, *, limit: int = 200) -> OrganizationStructure:
+        """Parent chain, sub-units, locations and people of an organization, read from its edges."""
+        ancestors: list[EntitySummary] = []
+        seen, current = {entity_id}, entity_id
+        while True:
+            parent = await self.session.scalar(
+                select(EntityTable)
+                .join(EntityRelationshipTable, EntityRelationshipTable.dst_entity_id == EntityTable.id)
+                .where(
+                    EntityRelationshipTable.src_entity_id == current,
+                    EntityRelationshipTable.relationship_type == RelationshipType.PART_OF,
+                )
+                .limit(1)
+            )
+            if parent is None or parent.id in seen:
+                break
+            ancestors.append(EntitySummary.model_validate(parent))
+            seen.add(parent.id)
+            current = parent.id
+
+        async def linked(*, outgoing: bool, types: list[RelationshipType]):
+            near, far = (
+                (EntityRelationshipTable.src_entity_id, EntityRelationshipTable.dst_entity_id)
+                if outgoing
+                else (EntityRelationshipTable.dst_entity_id, EntityRelationshipTable.src_entity_id)
+            )
+            rows = await self.session.execute(
+                select(EntityTable, EntityRelationshipTable.relationship_type, EntityRelationshipTable.attributes)
+                .join(EntityRelationshipTable, far == EntityTable.id)
+                .where(near == entity_id, EntityRelationshipTable.relationship_type.in_(types))
+                .order_by(EntityTable.display_name)
+                .limit(limit)
+            )
+            return rows.all()
+
+        children = await linked(outgoing=False, types=[RelationshipType.PART_OF])
+        locations = await linked(outgoing=True, types=[RelationshipType.LOCATED_IN])
+        members = await linked(outgoing=False, types=[RelationshipType.EMPLOYED_BY, RelationshipType.MEMBER_OF])
+        return OrganizationStructure(
+            ancestors=ancestors,
+            children=[EntitySummary.model_validate(e) for e, _, _ in children],
+            locations=[EntitySummary.model_validate(e) for e, _, _ in locations],
+            members=[
+                OrganizationMember(
+                    entity=EntitySummary.model_validate(e), relationship_type=rt, role=(attrs or {}).get("role")
+                )
+                for e, rt, attrs in members
+            ],
+        )
 
     async def get_selector_detail(self, entity_id: str) -> Selector | None:
         """Fetch the selector detail row for a selector entity."""
@@ -1071,7 +1290,7 @@ class PostgresEntityRepository:
         """Paginated neighbours of an entity, each with its connecting edge.
 
         Unions the outbound and inbound legs so an edge surfaces regardless of which
-        side this entity sits on -- undirected ones (e.g. `communicates_with`, stored
+        side this entity sits on -- undirected ones (e.g. `family_of`, stored
         with a canonical endpoint order) and both directions of `emailed`.
         """
         rel = EntityRelationshipTable

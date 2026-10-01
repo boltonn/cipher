@@ -45,8 +45,8 @@ if TYPE_CHECKING:
 
 _EMAIL_FILETYPE_GROUP = "email"
 _UPSERT_CHUNK = 1000
-# Relationship types this workflow owns (communicates_with: edges built before `emailed` existed).
-_OWNED_TYPES = (RelationshipType.EMAILED, RelationshipType.COMMUNICATES_WITH)
+# Relationship types this workflow owns.
+_OWNED_TYPES = (RelationshipType.EMAILED,)
 
 
 @dataclass

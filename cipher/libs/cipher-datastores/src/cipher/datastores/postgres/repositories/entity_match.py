@@ -330,6 +330,54 @@ class PostgresEntityMatchRepository:
         )
         return [EntityMatch.model_validate(r) for r in rows.scalars().all()]
 
+    async def _candidates_for_names(self, conditions: list, names: list[str]) -> dict[str, list[EntityMatch]]:
+        """Group-level candidates per name (best first), with the candidate entity's name/type/provisional flag."""
+        cand_rows = (
+            await self.session.execute(
+                select(
+                    EntityMatchTable,
+                    EntityTable.display_name,
+                    EntityTable.entity_type,
+                    EntityTable.person_id,
+                    is_canonical_entity().label("canonical"),
+                )
+                .join(EntityTable, EntityTable.id == EntityMatchTable.entity_id)
+                .where(*conditions, EntityMatchTable.normalized_value.in_(names))
+                .order_by(desc(EntityMatchTable.similarity_score))
+            )
+        ).all()
+        pending_merges = await self._pending_merge_counts(
+            {row.entity_id for row, *_, canonical in cand_rows if not canonical}
+        )
+        by_name: dict[str, list[EntityMatch]] = defaultdict(list)
+        for row, display_name, etype, person_id, canonical in cand_rows:
+            if row.normalized_value is not None:
+                by_name[row.normalized_value].append(
+                    EntityMatch.model_validate(row).model_copy(
+                        update={
+                            "entity_name": display_name,
+                            "entity_type": str(etype) if etype is not None else None,
+                            "entity_person_id": str(person_id) if person_id is not None else None,
+                            "entity_is_provisional": not canonical,
+                            "entity_pending_merge_count": None if canonical else pending_merges.get(row.entity_id, 0),
+                        }
+                    )
+                )
+        return by_name
+
+    async def pending_resolutions(self, *, dataset_id: str, names: list[str]) -> dict[str, list[EntityMatch]]:
+        """Pending resolutions (name group -> entity) for these names, best first -- for the Resolve queue."""
+        if not names:
+            return {}
+        return await self._candidates_for_names(
+            [
+                EntityMatchTable.dataset_id == dataset_id,
+                EntityMatchTable.mention_id.is_(None),
+                EntityMatchTable.status == EntityMatchStatus.PENDING,
+            ],
+            names,
+        )
+
     async def list_match_groups(self, request: EntityMatchSearchParameters) -> PaginatedEntityMatchGroupsResponse:
         """Grouped review queue: one card per name group, best candidate + alternatives nested.
 
@@ -392,40 +440,14 @@ class PostgresEntityMatchRepository:
         names = [r.normalized_value for r in page_rows]
         if not names:
             return PaginatedEntityMatchGroupsResponse(
-                total=total, page=request.page, limit=request.limit, data=[], hidden_provisional_total=hidden_provisional
+                total=total,
+                page=request.page,
+                limit=request.limit,
+                data=[],
+                hidden_provisional_total=hidden_provisional,
             )
 
-        cand_rows = (
-            await self.session.execute(
-                select(
-                    EntityMatchTable,
-                    EntityTable.display_name,
-                    EntityTable.entity_type,
-                    EntityTable.person_id,
-                    is_canonical_entity().label("canonical"),
-                )
-                .join(EntityTable, EntityTable.id == EntityMatchTable.entity_id)
-                .where(*base, EntityMatchTable.normalized_value.in_(names))
-                .order_by(desc(EntityMatchTable.similarity_score))
-            )
-        ).all()
-        pending_merges = await self._pending_merge_counts(
-            {row.entity_id for row, *_, canonical in cand_rows if not canonical}
-        )
-        by_name: dict[str, list[EntityMatch]] = defaultdict(list)
-        for row, display_name, etype, person_id, canonical in cand_rows:
-            if row.normalized_value is not None:
-                m = EntityMatch.model_validate(row)
-                m = m.model_copy(
-                    update={
-                        "entity_name": display_name,
-                        "entity_type": str(etype) if etype is not None else None,
-                        "entity_person_id": str(person_id) if person_id is not None else None,
-                        "entity_is_provisional": not canonical,
-                        "entity_pending_merge_count": None if canonical else pending_merges.get(row.entity_id, 0),
-                    }
-                )
-                by_name[row.normalized_value].append(m)
+        by_name = await self._candidates_for_names(base, names)
 
         # one query for a representative surface form + file count per name
         surf_rows = (
@@ -641,6 +663,43 @@ class PostgresEntityMatchRepository:
         )
         await self.session.commit()
         return EntityMatch.model_validate(row)
+
+    async def unresolve_name_group(self, *, entity_id: str, normalized_value: str) -> int:
+        """Send a name group resolved to an entity back to the Resolve queue. Returns mentions detached.
+
+        Its mentions lose the entity, the group-level resolution that attached them returns to
+        pending, and siblings auto-rejected by that confirmation are reopened. Aliases are untouched.
+        """
+        detached = await self.session.execute(
+            update(MentionTable)
+            .where(
+                MentionTable.entity_id == entity_id,
+                MentionTable.entity_attribute == "name",
+                MentionTable.normalized_value == normalized_value,
+            )
+            .values(entity_id=None)
+        )
+        group = and_(EntityMatchTable.normalized_value == normalized_value, EntityMatchTable.mention_id.is_(None))
+        reopen = {
+            "status": EntityMatchStatus.PENDING,
+            "reviewed_by": None,
+            "reviewed_at": None,
+            "decision_source": None,
+        }
+        await self.session.execute(
+            update(EntityMatchTable)
+            .where(
+                group, EntityMatchTable.entity_id == entity_id, EntityMatchTable.status == EntityMatchStatus.CONFIRMED
+            )
+            .values(**reopen)
+        )
+        await self.session.execute(
+            update(EntityMatchTable)
+            .where(group, EntityMatchTable.decision_source == DecisionSource.SIBLING_AUTO.value)
+            .values(**reopen)
+        )
+        await self.session.commit()
+        return detached.rowcount or 0
 
     async def resolve_match(self, match_id: str, review: EntityMatchReview) -> EntityMatch | None:
         """Confirm or reject one candidate. On confirm: attach + merge provisional + reject siblings."""

@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -42,6 +42,11 @@ class ExtractedTextTable(Base):
     date_created: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
     date_last_updated: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+    # An analyst drew, relabelled, or deleted a mention in this text: its mentions are retraining material.
+    is_mentions_corrected: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    mentions_reviewed_by: Mapped[str | None] = mapped_column(
+        String, ForeignKey("user.id", ondelete="SET NULL"), nullable=True
     )
 
     file: Mapped["FileTable"] = relationship(back_populates="extracted_text")

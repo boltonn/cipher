@@ -32,6 +32,7 @@ members = [
     "cipher-datastores",
     "cipher-names",
     "cipher-orchestration",
+    "cipher-places",
     "cipher-schemas",
     "cipher-utils",
     "clir",
@@ -476,6 +477,7 @@ version = "0.0.1"
 source = { virtual = "." }
 dependencies = [
     { name = "cipher-names" },
+    { name = "cipher-places" },
     { name = "cipher-schemas" },
     { name = "cipher-utils" },
 ]
@@ -575,6 +577,7 @@ requires-dist = [
     { name = "cipher-datastores", extras = ["postgres"], marker = "extra == 'postgres'", editable = "libs/cipher-datastores" },
     { name = "cipher-names", editable = "libs/cipher-names" },
     { name = "cipher-orchestration", extras = ["cli"], marker = "extra == 'orchestration'", editable = "pipelines/cipher-orchestration" },
+    { name = "cipher-places", editable = "libs/cipher-places" },
     { name = "cipher-schemas", editable = "libs/cipher-schemas" },
     { name = "cipher-utils", editable = "libs/cipher-utils" },
     { name = "clir", marker = "extra == 'analytics-cpu'", editable = "analytics/clir" },
@@ -723,6 +726,7 @@ source = { editable = "pipelines/cipher-orchestration" }
 dependencies = [
     { name = "anyio" },
     { name = "cipher-datastores", extra = ["elasticsearch", "postgres"] },
+    { name = "cipher-places" },
     { name = "cipher-schemas" },
     { name = "cipher-utils" },
     { name = "loguru" },
@@ -791,6 +795,7 @@ requires-dist = [
     { name = "cipher-datastores", extras = ["postgres", "elasticsearch"], editable = "libs/cipher-datastores" },
     { name = "cipher-orchestration", extras = ["gliner", "nerd"], marker = "extra == 'ner'", editable = "pipelines/cipher-orchestration" },
     { name = "cipher-orchestration", extras = ["staging", "text-extraction", "ocr", "text-embedding", "image-embedding", "face-detection", "contact-extraction", "event-extraction"], marker = "extra == 'cli'", editable = "pipelines/cipher-orchestration" },
+    { name = "cipher-places", editable = "libs/cipher-places" },
     { name = "cipher-schemas", editable = "libs/cipher-schemas" },
     { name = "cipher-utils", editable = "libs/cipher-utils" },
     { name = "clir", marker = "extra == 'text-embedding'", editable = "analytics/clir" },
@@ -814,6 +819,17 @@ requires-dist = [
     { name = "typer" },
 ]
 provides-extras = ["staging", "text-extraction", "ocr", "text-embedding", "image-embedding", "exif-location", "face-detection", "contact-extraction", "event-extraction", "gliner", "nerd", "cli", "ner"]
+
+[[package]]
+name = "cipher-places"
+version = "0.0.1"
+source = { editable = "libs/cipher-places" }
+dependencies = [
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "pydantic", specifier = ">=2" }]
 
 [[package]]
 name = "cipher-schemas"

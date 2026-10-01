@@ -411,11 +411,12 @@ async def related_entities(
 ) -> dict:
     """Traverse the knowledge graph from an entity.
 
-    Answers who it communicates with, works for, is a member of, or shares an
-    identifier with.
+    Answers who it communicates with, works for, is a member of, shares an
+    identifier with, or which events (meetings, trips, calls) it took part in.
     `depth=1` returns direct neighbours; up to 3 walks further out. Filter with
     `relationship_type` (any type in the ontology in your instructions, e.g. `emailed`,
-    `employed_by`, `member_of`). Returns `{nodes, edges}`. To rank
+    `employed_by`, `member_of`, `participant_in`). With `participant_in` and `depth=2`
+    the event nodes lead on to everyone else who attended them. Returns `{nodes, edges}`. To rank
     the strongest connections ("who does X talk to most"), use `top_connections`.
     """
     types = [relationship_type] if relationship_type else None

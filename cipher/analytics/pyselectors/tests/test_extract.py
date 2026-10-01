@@ -193,10 +193,10 @@ def test_ip_gated_and_reserved_dropped():
 
 
 def test_social_url_action_paths_rejected():
-    """Social url action paths rejected."""
-    assert not extract_selectors("unsubscribe http://www.facebook.com/o.php?k=d60152&u=1")
-    assert not extract_selectors("get the app at https://twitter.com/download?s=13")
-    assert not extract_selectors("see https://www.instagram.com/p/CabcDEF/ for the post")
+    """Social url action paths yield no handle (the site itself is still a `domain`)."""
+    assert SelectorType.SOCIAL_HANDLE not in _by_type("unsubscribe http://www.facebook.com/o.php?k=d60152&u=1")
+    assert SelectorType.SOCIAL_HANDLE not in _by_type("get the app at https://twitter.com/download?s=13")
+    assert SelectorType.SOCIAL_HANDLE not in _by_type("see https://www.instagram.com/p/CabcDEF/ for the post")
     (span,) = extract_selectors("real one https://www.facebook.com/michael.golt/posts/101")
     assert span.normalized_value == "michael.golt"
 
@@ -216,3 +216,29 @@ def test_email_tld_does_not_run_into_next_word():
     """Email tld does not run into next word."""
     got = [s.normalized_value for s in extract_selectors("write tips@medium.com Like what you see")]
     assert got == ["tips@medium.com"]
+
+
+def test_domains_reduce_to_registrable_domain():
+    """URLs and bare domains become the site's registrable domain; emails and filenames don't."""
+    spans = extract_selectors(
+        "Visit Udemy.com or https://click.e.target.com/terms?x=1 and www.bbc.co.uk/news. "
+        "Mail nick@dell.com about main.py and report.pdf."
+    )
+    assert [(s.selector_type, s.normalized_value) for s in spans] == [
+        (SelectorType.DOMAIN, "udemy.com"),
+        (SelectorType.DOMAIN, "target.com"),
+        (SelectorType.DOMAIN, "bbc.co.uk"),
+        (SelectorType.EMAIL, "nick@dell.com"),
+    ]
+
+
+def test_web_address_helpers():
+    """Name spans that are (part of) a website are recognised."""
+    from pyselectors.domains import is_web_address, web_host_containing
+
+    assert is_web_address("Udemy.com") and is_web_address("Target.com/CircleCard")
+    assert not is_web_address("Hotels.com Rewards") and not is_web_address("Towards")
+    content = "read (towardsdatascience.com) or upenn.edu/usa -- Dell"
+    assert web_host_containing(content, 6, 13) == "towardsdatascience.com"
+    assert web_host_containing(content, 43, 46) is None  # path, not host
+    assert web_host_containing(content, 50, 54) is None

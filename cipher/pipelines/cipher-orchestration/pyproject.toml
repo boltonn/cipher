@@ -8,6 +8,7 @@ dependencies = [
     "anyio",
     "cipher-schemas",
     "cipher-datastores[postgres,elasticsearch]",
+    "cipher-places",
     "cipher-utils",
     "loguru",
     "pyprompt",
@@ -42,6 +43,7 @@ cipher = "cipher.orchestration.cli:app"
 cipher-orchestration = { workspace = true }
 cipher-schemas = { workspace = true }
 cipher-datastores = { workspace = true }
+cipher-places = { workspace = true }
 cipher-utils = { workspace = true }
 clir = { workspace = true }
 filetyper = { workspace = true }

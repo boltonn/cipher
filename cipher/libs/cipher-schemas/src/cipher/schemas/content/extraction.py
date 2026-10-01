@@ -79,6 +79,10 @@ class ExtractedText(ExtractedTextBase):
     id: str
     date_created: datetime
     date_last_updated: datetime
+    is_mentions_corrected: bool = Field(
+        default=False, description="An analyst drew, relabelled, or deleted a mention in this text"
+    )
+    mentions_reviewed_by: str | None = Field(default=None, description="User who last corrected its mentions")
 
     model_config = {
         "from_attributes": True,

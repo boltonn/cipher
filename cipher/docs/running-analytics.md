@@ -146,6 +146,7 @@ mailbox takes overnight), and runs over 15,000 files are refused unless you pass
 |---|---|---|
 | 5a | `cipher extract-relationships --dataset-name rag` | Directed `emailed` edges, sender → recipient address, weight = emails sent that way. Needs no resolution; feeds `top_connections`. |
 | 5b | `cipher resolve-entities --dataset-name rag --concurrency 8` | Matches mention groups to entities: auto-attach, send to review, or create a provisional entity. `--concurrency` makes it about 6× faster. |
+| 5b′ | `cipher resolve-locations --dataset-name rag` | Place mentions → shared country / state / city / region entities via the offline gazetteer (`cipher-places-build` once, writes `~/models/gazetteer/`). Per mention, using nearby text (`Dover, DE 19904` → Delaware); ambiguous names (`Washington`, `Georgia`) stay unresolved. Runs automatically at the end of 5b (`--skip-locations` to opt out). |
 | 5c | `cipher dedupe-entities --dataset-name rag` | Proposes merges between provisional and canonical entities (always goes to review) |
 | 5d | `cipher resolve-event-links --dataset-name rag` | Links event participants and places to entities / locations |
 
@@ -193,7 +194,6 @@ cipher stats --dataset-name $D
 | Undo face matches / clusters | `match-faces --reset`, `cluster-faces --reset [--reset-verified]` |
 | `cipher-names` upgraded | `backfill-entity-name-keys [--purge]` |
 | `pyselectors` packs updated | `refresh-selectors` |
-| Email edges built before 2026-09-29 (undirected `communicates_with`) | `extract-relationships --rebuild` (replaces them with `emailed`) |
 | Old dataset, mentions missing `chunk_id` | `backfill-mention-chunks` |
 | `RETRIEVAL__BACKEND=elasticsearch` only | `sync-chunk-entities` after step 4 (`--purge` after `reset-entities`) |
 | Check throughput / calibrate estimates | `cipher rates`, `cipher estimate --dataset-name X` |

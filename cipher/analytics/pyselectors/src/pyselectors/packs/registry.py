@@ -21,6 +21,7 @@ ENABLED_TYPES: tuple[SelectorType, ...] = (
     SelectorType.PHONE,
     SelectorType.NATIONAL_ID,
     SelectorType.SOCIAL_HANDLE,
+    SelectorType.DOMAIN,
 )
 
 

@@ -210,7 +210,7 @@ async def _attach_calendar_place(
                 latitude=latitude,
                 longitude=longitude,
                 name=venue,
-                source=LocationSource.NAMED_MENTION,
+                source=LocationSource.NAME_MENTION,
             )
         )
         await event_repo.add_place(

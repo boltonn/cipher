@@ -1,6 +1,6 @@
 from typing import Any
 
-from sqlalchemy import delete, func, select, text, update
+from sqlalchemy import delete, func, or_, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +10,7 @@ from cipher.datastores.postgres.tables.image import ImageTable
 from cipher.datastores.postgres.tables.location import LocationTable
 from cipher.datastores.postgres.utils import strip_null_bytes
 from cipher.schemas.graph.location import Location, LocationCreate, LocationQuery, LocationUpdate
+from cipher.schemas.graph.ontology import LocationSource
 
 _UPSERT_KEYS = (
     "latitude",
@@ -28,6 +29,11 @@ _UPSERT_KEYS = (
     "date_recorded",
     "attributes",
 )
+
+
+# A gazetteer place (a city/country centroid behind a place entity) is reference
+# data, not an observed coordinate: no file, and kept off the map.
+_IS_OBSERVED_POINT = or_(LocationTable.source != LocationSource.NAME_MENTION, LocationTable.file_id.is_not(None))
 
 
 def _row_values(payload: LocationCreate) -> dict[str, Any]:
@@ -102,7 +108,7 @@ class PostgresLocationRepository:
         stmt = pg_insert(LocationTable).values(list(deduped.values()))
         stmt = stmt.on_conflict_do_update(
             index_elements=["file_id", "source"],
-            index_where=text("source <> 'TEXT_MENTION'"),
+            index_where=text("source <> 'COORDINATE_MENTION'"),
             set_={k: getattr(stmt.excluded, k) for k in _UPSERT_KEYS},
         )
         await self.session.execute(stmt)
@@ -110,8 +116,8 @@ class PostgresLocationRepository:
         return len(deduped)
 
     async def query_locations(self, query: LocationQuery) -> list[Location]:
-        """Points matching the viewer's filters."""
-        where = []
+        """Observed points matching the viewer's filters (gazetteer places excluded)."""
+        where = [_IS_OBSERVED_POINT]
         if query.bbox is not None:
             west, south, east, north = query.bbox
             where.append(func.ST_Intersects(LocationTable.geom, func.ST_MakeEnvelope(west, south, east, north, 4326)))
@@ -119,6 +125,8 @@ class PostgresLocationRepository:
             where.append(LocationTable.dataset_id.in_(query.dataset_ids))
         if query.sources:
             where.append(LocationTable.source.in_(query.sources))
+        if query.categories:
+            where.append(LocationTable.category.in_(query.categories))
         if query.date_from is not None:
             where.append(LocationTable.date_recorded >= query.date_from)
         if query.date_to is not None:
@@ -133,6 +141,16 @@ class PostgresLocationRepository:
         )
         rows = (await self.session.execute(stmt)).scalars().all()
         return [_to_schema(row) for row in rows]
+
+    async def get_categories(self) -> list[str]:
+        """Distinct categories present among observed points, most common first."""
+        stmt = (
+            select(LocationTable.category)
+            .where(LocationTable.category.is_not(None), _IS_OBSERVED_POINT)
+            .group_by(LocationTable.category)
+            .order_by(func.count().desc(), LocationTable.category)
+        )
+        return list((await self.session.execute(stmt)).scalars().all())
 
     async def image_ids_for_files(self, file_ids: list[str]) -> dict[str, str]:
         """Map file_id -> image content id (sha256) for files that are images.

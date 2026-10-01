@@ -16,6 +16,7 @@ from cipher.schemas._base.base import BaseModel
 from cipher.schemas._base.common import PageParams, PaginatedResponse
 from cipher.schemas._base.review import MatchSortField, ReviewableMixin, ReviewDecision, ReviewStatus
 from cipher.schemas.graph.entity_resolution import ResolutionExplanation
+from cipher.schemas.graph.mention import UnresolvedNameGroup
 
 # Back-compat aliases -- prefer the shared names from `cipher.schemas._base.review`.
 EntityMatchStatus = ReviewStatus
@@ -215,3 +216,18 @@ class PaginatedEntityMatchesResponse(PaginatedResponse):
     """Paginated response for entity matches."""
 
     data: list[EntityMatch] = Field(description="List of entity matches")
+
+
+class NameGroupInQueue(UnresolvedNameGroup):
+    """One name group in the Resolve queue: the unresolved name plus its pending resolutions."""
+
+    resolutions: list[EntityMatch] = Field(
+        default_factory=list,
+        description="Pending resolutions proposing this name group is an existing entity, best first",
+    )
+
+
+class PaginatedResolveQueueResponse(PaginatedResponse):
+    """Paginated Resolve queue -- one row per unresolved name group."""
+
+    data: list[NameGroupInQueue] = Field(description="Name groups, most mentions first")

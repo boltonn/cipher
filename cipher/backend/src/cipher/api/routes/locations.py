@@ -1,8 +1,8 @@
 """The geospatial surface: query geolocated points for the map viewer.
 
-First producer is EXIF: `pipelines/cipher-orchestration/embed_images.py` writes a
-`location` row for every geotagged photo. Address/place mentions resolved to a
-location entity also land here (bridged by shared id via `entity.location_id`).
+The map shows observed coordinates: EXIF GPS, lat/longs written in text, geocoded
+addresses, device fixes. Gazetteer places (the city/country behind a resolved
+place name) keep a `location` row as their entity's detail but are not points.
 """
 
 from datetime import datetime
@@ -35,6 +35,7 @@ async def query_locations(
     bbox: Annotated[str | None, Query(description="west,south,east,north in degrees")] = None,
     dataset_ids: Annotated[list[str] | None, Query(alias="datasetIds")] = None,
     sources: Annotated[list[LocationSource] | None, Query()] = None,
+    categories: Annotated[list[str] | None, Query()] = None,
     date_from: Annotated[datetime | None, Query(alias="dateFrom")] = None,
     date_to: Annotated[datetime | None, Query(alias="dateTo")] = None,
     limit: Annotated[int, Query(ge=1, le=10000)] = 2000,
@@ -45,6 +46,7 @@ async def query_locations(
         bbox=_parse_bbox(bbox),
         dataset_ids=dataset_ids or [],
         sources=sources or [],
+        categories=categories or [],
         date_from=date_from,
         date_to=date_to,
         limit=limit,
@@ -74,6 +76,12 @@ async def query_locations(
         if loc.geo_json is not None
     ]
     return {"type": "FeatureCollection", "features": features}
+
+
+@router.get("/categories", summary="Get the distinct categories present among locations", response_model=list[str])
+async def get_location_categories(datastore: LocationDatastoreDep) -> list[str]:
+    """Distinct location categories, most common first."""
+    return await datastore.get_categories()
 
 
 @router.get("/{location_id}", summary="Get a location", response_model=Location)

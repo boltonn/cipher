@@ -20,6 +20,13 @@ make every decision inspectable. **R5** (Splink weight calibration) and **R6**
 `--use-embeddings`) below are the plan. A per-group concurrency pass is the noted
 scale-out for large mailboxes.
 
+**Using it (2026-09-29):** the Entities page has a **Verify** tab (check auto-created
+entities: verify / edit / merge) and a **Resolve** tab (one card per name group: accept or
+reject a suggested resolution, another entity, create a new entity, not an entity). The
+analyst-facing terms are in [`glossary.md`](./glossary.md#resolution-workflow-entities-page)
+and the workflow in [`entities.md`](./entities.md#the-analyst-workflow-verify-then-resolve).
+The UI steps in §12.1 below predate that merge of the old Review and Resolve tabs.
+
 ---
 
 ## 1. Scope
