@@ -36,7 +36,7 @@ import { cn } from "@/lib/utils";
 import { BadgeCheck, Loader2, UserRound } from "lucide-react";
 import { useRef, useState } from "react";
 
-const FIELD_LABEL = "text-[10px] uppercase tracking-widest text-muted-foreground";
+const FIELD_LABEL = "text-[11px] uppercase tracking-wide text-muted-foreground";
 
 interface CreatePersonDialogProps {
   isOpen: boolean;
@@ -141,7 +141,7 @@ export function CreatePersonDialog({ isOpen, onOpenChange, sourceFace }: CreateP
     <Dialog open={isOpen} onOpenChange={(open) => (open ? onOpenChange(open) : handleClose())}>
       <DialogContent className="bg-card border-border sm:max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-white tracking-[0.1em] uppercase text-xs font-black">
+          <DialogTitle className="text-white tracking-wide uppercase text-xs font-semibold">
             Create Person
           </DialogTitle>
           <DialogDescription className="text-muted-foreground text-xs">
@@ -215,7 +215,7 @@ export function CreatePersonDialog({ isOpen, onOpenChange, sourceFace }: CreateP
                   <button
                     type="button"
                     onClick={() => setSelectedFaceIndex(null)}
-                    className="text-[10px] text-annotation/80 hover:text-annotation uppercase tracking-widest font-bold"
+                    className="text-xs text-annotation/80 hover:text-annotation font-medium"
                   >
                     Change face
                   </button>
@@ -223,7 +223,7 @@ export function CreatePersonDialog({ isOpen, onOpenChange, sourceFace }: CreateP
                 <button
                   type="button"
                   onClick={handleRemovePhoto}
-                  className="text-[10px] text-destructive/70 hover:text-destructive uppercase tracking-widest font-bold"
+                  className="text-xs text-destructive/70 hover:text-destructive font-medium"
                 >
                   Remove photo
                 </button>

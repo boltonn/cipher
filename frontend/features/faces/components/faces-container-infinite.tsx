@@ -15,6 +15,8 @@ import type {
 } from "../types";
 import { ImageViewerDialog } from "@/features/images/components/image-viewer-dialog";
 import { FaceCard } from "./face-card";
+import type { FaceSelection } from "../hooks/use-face-selection";
+import { useRejectFaces, useUnrejectFaces } from "../hooks/use-reject-faces";
 
 // Mirrors this grid's `grid-cols-*` breakpoints as plain numbers for virtualization.
 const FULL_WIDTH_COLUMNS: ColumnBreakpoint[] = [
@@ -31,9 +33,12 @@ const NARROW_COLUMNS: ColumnBreakpoint[] = [
 ];
 
 interface FacesContainerInfiniteProps {
-  data: InfiniteData<PaginatedFacesResponse | PaginatedFaceSimilarityResponse> | undefined;
+  data:
+    | InfiniteData<PaginatedFacesResponse | PaginatedFaceSimilarityResponse>
+    | undefined;
   onSimilar: (id: string) => void;
-  onDelete?: (id: string) => void;
+  /** Enables multi-select checkboxes on the cards. */
+  selection?: FaceSelection;
   fetchNextPage: () => void;
   hasNextPage: boolean;
   isFetchingNextPage: boolean;
@@ -44,7 +49,7 @@ interface FacesContainerInfiniteProps {
 export function FacesContainerInfinite({
   data,
   onSimilar,
-  onDelete,
+  selection,
   fetchNextPage,
   hasNextPage,
   isFetchingNextPage,
@@ -52,11 +57,16 @@ export function FacesContainerInfinite({
   onToggleFilters,
 }: FacesContainerInfiniteProps) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
-  const [createPersonFace, setCreatePersonFace] = useState<FacePublic | null>(null);
+  const [createPersonFace, setCreatePersonFace] = useState<FacePublic | null>(
+    null
+  );
 
   const faces = useMemo(() => {
     if (!data) return [];
-    return data.pages.flatMap((page) => page.data) as (FacePublic | FaceSimilarityResult)[];
+    return data.pages.flatMap((page) => page.data) as (
+      | FacePublic
+      | FaceSimilarityResult
+    )[];
   }, [data]);
 
   // `handleExpand`/`renderItem` must keep a stable identity across renders --
@@ -68,6 +78,28 @@ export function FacesContainerInfinite({
   useEffect(() => {
     facesRef.current = faces;
   }, [faces]);
+  const { mutate: rejectFaces } = useRejectFaces();
+  const { mutate: unrejectFaces } = useUnrejectFaces();
+  const handleReject = useCallback(
+    (face: FacePublic) => rejectFaces([face.id]),
+    [rejectFaces]
+  );
+  const handleRestore = useCallback(
+    (face: FacePublic) => unrejectFaces([face.id]),
+    [unrejectFaces]
+  );
+  const toggleSelection = selection?.toggle;
+  const handleToggleSelect = useCallback(
+    (face: FacePublic, range: boolean) =>
+      toggleSelection?.(
+        face.id,
+        facesRef.current.map((f) => f.id),
+        range
+      ),
+    [toggleSelection]
+  );
+  const selectedIds = selection?.selectedIds;
+  const isSelectionActive = !!selectedIds?.size;
   const handleExpand = useCallback(
     (face: FacePublic) => setSelectedIndex(facesRef.current.indexOf(face)),
     []
@@ -79,9 +111,23 @@ export function FacesContainerInfinite({
         onFindSimilar={onSimilar}
         onExpand={handleExpand}
         onCreatePerson={setCreatePersonFace}
+        onReject={handleReject}
+        onRestore={handleRestore}
+        isSelected={!!selectedIds?.has(face.id)}
+        isSelectionActive={isSelectionActive}
+        onToggleSelect={toggleSelection ? handleToggleSelect : undefined}
       />
     ),
-    [onSimilar, handleExpand]
+    [
+      onSimilar,
+      handleExpand,
+      handleReject,
+      handleRestore,
+      selectedIds,
+      isSelectionActive,
+      toggleSelection,
+      handleToggleSelect,
+    ]
   );
 
   // From inside the viewer, a similarity search replaces the whole grid --
@@ -95,7 +141,9 @@ export function FacesContainerInfinite({
   );
 
   const handleNext = useCallback(() => {
-    setSelectedIndex((prev) => (prev !== null && prev < faces.length - 1 ? prev + 1 : prev));
+    setSelectedIndex((prev) =>
+      prev !== null && prev < faces.length - 1 ? prev + 1 : prev
+    );
   }, [faces.length]);
 
   const handlePrev = useCallback(() => {
@@ -105,9 +153,13 @@ export function FacesContainerInfinite({
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "ArrowRight")
-        setSelectedIndex((prev) => (prev !== null && prev < faces.length - 1 ? prev + 1 : prev));
+        setSelectedIndex((prev) =>
+          prev !== null && prev < faces.length - 1 ? prev + 1 : prev
+        );
       if (e.key === "ArrowLeft")
-        setSelectedIndex((prev) => (prev !== null && prev > 0 ? prev - 1 : prev));
+        setSelectedIndex((prev) =>
+          prev !== null && prev > 0 ? prev - 1 : prev
+        );
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -118,7 +170,8 @@ export function FacesContainerInfinite({
       if (!hasNextPage || isFetchingNextPage) return;
       const observer = new IntersectionObserver(
         ([entry]) => {
-          if (entry.isIntersecting && hasNextPage && !isFetchingNextPage) fetchNextPage();
+          if (entry.isIntersecting && hasNextPage && !isFetchingNextPage)
+            fetchNextPage();
         },
         { threshold: 0.5 }
       );
@@ -131,14 +184,14 @@ export function FacesContainerInfinite({
   if (faces.length === 0 && !isFetchingNextPage) {
     return (
       <div className="flex flex-col items-center justify-center py-40 border border-dashed border-border/50 rounded-3xl bg-muted/10">
-        <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-muted-foreground mb-4">
+        <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground mb-4">
           No Faces Resolved
         </p>
         {isFullWidth && (
           <Button
             variant="ghost"
             onClick={onToggleFilters}
-            className="text-[9px] font-bold uppercase tracking-widest text-annotation hover:bg-annotation/5"
+            className="text-xs font-medium text-annotation hover:bg-annotation/5"
           >
             <SlidersHorizontal size={12} className="mr-2" /> Expand Filters
           </Button>
@@ -168,7 +221,6 @@ export function FacesContainerInfinite({
           hasPrev={selectedIndex > 0}
           onFindSimilarFace={handleFindSimilarFromDialog}
           onCreatePersonFromFace={setCreatePersonFace}
-          onDeleteFace={onDelete}
         />
       )}
 
@@ -178,15 +230,18 @@ export function FacesContainerInfinite({
         sourceFace={createPersonFace ?? undefined}
       />
 
-      <div ref={lastElementRef} className="py-20 flex flex-col items-center gap-4">
+      <div
+        ref={lastElementRef}
+        className="py-20 flex flex-col items-center gap-4"
+      >
         {isFetchingNextPage ? (
-          <div className="flex items-center gap-3 text-annotation text-[10px] font-bold uppercase tracking-widest">
+          <div className="flex items-center gap-3 text-annotation text-[11px] font-bold uppercase tracking-wide">
             <Loader2 className="h-4 w-4 animate-spin" /> Batching
           </div>
         ) : hasNextPage ? (
           <div className="h-1 w-12 rounded-full bg-annotation/20 animate-pulse" />
         ) : (
-          <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">
+          <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wide">
             End of Chain
           </span>
         )}

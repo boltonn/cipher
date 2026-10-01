@@ -34,7 +34,7 @@ export function DatasetCard({ dataset }: DatasetCardProps) {
         <Stat icon={<Tags size={11} />} label="Types" value={formatCompactNumber(dataset.filetypeCount)} />
       </div>
 
-      <div className="mt-3 text-[9px] font-bold uppercase tracking-widest text-muted-foreground">
+      <div className="mt-3 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
         Updated {new Date(dataset.dateLastUpdated).toLocaleDateString()}
       </div>
     </Link>
@@ -45,7 +45,7 @@ const Stat = ({ icon, label, value }: { icon: React.ReactNode; label: string; va
   <div className="flex flex-col gap-0.5">
     <div className="flex items-center gap-1 text-muted-foreground">
       {icon}
-      <span className="text-[9px] font-bold uppercase tracking-widest">{label}</span>
+      <span className="text-[11px] font-bold uppercase tracking-wide">{label}</span>
     </div>
     <span className="text-sm font-mono text-foreground">{value}</span>
   </div>

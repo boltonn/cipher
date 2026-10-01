@@ -8,11 +8,13 @@ import {
   GraphContextMenu,
   type ContextTarget,
 } from "@/features/graph/components/graph-context-menu";
+import { DatasetSelect } from "@/features/datasets/components/dataset-select";
 import { GraphToolbar } from "@/features/graph/components/graph-toolbar";
 import type {
   EdgePick,
   LabelsMode,
 } from "@/features/graph/components/network-canvas";
+import { EventNodeInspector } from "@/features/graph/components/event-node-inspector";
 import { NodeInspector } from "@/features/graph/components/node-inspector";
 import { useGraphExplore } from "@/features/graph/hooks/use-graph-explore";
 import { useLocalStorageState } from "@/hooks/use-local-storage-state";
@@ -65,6 +67,10 @@ function GraphPageInner() {
     processed.current = true;
   }, [searchParams, setDatasetId, addSeed]);
 
+  const selectedIsEvent =
+    !!selectedId &&
+    !!explore.built?.graph.hasNode(selectedId) &&
+    explore.built.graph.getNodeAttribute(selectedId, "entityType") === "event";
   const selectedIsSeed = selectedId ? explore.seedIds.includes(selectedId) : false;
   const selectedIsExpanded = selectedId
     ? explore.expandedSet.has(selectedId)
@@ -92,22 +98,27 @@ function GraphPageInner() {
         icon={<Waypoints size={12} className="text-primary/70" />}
         value={
           !datasetId
-            ? "no dataset"
+            ? "No dataset selected"
             : explore.nodeCount
-              ? `${explore.nodeCount} nodes`
-              : "empty"
+              ? `${explore.nodeCount.toLocaleString()} nodes`
+              : "No nodes"
+        }
+        actions={
+          <DatasetSelect
+            datasetId={datasetId}
+            onChange={(id) => {
+              setDatasetId(id);
+              explore.reset();
+              setSelectedId(null);
+              setSelectedEdge(null);
+            }}
+          />
         }
       />
 
       <div className="mt-4 shrink-0">
         <GraphToolbar
           datasetId={datasetId}
-          onDatasetChange={(id) => {
-            setDatasetId(id);
-            explore.reset();
-            setSelectedId(null);
-            setSelectedEdge(null);
-          }}
           filters={explore.filters}
           onFiltersChange={explore.setFilters}
           labelsMode={labelsMode}
@@ -168,7 +179,7 @@ function GraphPageInner() {
             <EmptyState
               icon={Database}
               title="Choose a dataset"
-              body="The network is scoped to one dataset. Pick one in the toolbar, then add entities to explore their connections."
+              body="The network is scoped to one dataset. Pick one from the selector in the top bar, then add entities to explore their connections."
             />
           ) : explore.seedIds.length === 0 ? (
             <EmptyState
@@ -218,7 +229,23 @@ function GraphPageInner() {
           )}
         </div>
 
-        {selectedId && (
+        {selectedId && selectedIsEvent && (
+          <EventNodeInspector
+            key={selectedId}
+            eventId={selectedId}
+            isExpanded={selectedIsExpanded}
+            onClose={() => setSelectedId(null)}
+            onExpand={explore.expand}
+            onCollapse={explore.collapse}
+            onHide={(id) => {
+              explore.hide(id);
+              setSelectedId(null);
+            }}
+            onIsolate={explore.isolate}
+          />
+        )}
+
+        {selectedId && !selectedIsEvent && (
           <NodeInspector
             key={selectedId}
             entityId={selectedId}

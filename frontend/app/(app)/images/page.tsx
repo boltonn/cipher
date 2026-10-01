@@ -59,7 +59,7 @@ function ImageSearchPageInner() {
         eyebrow="Images"
         value={
           isSimilarityMode || queryLabel
-            ? `${totalAssets.toLocaleString()} Results`
+            ? `${totalAssets.toLocaleString()} results`
             : `${totalAssets.toLocaleString()} images`
         }
         extra={
@@ -67,7 +67,7 @@ function ImageSearchPageInner() {
             <button
               type="button"
               onClick={actions.clearSearch}
-              className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-primary bg-primary/10 border border-primary/20 rounded-full px-3 py-1.5 hover:bg-primary/20 transition-colors"
+              className="flex items-center gap-1.5 text-xs font-medium text-primary bg-primary/10 border border-primary/20 rounded-full px-3 py-1.5 hover:bg-primary/20 transition-colors"
             >
               <ImageIcon size={12} />
               {queryLabel || "Similar to image"}

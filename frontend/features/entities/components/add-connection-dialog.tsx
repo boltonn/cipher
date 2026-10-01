@@ -29,7 +29,7 @@ import { Loader2 } from "lucide-react";
 import { useMemo, useState } from "react";
 
 /** Edge types that aren't "connections" you add here. */
-const EXCLUDED = new Set(["has_selector", "same_as", "associate_of"]);
+const EXCLUDED = new Set(["has_selector", "same_as", "appears_in_photo_with"]);
 
 const titleCase = (s: string) =>
   s
@@ -55,11 +55,11 @@ export function AddConnectionDialog({
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="border-border bg-card sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="text-xs font-black uppercase tracking-[0.1em] text-white">
+          <DialogTitle className="text-xs font-semibold uppercase tracking-wide text-white">
             Add connection
           </DialogTitle>
           <DialogDescription className="text-xs text-muted-foreground">
-            Link {entityLabel || "this person"} to another entity.
+            Add a relationship from {entityLabel || "this person"} to another entity.
           </DialogDescription>
         </DialogHeader>
         <AddConnectionForm
@@ -126,7 +126,7 @@ function AddConnectionForm({
     <>
       <FieldGroup>
         <Field>
-          <FieldLabel className="text-[10px] uppercase tracking-widest text-muted-foreground">
+          <FieldLabel className="text-[11px] uppercase tracking-wide text-muted-foreground">
             Connection
           </FieldLabel>
           <Select
@@ -150,7 +150,7 @@ function AddConnectionForm({
         </Field>
 
         <Field>
-          <FieldLabel className="text-[10px] uppercase tracking-widest text-muted-foreground">
+          <FieldLabel className="text-[11px] uppercase tracking-wide text-muted-foreground">
             {wantsPerson ? "Person" : titleCase(spec?.allowedDst[0] ?? "entity")}
           </FieldLabel>
           {wantsPerson ? (
@@ -182,7 +182,7 @@ function AddConnectionForm({
 
         {spec && spec.roles.length > 0 && (
           <Field>
-            <FieldLabel className="text-[10px] uppercase tracking-widest text-muted-foreground">
+            <FieldLabel className="text-[11px] uppercase tracking-wide text-muted-foreground">
               {entityLabel || "This person"} is the…
             </FieldLabel>
             <Select value={role} onValueChange={setRole}>

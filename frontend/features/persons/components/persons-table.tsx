@@ -14,8 +14,6 @@ import type { Person } from "@/features/persons/types";
 import { BadgeCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
 
-const HEAD = "text-[10px] font-black uppercase tracking-widest text-muted-foreground";
-
 /** Compact row list of people -- the table alternative to the card grid. */
 export function PersonsTable({ persons }: { persons: Person[] }) {
   const router = useRouter();
@@ -26,11 +24,11 @@ export function PersonsTable({ persons }: { persons: Person[] }) {
         <TableHeader>
           <TableRow className="hover:bg-transparent">
             <TableHead className="w-10" />
-            <TableHead className={HEAD}>Name</TableHead>
-            <TableHead className={HEAD}>a.k.a.</TableHead>
-            <TableHead className={HEAD}>Born</TableHead>
-            <TableHead className={HEAD}>Source</TableHead>
-            <TableHead className={HEAD}>Tags</TableHead>
+            <TableHead>Name</TableHead>
+            <TableHead>a.k.a.</TableHead>
+            <TableHead>Born</TableHead>
+            <TableHead>Source</TableHead>
+            <TableHead>Tags</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -72,13 +70,13 @@ export function PersonsTable({ persons }: { persons: Person[] }) {
                         <Badge
                           key={t}
                           variant="outline"
-                          className="h-5 border-border bg-muted/40 px-1.5 py-0 text-[10px] text-muted-foreground"
+                          className="h-5 border-border bg-muted/40 px-1.5 py-0 text-[11px] text-muted-foreground"
                         >
                           #{t}
                         </Badge>
                       ))}
                       {p.tags.length > 3 && (
-                        <span className="text-[10px] text-muted-foreground">
+                        <span className="text-[11px] text-muted-foreground">
                           +{p.tags.length - 3}
                         </span>
                       )}

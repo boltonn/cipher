@@ -1,10 +1,12 @@
 "use client";
 
+import { DatasetSelect } from "@/features/datasets/components/dataset-select";
 import { PageHeader } from "@/components/page-header";
 import { PaginationModeToggle } from "@/components/pagination-mode-toggle";
 import { PreviewPane } from "@/features/search/components/preview-pane";
 import { ResultsList } from "@/features/search/components/results-list";
 import { SearchFiltersBar } from "@/features/search/components/search-filters-bar";
+import { SearchScopeSummary } from "@/features/search/components/search-scope-summary";
 import { SearchToolbar } from "@/features/search/components/search-toolbar";
 import { useSearchController } from "@/features/search/hooks/use-search-controller";
 import type { SearchFilters, SearchMode, SearchSelection } from "@/features/search/types";
@@ -20,6 +22,7 @@ function SearchPageInner() {
   const {
     groupedResults,
     total,
+    totalIsExact,
     isPending,
     isFetching,
     hasMore,
@@ -76,15 +79,23 @@ function SearchPageInner() {
         eyebrow="Search"
         icon={<FileSearch size={10} className="text-primary/50" />}
         value={
-          query && canSearch && !isPending
-            ? `${total.toLocaleString()} Result${total === 1 ? "" : "s"}`
-            : "Documents & Emails"
+          canSearch && !isPending
+            ? totalIsExact
+              ? `${total.toLocaleString()} result${total === 1 ? "" : "s"}`
+              : "Closest matches"
+            : "Documents & emails"
         }
         actions={
-          <PaginationModeToggle
+          <>
+            <DatasetSelect
+              datasetId={filters.datasetId}
+              onChange={(datasetId) => handleFiltersChange({ ...filters, datasetId })}
+            />
+            <PaginationModeToggle
             mode={paginationMode}
-            onToggle={() => setPaginationMode((p) => (p === "infinite" ? "normal" : "infinite"))}
-          />
+              onToggle={() => setPaginationMode((p) => (p === "infinite" ? "normal" : "infinite"))}
+            />
+          </>
         }
       />
 
@@ -97,6 +108,14 @@ function SearchPageInner() {
           onSearchModeChange={handleSearchModeChange}
         />
         <SearchFiltersBar filters={filters} onFiltersChange={handleFiltersChange} />
+        {canSearch && !isPending && (
+          <SearchScopeSummary
+            query={query}
+            searchMode={searchMode}
+            filters={filters}
+            total={totalIsExact ? total : null}
+          />
+        )}
       </div>
 
       <div className="relative z-10 mt-3 flex min-h-0 flex-1 gap-4">
@@ -116,6 +135,7 @@ function SearchPageInner() {
               onLoadMore={loadMore}
               currentPage={currentPage}
               total={total}
+              totalIsExact={totalIsExact}
               limit={limit}
               onPageChange={handlePageChange}
             />
@@ -124,8 +144,8 @@ function SearchPageInner() {
 
         <main className="flex-1 overflow-hidden rounded-xl border border-border bg-muted/40 shadow-xl">
           <PreviewPane
-            // Remount on mode change so the chunk-highlight toggle re-seeds to the new mode's default.
-            key={searchMode}
+            // Remount on mode / entity-filter change so the highlight + mention-review defaults re-seed.
+            key={`${searchMode}:${filters.entityIds?.join(",") ?? ""}:${filters.mentionValues?.join(",") ?? ""}`}
             fileId={selection?.fileId ?? null}
             chunk={selectedChunk}
             query={query}
@@ -139,6 +159,8 @@ function SearchPageInner() {
             }
             isExpanded={previewExpanded}
             onToggleExpand={() => setPreviewExpanded((current) => !current)}
+            focusEntityIds={filters.entityIds}
+            focusMentionValues={filters.mentionValues}
           />
         </main>
       </div>

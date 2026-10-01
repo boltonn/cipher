@@ -101,10 +101,10 @@ export function FileViewerDialog({
         <aside className="w-full md:w-100 border-l border-border/50 flex flex-col min-h-0 bg-popover relative">
           <DialogHeader className="shrink-0 p-5 pb-4">
             <div className="flex items-center justify-between mb-1">
-              <DialogTitle className="text-white tracking-[0.2em] uppercase text-[10px] font-black truncate">
+              <DialogTitle className="text-white tracking-wide uppercase text-[11px] font-semibold truncate">
                 {file.filename}
               </DialogTitle>
-              <span className="text-[10px] font-mono text-primary bg-primary/10 px-2 py-0.5 rounded border border-primary/20 shrink-0 ml-2">
+              <span className="text-[11px] font-mono text-primary bg-primary/10 px-2 py-0.5 rounded border border-primary/20 shrink-0 ml-2">
                 {file.filetype.toUpperCase()}
               </span>
             </div>
@@ -113,7 +113,7 @@ export function FileViewerDialog({
                 <CopyableId id={file.id} />
                 <Link
                   href={`/files/${file.id}`}
-                  className="inline-flex items-center gap-1 text-[10px] uppercase tracking-widest text-primary hover:underline shrink-0"
+                  className="inline-flex items-center gap-1 text-xs text-primary hover:underline shrink-0"
                 >
                   Open file page <ExternalLink size={10} />
                 </Link>
@@ -129,20 +129,20 @@ export function FileViewerDialog({
                 <TabsList className="w-full bg-muted/50 border border-border/50 h-10 p-1">
                   <TabsTrigger
                     value="details"
-                    className="flex-1 text-[10px] uppercase font-bold tracking-widest data-[state=active]:bg-primary"
+                    className="flex-1 text-xs font-medium data-[state=active]:bg-primary"
                   >
                     <HardDrive size={12} className="mr-2" /> Details
                   </TabsTrigger>
                   <TabsTrigger
                     value="text"
-                    className="flex-1 text-[10px] uppercase font-bold tracking-widest data-[state=active]:bg-primary"
+                    className="flex-1 text-xs font-medium data-[state=active]:bg-primary"
                     disabled={!file.id}
                   >
                     <ScrollText size={12} className="mr-2" /> Text
                   </TabsTrigger>
                   <TabsTrigger
                     value="comments"
-                    className="flex-1 text-[10px] uppercase font-bold tracking-widest data-[state=active]:bg-primary"
+                    className="flex-1 text-xs font-medium data-[state=active]:bg-primary"
                     disabled={!file.id}
                   >
                     <MessageSquare size={12} className="mr-2" /> Comments
@@ -161,7 +161,7 @@ export function FileViewerDialog({
                   {file.id ? (
                     <CommentSection commentableType="file" commentableId={file.id} />
                   ) : (
-                    <p className="text-[10px] text-muted-foreground text-center italic py-4">
+                    <p className="text-[11px] text-muted-foreground text-center italic py-4">
                       Comments unavailable.
                     </p>
                   )}
@@ -261,7 +261,7 @@ function FileTextTab({ fileId }: { fileId?: string }) {
 
   if (!fileId) {
     return (
-      <p className="text-[10px] text-muted-foreground text-center italic py-4">Text unavailable.</p>
+      <p className="text-[11px] text-muted-foreground text-center italic py-4">Text unavailable.</p>
     );
   }
   if (isPending) {
@@ -273,7 +273,7 @@ function FileTextTab({ fileId }: { fileId?: string }) {
   }
   if (isError || !data) {
     return (
-      <p className="text-[10px] text-muted-foreground text-center italic py-4">
+      <p className="text-[11px] text-muted-foreground text-center italic py-4">
         Not extracted yet.
       </p>
     );
@@ -282,7 +282,7 @@ function FileTextTab({ fileId }: { fileId?: string }) {
   return (
     <div className="space-y-2">
       {data.imagePages.length > 0 && (
-        <p className="flex items-center gap-1.5 text-[10px] text-annotation">
+        <p className="flex items-center gap-1.5 text-[11px] text-annotation">
           <ScanText size={12} />
           {data.imagePages.length} image-based page{data.imagePages.length === 1 ? "" : "s"} (
           {data.imagePages.join(", ")}) ·{" "}
@@ -290,17 +290,17 @@ function FileTextTab({ fileId }: { fileId?: string }) {
         </p>
       )}
       {file?.datasetId && (
-        <label className="flex items-center justify-end gap-2 text-[10px] uppercase tracking-widest text-muted-foreground">
+        <label className="flex items-center justify-end gap-2 text-[11px] uppercase tracking-wide text-muted-foreground">
           <Waypoints size={12} /> Entities
           <Switch checked={showEntities} onCheckedChange={setShowEntities} />
         </label>
       )}
       {showEntities && file?.datasetId ? (
-        <div className="max-h-125 overflow-auto rounded-lg border border-border/50 bg-black/40 text-[10px]">
+        <div className="max-h-125 overflow-auto rounded-lg border border-border/50 bg-black/40 text-[11px]">
           <EntityMentionText fileId={fileId} datasetId={file.datasetId} />
         </div>
       ) : (
-        <pre className="text-[10px] font-mono text-foreground leading-relaxed whitespace-pre-wrap break-words p-3 rounded-lg bg-black/40 border border-border/50 max-h-125 overflow-auto">
+        <pre className="text-[11px] font-mono text-foreground leading-relaxed whitespace-pre-wrap break-words p-3 rounded-lg bg-black/40 border border-border/50 max-h-125 overflow-auto">
           {data.text}
         </pre>
       )}

@@ -8,6 +8,10 @@ export const ENTITY_TYPES = [
 ] as const;
 export type EntityType = (typeof ENTITY_TYPES)[number];
 
+/** A graph node's kind: every entity type, plus `event` (reached through a `participant_in` edge). */
+export const GRAPH_NODE_TYPES = [...ENTITY_TYPES, "event"] as const;
+export type GraphNodeType = (typeof GRAPH_NODE_TYPES)[number];
+
 export const SELECTOR_TYPES = [
   "phone",
   "email",
@@ -21,6 +25,7 @@ export const SELECTOR_TYPES = [
   "social_handle",
   "crypto_address",
   "license_plate",
+  "domain",
 ] as const;
 export type SelectorType = (typeof SELECTOR_TYPES)[number];
 
@@ -37,6 +42,7 @@ export const SELECTOR_TYPE_LABELS: Record<SelectorType, string> = {
   social_handle: "Social handle",
   crypto_address: "Crypto address",
   license_plate: "License plate",
+  domain: "Website",
 };
 
 /** Specific provider / network / scheme within a selector type. Optional. */
@@ -105,17 +111,21 @@ export const RELATIONSHIP_TYPES = [
   "part_of",
   "subsidiary_of",
   "located_in",
-  "communicates_with",
   "emailed",
   "family_of",
-  "associate_of",
+  "appears_in_photo_with",
+  "co_mention_of",
   "same_as",
   "owns",
+  "participant_in",
 ] as const;
 export type RelationshipType = (typeof RELATIONSHIP_TYPES)[number];
 
-/** Co-mention edges hidden from graph traversal by default (matches the backend). */
-export const LOW_SIGNAL_RELATIONSHIPS: RelationshipType[] = ["associate_of"];
+/** Edges the graph derives at read time (from `event_participant`) -- never in the stored relationship list. */
+export const DERIVED_RELATIONSHIPS: RelationshipType[] = ["participant_in"];
+
+/** Edge types dropped from graph views as low-signal (none today; face co-occurrence stays visible). */
+export const LOW_SIGNAL_RELATIONSHIPS: RelationshipType[] = [];
 
 /**
  * Inverse of a gender-neutral `family_of` role, seen from the target's side.
@@ -180,16 +190,30 @@ export interface Entity {
   entityType: EntityType;
   displayName: string;
   displayNameNormalized: string;
+  /** Curated alternate names -- not every name resolved to the entity (see ResolvedName). */
+  aliases: string[];
   tags: string[];
   notes?: string;
   source: EntitySource;
   isVerified: boolean;
   personId?: string;
+  locationId?: string | null;
+  /** Minted by the resolver, not yet merged into a canonical entity or promoted. */
+  isProvisional: boolean;
   /** only set when entityType === "selector" */
   selectorType?: SelectorType | null;
   selectorSubtype?: SelectorSubtype | null;
   dateCreated: string;
   dateUpdated: string;
+}
+
+/** An entity row in the dataset table: the evidence behind it and its open review work. */
+export interface EntityListItem extends Entity {
+  mentionCount: number;
+  fileCount: number;
+  relationshipCount: number;
+  /** pending Resolve-queue candidates + merge candidates naming this entity */
+  pendingMatchCount: number;
 }
 
 export interface EntityBreakdownItem {
@@ -233,34 +257,26 @@ export interface RelatedEntity {
 
 export type RelatedEntitySort = "weight" | "recent" | "name";
 
-/** Type-specific detail row. Comes back from the backend with snake_case keys
- * (the profile endpoint does not alias the nested dict), so both cases are read. */
+/** Type-specific detail row (organization / location / selector / person), camelCase. */
 export interface EntityDetail {
   legalName?: string;
-  legal_name?: string;
-  orgType?: string;
-  org_type?: string;
+  /** Organization: free-text kind (company, agency, division, office…), like a location's category. */
+  category?: string;
+  /** Organization: the entity id of the organization this one is part of. */
+  parentId?: string | null;
   country?: string;
   addressText?: string;
-  address_text?: string;
   latitude?: number;
   longitude?: number;
   adminArea?: string;
-  admin_area?: string;
   selectorType?: SelectorType;
-  selector_type?: SelectorType;
   selectorSubtype?: SelectorSubtype | null;
-  selector_subtype?: SelectorSubtype | null;
   rawValue?: string;
-  raw_value?: string;
   normalizedValue?: string;
-  normalized_value?: string;
   regionHint?: string;
-  region_hint?: string;
   // person detail (read-only here)
   name?: string;
   dateOfBirth?: string;
-  date_of_birth?: string;
   sex?: string;
   nationality?: string;
   [key: string]: unknown;
@@ -308,8 +324,13 @@ export interface EntityRelationship {
   dateUpdated: string;
 }
 
+/** A traversal node: an entity, or an event. Mirrors backend `GraphNode`. */
+export interface GraphNode extends Omit<EntitySummary, "entityType"> {
+  entityType: GraphNodeType;
+}
+
 export interface GraphResponse {
-  nodes: EntitySummary[];
+  nodes: GraphNode[];
   edges: EntityRelationship[];
 }
 
@@ -407,6 +428,10 @@ export interface EntityMatch {
   entityPersonId?: string | null;
   /** Display name of `provisionalEntityId` on a merge proposal (merge queue only). */
   provisionalName?: string | null;
+  /** `entityId` is a provisional entity, not a canonical one (grouped queue only). */
+  entityIsProvisional?: boolean | null;
+  /** Pending merge proposals filed against a provisional `entityId` (grouped queue only). */
+  entityPendingMergeCount?: number | null;
   status: EntityMatchStatus;
   reviewedBy?: string | null;
   reviewedAt?: string | null;
@@ -426,8 +451,10 @@ export interface EntityMatchGroup {
   alternatives: EntityMatch[];
 }
 
-export type PaginatedEntityMatchGroupsResponse =
-  PaginatedResponse<EntityMatchGroup>;
+export type PaginatedEntityMatchGroupsResponse = PaginatedResponse<EntityMatchGroup> & {
+  /** Name groups left out because their only candidates are provisional (auto-created) entities. */
+  hiddenProvisionalTotal: number;
+};
 
 /** One card in the entity-merge review queue: a provisional stub + canonical targets. */
 export interface EntityMergeGroup {
@@ -457,15 +484,24 @@ export interface EntitySearchParameters {
   selectorSubtype?: SelectorSubtype;
   tags?: string[];
   isVerified?: boolean;
+  /** Auto-created by the resolver, not yet verified or merged (selectors excluded). */
+  provisional?: boolean;
   country?: string;
-  orgType?: string;
+  category?: string;
   dateOfBirthFrom?: string;
   dateOfBirthTo?: string;
   limit: number;
   page: number;
-  sortBy?: "display_name" | "date_created" | "date_updated";
+  sortBy?: EntitySortKey;
   sortOrder?: SortOrderType;
 }
+
+export type EntitySortKey =
+  | "display_name"
+  | "date_created"
+  | "date_updated"
+  | "mention_count"
+  | "relevance";
 
 export interface EntityCreatePayload {
   datasetId: string;
@@ -479,9 +515,36 @@ export interface EntityCreatePayload {
 
 export interface EntityUpdatePayload {
   displayName?: string;
+  aliases?: string[];
   tags?: string[];
   notes?: string;
   isVerified?: boolean;
+}
+
+/** A name the evidence uses for an entity (a resolved name group); aliases are the curated subset. */
+export interface ResolvedName {
+  normalizedValue: string;
+  surface: string;
+  mentionCount: number;
+  isAlias: boolean;
+}
+
+/** An entity a selector is linked to by `has_selector`, and how (`manual`, `selector_inference`, ...). */
+export interface SelectorOwner {
+  entityId: string;
+  displayName: string;
+  source: string;
+}
+
+/** What the data says about who uses a selector (backend `SelectorEvidence`). */
+export interface SelectorEvidence {
+  entityId: string;
+  displayName: string;
+  /** Emails with this address in a header. */
+  emailCount: number;
+  /** Display names seen next to it in headers, most frequent first. */
+  names: string[];
+  linkedTo: SelectorOwner[];
 }
 
 export interface SelectorLinkPayload {
@@ -513,14 +576,31 @@ export interface MentionUpdatePayload {
   selectorType?: SelectorType | null;
   selectorSubtype?: SelectorSubtype | null;
   surfaceText?: string;
+  /** Move the span (send both, plus the new `surfaceText`); the backend re-keys its name group. */
+  startOffset?: number;
+  endOffset?: number;
   context?: string;
+}
+
+/** `GET /mentions/{id}/resolution` -- the resolver's scored candidates for a mention's name group. */
+export interface MentionResolution {
+  mentionId: string;
+  normalizedValue?: string | null;
+  resolvedEntityId?: string | null;
+  resolvedBy?: "system" | "analyst" | null;
+  candidates: {
+    id: string;
+    entityId: string;
+    status: EntityMatchStatus;
+    similarityScore: number;
+    matchMethod: string;
+  }[];
 }
 
 export interface MentionResolvePayload {
   entityId?: string | null;
   newEntity?: EntityCreatePayload | null;
   newEntityDetail?: Record<string, unknown> | null;
-  reviewedBy: string;
 }
 
 /** One distinct unresolved name in the review queue (grouped, not per-mention). */
@@ -531,6 +611,8 @@ export interface UnresolvedNameGroup {
   fileCount: number;
   sampleContext?: string | null;
   suggestedType?: EntityType | null;
+  /** Pending resolutions: entities the resolver proposes this name group is, best first. */
+  resolutions: EntityMatch[];
 }
 
 export interface ResolveNameGroupPayload {
@@ -540,10 +622,9 @@ export interface ResolveNameGroupPayload {
   /** attach to an existing entity; omit to create a new one from the name */
   entityId?: string;
   displayName?: string;
-  reviewedBy?: string;
 }
 
-export type PaginatedEntitiesResponse = PaginatedResponse<Entity>;
+export type PaginatedEntitiesResponse = PaginatedResponse<EntityListItem>;
 export type PaginatedMentionsResponse = PaginatedResponse<Mention>;
 export type PaginatedUnresolvedNamesResponse =
   PaginatedResponse<UnresolvedNameGroup>;
@@ -551,3 +632,19 @@ export type PaginatedRelationshipsResponse =
   PaginatedResponse<EntityRelationship>;
 export type PaginatedRelatedEntitiesResponse = PaginatedResponse<RelatedEntity>;
 export type PaginatedEntityMatchesResponse = PaginatedResponse<EntityMatch>;
+
+/** A person tied to an organization by `employed_by` / `member_of`. */
+export interface OrganizationMember {
+  entity: EntitySummary;
+  relationshipType: RelationshipType;
+  role?: string | null;
+}
+
+/** GET /entities/{id}/structure -- an organization's hierarchy, locations and people (from edges). */
+export interface OrganizationStructure {
+  /** Parent first, then its parent, … */
+  ancestors: EntitySummary[];
+  children: EntitySummary[];
+  locations: EntitySummary[];
+  members: OrganizationMember[];
+}

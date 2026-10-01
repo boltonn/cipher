@@ -85,7 +85,7 @@ export function FaceImageWithOverlay({
                     }}
                   >
                     {box.label && (
-                      <span className="absolute -top-6 left-0 text-[9px] font-mono font-bold text-annotation bg-black/70 px-1.5 py-0.5 rounded whitespace-nowrap">
+                      <span className="absolute -top-6 left-0 text-[11px] font-mono font-bold text-annotation bg-black/70 px-1.5 py-0.5 rounded whitespace-nowrap">
                         {box.label}
                       </span>
                     )}
@@ -105,7 +105,7 @@ export function FaceImageWithOverlay({
                   </div>
                 </TooltipTrigger>
                 {box.matchLabel && (
-                  <TooltipContent className="text-[10px] font-bold uppercase tracking-widest">
+                  <TooltipContent className="text-[11px] font-bold uppercase tracking-wide">
                     {box.matchLabel}
                   </TooltipContent>
                 )}

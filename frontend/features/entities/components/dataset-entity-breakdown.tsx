@@ -129,7 +129,7 @@ export function DatasetEntityBreakdown({ datasetId }: Props) {
     >
       {cols.map((c) => (
         <div key={c.section} className="flex flex-col gap-3">
-          <h3 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+          <h3 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
             {c.title}
           </h3>
           <BarList datasetId={datasetId} section={c.section} items={c.items} />

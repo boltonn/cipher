@@ -126,7 +126,7 @@ export function DataTable<T>({
         <div className="flex items-center gap-3">
           {hasActiveCustomization && (
             <>
-              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-primary">
+              <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-primary">
                 <ListFilter size={12} />
                 {activeFilterKeys.length > 0
                   ? `${activeFilterKeys.length} filter${activeFilterKeys.length > 1 ? "s" : ""} active`
@@ -136,7 +136,7 @@ export function DataTable<T>({
                 type="button"
                 variant="ghost"
                 onClick={clearAll}
-                className="h-6 gap-1 px-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-destructive"
+                className="h-6 gap-1 px-2 text-xs font-medium text-muted-foreground hover:text-destructive"
               >
                 <X size={11} />
                 Clear filters
@@ -144,7 +144,7 @@ export function DataTable<T>({
             </>
           )}
           {sortBy && (
-            <div className="flex items-center gap-1 text-[10px] uppercase tracking-widest text-muted-foreground">
+            <div className="flex items-center gap-1 text-[11px] uppercase tracking-wide text-muted-foreground">
               {sortOrder === "asc" ? (
                 <ArrowUp size={10} />
               ) : (
@@ -159,7 +159,7 @@ export function DataTable<T>({
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary transition-colors"
+              className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-primary transition-colors"
             >
               <Settings2 size={12} /> Columns
             </button>

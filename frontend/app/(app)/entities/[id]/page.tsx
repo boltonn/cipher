@@ -1,6 +1,5 @@
 "use client";
 
-import { ConfirmDialog } from "@/components/confirm-dialog";
 import { PageHeader } from "@/components/page-header";
 import { PageError, PageLoading } from "@/components/page-loading";
 import { Badge } from "@/components/ui/badge";
@@ -8,18 +7,23 @@ import { Button } from "@/components/ui/button";
 import { CommentSection } from "@/features/comments/components/comment-section";
 import { EditEntityDialog } from "@/features/entities/components/edit-entity-dialog";
 import { EntityGraph } from "@/features/entities/components/entity-graph";
-import { EntityMentionsByFile } from "@/features/entities/components/entity-mentions-by-file";
 import { EntityMergePanel } from "@/features/entities/components/entity-merge-list";
 import { EntityRelationships } from "@/features/entities/components/entity-relationships";
+import { EntityNamesPanel } from "@/features/entities/components/entity-names-panel";
+import { EntitySelectorProposals } from "@/features/entities/components/entity-selector-proposals";
 import { EntitySelectorsPanel } from "@/features/entities/components/entity-selectors-panel";
 import { EntityTypeBadge } from "@/features/entities/components/entity-type-badge";
 import { ENTITY_TYPE_META } from "@/features/entities/components/entity-type-meta";
 import { Section } from "@/features/entities/components/section";
-import { useDeleteEntity, useEntityProfile } from "@/features/entities/hooks/use-entities";
+import { OrganizationStructure } from "@/features/entities/components/organization-structure";
+import { InvalidateEntityDialog } from "@/features/entities/components/invalidate-entity-dialog";
+import { useEntityProfile } from "@/features/entities/hooks/use-entities";
 import type { EntityDetail } from "@/features/entities/types";
 import { cn } from "@/lib/utils";
 import {
+  Ban,
   BadgeCheck,
+  Building2,
   ExternalLink,
   FileText,
   Fingerprint,
@@ -27,7 +31,7 @@ import {
   Network,
   Pencil,
   Search,
-  Trash2,
+  Tags,
   Waypoints,
 } from "lucide-react";
 import Link from "next/link";
@@ -43,7 +47,7 @@ export default function EntityDetailPage({
   const router = useRouter();
   const { data: profile, isPending, isError, refetch } = useEntityProfile(id);
   const [isEditOpen, setEditOpen] = useState(false);
-  const deleteEntity = useDeleteEntity(() => router.push("/entities"));
+  const [isInvalidateOpen, setInvalidateOpen] = useState(false);
 
   if (isError) {
     return (
@@ -65,10 +69,10 @@ export default function EntityDetailPage({
   const { entity, detail, fileCount, relatedTotal, selectorTotal } = profile;
   const meta = ENTITY_TYPE_META[entity.entityType];
   const isSelector = entity.entityType === "selector";
-  const isPerson = entity.entityType === "person";
+  const searchHref = `/search?entityId=${id}${entity.datasetId ? `&datasetId=${entity.datasetId}` : ""}`;
 
   const stats: { label: string; value: number; href: string; Icon: LucideIcon }[] = [
-    { label: "Mentions", value: fileCount, href: "#mentions", Icon: FileText },
+    { label: "Files", value: fileCount, href: searchHref, Icon: FileText },
     {
       label: "Relationships",
       value: relatedTotal,
@@ -118,11 +122,7 @@ export default function EntityDetailPage({
               <div className="mt-2 flex items-center gap-3">
                 <EntityTypeBadge
                   type={entity.entityType}
-                  detail={
-                    (detail?.selectorType as string) ??
-                    (detail?.selector_type as string) ??
-                    null
-                  }
+                  detail={(detail?.selectorType as string) ?? null}
                 />
               </div>
             </div>
@@ -132,11 +132,9 @@ export default function EntityDetailPage({
               asChild
               variant="outline"
               size="sm"
-              className="h-9 gap-2 border-border/50 bg-muted/40 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary"
+              className="h-9 gap-2 border-border/50 bg-muted/40 text-xs font-medium text-muted-foreground hover:text-primary"
             >
-              <Link
-                href={`/search?entityId=${id}${entity.datasetId ? `&datasetId=${entity.datasetId}` : ""}`}
-              >
+              <Link href={searchHref}>
                 <Search size={14} /> Find in text
               </Link>
             </Button>
@@ -144,39 +142,27 @@ export default function EntityDetailPage({
               variant="outline"
               size="sm"
               onClick={() => setEditOpen(true)}
-              className="h-9 gap-2 border-border/50 bg-muted/40 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary"
+              className="h-9 gap-2 border-border/50 bg-muted/40 text-xs font-medium text-muted-foreground hover:text-primary"
             >
               <Pencil size={14} /> Edit
             </Button>
-            {!isPerson && (
-              <ConfirmDialog
-                trigger={
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Delete entity"
-                    className="h-9 w-9 text-muted-foreground/70 hover:bg-destructive/10 hover:text-destructive"
-                  >
-                    <Trash2 size={14} />
-                  </Button>
-                }
-                title="Delete this entity?"
-                description={
-                  <>
-                    This permanently deletes{" "}
-                    <strong className="text-foreground">{entity.displayName}</strong> from
-                    the knowledge graph. Its {fileCount.toLocaleString()} mention
-                    {fileCount === 1 ? "" : "s"} will become unresolved rather than
-                    disappear, but its {relatedTotal.toLocaleString()} relationship
-                    {relatedTotal === 1 ? "" : "s"}, any pending resolution or merge
-                    decisions naming it, and its comments are deleted outright. This
-                    can&apos;t be undone.
-                  </>
-                }
-                confirmLabel="Delete Entity"
-                isPending={deleteEntity.isPending}
-                onConfirm={() => deleteEntity.mutate(id)}
-              />
+            {!entity.personId && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setInvalidateOpen(true)}
+                  className="h-9 gap-2 text-xs font-medium text-muted-foreground/70 hover:bg-destructive/10 hover:text-destructive"
+                >
+                  <Ban size={14} /> Mark invalid
+                </Button>
+                <InvalidateEntityDialog
+                  entity={entity}
+                  open={isInvalidateOpen}
+                  onOpenChange={setInvalidateOpen}
+                  onDone={() => router.push("/entities")}
+                />
+              </>
             )}
           </div>
         </div>
@@ -215,7 +201,7 @@ export default function EntityDetailPage({
           )}
         >
           {stats.map((s) => (
-            <a
+            <Link
               key={s.label}
               href={s.href}
               className="group flex items-center gap-3 bg-card px-4 py-3 transition-colors hover:bg-primary/5"
@@ -228,28 +214,30 @@ export default function EntityDetailPage({
                 <div className="text-lg font-semibold text-foreground">
                   {s.value.toLocaleString()}
                 </div>
-                <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground transition-colors group-hover:text-primary">
+                <div className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground transition-colors group-hover:text-primary">
                   {s.label}
                 </div>
               </div>
-            </a>
+            </Link>
           ))}
         </div>
       </div>
 
       <div className="mt-8 flex flex-col gap-10">
-        <EntityMergePanel entityId={id} />
+        <EntityMergePanel entity={entity} />
+        {!isSelector && <EntitySelectorProposals entityId={id} entityName={entity.displayName} />}
 
-        <Section
-          id="mentions"
-          title="Mentions"
-          icon={<FileText size={14} className="text-primary" />}
-        >
-          <EntityMentionsByFile
-            entityId={id}
-            emptyLabel="Not named in any document text yet."
-          />
-        </Section>
+        {entity.entityType === "organization" && (
+          <Section id="structure" title="Structure" icon={<Building2 size={14} className="text-primary" />}>
+            <OrganizationStructure entityId={id} entityName={entity.displayName} />
+          </Section>
+        )}
+
+        {!isSelector && (
+          <Section id="names" title="Names in the evidence" icon={<Tags size={14} className="text-primary" />}>
+            <EntityNamesPanel entity={entity} />
+          </Section>
+        )}
 
         <Section
           id="relationships"
@@ -260,7 +248,7 @@ export default function EntityDetailPage({
               asChild
               variant="ghost"
               size="sm"
-              className="h-7 gap-1.5 text-[10px] font-bold uppercase tracking-widest text-primary hover:text-primary"
+              className="h-7 gap-1.5 text-xs font-medium text-primary hover:text-primary"
             >
               <Link href={`/entities/${id}/graph`}>
                 <Network size={13} /> Full graph
@@ -361,8 +349,8 @@ function DetailPanel({
           value={g("legalName", "legal_name") as string}
         />
         <DetailRow
-          label="Org type"
-          value={g("orgType", "org_type") as string}
+          label="Category"
+          value={g("category", "category") as string}
         />
         <DetailRow label="Country" value={detail?.country as string} />
       </div>

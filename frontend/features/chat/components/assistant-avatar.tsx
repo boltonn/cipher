@@ -6,7 +6,7 @@ export function AssistantAvatar({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        "flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-primary to-purple-600 text-white shadow-[0_0_10px_rgba(99,102,241,0.3)]",
+        "flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-primary to-purple-600 text-white",
         className
       )}
     >

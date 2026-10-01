@@ -52,7 +52,6 @@ interface ImageViewerDialogProps {
   /** Run a "find similar faces" search; defaults to navigating to /faces?similar=<id>. */
   onFindSimilarFace?: (faceId: string) => void;
   onCreatePersonFromFace?: (face: FacePublic) => void;
-  onDeleteFace?: (id: string) => void;
 }
 
 function faceMatchLabel(f: FacePublic): string | undefined {
@@ -74,7 +73,6 @@ export function ImageViewerDialog({
   showFaces = true,
   onFindSimilarFace,
   onCreatePersonFromFace,
-  onDeleteFace,
 }: ImageViewerDialogProps) {
   const router = useRouter();
 
@@ -130,7 +128,7 @@ export function ImageViewerDialog({
         {!resolvedImage ? (
           <div className="flex-1 flex flex-col items-center justify-center gap-4 bg-black">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            <DialogTitle className="text-white tracking-[0.2em] uppercase text-[10px] font-black">
+            <DialogTitle className="text-white tracking-wide uppercase text-[11px] font-semibold">
               Loading…
             </DialogTitle>
           </div>
@@ -173,7 +171,7 @@ export function ImageViewerDialog({
               {isFilesLoading && (
                 <div className="absolute inset-0 z-50 bg-popover/80 backdrop-blur-sm flex flex-col items-center justify-center space-y-4">
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                  <span className="text-[10px] font-black uppercase tracking-[0.3em] text-primary/70">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-primary/70">
                     Loading File Metadata...
                   </span>
                 </div>
@@ -181,10 +179,10 @@ export function ImageViewerDialog({
 
               <DialogHeader className="shrink-0 p-5 pb-4">
                 <div className="flex items-center justify-between mb-1">
-                  <DialogTitle className="text-white tracking-[0.2em] uppercase text-[10px] font-black">
+                  <DialogTitle className="text-white tracking-wide uppercase text-[11px] font-semibold">
                     Image Details
                   </DialogTitle>
-                  <span className="text-[10px] font-mono text-primary bg-primary/10 px-2 py-0.5 rounded border border-primary/20">
+                  <span className="text-[11px] font-mono text-primary bg-primary/10 px-2 py-0.5 rounded border border-primary/20">
                     {resolvedImage.width} × {resolvedImage.height}
                   </span>
                 </div>
@@ -200,10 +198,10 @@ export function ImageViewerDialog({
                     <section className="p-4 rounded-xl bg-black/40 border border-annotation/20 space-y-4">
                       <div className="flex items-center gap-2">
                         <ScanFace size={14} className="text-annotation" />
-                        <h4 className="text-[10px] font-black text-foreground uppercase tracking-widest">
+                        <h4 className="text-[11px] font-semibold text-foreground uppercase tracking-wide">
                           Faces
                         </h4>
-                        <span className="ml-auto text-[9px] font-mono text-muted-foreground">
+                        <span className="ml-auto text-[11px] font-mono text-muted-foreground">
                           {faces.length} detected
                         </span>
                       </div>
@@ -256,7 +254,6 @@ export function ImageViewerDialog({
                           face={activeFace}
                           onFindSimilar={findSimilar}
                           onCreatePerson={onCreatePersonFromFace}
-                          onDelete={onDeleteFace}
                         />
                       )}
                     </section>
@@ -267,19 +264,19 @@ export function ImageViewerDialog({
                     <section className="p-4 rounded-xl bg-black/40 border border-border/50 space-y-4">
                       <div className="flex items-center gap-2">
                         <FileText size={14} className="text-emerald-500" />
-                        <h4 className="text-[10px] font-black text-foreground uppercase tracking-widest">
+                        <h4 className="text-[11px] font-semibold text-foreground uppercase tracking-wide">
                           Source Files
                         </h4>
-                        <span className="ml-auto text-[9px] font-mono text-muted-foreground">
+                        <span className="ml-auto text-[11px] font-mono text-muted-foreground">
                           {files.length} {files.length === 1 ? "file" : "files"}
                         </span>
                       </div>
 
                       <div className="space-y-1">
-                        <p className="text-[8px] text-muted-foreground font-bold uppercase">
+                        <p className="text-[11px] text-muted-foreground font-bold uppercase">
                           SHA256 Hash
                         </p>
-                        <p className="text-[9px] font-mono text-emerald-500/80 break-all bg-emerald-500/5 p-1.5 rounded border border-emerald-500/10 uppercase">
+                        <p className="text-[11px] font-mono text-emerald-500/80 break-all bg-emerald-500/5 p-1.5 rounded border border-emerald-500/10 uppercase">
                           {files[0].sha256}
                         </p>
                       </div>
@@ -289,7 +286,7 @@ export function ImageViewerDialog({
                           key={file.id}
                           className="space-y-3 rounded-lg border border-border/40 bg-black/30 p-3"
                         >
-                          <p className="text-[9px] font-mono text-muted-foreground break-all">
+                          <p className="text-[11px] font-mono text-muted-foreground break-all">
                             {file.path ?? file.filename}
                           </p>
                           <div className="grid grid-cols-2 gap-4">
@@ -310,10 +307,10 @@ export function ImageViewerDialog({
                           </div>
                           {file.uri && (
                             <div className="space-y-1">
-                              <p className="text-[8px] text-muted-foreground font-bold uppercase">
+                              <p className="text-[11px] text-muted-foreground font-bold uppercase">
                                 URI
                               </p>
-                              <p className="text-[9px] font-mono text-muted-foreground break-all">
+                              <p className="text-[11px] font-mono text-muted-foreground break-all">
                                 {file.uri}
                               </p>
                             </div>
@@ -329,7 +326,7 @@ export function ImageViewerDialog({
                   <section className="p-4 rounded-xl bg-black/40 border border-border/50 space-y-4">
                     <div className="flex items-center gap-2 mb-4">
                       <ShieldCheck size={14} className="text-primary" />
-                      <h4 className="text-[10px] font-black text-foreground uppercase tracking-widest">
+                      <h4 className="text-[11px] font-semibold text-foreground uppercase tracking-wide">
                         Telemetry
                       </h4>
                     </div>
@@ -380,7 +377,7 @@ export function ImageViewerDialog({
 
 const DataPoint = ({ label, value }: { label: string; value: string }) => (
   <div className="flex flex-col gap-0.5 min-w-0">
-    <p className="text-muted-foreground uppercase text-[8px] font-black tracking-widest leading-none mb-1">
+    <p className="text-muted-foreground uppercase text-[11px] font-semibold tracking-wide leading-none mb-1">
       {label}
     </p>
     <p className="text-foreground font-mono text-[11px] truncate leading-none">

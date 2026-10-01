@@ -47,11 +47,11 @@ export function AttachSelectorDialog({
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="border-border bg-card sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="text-xs font-black uppercase tracking-[0.1em] text-white">
+          <DialogTitle className="text-xs font-semibold uppercase tracking-wide text-white">
             Add selector
           </DialogTitle>
           <DialogDescription className="text-xs text-muted-foreground">
-            Link a phone, email, handle, or other strong identifier to{" "}
+            Add a phone, email, handle, or other strong identifier to{" "}
             {entityLabel || "this person"}.
           </DialogDescription>
         </DialogHeader>
@@ -93,7 +93,7 @@ function AttachSelectorForm({
       <FieldGroup>
         <div className="grid grid-cols-[9rem_1fr] gap-3">
           <Field>
-            <FieldLabel className="text-[10px] uppercase tracking-widest text-muted-foreground">
+            <FieldLabel className="text-[11px] uppercase tracking-wide text-muted-foreground">
               Type
             </FieldLabel>
             <Select value={kind} onValueChange={(v) => setKind(v as SelectorType)}>
@@ -111,7 +111,7 @@ function AttachSelectorForm({
           </Field>
 
           <Field>
-            <FieldLabel className="text-[10px] uppercase tracking-widest text-muted-foreground">
+            <FieldLabel className="text-[11px] uppercase tracking-wide text-muted-foreground">
               Value
             </FieldLabel>
             <Input
@@ -134,7 +134,7 @@ function AttachSelectorForm({
 
         {kind === "phone" && (
           <Field>
-            <FieldLabel className="text-[10px] uppercase tracking-widest text-muted-foreground">
+            <FieldLabel className="text-[11px] uppercase tracking-wide text-muted-foreground">
               Country
             </FieldLabel>
             <RegionCombobox value={region} onChange={setRegion} />

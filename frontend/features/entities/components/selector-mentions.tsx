@@ -52,7 +52,7 @@ export function SelectorMentions({
           size="sm"
           onClick={() => fetchNextPage()}
           disabled={isFetchingNextPage}
-          className="text-[10px] uppercase tracking-widest text-primary"
+          className="text-xs text-primary"
         >
           {isFetchingNextPage && (
             <Loader2 size={12} className="mr-2 animate-spin" />

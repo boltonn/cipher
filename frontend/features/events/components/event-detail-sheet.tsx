@@ -1,5 +1,6 @@
 "use client";
 
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { CopyableId } from "@/components/copyable-id";
 import { DatePicker } from "@/components/date-picker";
 import { TagsInput } from "@/components/tags-input";
@@ -30,6 +31,7 @@ import { FileViewer } from "@/features/files/components/file-viewer";
 import {
   useAddParticipant,
   useAddPlace,
+  useDeleteEvent,
   useEvent,
   useEventTagOptions,
   useRemoveParticipant,
@@ -71,6 +73,7 @@ import {
   Plus,
   Repeat,
   Sparkles,
+  Trash2,
   Users,
   X,
 } from "lucide-react";
@@ -128,6 +131,7 @@ export function EventDetailSheet({ eventId, onOpenChange }: EventDetailSheetProp
       <EventReadView
         event={event}
         onEdit={() => setEditing(true)}
+        onInvalid={() => onOpenChange(false)}
         hasFile={hasFile}
         sourceOpen={sourceOpen}
         onToggleSource={() => setShowSource((v) => !v)}
@@ -166,23 +170,26 @@ export function EventDetailSheet({ eventId, onOpenChange }: EventDetailSheetProp
 function EventReadView({
   event,
   onEdit,
+  onInvalid,
   hasFile,
   sourceOpen,
   onToggleSource,
 }: {
   event: EventWithLinks;
   onEdit: () => void;
+  onInvalid: () => void;
   hasFile: boolean;
   sourceOpen: boolean;
   onToggleSource: () => void;
 }) {
   const update = useUpdateEvent(event.id);
+  const markInvalid = useDeleteEvent(onInvalid);
   return (
     <>
       <SheetHeader className="gap-2 pr-10">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <TypeBadge eventType={event.eventType} category={event.category} />
-          <span className="text-[11px] uppercase tracking-widest text-muted-foreground">
+          <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
             {EVENT_STATUS_LABELS[event.status]}
           </span>
           {event.isVerified ? (
@@ -262,7 +269,7 @@ function EventReadView({
               <Badge
                 key={c}
                 variant="outline"
-                className="h-5 border-border/60 bg-transparent px-1.5 text-[10px] font-normal text-muted-foreground"
+                className="h-5 border-border/60 bg-transparent px-1.5 text-[11px] font-normal text-muted-foreground"
               >
                 {c}
               </Badge>
@@ -276,7 +283,7 @@ function EventReadView({
               <Badge
                 key={t}
                 variant="outline"
-                className="h-5 border-border bg-muted/40 px-1.5 text-[10px] text-muted-foreground"
+                className="h-5 border-border bg-muted/40 px-1.5 text-[11px] text-muted-foreground"
               >
                 #{t}
               </Badge>
@@ -293,7 +300,7 @@ function EventReadView({
         <div className="flex flex-col gap-2 border-t border-border pt-4 text-[11px] text-muted-foreground">
           {event.fileId && (
             <div className="flex items-center gap-2">
-              <span className="uppercase tracking-widest">Source file</span>
+              <span className="uppercase tracking-wide">Source file</span>
               <Link
                 href={`/files/${event.fileId}?from=/events`}
                 className="flex items-center gap-1 text-primary hover:underline"
@@ -305,7 +312,7 @@ function EventReadView({
             </div>
           )}
           <div className="flex items-center gap-2">
-            <span className="uppercase tracking-widest">Extractor</span>
+            <span className="uppercase tracking-wide">Extractor</span>
             <span>{event.extractor ?? "manual"}</span>
             {event.extractionModel && <span>· {event.extractionModel}</span>}
             {event.confidence != null && <span>· {Math.round(event.confidence * 100)}% conf</span>}
@@ -318,8 +325,8 @@ function EventReadView({
           )}
           {event.uid && (
             <div className="flex items-center gap-2">
-              <span className="uppercase tracking-widest">UID</span>
-              <span className="break-all font-mono text-[10px]">{event.uid}</span>
+              <span className="uppercase tracking-wide">UID</span>
+              <span className="break-all font-mono text-[11px]">{event.uid}</span>
             </div>
           )}
         </div>
@@ -335,6 +342,18 @@ function EventReadView({
             <BadgeCheck size={13} /> Mark verified
           </Button>
         )}
+        <ConfirmDialog
+          trigger={
+            <Button size="sm" variant="ghost" className="w-full text-xs text-destructive hover:text-destructive">
+              <Trash2 size={13} /> Mark invalid
+            </Button>
+          }
+          title="Mark this event invalid?"
+          description="Not a real event — it is deleted along with its participants and places. The source file is kept."
+          confirmLabel="Mark invalid"
+          onConfirm={() => markInvalid.mutate(event.id)}
+          isPending={markInvalid.isPending}
+        />
       </div>
     </>
   );
@@ -421,7 +440,7 @@ function EventEditForm({
     <>
       <SheetHeader className="gap-1 pr-10">
         <div className="flex items-center justify-between gap-2">
-          <SheetTitle className="text-sm uppercase tracking-widest">Edit event</SheetTitle>
+          <SheetTitle className="text-sm uppercase tracking-wide">Edit event</SheetTitle>
           <SourceToggle hasFile={hasFile} sourceOpen={sourceOpen} onToggle={onToggleSource} />
         </div>
         <SheetDescription className="text-xs">
@@ -482,23 +501,17 @@ function EventEditForm({
           <LabeledField label="Starts">
             <DatePicker value={startDate || undefined} onChange={(d) => setStartDate(d ?? "")} />
             {!isAllDay && (
-              <input
-                type="time"
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-                className="mt-1 h-9 w-full rounded-md border border-border bg-muted/40 px-2 text-sm"
-              />
+              <div className="mt-1">
+                <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+              </div>
             )}
           </LabeledField>
           <LabeledField label="Ends">
             <DatePicker value={endDate || undefined} onChange={(d) => setEndDate(d ?? "")} />
             {!isAllDay && (
-              <input
-                type="time"
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
-                className="mt-1 h-9 w-full rounded-md border border-border bg-muted/40 px-2 text-sm"
-              />
+              <div className="mt-1">
+                <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+              </div>
             )}
           </LabeledField>
         </div>
@@ -682,7 +695,7 @@ function LinkEditor({ event }: { event: EventWithLinks }) {
         <ul className="space-y-1">
           {event.participants.map((p) => (
             <li key={p.id} className="flex items-center gap-2 text-sm">
-              <span className="w-16 shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground">
+              <span className="w-16 shrink-0 text-[11px] uppercase tracking-wide text-muted-foreground">
                 {p.role}
               </span>
               <span className="flex-1 truncate text-foreground/90">
@@ -745,7 +758,7 @@ function LinkEditor({ event }: { event: EventWithLinks }) {
         <ul className="space-y-1">
           {event.places.map((p) => (
             <li key={p.id} className="flex items-center gap-2 text-sm">
-              <span className="w-16 shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground">
+              <span className="w-16 shrink-0 text-[11px] uppercase tracking-wide text-muted-foreground">
                 {p.role}
               </span>
               <span className="flex-1 truncate text-foreground/90">
@@ -846,7 +859,7 @@ function LabeledField({
     <div className={cn("relative", className)}>
       <span
         className={cn(
-          "pointer-events-none absolute top-0 left-2.5 z-10 flex -translate-y-1/2 items-center gap-1 bg-background px-1 text-[10px] leading-none font-medium tracking-widest uppercase",
+          "pointer-events-none absolute top-0 left-2.5 z-10 flex -translate-y-1/2 items-center gap-1 bg-background px-1 text-[11px] leading-none font-medium tracking-wide uppercase",
           invalid ? "text-destructive" : "text-muted-foreground"
         )}
       >
@@ -871,7 +884,7 @@ function LabeledField({
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mb-3 flex items-center gap-2 pt-1 text-[10px] font-semibold tracking-widest text-foreground/70 uppercase">
+    <div className="mb-3 flex items-center gap-2 pt-1 text-[11px] font-semibold tracking-wide text-foreground/70 uppercase">
       <span className="shrink-0">{children}</span>
       <span className="h-px flex-1 bg-border" />
     </div>
@@ -889,7 +902,7 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
 function SourceMeta({ event }: { event: EventWithLinks }) {
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-[11px] text-muted-foreground">
-      <span className="flex items-center gap-1 font-medium tracking-widest text-muted-foreground/70 uppercase">
+      <span className="flex items-center gap-1 font-medium tracking-wide text-muted-foreground/70 uppercase">
         <Lock size={10} /> Source
       </span>
       <span>
@@ -902,7 +915,7 @@ function SourceMeta({ event }: { event: EventWithLinks }) {
         <Badge
           key={c}
           variant="outline"
-          className="h-5 border-border/60 bg-transparent px-1.5 text-[10px] font-normal text-muted-foreground"
+          className="h-5 border-border/60 bg-transparent px-1.5 text-[11px] font-normal text-muted-foreground"
         >
           {c}
         </Badge>
@@ -950,7 +963,7 @@ function TypeBadge({
       variant="outline"
       title="Type · the calendar colour follows the category this type maps to"
       className={cn(
-        "h-6 gap-1.5 px-2 text-[10px] font-bold uppercase tracking-widest",
+        "h-6 gap-1.5 px-2 text-[11px] font-bold uppercase tracking-wide",
         cat.bgClass,
         cat.textClass,
         cat.borderClass
@@ -973,7 +986,7 @@ function DetailBlock({
 }) {
   return (
     <div>
-      <div className="mb-2 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+      <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
         {icon}
         {title}
       </div>
@@ -986,7 +999,7 @@ function PlaceRow({ place }: { place: EventPlace }) {
   const label = place.rawText ?? "Unnamed place";
   return (
     <li className="flex items-center gap-2 text-sm">
-      <span className="w-16 shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground">
+      <span className="w-16 shrink-0 text-[11px] uppercase tracking-wide text-muted-foreground">
         {place.role}
       </span>
       {place.locationId ? (
@@ -1004,7 +1017,7 @@ function ParticipantRow({ participant }: { participant: EventParticipant }) {
   const label = participant.rawName ?? participant.rawEmail ?? "Unknown";
   return (
     <li className="flex items-center gap-2 text-sm">
-      <span className="w-16 shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground">
+      <span className="w-16 shrink-0 text-[11px] uppercase tracking-wide text-muted-foreground">
         {participant.role}
       </span>
       {participant.entityId ? (
@@ -1015,10 +1028,10 @@ function ParticipantRow({ participant }: { participant: EventParticipant }) {
         <span className="text-foreground/90">{label}</span>
       )}
       {participant.isResource && (
-        <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70">resource</span>
+        <span className="text-[11px] uppercase tracking-wide text-muted-foreground/70">resource</span>
       )}
       {participant.rsvpStatus && participant.rsvpStatus !== "needs-action" && (
-        <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70">
+        <span className="text-[11px] uppercase tracking-wide text-muted-foreground/70">
           {participant.rsvpStatus}
         </span>
       )}

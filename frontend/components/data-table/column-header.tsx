@@ -53,7 +53,7 @@ export function DataTableColumnHeader<T>({
             <button
               type="button"
               className={cn(
-                "flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest transition-colors",
+                "flex items-center gap-1.5 text-xs font-medium transition-colors",
                 isSorted ? "text-primary" : "text-muted-foreground hover:text-foreground"
               )}
             >
@@ -72,20 +72,20 @@ export function DataTableColumnHeader<T>({
           <DropdownMenuContent align="start" className="bg-popover border border-border">
             <DropdownMenuItem
               onClick={() => onSort?.(column.key, "asc")}
-              className="gap-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground focus:text-primary"
+              className="gap-2 text-xs text-muted-foreground focus:text-foreground"
             >
               <ArrowUp size={12} /> Ascending
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() => onSort?.(column.key, "desc")}
-              className="gap-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground focus:text-primary"
+              className="gap-2 text-xs text-muted-foreground focus:text-foreground"
             >
               <ArrowDown size={12} /> Descending
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       ) : (
-        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
           {column.header}
         </span>
       )}
@@ -193,6 +193,7 @@ function ColumnFilterControl<T>({
       <DateRangePicker
         value={range}
         onChange={(next) => onChange(next.from || next.to ? next : undefined)}
+        className="h-9"
       />
     );
   }
@@ -256,7 +257,7 @@ function ColumnFilterControl<T>({
           {selected.map((v) => (
             <Badge
               key={v}
-              className="h-5 bg-primary/10 text-primary border-none text-[10px] px-1.5"
+              className="h-5 bg-primary/10 text-primary border-none text-[11px] px-1.5"
             >
               {column.enumOptions?.find((o) => o.value === v)?.label ?? v}
             </Badge>

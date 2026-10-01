@@ -19,13 +19,15 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { DatasetSelect } from "@/features/datasets/components/dataset-select";
-import { ENTITY_TYPE_META } from "@/features/entities/components/entity-type-meta";
+import {
+  ENTITY_TYPE_META,
+  GRAPH_NODE_TYPE_META,
+} from "@/features/entities/components/entity-type-meta";
 import { useEntitySearch } from "@/features/entities/hooks/use-entities";
 import {
-  ENTITY_TYPES,
+  GRAPH_NODE_TYPES,
   RELATIONSHIP_TYPES,
-  type EntityType,
+  type GraphNodeType,
   type RelationshipType,
   type TraversalDirection,
 } from "@/features/entities/types";
@@ -76,7 +78,6 @@ const ENTITY_SEARCH_MIN_CHARS = 2;
 
 interface GraphToolbarProps {
   datasetId: string | undefined;
-  onDatasetChange: (id: string | undefined) => void;
   filters: GraphFilters;
   onFiltersChange: (next: GraphFilters) => void;
   labelsMode: LabelsMode;
@@ -110,7 +111,6 @@ interface GraphToolbarProps {
 
 export function GraphToolbar({
   datasetId,
-  onDatasetChange,
   filters,
   onFiltersChange,
   labelsMode,
@@ -182,18 +182,12 @@ export function GraphToolbar({
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-border bg-muted/30 p-2">
       <div className="flex flex-wrap items-center gap-2">
-        <DatasetSelect
-          datasetId={datasetId}
-          onChange={onDatasetChange}
-          className={cn(CTRL, "w-52")}
-        />
-
         <Autocomplete className="w-72">
           <AutocompleteInput
             className={cn(CTRL, "rounded-md")}
             value={q}
             onValueChange={setQ}
-            placeholder={datasetId ? "Add / find an entity…" : "Pick a dataset first"}
+            placeholder={datasetId ? "Add / find an entity…" : "Pick a dataset above first"}
             disabled={!datasetId}
           />
           <AutocompleteContent
@@ -214,7 +208,7 @@ export function GraphToolbar({
                 >
                   <meta.Icon size={12} className={meta.textClass} />
                   <span className="flex-1 truncate">{r.displayName}</span>
-                  <span className="text-[10px] uppercase tracking-widest text-muted-foreground">
+                  <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
                     {meta.label}
                   </span>
                 </AutocompleteItem>
@@ -241,7 +235,7 @@ export function GraphToolbar({
               <SlidersHorizontal size={13} />
               Filters
               {activeFilterCount > 0 && (
-                <span className="rounded-full bg-primary/15 px-1.5 text-[10px] font-bold text-primary">
+                <span className="rounded-full bg-primary/15 px-1.5 text-[11px] font-bold text-primary">
                   {activeFilterCount}
                 </span>
               )}
@@ -261,7 +255,7 @@ export function GraphToolbar({
                       onFiltersChange({ ...filters, direction: d.value })
                     }
                     className={cn(
-                      "flex-1 px-2 py-1.5 text-[10px] font-bold uppercase tracking-widest transition-colors",
+                      "flex-1 px-2 py-1.5 text-xs font-medium transition-colors",
                       filters.direction === d.value
                         ? "bg-primary/10 text-primary"
                         : "text-muted-foreground hover:text-foreground"
@@ -273,10 +267,10 @@ export function GraphToolbar({
               </div>
             </FilterBlock>
 
-            <FilterBlock label="Entity types">
+            <FilterBlock label="Node types">
               <div className="flex flex-wrap gap-1.5">
-                {ENTITY_TYPES.map((t) => {
-                  const meta = ENTITY_TYPE_META[t];
+                {GRAPH_NODE_TYPES.map((t) => {
+                  const meta = GRAPH_NODE_TYPE_META[t];
                   const active = filters.entityTypes.includes(t);
                   return (
                     <button
@@ -285,11 +279,11 @@ export function GraphToolbar({
                       onClick={() =>
                         onFiltersChange({
                           ...filters,
-                          entityTypes: toggle<EntityType>(filters.entityTypes, t),
+                          entityTypes: toggle<GraphNodeType>(filters.entityTypes, t),
                         })
                       }
                       className={cn(
-                        "flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-medium transition-colors",
+                        "flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors",
                         active
                           ? cn(meta.bgClass, meta.textClass, meta.borderClass)
                           : "border-border bg-muted/30 text-muted-foreground hover:text-foreground"
@@ -301,7 +295,7 @@ export function GraphToolbar({
                   );
                 })}
               </div>
-              <p className="mt-1 text-[10px] text-muted-foreground">
+              <p className="mt-1 text-[11px] text-muted-foreground">
                 None selected = all shown.
               </p>
             </FilterBlock>
@@ -324,7 +318,7 @@ export function GraphToolbar({
                         })
                       }
                       className={cn(
-                        "rounded-md border px-2 py-1 text-[10px] font-medium transition-colors",
+                        "rounded-md border px-2 py-1 text-[11px] font-medium transition-colors",
                         active
                           ? "border-primary/40 bg-primary/10 text-primary"
                           : "border-border bg-muted/30 text-muted-foreground hover:text-foreground"
@@ -537,7 +531,7 @@ function Segmented<T extends string>({
         CTRL
       )}
     >
-      <span className="flex items-center gap-1 border-r border-border px-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+      <span className="flex items-center gap-1 border-r border-border px-2 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
         {Icon && <Icon size={11} />}
         {label}
         {hint && <InfoHint text={hint} />}
@@ -549,7 +543,7 @@ function Segmented<T extends string>({
           onClick={() => onChange(o.value)}
           aria-pressed={value === o.value}
           className={cn(
-            "flex items-center px-2.5 text-[10px] font-bold uppercase tracking-widest transition-colors",
+            "flex items-center px-2.5 text-xs font-medium transition-colors",
             value === o.value
               ? "bg-primary text-primary-foreground"
               : "text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -583,7 +577,7 @@ function MiniButton({
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        "flex items-center gap-1.5 rounded-md border px-2.5 text-[10px] font-bold uppercase tracking-widest transition-colors",
+        "flex items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-colors",
         CTRL,
         active
           ? "border-primary bg-primary text-primary-foreground"
@@ -617,7 +611,7 @@ function FilterBlock({
 }) {
   return (
     <div className="space-y-1.5">
-      <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+      <span className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
         {label}
         {hint && (
           <TooltipProvider delayDuration={150}>

@@ -1,7 +1,7 @@
 /** Mirrors `cipher.schemas.graph.ontology.LocationSource`. */
 export type LocationSource =
-  | "named_mention"
-  | "text_mention"
+  | "name_mention"
+  | "coordinate_mention"
   | "exif"
   | "geocoded"
   | "device_gps";
@@ -34,10 +34,19 @@ export interface LocationFeatureCollection {
   features: LocationFeature[];
 }
 
+export const LOCATION_SOURCES: LocationSource[] = [
+  "name_mention",
+  "coordinate_mention",
+  "exif",
+  "geocoded",
+  "device_gps",
+];
+
 /** One object for the whole filter surface, per the app's schema-object convention. */
 export interface LocationFilters {
   datasetIds: string[];
   sources: LocationSource[];
+  categories: string[];
   dateFrom?: string;
   dateTo?: string;
 }
@@ -45,6 +54,7 @@ export interface LocationFilters {
 export const EMPTY_LOCATION_FILTERS: LocationFilters = {
   datasetIds: [],
   sources: [],
+  categories: [],
 };
 
 /** [west, south, east, north] */

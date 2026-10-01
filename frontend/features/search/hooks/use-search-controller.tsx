@@ -3,10 +3,13 @@ import { searchService, toGroupedFileResult } from "@/features/search/api";
 import type { ChunkTextSearchRequest, SearchFilters, SearchMode } from "@/features/search/types";
 import type { PaginationModeType } from "@/types/common";
 import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { format } from "date-fns";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 
 const DEFAULT_LIMIT = 20;
+
+const toDay = (iso: string | undefined) => (iso ? format(new Date(iso), "yyyy-MM-dd") : undefined);
 
 export const useSearchController = (paginationMode: PaginationModeType = "infinite") => {
   // Deep links (e.g. from an entity's selectors) seed the field and type
@@ -19,12 +22,13 @@ export const useSearchController = (paginationMode: PaginationModeType = "infini
   const [searchMode, setSearchMode] = useState<SearchMode>("text");
   const [filters, setFiltersState] = useState<SearchFilters>(() => {
     // Deep links from an entity/selector page compose an entity filter with an
-    // empty-query browse: /search?entityId=<id>&datasetId=<id> (also &selectorType=).
+    // empty-query browse: /search?entityId=<id>&datasetId=<id> (also &mentionValue=, &selectorType=).
     const next: SearchFilters = {};
     const scope = params.get("scope");
     if (scope === "email" || scope === "document") next.filetypeGroup = scope;
     if (params.get("datasetId")) next.datasetId = params.get("datasetId") ?? undefined;
     if (params.get("entityId")) next.entityIds = [params.get("entityId") as string];
+    if (params.getAll("mentionValue").length) next.mentionValues = params.getAll("mentionValue");
     if (params.get("selectorType")) next.selectorTypes = [params.get("selectorType") as string];
     return next;
   });
@@ -38,7 +42,7 @@ export const useSearchController = (paginationMode: PaginationModeType = "infini
   const search = useCallback(
     (pageParam: number) => {
       const request: ChunkTextSearchRequest = {
-        filters,
+        filters: { ...filters, dateFrom: toDay(filters.dateFrom), dateTo: toDay(filters.dateTo) },
         page: pageParam,
         limit: DEFAULT_LIMIT,
         query,
@@ -80,10 +84,12 @@ export const useSearchController = (paginationMode: PaginationModeType = "infini
     return paginated.data?.data.map(toGroupedFileResult) ?? [];
   }, [isInfinite, infinite.data, paginated.data]);
 
-  // Server-side total across the whole result set (not just loaded pages) --
-  // a real distinct-file count, and a floor for semantic (kNN only ranks
-  // within its requested candidate pool).
-  const total = (isInfinite ? infinite.data?.pages.at(-1)?.total : paginated.data?.total) ?? 0;
+  // Server-side total across the whole result set (not just loaded pages): an exact
+  // distinct-file count for browse / keyword; semantic / hybrid have no natural
+  // cut-off, so their total only sizes pagination and isn't shown as a count.
+  const lastPage = isInfinite ? infinite.data?.pages.at(-1) : paginated.data;
+  const total = lastPage?.total ?? 0;
+  const totalIsExact = lastPage?.totalIsExact ?? true;
 
   const setFilters = useCallback((next: SearchFilters) => {
     setFiltersState(next);
@@ -107,6 +113,7 @@ export const useSearchController = (paginationMode: PaginationModeType = "infini
   return {
     groupedResults,
     total,
+    totalIsExact,
     isPending: canSearch && (isInfinite ? infinite.isPending : paginated.isPending),
     isFetching: isInfinite ? infinite.isFetching : paginated.isFetching,
     error: isInfinite ? infinite.error : paginated.error,

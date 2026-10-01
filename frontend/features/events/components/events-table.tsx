@@ -47,7 +47,7 @@ function SortHead({
   const active = sortBy === sortKey;
   const Icon = !active ? ChevronsUpDown : sortOrder === "asc" ? ChevronUp : ChevronDown;
   return (
-    <TableHead className="text-[10px] font-black uppercase tracking-widest">
+    <TableHead>
       <button
         type="button"
         onClick={() => onSortChange(sortKey)}
@@ -82,13 +82,13 @@ export function EventsTable({
               sortOrder={sortOrder}
               onSortChange={onSortChange}
             />
-            <TableHead className="text-[10px] font-black uppercase tracking-widest">
+            <TableHead>
               Event
             </TableHead>
-            <TableHead className="text-[10px] font-black uppercase tracking-widest">
+            <TableHead>
               Type
             </TableHead>
-            <TableHead className="text-[10px] font-black uppercase tracking-widest">
+            <TableHead>
               Status
             </TableHead>
             <SortHead
@@ -133,7 +133,7 @@ export function EventsTable({
                   <Badge
                     variant="outline"
                     className={cn(
-                      "h-6 gap-1.5 px-2 text-[10px] font-bold uppercase tracking-widest",
+                      "h-6 gap-1.5 px-2 text-[11px] font-bold uppercase tracking-wide",
                       cat.bgClass,
                       cat.textClass,
                       cat.borderClass

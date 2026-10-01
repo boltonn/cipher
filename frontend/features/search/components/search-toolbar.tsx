@@ -37,7 +37,6 @@ export function SearchToolbar({
             placeholder="Search documents and emails..."
             value={query}
             onSearch={onSearch}
-            className="py-3 px-2"
           />
           <div className="flex items-center gap-0.5 pr-1">
             {(Object.keys(SEARCH_MODE_LABELS) as SearchMode[]).map((mode) => {

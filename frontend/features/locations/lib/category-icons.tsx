@@ -17,6 +17,7 @@ import {
   Flag,
   Flame,
   Fuel,
+  Globe,
   GraduationCap,
   History,
   Home,
@@ -24,6 +25,7 @@ import {
   Landmark,
   Lock,
   Mailbox,
+  Map as MapIcon,
   MapPin,
   MapPinned,
   Navigation,
@@ -60,23 +62,27 @@ export const FALLBACK_COLOR = "#8a9099";
  */
 const SOURCE_ICONS: Record<string, LucideIcon> = {
   exif: Camera,
-  text_mention: FileText,
-  named_mention: MapPinned,
+  coordinate_mention: FileText,
+  name_mention: MapPinned,
   geocoded: MapPin,
   device_gps: Navigation,
 };
 
 const SOURCE_COLORS: Record<string, string> = {
   exif: "#4c6ef5", // blue
-  text_mention: "#e8590c", // orange
-  named_mention: "#7048e8", // violet
+  coordinate_mention: "#e8590c", // orange
+  name_mention: "#7048e8", // violet
   geocoded: "#0c8599", // teal
   device_gps: "#2f9e44", // green
 };
 
-// Category icons/colours are forward-looking (no producer sets `category` yet);
-// ported from shadowbot so the two apps stay visually aligned.
+// Gazetteer levels (`city` ... `country`) come from `resolve-locations`; the POI
+// kinds are ported from shadowbot so the two apps stay visually aligned.
 const CATEGORY_ICONS: Record<string, LucideIcon> = {
+  city: Building2,
+  admin1: MapIcon,
+  region: MapPinned,
+  country: Globe,
   gas_station: Fuel,
   ev_charging: BatteryCharging,
   supermarket: ShoppingCart,
@@ -118,6 +124,10 @@ const CATEGORY_ICONS: Record<string, LucideIcon> = {
 };
 
 const CATEGORY_COLORS: Record<string, string> = {
+  city: "#4c6ef5",
+  admin1: "#0c8599",
+  region: "#e8590c",
+  country: "#7048e8",
   camera: "#e5484d",
   police: "#4263eb",
   military: "#5c940d",
@@ -158,6 +168,14 @@ const CATEGORY_COLORS: Record<string, string> = {
   unknown: "#868e96",
 };
 
+const SOURCE_LABELS: Record<string, string> = {
+  name_mention: "Place name in text",
+  coordinate_mention: "Coordinates in text",
+  exif: "Photo EXIF",
+  geocoded: "Geocoded address",
+  device_gps: "Device GPS",
+};
+
 function key(value: string | null | undefined): string | null {
   return value ? value.toLowerCase() : null;
 }
@@ -168,6 +186,12 @@ export function iconFor(field: Field, value: string | null | undefined): LucideI
   if (!k) return MapPin;
   const table = field === "source" ? SOURCE_ICONS : CATEGORY_ICONS;
   return table[k] ?? MapPin;
+}
+
+/** Display label for a `source` / `category` value. */
+export function labelFor(field: Field, value: string): string {
+  const label = field === "source" ? SOURCE_LABELS[value.toLowerCase()] : undefined;
+  return label ?? value.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
 }
 
 /** Fixed display colour for a `source` / `category` value. */

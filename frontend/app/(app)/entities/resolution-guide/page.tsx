@@ -15,10 +15,8 @@ import { cn } from "@/lib/utils";
 import {
   ArrowLeft,
   ArrowRight,
-  Building2,
   Check,
   FileText,
-  Mail,
   Sparkles,
   User,
   X,
@@ -26,7 +24,7 @@ import {
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 
-/* --- little mock primitives, styled like the real Resolve/Review UI --------- */
+/* --- little mock primitives, styled like the real Resolve UI ------------------ */
 
 function NameChip({ children }: { children: ReactNode }) {
   return (
@@ -46,7 +44,7 @@ function Chip({
   return (
     <span
       className={cn(
-        "rounded-full border px-1.5 py-0.5 text-[9px]",
+        "rounded-full border px-1.5 py-0.5 text-[11px]",
         conflict
           ? "border-destructive/40 bg-destructive/10 text-destructive"
           : "border-annotation/30 bg-annotation/10 text-annotation-foreground dark:text-annotation"
@@ -80,10 +78,10 @@ function MiniCandidate({
       <div className="flex items-center gap-2 text-xs">
         <Icon size={13} className="shrink-0 text-sky-400" />
         <span className="font-medium">{name}</span>
-        <span className="text-[9px] uppercase tracking-widest text-muted-foreground/70">
+        <span className="text-[11px] uppercase tracking-wide text-muted-foreground/70">
           entity
         </span>
-        <span className="ml-auto text-[10px] tabular-nums text-muted-foreground">
+        <span className="ml-auto text-[11px] tabular-nums text-muted-foreground">
           {score}
         </span>
       </div>
@@ -102,7 +100,7 @@ function MiniCandidate({
 
 const SLIDES: { title: string; body: ReactNode }[] = [
   {
-    title: "Three things: a mention, a name group, an entity",
+    title: "Three words: mention, name group, entity",
     body: (
       <div className="space-y-3 text-xs leading-relaxed text-muted-foreground">
         <p>
@@ -118,10 +116,11 @@ const SLIDES: { title: string; body: ReactNode }[] = [
           <i>one</i> group.
         </p>
         <p>
-          An <b className="text-foreground">entity</b> is the real person /
-          organisation / location that mentions get attached to. Resolution is
-          the act of deciding which entity a name group belongs to — or that it
-          needs a new one.
+          An <b className="text-foreground">entity</b> is the single record for
+          the real person / organization / location that mentions point at.{" "}
+          <b className="text-foreground">Resolving</b> a name group means deciding
+          which entity it is — accepting a suggested resolution, picking another
+          entity, or creating a new one.
         </p>
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/30 p-3">
           <span className="flex items-center gap-1 text-[11px]">
@@ -154,7 +153,7 @@ const SLIDES: { title: string; body: ReactNode }[] = [
           Nothing is a person or an organisation yet — a header name is
           genuinely ambiguous between the two.
         </p>
-        <div className="rounded-lg border border-border bg-muted/30 p-3 font-mono text-[10px] text-muted-foreground">
+        <div className="rounded-lg border border-border bg-muted/30 p-3 font-mono text-[11px] text-muted-foreground">
           From: &quot;Nick Bolton&quot; &lt;bolton213@yahoo.com&gt;
           <div className="mt-1 flex flex-wrap gap-1.5">
             <Chip>name mention · “Nick Bolton”</Chip>
@@ -190,56 +189,76 @@ const SLIDES: { title: string; body: ReactNode }[] = [
     ),
   },
   {
-    title: "Step 3 — Auto, review, or unmatched",
+    title: "Step 3 — Where each name group lands",
     body: (
       <div className="space-y-3 text-xs leading-relaxed text-muted-foreground">
-        <p>The score decides where a name group goes:</p>
+        <p>The score decides what happens to a name group:</p>
         <ul className="space-y-2">
           <li className="rounded-lg border border-border/60 p-2">
             <span className="inline-flex items-center gap-1 font-medium text-foreground">
-              <Sparkles size={11} className="text-annotation" /> Auto-attached
+              <Sparkles size={11} className="text-annotation" /> Resolved automatically
             </span>{" "}
-            — one safe rule only: an exact shared identifier on a structured
-            field <i>plus</i> a real name match, with a clear margin over any
-            runner-up. These land in <b className="text-foreground">Resolve →
-            Confirmed</b> with an “auto” tag; you can undo them.
+            — one safe rule only: an exact shared identifier on a structured field <i>plus</i> a real
+            name match, with a clear margin over any runner-up. Tagged “auto”; you can undo it.
           </li>
           <li className="rounded-lg border border-border/60 p-2">
-            <span className="font-medium text-foreground">Review</span> — one or
-            more plausible candidates, but not safe enough to auto-attach. These
-            fill the <b className="text-foreground">Resolve</b> tab.
+            <span className="font-medium text-foreground">Suggested resolution</span> — plausible
+            entities, not safe enough to apply alone. The name waits in the{" "}
+            <b className="text-foreground">Resolve</b> tab with those suggestions.
           </li>
           <li className="rounded-lg border border-border/60 p-2">
-            <span className="font-medium text-foreground">Unmatched</span> — no
-            candidate cleared the bar. These go to the{" "}
-            <b className="text-foreground">Review</b> tab for classification from
-            scratch.
+            <span className="inline-flex items-center gap-1 font-medium text-foreground">
+              <Sparkles size={11} className="text-annotation" /> Auto-created entity
+            </span>{" "}
+            — nothing matched, but the name was typed (e.g. an organization found by the language
+            model) and common enough. The resolver creates an entity for it; you check it on the{" "}
+            <b className="text-foreground">Verify</b> tab.
+          </li>
+          <li className="rounded-lg border border-border/60 p-2">
+            <span className="font-medium text-foreground">No entity yet</span> — nothing matched and
+            too little to go on. The name waits in the <b className="text-foreground">Resolve</b> tab
+            for you to create an entity or discard it.
           </li>
         </ul>
       </div>
     ),
   },
   {
-    title: "The Resolve tab — confirm or reject a match",
+    title: "The Verify tab — check auto-created entities first",
     body: (
       <div className="space-y-3 text-xs leading-relaxed text-muted-foreground">
         <p>
-          Each card is one name group: the amber box is the{" "}
-          <b className="text-foreground">name</b>, the rows beneath are existing{" "}
-          <b className="text-foreground">entities</b> it might be, best first. A
-          row tagged <b className="text-foreground">provisional</b> is an entity
-          the resolver minted on an earlier pass — it has no Persons-tab entry
-          or face gallery yet; confirming folds the mentions into it.
+          Auto-created entities are real records holding their names&apos; mentions, but nobody has
+          checked them. Start with the biggest — more names will resolve to them.
+        </p>
+        <ul className="space-y-1.5">
+          <li>
+            <b className="text-foreground">Verify</b> — it&apos;s right; keep it as a real entity.
+          </li>
+          <li>
+            <b className="text-foreground">Edit</b> — fix its name or type (“dell” → “Dell”).
+          </li>
+          <li>
+            <b className="text-foreground">Merge</b> — it repeats another entity (“Dell Inc” is “Dell”):
+            fold it in. Its mentions move over and its name becomes an alias.
+          </li>
+        </ul>
+      </div>
+    ),
+  },
+  {
+    title: "The Resolve tab — one decision per name group",
+    body: (
+      <div className="space-y-3 text-xs leading-relaxed text-muted-foreground">
+        <p>
+          Each card is one name group: the amber box is the <b className="text-foreground">name</b>, the
+          rows beneath are <b className="text-foreground">suggested resolutions</b> — entities it might
+          be, best first.
         </p>
         <div className="rounded-xl border border-border p-3">
           <div className="mb-2 flex items-center gap-2">
-            <span className="text-[9px] uppercase tracking-widest text-muted-foreground/70">
-              name
-            </span>
             <NameChip>Nick Bolton</NameChip>
-            <span className="text-[10px] text-muted-foreground">
-              14,856 mentions · 4,493 files
-            </span>
+            <span className="text-[11px] text-muted-foreground">14,856 mentions · 4,493 files</span>
           </div>
           <div className="space-y-1.5">
             <MiniCandidate
@@ -257,88 +276,38 @@ const SLIDES: { title: string; body: ReactNode }[] = [
               score="—"
               Icon={User}
               dim
-              chips={[
-                { label: "shared identifier" },
-                { label: "name structure", conflict: true },
-              ]}
+              chips={[{ label: "shared identifier" }, { label: "name structure", conflict: true }]}
             />
           </div>
         </div>
         <ul className="space-y-1.5">
           <li>
             <span className="inline-flex items-center gap-1 font-medium text-foreground">
-              <Check size={11} /> Confirm
+              <Check size={11} /> Accept
             </span>{" "}
-            on a row → attaches <i>every</i> mention of “Nick Bolton” to that
-            entity.
+            → resolves <i>every</i> mention of “Nick Bolton” to that entity.
           </li>
           <li>
             <span className="inline-flex items-center gap-1 font-medium text-foreground">
               <X size={11} /> Reject
             </span>{" "}
-            → drops just that candidate.
+            → that suggestion is wrong; the name stays open for another decision.
           </li>
           <li>
-            <b className="text-foreground">None of these</b> → rejects them all;
-            the name moves to the Review tab.
+            <b className="text-foreground">Another entity…</b> → resolve to an existing entity that
+            wasn&apos;t suggested.
           </li>
           <li>
-            Tick the clean cards and use{" "}
-            <b className="text-foreground">Confirm all</b> to clear them in one
-            go.
-          </li>
-        </ul>
-      </div>
-    ),
-  },
-  {
-    title: "The Review tab — classify from scratch",
-    body: (
-      <div className="space-y-3 text-xs leading-relaxed text-muted-foreground">
-        <p>
-          Names with <b className="text-foreground">no candidate</b>. There is
-          nothing to confirm — you say what each one is:
-        </p>
-        <div className="rounded-xl border border-border p-3">
-          <div className="mb-2 flex items-center gap-2">
-            <NameChip>Pumpkin Pet Care Team</NameChip>
-            <span className="text-[10px] text-muted-foreground">
-              31 mentions · 12 files
-            </span>
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            <span className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[10px]">
-              <User size={11} /> Person
-            </span>
-            <span className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[10px]">
-              <Building2 size={11} /> Organization
-            </span>
-            <span className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[10px]">
-              <Mail size={11} /> Location
-            </span>
-            <span className="rounded-md border border-border px-2 py-1 text-[10px]">
-              Attach…
-            </span>
-            <span className="rounded-md px-2 py-1 text-[10px] text-muted-foreground">
-              Not an entity
-            </span>
-          </div>
-        </div>
-        <ul className="space-y-1.5">
-          <li>
-            <b className="text-foreground">Person / Organization / Location</b> —
-            creates a <i>new</i> entity of that type and attaches every mention
-            of the name to it.
+            <b className="text-foreground">Create a new</b> person / organization / location → a new
+            entity from the name, with all its mentions.
           </li>
           <li>
-            <b className="text-foreground">Attach…</b> — opens a search box; pick
-            an entity that <i>already exists</i> and link the name&apos;s
-            mentions to it instead of making a duplicate.
+            <b className="text-foreground">Not an entity</b> → discard the name (a slogan, a greeting,
+            parser junk).
           </li>
           <li>
-            <b className="text-foreground">Not an entity</b> — discard the
-            mentions (a subject-line fragment, a mailing-list footer, parser
-            junk).
+            <b className="text-foreground">Accept N clear matches</b> accepts every top suggestion on the
+            page that scores ≥ 0.95, has no conflict, and points at a verified entity.
           </li>
         </ul>
       </div>
@@ -360,11 +329,10 @@ const SLIDES: { title: string; body: ReactNode }[] = [
             <span className="inline-flex items-center gap-0.5 text-annotation">
               <Sparkles size={9} /> auto
             </span>{" "}
-            tag, are listed under <b className="text-foreground">Confirmed</b>,
-            and can be reverted.
+            tag and can be reverted.
           </li>
           <li>
-            Every Confirm / Reject you make is kept as labelled training data —
+            Every Accept / Reject you make is kept as labelled training data —
             it&apos;s what re-tunes the signal weights over time.
           </li>
         </ul>
@@ -412,8 +380,8 @@ export default function ResolutionGuidePage() {
         How entity resolution works
       </h1>
       <p className="mt-1 text-xs text-muted-foreground">
-        What the <b>Resolve</b> and <b>Review</b> tabs do, and what happens when
-        you click.
+        What the <b>Verify</b> and <b>Resolve</b> tabs do, and what happens when
+        you click. Verify auto-created entities first, then resolve names to them.
       </p>
 
       <Carousel
@@ -425,7 +393,7 @@ export default function ResolutionGuidePage() {
           {SLIDES.map((s, i) => (
             <CarouselItem key={i}>
               <div className="min-h-72 rounded-xl border border-border bg-card p-5">
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                   Step {i + 1} of {SLIDES.length}
                 </p>
                 <h2 className="mt-1 text-sm font-semibold">{s.title}</h2>
@@ -464,11 +432,11 @@ export default function ResolutionGuidePage() {
         {Object.values(RESOLUTION_FEATURE_META).map((m) => (
           <div key={m.label} className="flex flex-col gap-1 p-3 sm:flex-row sm:gap-4">
             <dt className="sm:w-40 sm:shrink-0">
-              <span className="rounded-full border border-annotation/30 bg-annotation/10 px-1.5 py-0.5 text-[10px] text-annotation-foreground dark:text-annotation">
+              <span className="rounded-full border border-annotation/30 bg-annotation/10 px-1.5 py-0.5 text-[11px] text-annotation-foreground dark:text-annotation">
                 {m.label}
               </span>
               {m.veto && (
-                <span className="ml-1 text-[9px] uppercase tracking-widest text-destructive">
+                <span className="ml-1 text-[11px] uppercase tracking-wide text-destructive">
                   can veto
                 </span>
               )}

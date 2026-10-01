@@ -58,6 +58,19 @@ function asCitationList(output: unknown): ChatCitation[] | null {
   return output as ChatCitation[];
 }
 
+/** A tool's output for its trace card. Citation lists (already shown as the message's
+ * Sources) collapse to a count + names instead of their full JSON. */
+function summarizeToolOutput(output: unknown): unknown {
+  const citations = asCitationList(output);
+  if (!citations) return summarizeToolPayload(output);
+  const sources = citations.map((c) => c.displayName);
+  if (Array.isArray(output)) return { results: citations.length, sources };
+  const rest = Object.fromEntries(
+    Object.entries(output as Record<string, unknown>).filter(([key]) => key !== "citations")
+  );
+  return { ...(summarizeToolPayload(rest) as object), results: citations.length, sources };
+}
+
 interface ChatMessagesProps {
   messages: UIMessage[];
   onRegenerate: () => void;
@@ -122,11 +135,11 @@ export function ChatMessages({
 }: ChatMessagesProps) {
   if (messages.length === 0 && !showThinking) {
     return (
-      <Conversation>
-        <ConversationContent>
+      <Conversation className="h-full">
+        <ConversationContent className="mx-auto w-full max-w-3xl px-4 py-6">
           <ConversationEmptyState
             icon={
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-linear-to-br from-primary to-purple-600 text-white shadow-[0_0_20px_rgba(99,102,241,0.35)]">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-linear-to-br from-primary to-purple-600 text-white">
                 <SparklesIcon className="h-6 w-6" />
               </div>
             }
@@ -153,8 +166,8 @@ export function ChatMessages({
   }
 
   return (
-    <Conversation>
-      <ConversationContent>
+    <Conversation className="h-full">
+      <ConversationContent className="mx-auto w-full max-w-3xl px-4 py-6">
         {messages.map((message, messageIndex) => {
           const isLast = messageIndex === messages.length - 1;
           const isAssistant = message.role === "assistant";
@@ -227,15 +240,6 @@ export function ChatMessages({
                       );
                     }
 
-                    // Citation-list outputs are collected into the message
-                    // footer (below the answer), not rendered inline here.
-                    if (
-                      part.state === "output-available" &&
-                      asCitationList(part.output)
-                    ) {
-                      return null;
-                    }
-
                     const toolTitle = describeToolCall(
                       toolLabel,
                       "input" in part ? part.input : undefined
@@ -268,7 +272,7 @@ export function ChatMessages({
                           <ToolOutput
                             output={
                               "output" in part
-                                ? summarizeToolPayload(part.output)
+                                ? summarizeToolOutput(part.output)
                                 : undefined
                             }
                             errorText={part.errorText}

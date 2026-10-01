@@ -148,7 +148,7 @@ function CompactPagination({
     >
       {onPageSizeChange && pageSize !== undefined ? (
         <div className="flex items-center gap-2">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+          <span className="text-xs text-muted-foreground">
             Rows per page
           </span>
           <Select
@@ -172,7 +172,7 @@ function CompactPagination({
       )}
 
       {showRange && (
-        <span className="font-mono text-[10px] text-muted-foreground">
+        <span className="text-xs tabular-nums text-muted-foreground">
           {rangeStart}&ndash;{rangeEnd} of {totalItems.toLocaleString()}
         </span>
       )}
@@ -190,7 +190,7 @@ function CompactPagination({
           onClick={() => onPageChange(currentPage - 1)}
           disabled={!canPrev || isLoading}
         />
-        <span className="px-2 font-mono text-[10px] text-muted-foreground">
+        <span className="px-2 text-xs tabular-nums text-muted-foreground">
           {currentPage} / {totalPages}
         </span>
         <NavButton
@@ -259,7 +259,7 @@ export const Pagination = (props: PaginationProps) => {
         variant="ghost"
         size="icon"
         className={cn(
-          "h-8 w-8 text-muted-foreground hover:text-primary hover:bg-muted/60",
+          "h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted/60",
           !canGoPrevious && "opacity-30 cursor-not-allowed hover:text-muted-foreground"
         )}
         disabled={!canGoPrevious || isLoading}
@@ -273,7 +273,7 @@ export const Pagination = (props: PaginationProps) => {
       <Button
         variant="ghost"
         className={cn(
-          "h-8 gap-1 px-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary hover:bg-muted/60",
+          "h-8 gap-1 px-3 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60",
           !canGoPrevious && "opacity-30 cursor-not-allowed hover:text-muted-foreground"
         )}
         disabled={!canGoPrevious || isLoading}
@@ -308,8 +308,8 @@ export const Pagination = (props: PaginationProps) => {
               className={cn(
                 "h-8 w-8 font-mono text-xs transition-all",
                 isCurrentPage
-                  ? "bg-primary text-white hover:bg-primary shadow-[0_0_12px_rgba(99,102,241,0.4)]"
-                  : "text-muted-foreground hover:text-primary hover:bg-muted/60"
+                  ? "bg-primary text-white hover:bg-primary"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
               )}
               onClick={() => onPageChange(pageNumber as number)}
               disabled={isLoading}
@@ -324,7 +324,7 @@ export const Pagination = (props: PaginationProps) => {
       <Button
         variant="ghost"
         className={cn(
-          "h-8 gap-1 px-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary hover:bg-muted/60",
+          "h-8 gap-1 px-3 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60",
           !canGoNext && "opacity-30 cursor-not-allowed hover:text-muted-foreground"
         )}
         disabled={!canGoNext || isLoading}
@@ -339,7 +339,7 @@ export const Pagination = (props: PaginationProps) => {
         variant="ghost"
         size="icon"
         className={cn(
-          "h-8 w-8 text-muted-foreground hover:text-primary hover:bg-muted/60",
+          "h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted/60",
           !canGoNext && "opacity-30 cursor-not-allowed hover:text-muted-foreground"
         )}
         disabled={!canGoNext || isLoading}

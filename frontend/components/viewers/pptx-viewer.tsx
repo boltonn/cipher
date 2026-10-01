@@ -749,7 +749,7 @@ function PptxThumbnailSidebarList({
                   aria-selected={isActive}
                   aria-setsize={slideCount}
                   className={cn(
-                    "flex h-auto w-full cursor-default flex-col items-center gap-2 rounded-md p-2 text-xs transition-colors outline-none select-none hover:bg-sidebar-accent",
+                    "flex h-auto w-full cursor-pointer flex-col items-center gap-2 rounded-md p-2 text-xs transition-colors outline-none select-none hover:bg-sidebar-accent",
                     isActive
                       ? "bg-sidebar-accent text-foreground"
                       : "text-muted-foreground",

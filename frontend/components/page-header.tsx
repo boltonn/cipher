@@ -84,13 +84,13 @@ export function PageHeaderSlot({ className }: { className?: string }) {
 }
 
 interface PageHeaderProps {
-  /** Eyebrow label, e.g. "Images". Omit and use `children` for a fully custom left side instead. */
+  /** Page title, e.g. "Images". Omit and use `children` for a fully custom left side instead. */
   eyebrow?: string;
   /** Value shown under the eyebrow, e.g. "738 Results". */
   value?: React.ReactNode;
   /** Optional icon shown next to `value`. */
   icon?: React.ReactNode;
-  /** Color class for `value` text. Defaults to indigo, the app's standard accent. */
+  /** Color class for `value` text. Defaults to muted; pass `text-annotation` only on AI/ML surfaces. */
   accentClassName?: string;
   /** Hover color class for the shared SidebarTrigger while this page is active. Defaults to indigo. */
   sidebarAccentClassName?: string;
@@ -112,7 +112,7 @@ export function PageHeader({
   eyebrow,
   value,
   icon,
-  accentClassName = "text-primary/80",
+  accentClassName = "text-muted-foreground",
   sidebarAccentClassName,
   extra,
   actions,
@@ -124,14 +124,14 @@ export function PageHeader({
     children ?? (
       <>
         {eyebrow && (
-          <div className="flex flex-col">
-            <span className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">
-              {eyebrow}
-            </span>
-            <div className="flex items-center gap-2">
-              {icon}
-              <span className={cn("text-xs font-mono", accentClassName)}>{value}</span>
-            </div>
+          <div className="flex min-w-0 flex-col leading-tight">
+            <h1 className="truncate text-sm font-semibold text-foreground">{eyebrow}</h1>
+            {value != null && (
+              <div className="flex min-w-0 items-center gap-1.5 [&_svg]:size-3 [&_svg]:shrink-0 [&_svg]:text-muted-foreground">
+                {icon}
+                <span className={cn("truncate text-xs tabular-nums", accentClassName)}>{value}</span>
+              </div>
+            )}
           </div>
         )}
         {extra}

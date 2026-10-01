@@ -7,14 +7,14 @@ import { NAV, type NavItem } from "@/lib/nav";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { useReducedMotion } from "motion/react";
-import { ArrowRight, ChevronRight, Database, Home, Mail } from "lucide-react";
+import { ArrowRight, ChevronRight, Database, Mail } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
 const REPO_URL = process.env.NEXT_PUBLIC_REPO_URL;
 const CONTACT_EMAIL = process.env.NEXT_PUBLIC_CONTACT_EMAIL;
 
-const DECODE_LINE = "files · mail · images · messages -> typed & searchable";
+const DECODE_LINE = "documents · emails · images -> typed & searchable";
 const DECODE_GLYPHS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#$%&*+=<>/\\|~^";
 
 /**
@@ -70,7 +70,7 @@ function DecodeLine({ text }: { text: string }) {
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <span className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">
+    <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
       {children}
     </span>
   );
@@ -165,7 +165,7 @@ function RecentDatasets() {
 export default function Page() {
   return (
     <div className="mx-auto max-w-400 px-6 pt-5 pb-20">
-      <PageHeader eyebrow="Home" value="Cipher" icon={<Home className="h-3.5 w-3.5 text-primary/80" />} />
+      <PageHeader eyebrow="Home" />
 
       <div className="w-full max-w-5xl">
         <div className="pt-2 pb-10">
@@ -184,8 +184,8 @@ export default function Page() {
               "animate-in fade-in-0 slide-in-from-bottom-2 duration-700 delay-150 motion-reduce:animate-none"
             )}
           >
-            Point Cipher at whatever you&apos;ve got &mdash; files, mail, images, message exports
-            &mdash; and it types, enriches, and indexes it automatically.
+            Point Cipher at a set of documents, emails, and images &mdash; it types, enriches, and
+            indexes them, then surfaces the people, organizations, places, and events inside.
           </p>
         </div>
 
@@ -227,7 +227,7 @@ export default function Page() {
 
         {(REPO_URL || CONTACT_EMAIL) && (
           <>
-            <Separator className="mt-12 mb-5 bg-white/10" />
+            <Separator className="mt-12 mb-5" />
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <SectionLabel>Get in touch</SectionLabel>

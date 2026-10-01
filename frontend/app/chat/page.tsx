@@ -163,7 +163,7 @@ export default function ChatPage() {
       <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-sidebar/85 px-4 backdrop-blur-xl">
         <SidebarTrigger className="h-9 w-9 text-muted-foreground hover:text-primary" />
         <div className="flex flex-col">
-          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
             Assistant
           </span>
           <span className="flex items-center gap-1.5 font-mono text-xs text-primary/80">
@@ -185,16 +185,15 @@ export default function ChatPage() {
         )}
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex min-h-full max-w-3xl flex-col px-4 py-6">
-          <ChatMessages
-            messages={messages}
-            onRegenerate={handleRegenerate}
-            onOpenCitation={handleOpenCitation}
-            showThinking={showLoadingIndicator}
-            onExamplePrompt={(text) => handleSubmit({ text, files: [] })}
-          />
-        </div>
+      {/* ChatMessages' StickToBottom is the scroller (keeps the stream pinned to the bottom). */}
+      <div className="min-h-0 flex-1">
+        <ChatMessages
+          messages={messages}
+          onRegenerate={handleRegenerate}
+          onOpenCitation={handleOpenCitation}
+          showThinking={showLoadingIndicator}
+          onExamplePrompt={(text) => handleSubmit({ text, files: [] })}
+        />
       </div>
 
       <div className="mx-auto w-full max-w-3xl shrink-0 px-4 pb-4">

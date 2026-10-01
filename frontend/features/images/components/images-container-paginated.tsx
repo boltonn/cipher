@@ -62,14 +62,14 @@ export function ImagesContainerPaginated({
   if (images.length === 0 && !isLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-40 border border-dashed border-border/50 rounded-3xl bg-muted/10">
-        <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-muted-foreground mb-4">
+        <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground mb-4">
           No Assets Resolved
         </p>
         {isFullWidth && (
           <Button
             variant="ghost"
             onClick={onToggleFilters}
-            className="text-[9px] font-bold uppercase tracking-widest text-primary hover:bg-primary/5"
+            className="text-xs font-medium text-primary hover:bg-primary/5"
           >
             <SlidersHorizontal size={12} className="mr-2" /> Expand Filters
           </Button>

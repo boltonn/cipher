@@ -15,7 +15,9 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { TagsInput } from "@/components/tags-input";
+import { EntityPicker } from "@/features/entities/components/entity-picker";
 import {
+  useEntity,
   useUpdateEntity,
   useUpdateEntityDetail,
 } from "@/features/entities/hooks/use-entities";
@@ -31,12 +33,9 @@ interface EditEntityDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-const pick = (d: EntityDetail | null | undefined, ...keys: string[]) => {
-  for (const k of keys) {
-    const v = d?.[k];
-    if (v != null && v !== "") return String(v);
-  }
-  return "";
+const pick = (d: EntityDetail | null | undefined, key: keyof EntityDetail) => {
+  const v = d?.[key];
+  return v != null && v !== "" ? String(v) : "";
 };
 
 export function EditEntityDialog({
@@ -49,7 +48,7 @@ export function EditEntityDialog({
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[85vh] overflow-y-auto border-border bg-card sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle className="text-xs font-black uppercase tracking-[0.1em] text-white">
+          <DialogTitle className="text-xs font-semibold uppercase tracking-wide text-white">
             Edit {entity.entityType}
           </DialogTitle>
         </DialogHeader>
@@ -80,23 +79,28 @@ function EditEntityForm({
 
   // detail fields (org / location / selector)
   const [legalName, setLegalName] = useState(
-    pick(detail, "legalName", "legal_name")
+    pick(detail, "legalName")
   );
-  const [orgType, setOrgType] = useState(pick(detail, "orgType", "org_type"));
+  const [category, setCategory] = useState(pick(detail, "category"));
+  const [parent, setParent] = useState<{ id: string; name?: string } | null>(() => {
+    const id = pick(detail, "parentId");
+    return id ? { id } : null;
+  });
+  const { data: parentEntity } = useEntity(parent && !parent.name ? parent.id : undefined);
   const [country, setCountry] = useState(pick(detail, "country"));
   const [addressText, setAddressText] = useState(
-    pick(detail, "addressText", "address_text")
+    pick(detail, "addressText")
   );
   const [latitude, setLatitude] = useState(pick(detail, "latitude"));
   const [longitude, setLongitude] = useState(pick(detail, "longitude"));
   const [adminArea, setAdminArea] = useState(
-    pick(detail, "adminArea", "admin_area")
+    pick(detail, "adminArea")
   );
   const [rawValue, setRawValue] = useState(
-    pick(detail, "rawValue", "raw_value")
+    pick(detail, "rawValue")
   );
   const [regionHint, setRegionHint] = useState(
-    pick(detail, "regionHint", "region_hint")
+    pick(detail, "regionHint")
   );
 
   const updateEntity = useUpdateEntity(entity.id);
@@ -114,7 +118,8 @@ function EditEntityForm({
     if (entity.entityType === "organization") {
       await updateDetail.mutateAsync({
         legalName: legalName || null,
-        orgType: orgType || null,
+        category: category || null,
+        parentId: parent?.id ?? null,
         country: country || null,
       });
     } else if (entity.entityType === "location") {
@@ -173,9 +178,9 @@ function EditEntityForm({
 
         {entity.entityType === "person" && !entity.personId && (
           <p className="rounded-md border border-border/60 bg-muted/30 p-3 text-[11px] text-muted-foreground">
-            Provisional person — extracted from a name, not yet linked to a
-            Persons record. Verify it or merge it into a real person from the
-            Review queue.
+            Auto-created person — made by the resolver from a name, not yet
+            verified as a Persons record. Verify it or merge it into a real person on the
+            Entities page’s Verify tab.
           </p>
         )}
 
@@ -189,10 +194,11 @@ function EditEntityForm({
               />
             </FieldRow>
             <div className="grid grid-cols-2 gap-3">
-              <FieldRow label="Org type">
+              <FieldRow label="Category">
                 <Input
-                  value={orgType}
-                  onChange={(e) => setOrgType(e.target.value)}
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  placeholder="company, agency, division, office…"
                   className="bg-muted/40 text-sm"
                 />
               </FieldRow>
@@ -204,6 +210,23 @@ function EditEntityForm({
                 />
               </FieldRow>
             </div>
+            <FieldRow label="Part of (parent organization)">
+              <div className="flex items-center gap-2">
+                <EntityPicker
+                  value={parent?.id}
+                  valueName={parent?.name ?? parentEntity?.displayName}
+                  entityTypes={["organization"]}
+                  placeholder="None — top-level organization"
+                  onSelect={(id, name) => id !== entity.id && setParent({ id, name })}
+                  className="min-w-0 flex-1"
+                />
+                {parent && (
+                  <Button variant="ghost" size="sm" className="h-8 px-2 text-xs" onClick={() => setParent(null)}>
+                    Clear
+                  </Button>
+                )}
+              </div>
+            </FieldRow>
           </>
         )}
 
@@ -319,7 +342,7 @@ function FieldRow({
 }) {
   return (
     <Field>
-      <FieldLabel className="text-[10px] uppercase tracking-widest text-muted-foreground">
+      <FieldLabel className="text-[11px] uppercase tracking-wide text-muted-foreground">
         {label}
       </FieldLabel>
       {children}

@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { motion } from "motion/react";
 import { ArrowUpRight, BadgeCheck, Loader2 } from "lucide-react";
 import Link from "next/link";
+import { useRef, useState } from "react";
 
 interface EntityTooltipCardProps {
   entityId: string;
@@ -32,7 +33,7 @@ export function EntityTooltipCard({ entityId }: EntityTooltipCardProps) {
   const { entity, detail, selectors, fileCount } = data;
   const meta = ENTITY_TYPE_META[entity.entityType];
   const selectorValue =
-    (detail?.normalizedValue as string) ?? (detail?.normalized_value as string) ?? null;
+    (detail?.normalizedValue as string) ?? null;
 
   return (
     <motion.div
@@ -61,17 +62,17 @@ export function EntityTooltipCard({ entityId }: EntityTooltipCardProps) {
             </span>
             {entity.isVerified && <BadgeCheck size={13} className="shrink-0 text-primary" />}
           </div>
-          <span className={cn("text-[10px] font-bold uppercase tracking-widest", meta.textClass)}>
+          <span className={cn("text-[11px] font-bold uppercase tracking-wide", meta.textClass)}>
             {meta.label}
             {selectorValue ? ` · ${selectorValue}` : ""}
           </span>
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-1.5 text-[10px] text-muted-foreground">
-        <Stat label="mentions" value={fileCount} />
+      <div className="flex flex-wrap gap-1.5 text-[11px] text-muted-foreground">
+        <Stat label="files" value={fileCount} />
         <Stat label="selectors" value={selectors.length} />
-        <Stat label="links" value={data.relatedEntities.length} />
+        <Stat label="relationships" value={data.relatedEntities.length} />
       </div>
 
       {entity.notes && (
@@ -99,14 +100,28 @@ function Stat({ label, value }: { label: string; value: number }) {
 interface EntityHoverCardProps {
   entityId: string;
   entityType?: EntityType;
+  /** keep the card shut (e.g. while an editor for this span is open) */
+  disabled?: boolean;
   children: React.ReactNode;
 }
 
-/** Wraps any trigger element in a hover card that shows the entity tooltip. */
-export function EntityHoverCard({ entityId, children }: EntityHoverCardProps) {
+/**
+ * Wraps any trigger element in a hover card that shows the entity tooltip. Stays shut while a
+ * mouse button is down, so dragging across a mention chip selects text instead of the card.
+ */
+export function EntityHoverCard({ entityId, disabled, children }: EntityHoverCardProps) {
+  const [open, setOpen] = useState(false);
+  const pressed = useRef(false);
+  const press = () => {
+    pressed.current = true;
+    setOpen(false);
+    window.addEventListener("pointerup", () => (pressed.current = false), { once: true });
+  };
   return (
-    <HoverCard openDelay={120} closeDelay={80}>
-      <HoverCardTrigger asChild>{children}</HoverCardTrigger>
+    <HoverCard open={open && !disabled} onOpenChange={(next) => setOpen(next && !pressed.current)} openDelay={120} closeDelay={80}>
+      <HoverCardTrigger asChild onPointerDown={press}>
+        {children}
+      </HoverCardTrigger>
       <HoverCardContent className="w-72" side="top">
         <EntityTooltipCard entityId={entityId} />
       </HoverCardContent>

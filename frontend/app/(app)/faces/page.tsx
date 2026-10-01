@@ -3,18 +3,21 @@
 import { PageError, PageLoading } from "@/components/page-loading";
 import { PageHeader } from "@/components/page-header";
 import { PaginationModeToggle } from "@/components/pagination-mode-toggle";
+import { FaceSelectionBar } from "@/features/faces/components/face-selection-bar";
 import { FaceUploadSearchBar } from "@/features/faces/components/face-upload-search-bar";
 import { FacesContainerInfinite } from "@/features/faces/components/faces-container-infinite";
 import { FacesContainerPaginated } from "@/features/faces/components/faces-container-paginated";
+import { useFaceSelection } from "@/features/faces/hooks/use-face-selection";
 import { useSearchController } from "@/features/faces/hooks/use-search-controller";
 import { PaginationModeType } from "@/types/common";
 import { useQueryClient } from "@tanstack/react-query";
 import { ScanFace, X } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 
 function FacesPageInner() {
-  const [paginationMode, setPaginationMode] = useState<PaginationModeType>("infinite");
+  const [paginationMode, setPaginationMode] =
+    useState<PaginationModeType>("infinite");
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
 
   const searchParams = useSearchParams();
@@ -42,6 +45,22 @@ function FacesPageInner() {
 
   const totalFaces = data?.pages[0]?.total ?? paginatedData?.total ?? 0;
 
+  const selection = useFaceSelection();
+  const isRejectedView = !!filters.rejectedOnly;
+  const [prevRejectedView, setPrevRejectedView] = useState(isRejectedView);
+  if (isRejectedView !== prevRejectedView) {
+    setPrevRejectedView(isRejectedView);
+    selection.clear();
+  }
+  const loadedIds = useMemo(
+    () =>
+      paginationMode === "infinite"
+        ? (data?.pages.flatMap((page) => page.data.map((face) => face.id)) ??
+          [])
+        : (paginatedData?.data.map((face) => face.id) ?? []),
+    [paginationMode, data, paginatedData]
+  );
+
   useEffect(() => {
     if (hasProcessedParams.current) return;
     const similar = searchParams.get("similar");
@@ -56,7 +75,7 @@ function FacesPageInner() {
     <div className="max-w-400 mx-auto px-6 relative pb-20">
       <PageHeader
         eyebrow="Faces"
-        value={`${totalFaces.toLocaleString()} Results`}
+        value={`${totalFaces.toLocaleString()} ${isRejectedView ? "rejected" : "faces"}`}
         accentClassName="text-annotation/80"
         sidebarAccentClassName="hover:text-annotation"
         extra={
@@ -64,7 +83,7 @@ function FacesPageInner() {
             <button
               type="button"
               onClick={actions.clearSimilar}
-              className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-annotation bg-annotation/10 border border-annotation/20 rounded-full px-3 py-1.5 hover:bg-annotation/20 transition-colors"
+              className="flex items-center gap-1.5 text-xs font-medium text-annotation bg-annotation/10 border border-annotation/20 rounded-full px-3 py-1.5 hover:bg-annotation/20 transition-colors"
             >
               <ScanFace size={12} />
               {queryLabel || "Similar to face"}
@@ -75,7 +94,11 @@ function FacesPageInner() {
         actions={
           <PaginationModeToggle
             mode={paginationMode}
-            onToggle={() => setPaginationMode((p) => (p === "infinite" ? "normal" : "infinite"))}
+            onToggle={() =>
+              setPaginationMode((p) =>
+                p === "infinite" ? "normal" : "infinite"
+              )
+            }
             accentClassName="hover:text-annotation"
           />
         }
@@ -114,6 +137,7 @@ function FacesPageInner() {
           <FacesContainerInfinite
             data={data}
             onSimilar={actions.handleSimilar}
+            selection={selection}
             fetchNextPage={fetchNextPage}
             hasNextPage={hasNextPage}
             isFetchingNextPage={isFetchingNextPage}
@@ -124,6 +148,7 @@ function FacesPageInner() {
           <FacesContainerPaginated
             data={paginatedData}
             onSimilar={actions.handleSimilar}
+            selection={selection}
             currentPage={currentPage}
             onPageChange={actions.handlePageChange}
             isLoading={isFetching}
@@ -132,6 +157,11 @@ function FacesPageInner() {
             onToggleFilters={() => setIsFiltersOpen(true)}
           />
         )}
+        <FaceSelectionBar
+          selection={selection}
+          loadedIds={loadedIds}
+          isRejectedView={isRejectedView}
+        />
       </main>
     </div>
   );

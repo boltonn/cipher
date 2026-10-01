@@ -20,7 +20,7 @@ export function FeatureChip({ feature }: { feature: ResolutionFeature }) {
       <TooltipTrigger asChild>
         <span
           className={cn(
-            "cursor-help rounded-full border px-1.5 py-0.5 text-[9px]",
+            "cursor-help rounded-full border px-1.5 py-0.5 text-[11px]",
             conflict
               ? "border-destructive/40 bg-destructive/10 text-destructive"
               : "border-annotation/30 bg-annotation/10 text-annotation-foreground dark:text-annotation"

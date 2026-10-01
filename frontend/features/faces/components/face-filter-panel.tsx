@@ -24,6 +24,7 @@ export function hasActiveFaceFilters(params: FaceFilters): boolean {
   return !!(
     params.unassignedOnly ||
     params.representativeOnly ||
+    params.rejectedOnly ||
     params.personIds?.length ||
     (params.minSize ?? DEFAULT_MIN_SIZE) !== DEFAULT_MIN_SIZE ||
     (params.minQuality ?? DEFAULT_MIN_QUALITY) !== DEFAULT_MIN_QUALITY ||
@@ -45,7 +46,9 @@ export const FaceFilterPanel: React.FC<FaceFilterPanelProps> = ({
   isSimilarityMode,
   className,
 }) => {
-  const [prevMinSimilarity, setPrevMinSimilarity] = useState(params.minSimilarity);
+  const [prevMinSimilarity, setPrevMinSimilarity] = useState(
+    params.minSimilarity
+  );
   const [localSimilarity, setLocalSimilarity] = useState(
     params.minSimilarity ?? DEFAULT_MIN_SIMILARITY
   );
@@ -55,14 +58,18 @@ export const FaceFilterPanel: React.FC<FaceFilterPanelProps> = ({
   }
 
   const [prevMinSize, setPrevMinSize] = useState(params.minSize);
-  const [localMinSize, setLocalMinSize] = useState(params.minSize ?? DEFAULT_MIN_SIZE);
+  const [localMinSize, setLocalMinSize] = useState(
+    params.minSize ?? DEFAULT_MIN_SIZE
+  );
   if (params.minSize !== prevMinSize) {
     setPrevMinSize(params.minSize);
     setLocalMinSize(params.minSize ?? DEFAULT_MIN_SIZE);
   }
 
   const [prevMinQuality, setPrevMinQuality] = useState(params.minQuality);
-  const [localMinQuality, setLocalMinQuality] = useState(params.minQuality ?? DEFAULT_MIN_QUALITY);
+  const [localMinQuality, setLocalMinQuality] = useState(
+    params.minQuality ?? DEFAULT_MIN_QUALITY
+  );
   if (params.minQuality !== prevMinQuality) {
     setPrevMinQuality(params.minQuality);
     setLocalMinQuality(params.minQuality ?? DEFAULT_MIN_QUALITY);
@@ -70,7 +77,10 @@ export const FaceFilterPanel: React.FC<FaceFilterPanelProps> = ({
 
   const hasActiveFilters = hasActiveFaceFilters(params);
 
-  const updateParam = <K extends keyof FaceFilters>(key: K, value: FaceFilters[K]) => {
+  const updateParam = <K extends keyof FaceFilters>(
+    key: K,
+    value: FaceFilters[K]
+  ) => {
     setParams((prev) => ({ ...prev, [key]: value }));
   };
 
@@ -96,13 +106,15 @@ export const FaceFilterPanel: React.FC<FaceFilterPanelProps> = ({
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-2.5 text-muted-foreground">
           <Filter size={14} />
-          <h3 className="text-[10px] font-black uppercase tracking-[0.2em]">Filters</h3>
+          <h3 className="text-[11px] font-semibold uppercase tracking-wide">
+            Filters
+          </h3>
         </div>
         {hasActiveFilters && (
           <button
             type="button"
             onClick={clearAllFilters}
-            className="text-[10px] font-bold uppercase tracking-widest text-destructive/70 hover:text-destructive flex items-center gap-1 transition-colors"
+            className="text-xs font-medium text-destructive/70 hover:text-destructive flex items-center gap-1 transition-colors"
           >
             <X size={11} /> Reset
           </button>
@@ -112,16 +124,21 @@ export const FaceFilterPanel: React.FC<FaceFilterPanelProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-x-8 gap-y-6">
         {/* Identity */}
         <div className="flex flex-col gap-3 xl:col-span-2 min-w-0">
-          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+          <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
             Identity
           </span>
           <div className="space-y-1.5">
-            <Label className="text-[10px] uppercase tracking-widest text-muted-foreground">
+            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
               Person (includes potential matches)
             </Label>
             <PersonMultiSelectCombobox
               value={params.personIds ?? []}
-              onChange={(personIds) => updateParam("personIds", personIds.length ? personIds : undefined)}
+              onChange={(personIds) =>
+                updateParam(
+                  "personIds",
+                  personIds.length ? personIds : undefined
+                )
+              }
             />
           </div>
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2 pt-1">
@@ -131,7 +148,10 @@ export const FaceFilterPanel: React.FC<FaceFilterPanelProps> = ({
                 checked={!!params.unassignedOnly}
                 onCheckedChange={(v) => updateParam("unassignedOnly", v)}
               />
-              <Label htmlFor="unassigned-only" className="text-[13px] text-foreground font-medium">
+              <Label
+                htmlFor="unassigned-only"
+                className="text-[13px] text-foreground font-medium"
+              >
                 Unassigned only
               </Label>
             </div>
@@ -141,8 +161,24 @@ export const FaceFilterPanel: React.FC<FaceFilterPanelProps> = ({
                 checked={!!params.representativeOnly}
                 onCheckedChange={(v) => updateParam("representativeOnly", v)}
               />
-              <Label htmlFor="representative-only" className="text-[13px] text-foreground font-medium">
+              <Label
+                htmlFor="representative-only"
+                className="text-[13px] text-foreground font-medium"
+              >
                 Representative
+              </Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                id="rejected-only"
+                checked={!!params.rejectedOnly}
+                onCheckedChange={(v) => updateParam("rejectedOnly", v)}
+              />
+              <Label
+                htmlFor="rejected-only"
+                className="text-[13px] text-foreground font-medium"
+              >
+                Not a face
               </Label>
             </div>
           </div>
@@ -150,31 +186,41 @@ export const FaceFilterPanel: React.FC<FaceFilterPanelProps> = ({
 
         {/* Sort */}
         <div className="flex flex-col gap-3 min-w-0">
-          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+          <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
             Sort
           </span>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5 min-w-0">
-              <Label className="text-[10px] uppercase tracking-widest text-muted-foreground">Sort By</Label>
+              <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                Sort By
+              </Label>
               <Select
                 value={params.sortBy || "dateCreated"}
-                onValueChange={(v) => updateParam("sortBy", v as FaceFilters["sortBy"])}
+                onValueChange={(v) =>
+                  updateParam("sortBy", v as FaceFilters["sortBy"])
+                }
               >
                 <SelectTrigger className="w-full bg-muted/40 border-border text-xs h-9">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="dateCreated">Date detected</SelectItem>
-                  <SelectItem value="detectionConfidence">Confidence</SelectItem>
+                  <SelectItem value="detectionConfidence">
+                    Confidence
+                  </SelectItem>
                   <SelectItem value="qualityScore">Quality</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1.5 min-w-0">
-              <Label className="text-[10px] uppercase tracking-widest text-muted-foreground">Order</Label>
+              <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                Order
+              </Label>
               <Select
                 value={params.sortOrder || "desc"}
-                onValueChange={(v) => updateParam("sortOrder", v as FaceFilters["sortOrder"])}
+                onValueChange={(v) =>
+                  updateParam("sortOrder", v as FaceFilters["sortOrder"])
+                }
               >
                 <SelectTrigger className="w-full bg-muted/40 border-border text-xs h-9">
                   <SelectValue />
@@ -195,7 +241,7 @@ export const FaceFilterPanel: React.FC<FaceFilterPanelProps> = ({
               <span
                 id="face-similarity-label"
                 className={cn(
-                  "text-[10px] font-bold uppercase tracking-[0.2em] truncate",
+                  "text-[11px] font-bold uppercase tracking-wide truncate",
                   isSimilarityMode ? "text-annotation" : "text-muted-foreground"
                 )}
               >
@@ -220,7 +266,7 @@ export const FaceFilterPanel: React.FC<FaceFilterPanelProps> = ({
               disabled={!isSimilarityMode}
             />
             {!isSimilarityMode && (
-              <span className="text-[10px] text-muted-foreground italic">
+              <span className="text-[11px] text-muted-foreground italic">
                 Only applies to similarity searches
               </span>
             )}
@@ -230,7 +276,7 @@ export const FaceFilterPanel: React.FC<FaceFilterPanelProps> = ({
             <div className="flex items-center justify-between gap-2">
               <span
                 id="face-min-size-label"
-                className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground truncate"
+                className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground truncate"
               >
                 Min Resolution
               </span>
@@ -257,7 +303,7 @@ export const FaceFilterPanel: React.FC<FaceFilterPanelProps> = ({
             <div className="flex items-center justify-between gap-2">
               <span
                 id="face-min-quality-label"
-                className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground truncate"
+                className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground truncate"
               >
                 Min Quality
               </span>

@@ -118,7 +118,7 @@ function SelectedPersonChip({ personId, onRemove }: { personId: string; onRemove
       <button
         type="button"
         onClick={onRemove}
-        className="hover:text-white ml-0.5"
+        className="hover:text-foreground ml-0.5"
         aria-label={`Remove ${person?.name || "person"}`}
       >
         <X size={11} />

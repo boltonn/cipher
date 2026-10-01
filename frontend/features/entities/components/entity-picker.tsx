@@ -15,7 +15,7 @@ import { useEntityList } from "@/features/entities/hooks/use-entities";
 import type { EntityType } from "@/features/entities/types";
 import { useDebounce } from "@/hooks/use-debounce";
 import { cn } from "@/lib/utils";
-import { Check, ChevronsUpDown } from "lucide-react";
+import { Check, ChevronsUpDown, TextQuote } from "lucide-react";
 import { useState } from "react";
 
 interface EntityPickerProps {
@@ -28,6 +28,8 @@ interface EntityPickerProps {
   datasetId?: string;
   placeholder?: string;
   className?: string;
+  /** Offer the typed text itself as a pick (e.g. "any mention of …" -- values with no entity). */
+  onSelectText?: (text: string) => void;
 }
 
 /** Type-ahead picker over the entity graph, backed by `GET /entities`. */
@@ -39,6 +41,7 @@ export function EntityPicker({
   datasetId,
   placeholder = "Search entities…",
   className,
+  onSelectText,
 }: EntityPickerProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -49,14 +52,18 @@ export function EntityPicker({
     query: debouncedQuery || undefined,
     entityType: singleType,
     datasetId,
+    // typing: best name match first; empty: the most-mentioned entities are the likeliest picks
+    sortBy: debouncedQuery ? "relevance" : "mention_count",
+    sortOrder: debouncedQuery ? undefined : "desc",
     limit: 20,
     page: 1,
-  });
+  }, open); // closed pickers (three sit in the search filter bar) shouldn't load on page render
 
   const allow = new Set(entityTypes);
   const entities = (data?.data ?? []).filter(
     (e) => allow.size === 0 || allow.has(e.entityType)
   );
+  const typedText = onSelectText ? query.trim() : "";
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -90,7 +97,25 @@ export function EntityPicker({
             className="text-xs"
           />
           <CommandList>
-            {!isFetching && entities.length === 0 && (
+            {typedText && (
+              <CommandGroup>
+                <CommandItem
+                  value={`text:${typedText}`}
+                  onSelect={() => {
+                    onSelectText?.(typedText);
+                    setOpen(false);
+                    setQuery("");
+                  }}
+                  className="gap-2 text-xs"
+                >
+                  <TextQuote size={12} className="shrink-0 text-muted-foreground" />
+                  <span className="flex-1 truncate">
+                    Any mention of <span className="font-medium text-foreground">“{typedText}”</span>
+                  </span>
+                </CommandItem>
+              </CommandGroup>
+            )}
+            {!isFetching && entities.length === 0 && !typedText && (
               <CommandEmpty className="py-4 text-xs text-muted-foreground">
                 {query ? "No match" : "Type to search"}
               </CommandEmpty>
@@ -115,13 +140,11 @@ export function EntityPicker({
                         value === e.id ? "opacity-100" : "opacity-0"
                       )}
                     />
-                    <meta.Icon size={12} className={cn("shrink-0", meta.textClass)} />
+                    <meta.Icon size={12} aria-label={meta.label} className={cn("shrink-0", meta.textClass)} />
                     <span className="flex-1 truncate">{e.displayName}</span>
-                    {allow.size !== 1 && (
-                      <span className="text-[10px] uppercase text-muted-foreground">
-                        {meta.label}
-                      </span>
-                    )}
+                    <span className="text-[11px] tabular-nums text-muted-foreground" title="Mentions">
+                      {e.mentionCount.toLocaleString()}
+                    </span>
                   </CommandItem>
                 );
               })}

@@ -102,7 +102,7 @@ export function EventsCalendar({
         {WEEKDAYS.map((d) => (
           <div
             key={d}
-            className="border-b border-border px-2 py-1.5 text-[10px] font-black uppercase tracking-widest text-muted-foreground"
+            className="border-b border-border px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
           >
             {d}
           </div>
@@ -159,7 +159,7 @@ export function EventsCalendar({
                   <button
                     type="button"
                     onClick={() => onSelect(dayEvents[MAX_CHIPS])}
-                    className="px-1 text-[10px] font-medium text-muted-foreground hover:text-foreground"
+                    className="px-1 text-[11px] font-medium text-muted-foreground hover:text-foreground"
                   >
                     +{dayEvents.length - MAX_CHIPS} more
                   </button>

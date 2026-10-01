@@ -26,7 +26,7 @@ export interface EntityFilters {
   /** set via a deep link from the dataset breakdown; no dropdown for it yet */
   selectorSubtype?: SelectorSubtype;
   country?: string;
-  orgType?: string;
+  category?: string;
   dobFrom?: string;
   dobTo?: string;
 }
@@ -41,7 +41,7 @@ function hasTypeScopedFilter(f: EntityFilters) {
     !!f.selectorType ||
     !!f.selectorSubtype ||
     !!f.country ||
-    !!f.orgType ||
+    !!f.category ||
     !!f.dobFrom ||
     !!f.dobTo
   );
@@ -97,10 +97,10 @@ export function EntitySearchFilters({
 
       {type === "organization" && (
         <>
-          <Field label="Org type" className="w-40">
+          <Field label="Category" className="w-40">
             <Input
-              value={value.orgType ?? ""}
-              onChange={(e) => set({ orgType: e.target.value || undefined })}
+              value={value.category ?? ""}
+              onChange={(e) => set({ category: e.target.value || undefined })}
               placeholder="e.g. company"
               className="h-9 bg-muted/40 text-xs"
             />
@@ -237,7 +237,7 @@ function Field({
 }) {
   return (
     <div className={className}>
-      <Label className="mb-1.5 flex items-baseline gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+      <Label className="mb-1.5 flex items-baseline gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
         {label}
         {hint && (
           <span className="font-normal normal-case tracking-normal text-muted-foreground/60">

@@ -1,8 +1,8 @@
-import { ENTITY_TYPE_META } from "@/features/entities/components/entity-type-meta";
+import { GRAPH_NODE_TYPE_META } from "@/features/entities/components/entity-type-meta";
 import {
   LOW_SIGNAL_RELATIONSHIPS,
   type EntityRelationship,
-  type EntitySummary,
+  type GraphNode,
 } from "@/features/entities/types";
 import { annotateAnalytics } from "@/features/graph/lib/graph-analytics";
 import {
@@ -21,7 +21,7 @@ const SEED_SIZE = 20;
 const RECIPROCAL_CURVATURE = 0.25;
 
 export interface NetworkInput {
-  nodes: EntitySummary[];
+  nodes: GraphNode[];
   edges: EntityRelationship[];
   seedIds: ReadonlySet<string>;
   expandedIds: ReadonlySet<string>;
@@ -57,7 +57,7 @@ export function buildNetwork({
 
   nodes.forEach((node, i) => {
     if (graph.hasNode(node.id)) return;
-    const meta = ENTITY_TYPE_META[node.entityType];
+    const meta = GRAPH_NODE_TYPE_META[node.entityType];
     const angle = (2 * Math.PI * i) / Math.max(1, nodes.length);
     const radius = 8 + i * 0.12;
     const selectorType =

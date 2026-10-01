@@ -155,6 +155,27 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* Tailwind v4 dropped cursor:pointer on buttons (upgrade guide / shadcn tailwind-v4 notes) -- restore it for everything clickable. */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  [role="tab"]:not([aria-disabled="true"]),
+  [role="checkbox"]:not([data-disabled]),
+  [role="switch"]:not([data-disabled]),
+  [role="radio"]:not([data-disabled]),
+  [role="menuitem"]:not([data-disabled]),
+  [role="menuitemcheckbox"]:not([data-disabled]),
+  [role="menuitemradio"]:not([data-disabled]),
+  [role="option"]:not([data-disabled]):not([aria-disabled="true"]),
+  [role="combobox"]:not(:disabled),
+  summary,
+  select:not(:disabled),
+  label:has(> input:not(:disabled), > button:not(:disabled)),
+  input[type="checkbox"]:not(:disabled),
+  input[type="radio"]:not(:disabled),
+  input[type="file"]:not(:disabled),
+  input[type="range"]:not(:disabled) {
+    cursor: pointer;
+  }
 }
 
 @layer utilities {

@@ -117,7 +117,7 @@ export function useEnrichmentProgress(id: string | undefined) {
     queryFn: async () => {
       const { data } = await apiClient.get<EnrichmentProgress[]>(
         "/enrichments/progress/all",
-        { params: { dataset_id: id }, suppressErrorToast: true }
+        { params: { datasetId: id }, suppressErrorToast: true }
       );
       return data;
     },
@@ -133,17 +133,14 @@ export function useEnrichmentProgress(id: string | undefined) {
   });
 }
 
-/** Rough per-enrichment time estimates for a dataset, at a chosen device class. */
-export function useEnrichmentEstimates(
-  datasetId: string | undefined,
-  device: "cpu" | "cuda" = "cpu"
-) {
+/** Rough per-enrichment time estimates for a dataset, each on the device that analytic runs on. */
+export function useEnrichmentEstimates(datasetId: string | undefined) {
   return useQuery({
-    queryKey: ["datasets", datasetId, "enrichment-estimates", device],
+    queryKey: ["datasets", datasetId, "enrichment-estimates"],
     queryFn: async () => {
       const { data } = await apiClient.get<DatasetEnrichmentEstimates>(
         `/datasets/${datasetId}/enrichment-estimates`,
-        { params: { device }, suppressErrorToast: true }
+        { suppressErrorToast: true }
       );
       return data;
     },
@@ -186,7 +183,7 @@ export function useEnrichmentFailures(
       const { data } = await apiClient.get<DatasetEnrichmentFailures>(
         "/enrichments/failures",
         {
-          params: { dataset_id: datasetId, enrichment_type: enrichmentType },
+          params: { datasetId, enrichmentType },
           suppressErrorToast: true,
         }
       );

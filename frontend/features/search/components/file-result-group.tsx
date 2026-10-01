@@ -1,11 +1,11 @@
 "use client";
 
-import { HighlightedText } from "@/components/ui/highlighted-text";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { FileText, Mail, Target } from "lucide-react";
-import { matchTerms, snippetAround } from "../highlight";
+import { matchTerms, snippetRange } from "../highlight";
 import type { GroupedFileResult, SearchMode } from "../types";
+import { MentionMarkedText } from "./mention-marked-text";
 
 interface FileResultGroupProps {
   group: GroupedFileResult;
@@ -36,9 +36,9 @@ export function FileResultGroup({ group, isSelected, onSelect, searchMode, query
     topChunk.pageNumber ? `p. ${topChunk.pageNumber}` : null,
     dateLabel,
   ].filter(Boolean);
-  // A semantic query has no literal words to mark -- the whole snippet is the matched
-  // chunk, and the score badge carries the signal instead.
-  const terms = searchMode === "semantic" ? [] : matchTerms(topChunk, query);
+  const terms = matchTerms(topChunk, query, searchMode);
+  const spans = topChunk.mentionSpans;
+  const snippet = snippetRange(topChunk.text, terms, spans.length ? spans[0].startOffset - topChunk.startOffset : undefined);
 
   return (
     <button
@@ -51,16 +51,16 @@ export function FileResultGroup({ group, isSelected, onSelect, searchMode, query
           : "border-l-4 border-l-transparent hover:bg-muted/30"
       )}
     >
-      <div className="mb-1 flex items-center gap-1.5 text-[10px] font-bold text-muted-foreground">
+      <div className="mb-1 flex items-center gap-1.5 text-[11px] font-bold text-muted-foreground">
         <Icon className="h-3 w-3 shrink-0" />
         <span className="flex-1 truncate">{group.displayName}</span>
         {showMatchSignals && group.matchCount > 1 && (
-          <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-bold text-muted-foreground">
+          <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[11px] font-bold text-muted-foreground">
             {group.matchCount} matches
           </span>
         )}
       </div>
-      <div className="mb-2 truncate font-mono text-[10px] text-muted-foreground/70">
+      <div className="mb-2 truncate font-mono text-[11px] text-muted-foreground/70">
         {meta.join("  ·  ")}
       </div>
       <p
@@ -73,11 +73,18 @@ export function FileResultGroup({ group, isSelected, onSelect, searchMode, query
           isSelected ? "text-foreground" : "text-muted-foreground"
         )}
       >
-        <HighlightedText text={snippetAround(topChunk.text, terms)} terms={terms} />
+        {snippet.start > 0 && "…"}
+        <MentionMarkedText
+          text={topChunk.text.slice(snippet.start, snippet.end)}
+          offset={topChunk.startOffset + snippet.start}
+          spans={spans}
+          terms={terms}
+        />
+        {snippet.end < topChunk.text.length && "…"}
       </p>
       <div className="flex flex-wrap items-center gap-1.5">
         {showMatchSignals && (
-          <div className="flex items-center gap-1 rounded border border-annotation/20 bg-annotation/10 px-1.5 py-0.5 text-[10px] font-bold text-annotation">
+          <div className="flex items-center gap-1 rounded border border-annotation/20 bg-annotation/10 px-1.5 py-0.5 text-[11px] font-bold text-annotation">
             <Target className="h-2.5 w-2.5" />
             {(topChunk.score * 100).toFixed(1)}%
           </div>
@@ -85,7 +92,7 @@ export function FileResultGroup({ group, isSelected, onSelect, searchMode, query
         {topChunk.tags.map((tag) => (
           <span
             key={tag}
-            className="rounded border border-primary/20 bg-primary/20 px-1.5 py-0.5 text-[10px] text-primary"
+            className="rounded border border-primary/20 bg-primary/20 px-1.5 py-0.5 text-[11px] text-primary"
           >
             {tag}
           </span>

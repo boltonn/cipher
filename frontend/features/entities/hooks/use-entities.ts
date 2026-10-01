@@ -24,11 +24,12 @@ import { toast } from "sonner";
 
 const SELECTOR_MENTIONS_PAGE_SIZE = 25;
 
-export function useEntityList(params: EntitySearchParameters) {
+export function useEntityList(params: EntitySearchParameters, enabled = true) {
   return useQuery({
     queryKey: ["entities", "list", params],
     queryFn: () => entitiesService.list(params),
     placeholderData: keepPreviousData,
+    enabled,
   });
 }
 
@@ -221,8 +222,8 @@ export function useAttachSelector(
       invalidateEntity(qc, entityId);
       toast.success(
         result.mentionCount
-          ? `Selector linked · ${result.mentionCount} matching mention${result.mentionCount === 1 ? "" : "s"} found`
-          : "Selector linked"
+          ? `Selector added · ${result.mentionCount} matching mention${result.mentionCount === 1 ? "" : "s"} found`
+          : "Selector added"
       );
       onSuccess?.(result);
     },
@@ -281,6 +282,53 @@ export function useSelectorMentions(
   });
 }
 
+/** An organization's parent chain, sub-units, locations and people. */
+export function useOrganizationStructure(entityId: string | undefined) {
+  return useQuery({
+    queryKey: ["entities", entityId, "structure"],
+    queryFn: () => entitiesService.getStructure(entityId as string),
+    enabled: !!entityId,
+  });
+}
+
+/** Names resolved to an entity (resolved name groups), flagged when they're curated aliases. */
+export function useEntityNames(entityId: string) {
+  return useQuery({
+    queryKey: ["entities", entityId, "names"],
+    queryFn: () => entitiesService.getNames(entityId),
+  });
+}
+
+/** Evidence for selectors proposed as belonging to `entityId` (usage, names, current owners). */
+export function useSelectorEvidence(entityId: string, selectorIds: string[]) {
+  return useQuery({
+    queryKey: ["entities", entityId, "selector-evidence", selectorIds],
+    queryFn: () => entitiesService.getSelectorEvidence(entityId, selectorIds),
+    enabled: selectorIds.length > 0,
+  });
+}
+
+/**
+ * Link an existing selector node to `entityId` (manual edge). `moveFrom` detaches it from
+ * those owners first -- for fixing an address wrongly linked to someone else.
+ */
+export function useLinkSelector(entityId: string, onSuccess?: (selectorId: string) => void) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ selectorId, moveFrom = [] }: { selectorId: string; moveFrom?: string[] }) => {
+      for (const ownerId of moveFrom) await entitiesService.detachSelector(ownerId, selectorId);
+      await entitiesService.linkSelector(entityId, selectorId);
+      return { selectorId, moveFrom };
+    },
+    onSuccess: ({ selectorId, moveFrom }) => {
+      invalidateEntity(qc, entityId);
+      for (const ownerId of moveFrom) invalidateEntity(qc, ownerId);
+      toast.success(moveFrom.length ? "Address moved" : "Address added");
+      onSuccess?.(selectorId);
+    },
+  });
+}
+
 export function useDetachSelector(entityId: string, onSuccess?: () => void) {
   const qc = useQueryClient();
   return useMutation({
@@ -293,12 +341,21 @@ export function useDetachSelector(entityId: string, onSuccess?: () => void) {
   });
 }
 
-/** Delete an entity node. Mentions unresolve and relationships/matches/comments on it go too. */
+/**
+ * Delete an entity node; relationships/matches/comments on it go too. Its mentions
+ * unresolve (back to Review), or with `discardMentions` are deleted ("not an entity").
+ */
 export function useDeleteEntity(onSuccess?: () => void) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (entityId: string) => entitiesService.delete(entityId),
-    onSuccess: (_result, entityId) => {
+    mutationFn: ({
+      entityId,
+      discardMentions,
+    }: {
+      entityId: string;
+      discardMentions?: boolean;
+    }) => entitiesService.delete(entityId, { discardMentions }),
+    onSuccess: (_result, { entityId }) => {
       // The dossier page for this entity is often still mounted here (the route
       // change hasn't unmounted it yet) -- excluding its id from the broad
       // invalidation stops that live observer from refetching a 404 for the id
@@ -306,6 +363,9 @@ export function useDeleteEntity(onSuccess?: () => void) {
       qc.removeQueries({ queryKey: ["entities", entityId] });
       qc.invalidateQueries({ queryKey: ["entities"], predicate: (q) => q.queryKey[1] !== entityId });
       qc.invalidateQueries({ queryKey: ["comments"] });
+      qc.invalidateQueries({ queryKey: ["mentions"] });
+      qc.invalidateQueries({ queryKey: ["entity-matches"] });
+      qc.invalidateQueries({ queryKey: ["entity-merges"] });
       onSuccess?.();
     },
   });

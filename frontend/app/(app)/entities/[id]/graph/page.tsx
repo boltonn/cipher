@@ -90,7 +90,7 @@ export default function EntityGraphPage({
 
       <div className="mt-4 flex flex-wrap items-end gap-x-6 gap-y-3 rounded-lg border border-border bg-muted/30 p-4">
         <label className="flex flex-col gap-1">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+          <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
             Depth
           </span>
           <Select value={String(depth)} onValueChange={(v) => setDepth(Number(v))}>
@@ -108,7 +108,7 @@ export default function EntityGraphPage({
         </label>
 
         <div className="flex flex-col gap-1">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+          <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
             Direction
           </span>
           <div className="flex overflow-hidden rounded-md border border-border">
@@ -118,7 +118,7 @@ export default function EntityGraphPage({
                 type="button"
                 onClick={() => setDirection(d.value)}
                 className={cn(
-                  "px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-widest transition-colors",
+                  "px-2.5 py-1.5 text-xs font-medium transition-colors",
                   direction === d.value
                     ? "bg-primary/10 text-primary"
                     : "text-muted-foreground hover:text-foreground"
@@ -131,7 +131,7 @@ export default function EntityGraphPage({
         </div>
 
         <label className="flex min-w-48 flex-1 flex-col gap-1">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+          <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
             Min edge weight: {minWeight === 0 ? "off" : `≥ ${minWeight}`}
           </span>
           <Slider
@@ -154,7 +154,7 @@ export default function EntityGraphPage({
               type="button"
               onClick={() => toggleType(t)}
               className={cn(
-                "rounded-md border px-2 py-1 text-[10px] font-medium transition-colors",
+                "rounded-md border px-2 py-1 text-[11px] font-medium transition-colors",
                 active
                   ? "border-primary/40 bg-primary/10 text-primary"
                   : "border-border bg-muted/30 text-muted-foreground hover:text-foreground"
@@ -168,7 +168,7 @@ export default function EntityGraphPage({
           <button
             type="button"
             onClick={() => setTypes([])}
-            className="px-2 py-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground hover:text-foreground"
+            className="px-2 py-1 text-xs font-medium text-muted-foreground hover:text-foreground"
           >
             Clear
           </button>
@@ -192,7 +192,7 @@ export default function EntityGraphPage({
           return (
             <span
               key={t}
-              className="flex items-center gap-1 rounded-md border border-border bg-card/80 px-1.5 py-0.5 text-[10px] text-muted-foreground"
+              className="flex items-center gap-1 rounded-md border border-border bg-card/80 px-1.5 py-0.5 text-[11px] text-muted-foreground"
             >
               <span
                 className="h-2 w-2 rounded-full"

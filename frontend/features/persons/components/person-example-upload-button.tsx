@@ -89,7 +89,7 @@ export function PersonExampleUploadButton({
       <Dialog open={!!pendingFile} onOpenChange={(open) => !open && setPendingFile(null)}>
         <DialogContent className="bg-card border-border sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle className="text-white tracking-[0.1em] uppercase text-xs font-black">
+            <DialogTitle className="text-white tracking-wide uppercase text-xs font-semibold">
               Select a Face
             </DialogTitle>
           </DialogHeader>

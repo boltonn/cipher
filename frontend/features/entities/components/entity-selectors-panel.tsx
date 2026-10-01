@@ -9,7 +9,7 @@ import { useMemo } from "react";
 
 /**
  * Paged wrapper around <EntitySelectors> for the entity dossier: pulls linked
- * selectors from GET /entities/{id}/related?entity_type=selector so a hub with
+ * selectors from GET /entities/{id}/related?entityType=selector so a hub with
  * hundreds of them isn't dumped at once.
  */
 export function EntitySelectorsPanel({ entityId }: { entityId: string }) {
@@ -55,7 +55,7 @@ export function EntitySelectorsPanel({ entityId }: { entityId: string }) {
             variant="ghost"
             onClick={() => fetchNextPage()}
             disabled={isFetchingNextPage}
-            className="text-[10px] uppercase tracking-widest text-primary"
+            className="text-xs text-primary"
           >
             {isFetchingNextPage && (
               <Loader2 size={12} className="mr-2 animate-spin" />

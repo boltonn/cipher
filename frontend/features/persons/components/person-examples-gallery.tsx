@@ -139,7 +139,7 @@ export function PersonExamplesGallery({ personId, faces, isPending }: PersonExam
                       <Star size={13} fill="currentColor" />
                     </span>
                   </TooltipTrigger>
-                  <TooltipContent side="bottom" className="text-[10px]">
+                  <TooltipContent side="bottom" className="text-[11px]">
                     Primary photo
                   </TooltipContent>
                 </Tooltip>
@@ -160,7 +160,7 @@ export function PersonExamplesGallery({ personId, faces, isPending }: PersonExam
                       <Star size={13} />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent side="bottom" className="text-[10px]">
+                  <TooltipContent side="bottom" className="text-[11px]">
                     Set as primary photo
                   </TooltipContent>
                 </Tooltip>
@@ -182,7 +182,7 @@ export function PersonExamplesGallery({ personId, faces, isPending }: PersonExam
                     <X size={13} />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="bottom" className="text-[10px]">
+                <TooltipContent side="bottom" className="text-[11px]">
                   Remove exemplar
                 </TooltipContent>
               </Tooltip>

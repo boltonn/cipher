@@ -50,7 +50,7 @@ export function FileRowActions({ file, onView, className }: FileRowActionsProps)
               <Eye size={14} />
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="top" className="text-[9px] font-bold uppercase tracking-widest">
+          <TooltipContent side="top" className="text-[11px] font-bold uppercase tracking-wide">
             View
           </TooltipContent>
         </Tooltip>
@@ -69,7 +69,7 @@ export function FileRowActions({ file, onView, className }: FileRowActionsProps)
               </a>
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="top" className="text-[9px] font-bold uppercase tracking-widest">
+          <TooltipContent side="top" className="text-[11px] font-bold uppercase tracking-wide">
             Download
           </TooltipContent>
         </Tooltip>
@@ -86,7 +86,7 @@ export function FileRowActions({ file, onView, className }: FileRowActionsProps)
               {copied ? <Check size={14} className="text-primary" /> : <Copy size={14} />}
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="top" className="text-[9px] font-bold uppercase tracking-widest">
+          <TooltipContent side="top" className="text-[11px] font-bold uppercase tracking-wide">
             {copied ? "Copied!" : "Copy ID"}
           </TooltipContent>
         </Tooltip>

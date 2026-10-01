@@ -8,8 +8,8 @@ import { useState } from "react";
 export type SearchBarAccent = "indigo" | "annotation";
 
 const ACTIVE_CLASSES: Record<SearchBarAccent, string> = {
-  indigo: "bg-primary/5 border-primary/50 shadow-[0_0_25px_rgba(99,102,241,0.2)] ring-1 ring-primary/20",
-  annotation: "bg-annotation/5 border-annotation/50 shadow-[0_0_25px_rgba(245,158,11,0.2)] ring-1 ring-annotation/20",
+  indigo: "bg-primary/5 border-primary/50 ring-1 ring-primary/20",
+  annotation: "bg-annotation/5 border-annotation/50 ring-1 ring-annotation/20",
 };
 
 const SPINNER_CLASSES: Record<SearchBarAccent, string> = {
@@ -35,7 +35,7 @@ interface SearchBarShellProps {
 }
 
 /**
- * Shared pill-shaped shell for every search bar in the app (Images, Faces,
+ * Shared compact (h-10, matches form `Input`) shell for every search bar in the app (Images, Faces,
  * Persons, Datasets). Bakes in the "active" glow state (loading/dragging)
  * and the same mouse-tracking radial spotlight the app's form `Input`
  * component shows on hover -- previously each page hand-rolled this
@@ -75,19 +75,19 @@ export function SearchBarShell({
       style={{
         background: useMotionTemplate`radial-gradient(${visible ? radius + "px" : "0px"} circle at ${mouseX}px ${mouseY}px, color-mix(in oklch, ${SPOTLIGHT_COLOR[accent]} 33%, transparent), transparent 70%)`,
       }}
-      className={cn("group w-full rounded-2xl p-px transition duration-300", className)}
+      className={cn("group w-full rounded-lg p-px transition duration-300", className)}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
       <div
         className={cn(
-          "relative flex items-center w-full rounded-2xl border px-4 transition-all duration-500",
-          isActive ? ACTIVE_CLASSES[accent] : "bg-muted/40 border-border group-hover:border-white/20 shadow-xl"
+          "relative flex h-10 items-center gap-1 w-full rounded-lg border px-3 transition-colors duration-300",
+          isActive ? ACTIVE_CLASSES[accent] : "bg-muted/40 border-border group-hover:border-foreground/20"
         )}
       >
-        <div className="flex items-center justify-center text-muted-foreground pl-1">
-          {isActive ? <Loader2 className={cn("h-4 w-4 animate-spin", SPINNER_CLASSES[accent])} /> : icon}
+        <div className="flex items-center justify-center text-muted-foreground [&_svg]:size-4">
+          {isActive ? <Loader2 className={cn("animate-spin", SPINNER_CLASSES[accent])} /> : icon}
         </div>
         {children}
       </div>

@@ -46,7 +46,7 @@ export function EnrichmentFailuresDialog({
         )}
       >
         <DialogHeader className="pr-16">
-          <DialogTitle className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.1em] text-destructive">
+          <DialogTitle className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-destructive">
             <AlertTriangle size={14} />
             {label} — failures
           </DialogTitle>
@@ -91,7 +91,7 @@ export function EnrichmentFailuresDialog({
           <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
             {data.reasons.length > 1 && (
               <div className="flex min-w-0 flex-col gap-1.5 rounded-lg border border-border bg-muted/40 p-3">
-                <p className="text-[10px] font-black uppercase tracking-[0.15em] text-muted-foreground">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                   Reasons
                 </p>
                 {data.reasons.map((reason, index) => (
@@ -121,20 +121,20 @@ export function EnrichmentFailuresDialog({
                       <span className="truncate font-mono text-xs text-foreground">
                         {item.filename}
                       </span>
-                      <span className="shrink-0 text-[10px] text-muted-foreground">
+                      <span className="shrink-0 text-[11px] text-muted-foreground">
                         {formatDistanceToNow(new Date(item.dateUpdated), {
                           addSuffix: true,
                         })}
                       </span>
                     </div>
-                    <p className="mt-0.5 truncate text-[10px] text-muted-foreground/70">
+                    <p className="mt-0.5 truncate text-[11px] text-muted-foreground/70">
                       {item.path}
                     </p>
                     <pre className="mt-2 whitespace-pre-wrap rounded bg-background/60 p-2 font-mono text-[11px] text-destructive [overflow-wrap:anywhere]">
                       {item.errorMessage ?? "(no message recorded)"}
                     </pre>
                     {item.retryCount > 0 && (
-                      <p className="mt-1.5 text-[10px] text-muted-foreground">
+                      <p className="mt-1.5 text-[11px] text-muted-foreground">
                         {item.retryCount} retr{item.retryCount === 1 ? "y" : "ies"}
                       </p>
                     )}
@@ -144,7 +144,7 @@ export function EnrichmentFailuresDialog({
             </ScrollArea>
 
             {data.total > data.returned && (
-              <p className="text-[10px] text-muted-foreground">
+              <p className="text-[11px] text-muted-foreground">
                 Showing the most recent {formatCompactNumber(data.returned)} of{" "}
                 {formatCompactNumber(data.total)} failures.
               </p>

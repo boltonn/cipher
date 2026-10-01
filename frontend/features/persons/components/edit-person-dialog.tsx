@@ -38,7 +38,7 @@ export function EditPersonDialog({ person, isOpen, onOpenChange }: EditPersonDia
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="bg-card border-border sm:max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-white tracking-[0.1em] uppercase text-xs font-black">
+          <DialogTitle className="text-white tracking-wide uppercase text-xs font-semibold">
             Edit Person
           </DialogTitle>
         </DialogHeader>
@@ -74,7 +74,7 @@ function EditPersonForm({ person, onDone }: { person: Person; onDone: () => void
     <>
       <div className="space-y-4">
         <div className="space-y-1.5">
-          <Label htmlFor="edit-person-name" className="text-[10px] uppercase tracking-widest text-muted-foreground">
+          <Label htmlFor="edit-person-name" className="text-[11px] uppercase tracking-wide text-muted-foreground">
             Name
           </Label>
           <Input
@@ -88,7 +88,7 @@ function EditPersonForm({ person, onDone }: { person: Person; onDone: () => void
 
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-1.5">
-            <Label className="text-[10px] uppercase tracking-widest text-muted-foreground">Sex</Label>
+            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Sex</Label>
             <Select value={sex} onValueChange={(v) => setSex(v as SexType)}>
               <SelectTrigger className="w-full bg-muted/40 border-border text-sm data-[size=default]:h-10">
                 <SelectValue placeholder="Unknown" />
@@ -101,13 +101,13 @@ function EditPersonForm({ person, onDone }: { person: Person; onDone: () => void
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-[10px] uppercase tracking-widest text-muted-foreground">Date of birth</Label>
+            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Date of birth</Label>
             <DatePicker value={dateOfBirth} onChange={setDateOfBirth} />
           </div>
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="edit-person-notes" className="text-[10px] uppercase tracking-widest text-muted-foreground">
+          <Label htmlFor="edit-person-notes" className="text-[11px] uppercase tracking-wide text-muted-foreground">
             Notes
           </Label>
           <Textarea
@@ -120,7 +120,7 @@ function EditPersonForm({ person, onDone }: { person: Person; onDone: () => void
         </div>
 
         <div className="space-y-1.5">
-          <Label className="text-[10px] uppercase tracking-widest text-muted-foreground">Tags</Label>
+          <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Tags</Label>
           <TagsInput value={tags} onChange={setTags} />
         </div>
 

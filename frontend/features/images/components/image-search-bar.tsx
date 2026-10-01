@@ -1,6 +1,7 @@
 "use client";
 
 import { SearchBarShell } from "@/components/search-bar-shell";
+import { SearchInput } from "@/components/search-input";
 import { Button } from "@/components/ui/button";
 import {
   hasActiveImageFilters,
@@ -32,27 +33,21 @@ export const ImageSearchBar: React.FC<ImageSearchBarProps> = ({
   isFiltersOpen,
   onToggleFilters,
 }) => {
-  const [inputValue, setInputValue] = useState("");
+  const [query, setQuery] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleSubmit = () => {
-    if (inputValue.trim()) onSearch(inputValue);
-  };
 
   return (
     <div className="w-full transition-all duration-500">
       <SearchBarShell isActive={isSearching} icon={<Search size={18} strokeWidth={1.5} />}>
-        <input
-          id="image-search-input"
-          aria-label="Search images"
-          name="query"
-          type="text"
-          autoComplete="off"
-          placeholder="Type a query or drop an image..."
-          className="w-full bg-transparent py-4 px-4 text-foreground placeholder:text-muted-foreground focus:outline-none text-sm tracking-wide"
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") handleSubmit(); }}
+        <SearchInput
+          ariaLabel="Search images"
+          placeholder="Search images, or drop one here…"
+          value={query}
+          searchOnBlur={false}
+          onSearch={(next) => {
+            setQuery(next);
+            if (next) onSearch(next);
+          }}
         />
 
         <div className="flex items-center gap-1">
@@ -64,17 +59,17 @@ export const ImageSearchBar: React.FC<ImageSearchBarProps> = ({
             aria-expanded={isFiltersOpen}
             onClick={onToggleFilters}
             className={cn(
-              "relative h-9 w-9",
+              "relative h-7 w-7",
               isFiltersOpen ? "text-primary" : "text-muted-foreground hover:text-primary"
             )}
           >
-            <Filter size={16} strokeWidth={1.5} />
+            <Filter size={15} strokeWidth={1.5} />
             {hasActiveImageFilters(filters) && (
-              <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_6px_rgba(99,102,241,0.8)]" />
+              <span className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-primary" />
             )}
           </Button>
 
-          <div className="h-4 w-px bg-white/10 mx-1" />
+          <div className="mx-1 h-4 w-px bg-border" />
 
           <input
             name="image"
@@ -92,24 +87,12 @@ export const ImageSearchBar: React.FC<ImageSearchBarProps> = ({
             type="button"
             variant="ghost"
             size="icon"
-            className="text-muted-foreground hover:text-primary"
+            aria-label="Search by image"
+            title="Search by image"
+            className="h-7 w-7 text-muted-foreground hover:text-primary"
             onClick={() => fileInputRef.current?.click()}
           >
-            <ImageIcon size={18} strokeWidth={1.5} />
-          </Button>
-
-          <div className="h-4 w-px bg-white/10 mx-2" />
-
-          <Button
-            type="button"
-            variant="ghost"
-            disabled={isSearching || !inputValue.trim()}
-            onClick={handleSubmit}
-            className={`text-[10px] font-black uppercase tracking-[0.2em] px-4 h-9 transition-all
-              ${isSearching ? "text-primary animate-pulse" : "text-muted-foreground hover:text-white"}
-            `}
-          >
-            {isSearching ? "ANALYZING" : "SEARCH"}
+            <ImageIcon size={15} strokeWidth={1.5} />
           </Button>
         </div>
       </SearchBarShell>

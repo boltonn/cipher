@@ -78,13 +78,13 @@ export const FaceUploadSearchBar: React.FC<FaceUploadSearchBarProps> = ({
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          className="flex-1 text-left bg-transparent py-4 px-4 text-foreground text-sm tracking-wide cursor-pointer"
+          className="h-full flex-1 cursor-pointer bg-transparent px-2 text-left text-sm text-muted-foreground"
         >
           {uploadedLabel ? (
             <span className="text-annotation">{uploadedLabel}</span>
           ) : (
             <span className="text-muted-foreground">
-              Upload a photo to find similar faces, or drop one here...
+              Upload a photo to find similar faces, or drop one here…
             </span>
           )}
         </button>
@@ -107,25 +107,25 @@ export const FaceUploadSearchBar: React.FC<FaceUploadSearchBarProps> = ({
             aria-expanded={isFiltersOpen}
             onClick={onToggleFilters}
             className={cn(
-              "relative h-9 w-9",
+              "relative h-7 w-7",
               isFiltersOpen ? "text-annotation" : "text-muted-foreground hover:text-annotation"
             )}
           >
-            <Filter size={16} strokeWidth={1.5} />
+            <Filter size={15} strokeWidth={1.5} />
             {hasActiveFaceFilters(filters) && (
-              <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-annotation shadow-[0_0_6px_rgba(245,158,11,0.8)]" />
+              <span className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-annotation" />
             )}
           </Button>
 
-          <div className="h-4 w-px bg-white/10 mx-1" />
+          <div className="mx-1 h-4 w-px bg-border" />
 
           <Button
             type="button"
             variant="ghost"
             onClick={() => fileInputRef.current?.click()}
-            className="text-muted-foreground hover:text-annotation gap-2 text-[10px] font-black uppercase tracking-[0.2em] px-4 h-9"
+            className="h-7 gap-1.5 px-2 text-xs text-muted-foreground hover:text-annotation"
           >
-            <UploadIcon size={14} strokeWidth={1.5} />
+            <UploadIcon size={13} strokeWidth={1.5} />
             Upload
           </Button>
         </div>

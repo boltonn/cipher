@@ -30,6 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { DatasetSelect } from "@/features/datasets/components/dataset-select";
 import { EntitiesTable } from "@/features/entities/components/entities-table";
 import { EntityGraph } from "@/features/entities/components/entity-graph";
@@ -40,14 +41,20 @@ import {
   entityRefinementsActive,
   type EntityFilters,
 } from "@/features/entities/components/entity-search-filters";
-import { MentionReviewList } from "@/features/entities/components/mention-review-list";
-import { ResolutionReviewList } from "@/features/entities/components/resolution-review-list";
+import { EntityVerifyList } from "@/features/entities/components/entity-verify-list";
+import { NameResolutionQueue } from "@/features/entities/components/name-resolution-queue";
 import {
+  useEntityBreakdown,
   useEntityList,
   useEntitySearch,
 } from "@/features/entities/hooks/use-entities";
 import { useUnresolvedNameGroups } from "@/features/entities/hooks/use-mentions";
-import { ENTITY_TYPES, type EntityType } from "@/features/entities/types";
+import {
+  ENTITY_TYPES,
+  type EntitySortKey,
+  type EntityType,
+} from "@/features/entities/types";
+import { cn, formatCompactNumber } from "@/lib/utils";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useLocalStorageState } from "@/hooks/use-local-storage-state";
 import {
@@ -56,6 +63,7 @@ import {
   Database,
   GitMerge,
   HelpCircle,
+  Info,
   Network,
   Search,
   Shapes,
@@ -98,9 +106,14 @@ export default function EntitiesPage() {
   });
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState<{
-    by: "display_name" | "date_updated";
+    by: EntitySortKey;
     order: "asc" | "desc";
-  }>({ by: "display_name", order: "asc" });
+  }>({ by: "mention_count", order: "desc" });
+  const [tab, setTab] = useState<EntityTab>("table");
+  const [resolveFocus, setResolveFocus] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
 
   const listQuery = useEntityList({
     datasetId,
@@ -109,7 +122,7 @@ export default function EntitiesPage() {
     selectorType: filters.selectorType,
     selectorSubtype: filters.selectorSubtype,
     country: filters.country,
-    orgType: filters.orgType,
+    category: filters.category,
     dateOfBirthFrom: filters.dobFrom?.slice(0, 10),
     dateOfBirthTo: filters.dobTo?.slice(0, 10),
     sortBy: sort.by,
@@ -118,7 +131,7 @@ export default function EntitiesPage() {
     page,
   });
 
-  const changeSort = (by: "display_name" | "date_updated") => {
+  const changeSort = (by: EntitySortKey) => {
     setSort((prev) =>
       prev.by === by
         ? { by, order: prev.order === "asc" ? "desc" : "asc" }
@@ -133,8 +146,11 @@ export default function EntitiesPage() {
     resetPage();
   };
 
-  const unresolved = useUnresolvedNameGroups(datasetId, "", 1);
-  const reviewCount = unresolved.data?.total ?? 0;
+  const unresolved = useUnresolvedNameGroups({ datasetId, page: 1 });
+  const resolveCount = unresolved.data?.total ?? 0;
+  const autoCreated = useEntityList({ datasetId, provisional: true, limit: 1, page: 1 });
+  const verifyCount = autoCreated.data?.total ?? 0;
+  const breakdown = useEntityBreakdown(datasetId);
 
   const entities = listQuery.data?.data ?? [];
   const total = listQuery.data?.total ?? 0;
@@ -149,7 +165,7 @@ export default function EntitiesPage() {
       selectorType: undefined,
       selectorSubtype: undefined,
       country: undefined,
-      orgType: undefined,
+      category: undefined,
       dobFrom: undefined,
       dobTo: undefined,
     });
@@ -165,7 +181,7 @@ export default function EntitiesPage() {
     <div className="relative mx-auto max-w-400 px-6 pb-20 pt-5">
       <PageHeader
         eyebrow="Entities"
-        value={datasetId ? `${total.toLocaleString()} entities` : "no dataset"}
+        value={!datasetId ? "No dataset selected" : listQuery.data ? `${total.toLocaleString()} ${total === 1 ? "entity" : "entities"}` : undefined}
         icon={<Network size={13} className="text-primary/70" />}
         actions={
           <DatasetSelect
@@ -186,105 +202,117 @@ export default function EntitiesPage() {
           body="Entities, mentions, and the relationship graph are scoped to one dataset. Pick one from the selector in the top bar to start exploring."
         />
       ) : (
-        <div className="mt-4 space-y-4">
-          <SearchBarShell
-            isActive={listQuery.isFetching}
-            icon={<Search size={18} strokeWidth={1.5} />}
+        <div className="mt-4">
+          <Tabs
+            value={tab}
+            onValueChange={(v) => setTab(v as EntityTab)}
+            className="gap-4"
           >
-            <div className="mr-1 flex shrink-0 items-center border-r border-border/50 pr-2 pl-1">
-              <Select
-                value={filters.entityType ?? ALL_TYPES}
-                onValueChange={changeType}
-              >
-                <SelectTrigger
-                  aria-label="Entity type"
-                  className="h-8 w-auto gap-1.5 border-0 bg-transparent px-1.5 text-xs font-semibold shadow-none hover:bg-muted/50 focus-visible:ring-0 [&_svg]:opacity-100"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL_TYPES} className="text-xs">
-                    <span className="flex items-center gap-2">
-                      <Shapes size={12} className="text-muted-foreground" />
-                      All types
-                    </span>
-                  </SelectItem>
-                  <SelectSeparator />
-                  {ENTITY_TYPES.map((t) => {
-                    const meta = ENTITY_TYPE_META[t];
-                    return (
-                      <SelectItem key={t} value={t} className="text-xs">
-                        <span className="flex items-center gap-2">
-                          <meta.Icon size={12} className={meta.textClass} />
-                          {meta.label}
-                        </span>
-                      </SelectItem>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <SearchInput
-              value={query}
-              onSearch={(q) => {
-                setQuery(q);
-                resetPage();
-              }}
-              ariaLabel="Search entities"
-              placeholder={
-                typeMeta
-                  ? `Search ${typeMeta.label.toLowerCase()} names…`
-                  : "Search by name…"
-              }
-            />
-          </SearchBarShell>
-
-          <EntitySearchFilters
-            value={filters}
-            onChange={(next) => {
-              setFilters(next);
-              resetPage();
-            }}
-            queryActive={!!query}
-            onClear={clearAll}
-          />
-
-          <Tabs defaultValue="table" className="gap-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <TabsList className="h-9">
                 <TabsTrigger value="table" className="gap-1.5 px-3 text-xs">
                   <Table2 size={13} />
-                  Table
+                  Entities
                 </TabsTrigger>
                 <TabsTrigger value="graph" className="gap-1.5 px-3 text-xs">
                   <Network size={13} />
                   Graph
                 </TabsTrigger>
-                <TabsTrigger value="review" className="gap-1.5 px-3 text-xs">
+                <TabsTrigger value="verify" className="gap-1.5 px-3 text-xs">
                   <ClipboardCheck size={13} />
-                  Review
-                  {reviewCount > 0 && (
-                    <Badge className="h-4 min-w-4 bg-annotation/20 px-1 text-[9px] text-annotation">
-                      {reviewCount}
+                  Verify
+                  {verifyCount > 0 && (
+                    <Badge className="h-4 min-w-4 bg-annotation/15 px-1.5 text-[11px] font-medium tabular-nums text-annotation">
+                      {formatCompactNumber(verifyCount)}
                     </Badge>
                   )}
                 </TabsTrigger>
                 <TabsTrigger value="resolve" className="gap-1.5 px-3 text-xs">
                   <GitMerge size={13} />
                   Resolve
+                  {resolveCount > 0 && (
+                    <Badge className="h-4 min-w-4 bg-annotation/15 px-1.5 text-[11px] font-medium tabular-nums text-annotation">
+                      {formatCompactNumber(resolveCount)}
+                    </Badge>
+                  )}
                 </TabsTrigger>
               </TabsList>
-              <Link
-                href="/entities/resolution-guide"
-                className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-primary"
-              >
-                <HelpCircle size={12} />
-                How Review &amp; Resolve work
-              </Link>
+              <div className="flex items-center gap-3">
+                <TabExplainer tab={tab} />
+                <Link
+                  href="/entities/resolution-guide"
+                  className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  <HelpCircle size={12} />
+                  How resolution works
+                </Link>
+              </div>
             </div>
 
-            <TabsContent value="table">
+            <TabsContent value="table" className="space-y-4">
+              <SearchBarShell
+                isActive={listQuery.isFetching}
+                icon={<Search size={18} strokeWidth={1.5} />}
+              >
+                <div className="flex shrink-0 items-center border-r border-border/50 pr-1">
+                  <Select
+                    value={filters.entityType ?? ALL_TYPES}
+                    onValueChange={changeType}
+                  >
+                    <SelectTrigger
+                      aria-label="Entity type"
+                      className="h-7 w-auto gap-1.5 border-0 bg-transparent px-1.5 text-xs font-semibold shadow-none hover:bg-muted/50 focus-visible:ring-0 [&_svg]:opacity-100"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ALL_TYPES} className="text-xs">
+                        <span className="flex items-center gap-2">
+                          <Shapes size={12} className="text-muted-foreground" />
+                          All types
+                        </span>
+                      </SelectItem>
+                      <SelectSeparator />
+                      {ENTITY_TYPES.map((t) => {
+                        const meta = ENTITY_TYPE_META[t];
+                        return (
+                          <SelectItem key={t} value={t} className="text-xs">
+                            <span className="flex items-center gap-2">
+                              <meta.Icon size={12} className={meta.textClass} />
+                              {meta.label}
+                            </span>
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <SearchInput
+                  value={query}
+                  onSearch={(q) => {
+                    setQuery(q);
+                    resetPage();
+                  }}
+                  ariaLabel="Search entities"
+                  placeholder={
+                    typeMeta
+                      ? `Search ${typeMeta.label.toLowerCase()} names…`
+                      : "Search by name…"
+                  }
+                />
+              </SearchBarShell>
+
+              <EntitySearchFilters
+                value={filters}
+                onChange={(next) => {
+                  setFilters(next);
+                  resetPage();
+                }}
+                queryActive={!!query}
+                onClear={clearAll}
+              />
+
               {listQuery.isError ? (
                 <PageError
                   title="Couldn’t load entities"
@@ -321,11 +349,22 @@ export default function EntitiesPage() {
                 />
               ) : (
                 <>
+                  <TypeSummary
+                    items={breakdown.data?.byEntityType ?? []}
+                    active={filters.entityType}
+                    onPick={(t) =>
+                      changeType(t === filters.entityType ? ALL_TYPES : t)
+                    }
+                  />
                   <EntitiesTable
                     entities={entities}
                     sortBy={sort.by}
                     sortOrder={sort.order}
                     onSortChange={changeSort}
+                    onOpenResolve={(e) => {
+                      setResolveFocus({ id: e.id, name: e.displayName });
+                      setTab("resolve");
+                    }}
                   />
                   <Pagination
                     currentPage={page}
@@ -342,16 +381,107 @@ export default function EntitiesPage() {
               <GraphExplorer datasetId={datasetId} />
             </TabsContent>
 
-            <TabsContent value="review">
-              <MentionReviewList datasetId={datasetId} />
+            <TabsContent value="verify">
+              <EntityVerifyList datasetId={datasetId} />
             </TabsContent>
 
             <TabsContent value="resolve">
-              <ResolutionReviewList datasetId={datasetId} />
+              <NameResolutionQueue
+                key={resolveFocus?.id ?? "all"}
+                datasetId={datasetId}
+                focus={resolveFocus}
+                onClearFocus={() => setResolveFocus(null)}
+              />
             </TabsContent>
           </Tabs>
         </div>
       )}
+    </div>
+  );
+}
+
+type EntityTab = "table" | "graph" | "verify" | "resolve";
+
+const TAB_EXPLAINERS: Record<EntityTab, { question: string; body: string }> = {
+  table: {
+    question: "What do we know?",
+    body: "Every entity — one record per real person, organization, location or identifier — ranked by its mentions. Amber “to resolve” means name groups have a pending resolution to it; ⊘ marks one invalid.",
+  },
+  graph: {
+    question: "How is it connected?",
+    body: "The relationship neighbourhood around one entity.",
+  },
+  verify: {
+    question: "Are these entities real?",
+    body: "Entities the resolver auto-created for names that matched nothing. Verify the big ones (keep, rename, or merge a duplicate) before resolving more names to them.",
+  },
+  resolve: {
+    question: "Which entity is this name?",
+    body: "Each card is a name group — every unresolved mention of one name. Accept or reject a suggested resolution, resolve it to another entity, create a new entity, or mark it not an entity. The decision applies to all of its mentions.",
+  },
+};
+
+function TabExplainer({ tab }: { tab: EntityTab }) {
+  const { question, body } = TAB_EXPLAINERS[tab];
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-label={question}
+          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+        >
+          <Info size={12} />
+          {question}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent align="end" className="max-w-72 text-xs leading-relaxed">
+        {body}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+function TypeSummary({
+  items,
+  active,
+  onPick,
+}: {
+  items: { key: string; count: number }[];
+  active?: EntityType;
+  onPick: (type: EntityType) => void;
+}) {
+  const known = items.filter((i): i is { key: EntityType; count: number } =>
+    (ENTITY_TYPES as readonly string[]).includes(i.key)
+  );
+  if (known.length === 0) return null;
+  return (
+    <div className="mb-3 flex flex-wrap gap-2">
+      {known.map(({ key, count }) => {
+        const meta = ENTITY_TYPE_META[key];
+        return (
+          <button
+            key={key}
+            type="button"
+            aria-pressed={active === key}
+            onClick={() => onPick(key)}
+            className={cn(
+              "flex items-center gap-2 rounded-lg border px-3 py-1.5 text-left transition-colors",
+              active === key
+                ? "border-primary/50 bg-primary/5"
+                : "border-border hover:bg-muted/40"
+            )}
+          >
+            <meta.Icon size={13} className={meta.textClass} />
+            <span className="text-sm font-semibold tabular-nums text-foreground">
+              {count.toLocaleString()}
+            </span>
+            <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
+              {meta.label}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -438,7 +568,7 @@ function GraphExplorer({ datasetId }: { datasetId: string }) {
           asChild
           variant="ghost"
           size="sm"
-          className="ml-auto h-9 gap-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary"
+          className="ml-auto h-9 gap-1.5 text-xs font-medium text-muted-foreground hover:text-primary"
         >
           <Link
             href={

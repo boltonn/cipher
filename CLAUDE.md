@@ -40,6 +40,8 @@ packages/
 * each feature should be able to used as a stand-alone (ie. fastapi analytic services)
 * orchestration can be standalone scripts that are easy to use until an orchestation architecture is designed from the ground up
 * consistent terminology between schemas, tables, etc. with the frontend where appropriate besides casing
+* API casing: the backend accepts camelCase **or** snake_case for query params and JSON bodies (shared `BaseModel` has `populate_by_name`; `QueryCaseMiddleware` mirrors query keys) and always serializes camelCase -- no raw snake_case dict responses (use `camelize_keys` for free-form dicts); give plain `Query()` params a camelCase `alias=`
+* who-did-it fields (`reviewed_by`, `user_id`) come from the authenticated user (`CurrentUserDep`), never the request body
 * if you need to test a new feature with fake data always create a new dataset and name appropriately
 * keep code brief
 
@@ -93,4 +95,5 @@ types/      # common schemas
 * never rely on native HTML autocomplete / `datalist` for suggestion-driven fields (browser autofill covers the menu); use the `Autocomplete` primitive (`components/ui/autocomplete.tsx`) -- cmdk + portaled popover, free-text value, opts out of autofill
 * Annotation for AI/ML should be a first-class citizen but should be denoted with a specific color
 * consistent terminology with the backend where appropriate with the exception of casing per above
+* only ever send camelCase to the backend (params and bodies) and never send a reviewer/user id -- the backend takes it from the session
 * support both paginated and infinite scroll for most things

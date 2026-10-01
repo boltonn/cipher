@@ -5,6 +5,8 @@ import {
   FaceMatch,
   FaceMatchSearchParameters,
   FaceMatchStatusType,
+  FaceRejection,
+  FaceRejectionResult,
   FaceRepresentativeUpdate,
   FaceSimilaritySearchParameters,
   PaginatedFaceMatchesResponse,
@@ -21,7 +23,8 @@ export const facesService = {
   getFaceViewUrl: (id: string) => `${baseURL}${facesBaseURL}/${id}/view`,
 
   // Small cached crop of just the face -- use for grids/cards, not the full view
-  getFaceThumbnailUrl: (id: string) => `${baseURL}${facesBaseURL}/${id}/thumbnail`,
+  getFaceThumbnailUrl: (id: string) =>
+    `${baseURL}${facesBaseURL}/${id}/thumbnail`,
 
   // POST /faces - filter/paginate
   search: (params: BaseFaceSearchParameters) =>
@@ -32,7 +35,9 @@ export const facesService = {
   // GET /faces/search/{id} - find faces similar to an existing face
   searchById: (id: string, params: FaceSimilaritySearchParameters) =>
     apiClient
-      .get<PaginatedFaceSimilarityResponse>(`${facesBaseURL}/search/${id}`, { params })
+      .get<PaginatedFaceSimilarityResponse>(`${facesBaseURL}/search/${id}`, {
+        params,
+      })
       .then((res) => res.data),
 
   // POST /faces/search/image - find faces similar to an uploaded photo
@@ -46,12 +51,18 @@ export const facesService = {
     if (params.page != null) formData.append("page", params.page.toString());
     if (params.limit != null) formData.append("limit", params.limit.toString());
     if (params.sortBy != null) formData.append("sort_by", params.sortBy);
-    if (params.sortOrder != null) formData.append("sort_order", params.sortOrder);
-    if (params.minSimilarity != null) formData.append("min_similarity", params.minSimilarity.toString());
+    if (params.sortOrder != null)
+      formData.append("sort_order", params.sortOrder);
+    if (params.minSimilarity != null)
+      formData.append("min_similarity", params.minSimilarity.toString());
     return apiClient
-      .post<PaginatedFaceSimilarityResponse>(`${facesBaseURL}/search/image`, formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      })
+      .post<PaginatedFaceSimilarityResponse>(
+        `${facesBaseURL}/search/image`,
+        formData,
+        {
+          headers: { "Content-Type": "multipart/form-data" },
+        }
+      )
       .then((res) => res.data);
   },
 
@@ -68,12 +79,18 @@ export const facesService = {
 
   // POST /faces/search/embedding - find faces similar to a chosen embedding
   // (e.g. one the caller picked from a multi-face /detect result)
-  searchByEmbedding: (embedding: number[], params: FaceSimilaritySearchParameters) =>
+  searchByEmbedding: (
+    embedding: number[],
+    params: FaceSimilaritySearchParameters
+  ) =>
     apiClient
-      .post<PaginatedFaceSimilarityResponse>(`${facesBaseURL}/search/embedding`, {
-        ...params,
-        embedding,
-      })
+      .post<PaginatedFaceSimilarityResponse>(
+        `${facesBaseURL}/search/embedding`,
+        {
+          ...params,
+          embedding,
+        }
+      )
       .then((res) => res.data),
 
   getById: (id: string) =>
@@ -89,6 +106,18 @@ export const facesService = {
       .patch<FacePublic>(`${facesBaseURL}/${id}/representative`, payload)
       .then((res) => res.data),
 
+  // POST /faces/reject - mark faces "not a face"; similar unassigned faces are auto-rejected too
+  reject: (payload: FaceRejection) =>
+    apiClient
+      .post<FaceRejectionResult>(`${facesBaseURL}/reject`, payload)
+      .then((res) => res.data),
+
+  // POST /faces/unreject - undo; auto-rejections no longer backed by a manual one are released
+  unreject: (faceIds: string[]) =>
+    apiClient
+      .post<FaceRejectionResult>(`${facesBaseURL}/unreject`, { faceIds })
+      .then((res) => res.data),
+
   delete: (id: string) =>
     apiClient.delete<boolean>(`${facesBaseURL}/${id}`).then((res) => res.data),
 
@@ -99,7 +128,11 @@ export const facesService = {
       .then((res) => res.data),
 
   // PATCH /faces/matches/{id} - confirm or reject a candidate match
-  resolveMatch: (id: string, status: FaceMatchStatusType, reviewNote?: string) =>
+  resolveMatch: (
+    id: string,
+    status: FaceMatchStatusType,
+    reviewNote?: string
+  ) =>
     apiClient
       .patch<FaceMatch>(`${facesBaseURL}/matches/${id}`, { status, reviewNote })
       .then((res) => res.data),

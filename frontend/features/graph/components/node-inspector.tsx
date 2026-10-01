@@ -43,9 +43,7 @@ export function NodeInspector({
   const { data: profile } = useEntityProfile(entityId);
 
   const selectorType =
-    (profile?.detail?.selectorType as SelectorType | undefined) ??
-    (profile?.detail?.selector_type as SelectorType | undefined) ??
-    null;
+    (profile?.detail?.selectorType as SelectorType | undefined) ?? null;
 
   const stats = [
     { label: "Files", value: profile?.fileCount },
@@ -59,7 +57,7 @@ export function NodeInspector({
   return (
     <aside className="flex w-72 shrink-0 flex-col rounded-xl border border-border bg-muted/40 shadow-xl">
       <div className="flex items-center justify-between border-b border-border/50 px-3 py-2">
-        <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
           Node
         </span>
         <button
@@ -89,7 +87,7 @@ export function NodeInspector({
             </div>
             <EntityTypeBadge type={entity.entityType} detail={selectorType} />
             {isSeed && (
-              <span className="ml-1.5 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-primary">
+              <span className="ml-1.5 inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wide text-primary">
                 <Sparkles size={10} /> Seed
               </span>
             )}
@@ -102,7 +100,7 @@ export function NodeInspector({
                   <div className="text-sm font-semibold text-foreground">
                     {s.value?.toLocaleString()}
                   </div>
-                  <div className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">
+                  <div className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
                     {s.label}
                   </div>
                 </div>
@@ -150,7 +148,7 @@ export function NodeInspector({
   );
 }
 
-function InspectorAction({
+export function InspectorAction({
   icon: Icon,
   onClick,
   children,

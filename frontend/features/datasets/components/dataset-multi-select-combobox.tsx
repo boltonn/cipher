@@ -117,7 +117,7 @@ function SelectedDatasetChip({ datasetId, onRemove }: { datasetId: string; onRem
       <button
         type="button"
         onClick={onRemove}
-        className="hover:text-white ml-0.5"
+        className="hover:text-foreground ml-0.5"
         aria-label={`Remove ${dataset?.name || "dataset"}`}
       >
         <X size={11} />

@@ -42,9 +42,8 @@ function apply(resolved: Resolved) {
  *
  * Replaces `next-themes`, whose provider renders an inline <script> on every
  * client render -- React 19's dev mode flags that ("Encountered a script tag
- * while rendering React component"). Here the anti-flash script is emitted
- * once from the server-rendered layout, so nothing renders a <script> on the
- * client.
+ * while rendering React component"). Here the anti-flash script is injected by
+ * next/script (beforeInteractive) in the root layout, outside React's tree.
  */
 export function ThemeProvider({
   children,

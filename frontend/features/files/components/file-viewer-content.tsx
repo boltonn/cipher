@@ -286,7 +286,7 @@ export function ViewerLoading({ label }: { label: string }) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center gap-3 text-muted-foreground h-full">
       <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      <span className="text-[10px] font-black uppercase tracking-[0.3em] text-primary/70">
+      <span className="text-[11px] font-semibold uppercase tracking-wide text-primary/70">
         {label}
       </span>
     </div>
@@ -307,7 +307,7 @@ function FileTooLarge({
       <TriangleAlert className="h-16 w-16 text-muted-foreground" strokeWidth={1} />
       <div className="text-center space-y-1">
         <p className="text-sm text-foreground max-w-xs truncate">{file.filename}</p>
-        <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
+        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
           {formatBytes(file.size)} exceeds the {formatBytes(maxBytes)} preview limit
         </p>
       </div>
@@ -326,7 +326,7 @@ export function ViewerFallback({ file, fileUrl }: { file: FileBrowserItem; fileU
       <FileIcon className="h-16 w-16 text-muted-foreground" strokeWidth={1} />
       <div className="text-center space-y-1">
         <p className="text-sm text-foreground max-w-xs truncate">{file.filename}</p>
-        <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
+        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
           No preview available for {file.filetype || "this file type"}
         </p>
       </div>

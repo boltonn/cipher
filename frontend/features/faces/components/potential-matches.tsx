@@ -27,10 +27,10 @@ export function PotentialMatches({ faceId }: PotentialMatchesProps) {
     <section className="p-4 rounded-xl bg-black/40 border border-annotation/20 space-y-3">
       <div className="flex items-center gap-2">
         <Sparkles size={14} className="text-annotation" />
-        <h4 className="text-[10px] font-black text-foreground uppercase tracking-widest">
+        <h4 className="text-[11px] font-semibold text-foreground uppercase tracking-wide">
           Potential Matches
         </h4>
-        <span className="text-[9px] font-mono text-muted-foreground">awaiting review</span>
+        <span className="text-[11px] font-mono text-muted-foreground">awaiting review</span>
       </div>
       <div className="flex flex-col gap-2">
         {matches.map((match) => (
@@ -49,7 +49,7 @@ function PotentialMatchRow({ match }: { match: FaceMatch }) {
 
   return (
     <div className="flex items-center gap-3 p-2 rounded-lg bg-muted/40 border border-border/50">
-      <div className="h-10 w-10 rounded-full shrink-0 overflow-hidden bg-primary/10 text-primary text-xs font-black flex items-center justify-center">
+      <div className="h-10 w-10 rounded-full shrink-0 overflow-hidden bg-primary/10 text-primary text-xs font-semibold flex items-center justify-center">
         {primaryFace ? (
           // eslint-disable-next-line @next/next/no-img-element -- tiny same-origin avatar, server already crops/downscales
           <img
@@ -69,12 +69,12 @@ function PotentialMatchRow({ match }: { match: FaceMatch }) {
           {person?.isVerified && <BadgeCheck size={11} className="text-primary shrink-0" />}
         </div>
         <div className="flex items-center gap-2">
-          <p className="text-[10px] font-mono text-annotation">
+          <p className="text-[11px] font-mono text-annotation">
             {(match.similarityScore * 100).toFixed(0)}% similar
           </p>
           <Link
             href={`/persons/${match.personId}`}
-            className="flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-widest text-primary/70 hover:text-primary"
+            className="flex items-center gap-0.5 text-xs font-medium text-primary/70 hover:text-primary"
           >
             Profile <ExternalLink size={9} />
           </Link>

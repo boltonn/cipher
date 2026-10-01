@@ -1,9 +1,11 @@
-import type { EntityType, SelectorType } from "@/features/entities/types";
+import type { GraphNodeType, SelectorType } from "@/features/entities/types";
 import {
   AtSign,
   Bitcoin,
   Building2,
+  CalendarDays,
   Car,
+  Globe,
   CreditCard,
   Fingerprint,
   IdCard,
@@ -26,7 +28,8 @@ import {
 
 type LucideNode = readonly (readonly [string, Record<string, string | number>])[];
 
-const ENTITY_ICON: Record<EntityType, LucideNode> = {
+const ENTITY_ICON: Record<GraphNodeType, LucideNode> = {
+  event: CalendarDays as LucideNode,
   person: User as LucideNode,
   organization: Building2 as LucideNode,
   location: MapPin as LucideNode,
@@ -46,6 +49,7 @@ const SELECTOR_ICON: Record<SelectorType, LucideNode> = {
   social_handle: AtSign as LucideNode,
   crypto_address: Bitcoin as LucideNode,
   license_plate: Car as LucideNode,
+  domain: Globe as LucideNode,
 };
 
 function iconMarkup(node: LucideNode): string {
@@ -105,7 +109,7 @@ const cache = new Map<string, string>();
 
 /** Cached transparent-glyph `data:` SVG URL for an entity node's WebGL image. */
 export function nodeGlyphUrl(
-  entityType: EntityType,
+  entityType: GraphNodeType,
   selectorType?: SelectorType | null
 ): string {
   const key = selectorType ? `${entityType}:${selectorType}` : entityType;

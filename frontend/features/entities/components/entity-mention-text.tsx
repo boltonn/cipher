@@ -8,6 +8,7 @@ import {
 import { EntityHoverCard } from "@/features/entities/components/entity-tooltip-card";
 import { EntityMentionPopover } from "@/features/entities/components/entity-mention-popover";
 import { useFileMentions } from "@/features/entities/hooks/use-mentions";
+import { foldName } from "@/features/entities/lib/fold-name";
 import type { Mention } from "@/features/entities/types";
 import { cn } from "@/lib/utils";
 import { HelpCircle, Loader2 } from "lucide-react";
@@ -16,6 +17,10 @@ import { Fragment, useLayoutEffect, useMemo, useRef, useState } from "react";
 interface EntityMentionTextProps {
   fileId: string;
   datasetId: string;
+  /** Only mark these entities' mentions (e.g. search's entity filter); omit for all. */
+  entityIds?: string[];
+  /** Only mark mentions of these values (search's mention filter); combines with `entityIds` as either-or. */
+  mentionValues?: string[];
   /** char offset to scroll into view on load (e.g. a specific mention) */
   focusOffset?: number;
   className?: string;
@@ -66,7 +71,20 @@ function selectionOffsets(container: HTMLElement) {
   return { start, end: start + value.length, text: value, rect: range.getBoundingClientRect() };
 }
 
-export function EntityMentionText({ fileId, datasetId, focusOffset, className }: EntityMentionTextProps) {
+/** The one displayed mention a selection overlaps -- selecting inside/across a chip adjusts that mention's span. */
+function overlappingMention(segments: Segment[], start: number, end: number) {
+  const hits = segments.filter((seg) => seg.mention && seg.start < end && start < seg.end);
+  return hits.length === 1 ? hits[0].mention : undefined;
+}
+
+export function EntityMentionText({
+  fileId,
+  datasetId,
+  entityIds,
+  mentionValues,
+  focusOffset,
+  className,
+}: EntityMentionTextProps) {
   const { data: fileText, isPending: textPending, isError } = useFileText(fileId);
   const { data: mentionsPage, isPending: mentionsPending } = useFileMentions(fileId);
   const preRef = useRef<HTMLPreElement>(null);
@@ -78,8 +96,21 @@ export function EntityMentionText({ fileId, datasetId, focusOffset, className }:
   >(null);
 
   const segments = useMemo(
-    () => (fileText ? buildSegments(fileText.text, mentionsPage?.data ?? []) : []),
-    [fileText, mentionsPage]
+    () => {
+      if (!fileText) return [];
+      const mentions = mentionsPage?.data ?? [];
+      if (!entityIds?.length && !mentionValues?.length) return buildSegments(fileText.text, mentions);
+      const values = new Set((mentionValues ?? []).flatMap((v) => [v, foldName(v)]));
+      // Analyst-drawn mentions stay visible so a fresh edit doesn't vanish under the filter.
+      const shown = mentions.filter(
+        (m) =>
+          (m.entityId && entityIds?.includes(m.entityId)) ||
+          (m.normalizedValue && values.has(m.normalizedValue)) ||
+          m.extractor === "manual"
+      );
+      return buildSegments(fileText.text, shown);
+    },
+    [fileText, mentionsPage, entityIds, mentionValues]
   );
 
   useLayoutEffect(() => {
@@ -107,7 +138,8 @@ export function EntityMentionText({ fileId, datasetId, focusOffset, className }:
     if (!preRef.current) return;
     const hit = selectionOffsets(preRef.current);
     if (hit) {
-      setSelection({ surface: hit.text, start: hit.start, end: hit.end, rect: hit.rect });
+      const existing = overlappingMention(segments, hit.start, hit.end);
+      setSelection({ surface: hit.text, start: hit.start, end: hit.end, rect: hit.rect, existing });
     }
   };
 
@@ -143,6 +175,8 @@ export function EntityMentionText({ fileId, datasetId, focusOffset, className }:
               ref={spansFocus ? focusRef : undefined}
               onClick={(e) => {
                 e.stopPropagation();
+                // a drag inside the chip is a span adjustment -- the mouseup handler owns it
+                if (!window.getSelection()?.isCollapsed) return;
                 setSelection({
                   surface: slice,
                   start: seg.start,
@@ -155,7 +189,9 @@ export function EntityMentionText({ fileId, datasetId, focusOffset, className }:
                 "mx-[1px] inline-flex cursor-pointer select-text items-center gap-1 rounded-md border px-1 py-[1px] align-baseline font-sans text-[0.82em] font-medium leading-tight transition-shadow hover:shadow-sm",
                 resolved && meta
                   ? cn(meta.bgClass, meta.textClass, meta.borderClass)
-                  : "border-dashed border-annotation/50 bg-annotation/10 text-annotation"
+                  : m.extractor === "manual"
+                    ? "border-dashed border-primary/50 bg-primary/10 text-primary"
+                    : "border-dashed border-annotation/50 bg-annotation/10 text-annotation"
               )}
             >
               <Glyph size={10} className="shrink-0 opacity-80" />
@@ -165,7 +201,7 @@ export function EntityMentionText({ fileId, datasetId, focusOffset, className }:
           return (
             <Fragment key={i}>
               {resolved && m.entityId ? (
-                <EntityHoverCard entityId={m.entityId} entityType={m.entityType ?? undefined}>
+                <EntityHoverCard entityId={m.entityId} entityType={m.entityType ?? undefined} disabled={!!selection}>
                   {mark}
                 </EntityHoverCard>
               ) : (
@@ -178,6 +214,7 @@ export function EntityMentionText({ fileId, datasetId, focusOffset, className }:
 
       {selection && (
         <EntityMentionPopover
+          key={`${selection.start}:${selection.end}`}
           rect={selection.rect}
           surface={selection.surface}
           datasetId={datasetId}

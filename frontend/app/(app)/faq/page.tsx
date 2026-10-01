@@ -140,8 +140,8 @@ export default function FaqPage() {
   return (
     <div className="max-w-400 mx-auto px-6 relative pb-20 pt-5">
       <PageHeader
-        eyebrow="Help"
-        value="Frequently Asked Questions"
+        eyebrow="FAQ"
+        value="Frequently asked questions"
         icon={<HelpCircle className="h-3.5 w-3.5 text-primary/80" />}
       />
 

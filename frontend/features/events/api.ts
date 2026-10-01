@@ -231,9 +231,11 @@ export function useDeleteEvent(onSuccess?: () => void) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (eventId: string) => eventsService.remove(eventId),
-    onSuccess: () => {
+    onSuccess: (_, eventId) => {
+      // Drop the open detail query first so the invalidation doesn't refetch a deleted event.
+      qc.removeQueries({ queryKey: ["events", eventId] });
       qc.invalidateQueries({ queryKey: ["events"] });
-      toast.success("Event deleted");
+      toast.success("Event marked invalid");
       onSuccess?.();
     },
   });

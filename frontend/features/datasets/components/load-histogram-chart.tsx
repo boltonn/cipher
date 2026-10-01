@@ -47,7 +47,7 @@ export function LoadHistogramChart({ buckets, granularity, selectedBucket, onSel
         <span className="text-[11px] text-muted-foreground">
           files on {formatBucketLabel(buckets[0].dateBucket, granularity)}
         </span>
-        <span className="mt-1 text-[10px] text-muted-foreground/70">
+        <span className="mt-1 text-[11px] text-muted-foreground/70">
           Widen the range or switch granularity to see load over time.
         </span>
       </div>
@@ -62,7 +62,7 @@ export function LoadHistogramChart({ buckets, granularity, selectedBucket, onSel
     <div className="flex flex-col gap-3">
       <div className="flex gap-2">
         {/* y-axis: just the max, so a bar's height maps to a real number */}
-        <div className="flex w-8 shrink-0 flex-col justify-between py-0 text-right font-mono text-[9px] text-muted-foreground/60">
+        <div className="flex w-8 shrink-0 flex-col justify-between py-0 text-right font-mono text-[11px] text-muted-foreground/60">
           <span>{maxCount.toLocaleString()}</span>
           <span>0</span>
         </div>
@@ -108,19 +108,19 @@ export function LoadHistogramChart({ buckets, granularity, selectedBucket, onSel
       </div>
 
       <div className="flex items-center justify-between border-t border-border/50 pt-2 pl-10">
-        <span className="text-[10px] font-mono text-muted-foreground">
+        <span className="text-[11px] font-mono text-muted-foreground">
           {formatBucketLabel(buckets[0].dateBucket, granularity)}
         </span>
         {hoveredBucket ? (
-          <span className="text-[10px] font-mono text-primary">
+          <span className="text-[11px] font-mono text-primary">
             {formatBucketLabel(hoveredBucket.dateBucket, granularity)} &middot; {hoveredBucket.count.toLocaleString()} files
           </span>
         ) : (
-          <span className="text-[10px] font-mono text-muted-foreground">
+          <span className="text-[11px] font-mono text-muted-foreground">
             {totalCount.toLocaleString()} files · hover a bar for details
           </span>
         )}
-        <span className="text-[10px] font-mono text-muted-foreground">
+        <span className="text-[11px] font-mono text-muted-foreground">
           {formatBucketLabel(buckets[buckets.length - 1].dateBucket, granularity)}
         </span>
       </div>

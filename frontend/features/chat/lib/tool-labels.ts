@@ -12,16 +12,35 @@ function str(value: unknown): string | undefined {
   return UUID.test(value) ? "entity" : value;
 }
 
-const FILTER_KEYS = ["entity_id", "sent_from", "sent_to", "participants", "date_from", "date_to"] as const;
+/** How each entity filter reads in a label: "about X", "from X", "to X", "between X and Y". */
+const ENTITY_FILTERS = [
+  ["entity_ids", "about"],
+  ["sent_from", "from"],
+  ["sent_to", "to"],
+  ["participants", "between"],
+] as const;
 
-/** `sent_from=… date_from=…` for whichever correspondence / entity filters a call set. */
+/** "Nick Bolton" / "entity +2": one identity plus however many extra ids were passed with it. */
+function describeIds(value: unknown): string | undefined {
+  const ids = (Array.isArray(value) ? value : [value]).map(str).filter(Boolean);
+  if (ids.length === 0) return undefined;
+  return ids.length === 1 ? ids[0] : `${ids[0]} +${ids.length - 1}`;
+}
+
+/** `from entity · to entity +1 · 2020-01-01 → 2020-12-31` for whichever filters a call set. */
 function describeFilters(input: Record<string, unknown>): string | undefined {
-  const parts = FILTER_KEYS.flatMap((key) => {
-    const value = input[key];
-    const shown = Array.isArray(value) ? value.map(str).filter(Boolean).join(", ") : str(value);
-    return shown ? [`${key}=${shown}`] : [];
+  const parts = ENTITY_FILTERS.flatMap(([key, word]) => {
+    const shown = describeIds(input[key]);
+    return shown ? [`${word} ${shown}`] : [];
   });
-  return parts.length ? parts.join(" ") : undefined;
+  const from = str(input.date_from);
+  const to = str(input.date_to);
+  if (from || to) parts.push(`${from ?? "…"} → ${to ?? "…"}`);
+  return parts.length ? parts.join(" · ") : undefined;
+}
+
+function describeHops(value: unknown): string | undefined {
+  return typeof value === "number" && value > 0 ? `+${value} hop${value > 1 ? "s" : ""}` : undefined;
 }
 
 const TOOL_LABELS: Record<string, string> = {
@@ -34,12 +53,16 @@ const TOOL_LABELS: Record<string, string> = {
   entity_mentions: "Entity mentions",
   related_entities: "Graph traversal",
   explain_entity_resolution: "Explaining resolution",
+  propose_selector_links: "Proposing address links (needs your review)",
+  propose_entity_merge: "Proposing a merge (needs your review)",
   read_file: "Reading file",
 };
 
 const TOOL_DETAILS: Record<string, (input: Record<string, unknown>) => string | undefined> = {
   search_passages: (input) =>
-    [str(input.query), str(input.mode), describeFilters(input)].filter(Boolean).join(" · ") || undefined,
+    [str(input.query), str(input.mode), describeFilters(input), describeHops(input.connected_hops)]
+      .filter(Boolean)
+      .join(" · ") || undefined,
   count_emails: (input) => [str(input.group_by), describeFilters(input)].filter(Boolean).join(" · ") || undefined,
   find_person: (input) => str(input.name),
   find_entity: (input) => str(input.name) ?? str(input.selector_value),

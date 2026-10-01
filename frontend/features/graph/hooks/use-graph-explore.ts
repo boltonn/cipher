@@ -3,8 +3,8 @@
 import { entitiesService } from "@/features/entities/api";
 import type {
   EntityRelationship,
-  EntitySummary,
-  EntityType,
+  GraphNode,
+  GraphNodeType,
   RelationshipType,
   TraversalDirection,
 } from "@/features/entities/types";
@@ -15,7 +15,7 @@ import { useQueries } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 
 export interface GraphFilters {
-  entityTypes: EntityType[];
+  entityTypes: GraphNodeType[];
   relationshipTypes: RelationshipType[];
   minWeight: number;
   direction: TraversalDirection;
@@ -98,7 +98,7 @@ export function useGraphExplore(datasetId: string | undefined) {
   const dataSig = results.map((r) => r.dataUpdatedAt ?? 0).join(",");
 
   const merged = useMemo(() => {
-    const nodeMap = new Map<string, EntitySummary>();
+    const nodeMap = new Map<string, GraphNode>();
     const edgeMap = new Map<string, EntityRelationship>();
     for (const r of results) {
       const data = r.data;
@@ -242,7 +242,7 @@ export function useGraphExplore(datasetId: string | undefined) {
       if (hiddenIds.has(id)) return;
       if (
         filters.entityTypes.length &&
-        !filters.entityTypes.includes(attrs.entityType as EntityType)
+        !filters.entityTypes.includes(attrs.entityType as GraphNodeType)
       )
         return;
       n += 1;

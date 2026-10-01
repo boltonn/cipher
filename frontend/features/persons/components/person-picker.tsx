@@ -112,7 +112,7 @@ export function PersonPicker({
                   )}
                   <span className="truncate flex-1">{person.name || "Unnamed"}</span>
                   {person.isVerified && (
-                    <Badge className="bg-primary/10 text-primary border-none text-[8px] px-1 py-0">
+                    <Badge className="bg-primary/10 text-primary border-none text-[11px] px-1 py-0">
                       Verified
                     </Badge>
                   )}

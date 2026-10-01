@@ -79,7 +79,7 @@ export function RegionCombobox({ value, onChange, className }: RegionComboboxPro
               role="button"
               tabIndex={0}
               aria-label="Clear country"
-              className="ml-2 shrink-0 text-muted-foreground hover:text-white"
+              className="ml-2 shrink-0 text-muted-foreground hover:text-foreground"
               onClick={(e) => {
                 e.stopPropagation();
                 onChange(undefined);

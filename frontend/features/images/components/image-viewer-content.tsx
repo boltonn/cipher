@@ -52,7 +52,7 @@ export function ImageViewerContent({ image, className, overlayBoxes }: ImageView
           {chips.map((chip) => (
             <span
               key={chip}
-              className="rounded border border-border bg-black/60 px-2 py-1 font-mono text-[10px] text-primary backdrop-blur"
+              className="rounded border border-border bg-black/60 px-2 py-1 font-mono text-[11px] text-primary backdrop-blur"
             >
               {chip}
             </span>

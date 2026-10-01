@@ -399,7 +399,7 @@ export function DatasetRequestForm({ onClose }: DatasetRequestFormProps) {
                   <span className="text-sm font-medium text-foreground">
                     Analytics you&apos;ll want
                   </span>
-                  <span className="ml-auto text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                  <span className="ml-auto text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
                     {enabledCount} selected
                   </span>
                 </div>
@@ -597,7 +597,7 @@ function AnalyticRow({
                   />
                 )}
                 {missing && (
-                  <span className="text-[10px] text-destructive">Required</span>
+                  <span className="text-[11px] text-destructive">Required</span>
                 )}
               </div>
             );

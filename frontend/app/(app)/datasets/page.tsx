@@ -80,9 +80,9 @@ export default function DatasetSearchPage() {
   return (
     <div className="max-w-400 mx-auto px-6 relative pb-20 pt-5">
       <PageHeader
-        eyebrow="Registry"
+        eyebrow="Datasets"
         icon={<Database size={10} className="text-primary/50" />}
-        value={`${total.toLocaleString()} ${total === 1 ? "Dataset" : "Datasets"}`}
+        value={`${total.toLocaleString()} ${total === 1 ? "dataset" : "datasets"}`}
         actions={
           <>
             <ButtonGroup>

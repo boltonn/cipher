@@ -16,7 +16,11 @@ import { useEntityProfile } from "@/features/entities/hooks/use-entities";
 import { FAMILY_ROLE_INVERSE } from "@/features/entities/types";
 import { PersonEventsSection } from "@/features/events/components/person-events-section";
 import { FaceCard } from "@/features/faces/components/face-card";
+import { FaceSelectionBar } from "@/features/faces/components/face-selection-bar";
+import { useUnassignFaces } from "@/features/faces/hooks/use-assign-face";
+import { useFaceSelection } from "@/features/faces/hooks/use-face-selection";
 import { usePersonFaces } from "@/features/faces/hooks/use-person-faces";
+import { useRejectFaces } from "@/features/faces/hooks/use-reject-faces";
 import { ImageViewerDialog } from "@/features/images/components/image-viewer-dialog";
 import { FacePublic } from "@/features/faces/types";
 import { EditPersonDialog } from "@/features/persons/components/edit-person-dialog";
@@ -69,7 +73,7 @@ export default function PersonDetailPage({
     isPending: facesPending,
   } = usePersonFaces(id);
 
-  const deletePerson = useDeletePerson(() => router.push("/persons"));
+  const deletePerson = useDeletePerson(() => router.replace("/persons"));
 
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isMergeOpen, setIsMergeOpen] = useState(false);
@@ -86,6 +90,14 @@ export default function PersonDetailPage({
     ? recentFaces.findIndex((f) => f.id === selectedFace.id)
     : -1;
 
+  const faceSelection = useFaceSelection();
+  const unassignFaces = useUnassignFaces(faceSelection.clear);
+  const rejectFaces = useRejectFaces();
+  const recentFaceIds = useMemo(
+    () => recentFaces.map((f) => f.id),
+    [recentFaces]
+  );
+
   const selectors = profile?.selectors ?? [];
   const related = profile?.relatedEntities ?? [];
   const fileCount = profile?.fileCount ?? 0;
@@ -100,7 +112,12 @@ export default function PersonDetailPage({
     href?: string;
     Icon: LucideIcon;
   }[] = [
-    { label: "Faces", value: recentFaces.length, href: "#faces", Icon: ScanFace },
+    {
+      label: "Faces",
+      value: recentFaces.length,
+      href: "#faces",
+      Icon: ScanFace,
+    },
     {
       label: "Mentions",
       value: fileCount,
@@ -132,337 +149,354 @@ export default function PersonDetailPage({
       />
 
       <div className="w-full max-w-5xl">
-      {/* Identity header */}
-      <div className="flex flex-col gap-4 rounded-2xl border border-border bg-muted/40 p-6 backdrop-blur-2xl">
-        <div className="flex items-start gap-6">
-          <PersonExamplesGallery
-            personId={id}
-            faces={representativeFaces ?? []}
-            isPending={repPending}
-          />
+        {/* Identity header */}
+        <div className="flex flex-col gap-4 rounded-2xl border border-border bg-muted/40 p-6 backdrop-blur-2xl">
+          <div className="flex items-start gap-6">
+            <PersonExamplesGallery
+              personId={id}
+              faces={representativeFaces ?? []}
+              isPending={repPending}
+            />
 
-          <div className="flex min-w-0 flex-1 flex-col gap-3">
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2.5">
-                  <h1 className="truncate text-xl font-bold text-white">
-                    {person.name || "Unnamed Person"}
-                  </h1>
-                  {person.isVerified && (
-                    <Badge className="h-6 gap-1.5 border-none bg-primary/10 px-2.5 text-xs text-primary">
-                      <BadgeCheck size={14} /> Verified
-                    </Badge>
-                  )}
-                </div>
-                <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-muted-foreground">
-                  {person.sex && (
-                    <span className="capitalize">{person.sex}</span>
-                  )}
-                  {person.dateOfBirth && (
-                    <span className="flex items-center gap-1.5">
-                      <Cake size={14} />
-                      {new Date(person.dateOfBirth).toLocaleDateString()}
+            <div className="flex min-w-0 flex-1 flex-col gap-3">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2.5">
+                    <h1 className="truncate text-xl font-bold text-white">
+                      {person.name || "Unnamed Person"}
+                    </h1>
+                    {person.isVerified && (
+                      <Badge className="h-6 gap-1.5 border-none bg-primary/10 px-2.5 text-xs text-primary">
+                        <BadgeCheck size={14} /> Verified
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-muted-foreground">
+                    {person.sex && (
+                      <span className="capitalize">{person.sex}</span>
+                    )}
+                    {person.dateOfBirth && (
+                      <span className="flex items-center gap-1.5">
+                        <Cake size={14} />
+                        {new Date(person.dateOfBirth).toLocaleDateString()}
+                      </span>
+                    )}
+                    {person.aliases.length > 0 && (
+                      <span>aka {person.aliases.join(", ")}</span>
+                    )}
+                    <span className="capitalize">
+                      {person.source.replace(/_/g, " ")}
                     </span>
-                  )}
-                  {person.aliases.length > 0 && (
-                    <span>aka {person.aliases.join(", ")}</span>
-                  )}
-                  <span className="capitalize">
-                    {person.source.replace(/_/g, " ")}
-                  </span>
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <PersonExampleUploadButton
+                    personId={id}
+                    atCap={(representativeFaces?.length ?? 0) >= 10}
+                    className="flex h-9 items-center gap-2 rounded-md border border-border/50 bg-muted/40 px-3 text-[11px] font-bold uppercase tracking-wide text-muted-foreground transition-colors hover:border-annotation/30 hover:text-annotation disabled:pointer-events-none disabled:opacity-30"
+                  >
+                    <ImagePlus size={14} />
+                    Upload Exemplar
+                  </PersonExampleUploadButton>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsEditOpen(true)}
+                    className="h-9 gap-2 border-border/50 bg-muted/40 text-xs font-medium text-muted-foreground hover:text-primary"
+                  >
+                    <Pencil size={14} />
+                    Edit
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsMergeOpen(true)}
+                    className="h-9 gap-2 border-border/50 bg-muted/40 text-xs font-medium text-muted-foreground hover:text-primary"
+                  >
+                    <Merge size={14} />
+                    Merge
+                  </Button>
+                  <ConfirmDialog
+                    trigger={
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Delete person"
+                        className="h-9 w-9 text-muted-foreground/70 hover:bg-destructive/10 hover:text-destructive"
+                      >
+                        <Trash2 size={14} />
+                      </Button>
+                    }
+                    title="Delete this person?"
+                    description={
+                      <>
+                        This permanently deletes{" "}
+                        <strong className="text-foreground">
+                          {person.name || "Unnamed Person"}
+                        </strong>{" "}
+                        and their entry in the knowledge graph. Their{" "}
+                        {recentFaces.length.toLocaleString()} face
+                        {recentFaces.length === 1 ? "" : "s"} are unlinked, not
+                        deleted, and can be reassigned to someone else; mentions
+                        naming them become unresolved. Their{" "}
+                        {(profile?.relatedTotal ?? 0).toLocaleString()}{" "}
+                        relationship
+                        {(profile?.relatedTotal ?? 0) === 1 ? "" : "s"}, pending
+                        face/resolution matches, and comments are deleted
+                        outright. This can&apos;t be undone.
+                      </>
+                    }
+                    confirmLabel="Delete Person"
+                    isPending={deletePerson.isPending}
+                    onConfirm={() => deletePerson.mutate(id)}
+                  />
                 </div>
               </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <PersonExampleUploadButton
-                  personId={id}
-                  atCap={(representativeFaces?.length ?? 0) >= 10}
-                  className="flex h-9 items-center gap-2 rounded-md border border-border/50 bg-muted/40 px-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground transition-colors hover:border-annotation/30 hover:text-annotation disabled:pointer-events-none disabled:opacity-30"
-                >
-                  <ImagePlus size={14} />
-                  Upload Exemplar
-                </PersonExampleUploadButton>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setIsEditOpen(true)}
-                  className="h-9 gap-2 border-border/50 bg-muted/40 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary"
-                >
-                  <Pencil size={14} />
-                  Edit
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setIsMergeOpen(true)}
-                  className="h-9 gap-2 border-border/50 bg-muted/40 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary"
-                >
-                  <Merge size={14} />
-                  Merge
-                </Button>
-                <ConfirmDialog
-                  trigger={
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Delete person"
-                      className="h-9 w-9 text-muted-foreground/70 hover:bg-destructive/10 hover:text-destructive"
+
+              {person.notes && (
+                <p className="text-sm leading-relaxed text-foreground">
+                  {person.notes}
+                </p>
+              )}
+
+              {person.tags.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {person.tags.map((tag) => (
+                    <Badge
+                      key={tag}
+                      variant="outline"
+                      className="h-7 border-border bg-muted/40 px-3 text-sm text-foreground"
                     >
-                      <Trash2 size={14} />
-                    </Button>
-                  }
-                  title="Delete this person?"
-                  description={
-                    <>
-                      This permanently deletes{" "}
-                      <strong className="text-foreground">
-                        {person.name || "Unnamed Person"}
-                      </strong>{" "}
-                      and their entry in the knowledge graph. Their{" "}
-                      {recentFaces.length.toLocaleString()} face
-                      {recentFaces.length === 1 ? "" : "s"} are unlinked, not
-                      deleted, and can be reassigned to someone else; mentions
-                      naming them become unresolved. Their{" "}
-                      {(profile?.relatedTotal ?? 0).toLocaleString()}{" "}
-                      relationship
-                      {(profile?.relatedTotal ?? 0) === 1 ? "" : "s"}, pending
-                      face/resolution matches, and comments are deleted
-                      outright. This can&apos;t be undone.
-                    </>
-                  }
-                  confirmLabel="Delete Person"
-                  isPending={deletePerson.isPending}
-                  onConfirm={() => deletePerson.mutate(id)}
-                />
-              </div>
+                      #{tag}
+                    </Badge>
+                  ))}
+                </div>
+              )}
             </div>
+          </div>
 
-            {person.notes && (
-              <p className="text-sm leading-relaxed text-foreground">
-                {person.notes}
-              </p>
-            )}
-
-            {person.tags.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {person.tags.map((tag) => (
-                  <Badge
-                    key={tag}
-                    variant="outline"
-                    className="h-7 border-border bg-muted/40 px-3 text-sm text-foreground"
-                  >
-                    #{tag}
-                  </Badge>
-                ))}
-              </div>
-            )}
+          {/* Count strip */}
+          <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-4">
+            {stats.map((s) => {
+              const body = (
+                <>
+                  <s.Icon
+                    size={18}
+                    className="shrink-0 text-primary/60 transition-colors group-hover:text-primary"
+                  />
+                  <div className="min-w-0">
+                    <div className="text-lg font-semibold text-foreground">
+                      {s.value}
+                    </div>
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground transition-colors group-hover:text-primary">
+                      {s.label}
+                    </div>
+                  </div>
+                </>
+              );
+              return s.href ? (
+                <a
+                  key={s.label}
+                  href={s.href}
+                  className="group flex items-center gap-3 bg-card px-4 py-3 transition-colors hover:bg-primary/5"
+                >
+                  {body}
+                </a>
+              ) : (
+                <div
+                  key={s.label}
+                  className="group flex items-center gap-3 bg-card px-4 py-3"
+                >
+                  {body}
+                </div>
+              );
+            })}
           </div>
         </div>
 
-        {/* Count strip */}
-        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-4">
-          {stats.map((s) => {
-            const body = (
-              <>
-                <s.Icon
-                  size={18}
-                  className="shrink-0 text-primary/60 transition-colors group-hover:text-primary"
-                />
-                <div className="min-w-0">
-                  <div className="text-lg font-semibold text-foreground">
-                    {s.value}
-                  </div>
-                  <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground transition-colors group-hover:text-primary">
-                    {s.label}
-                  </div>
-                </div>
-              </>
-            );
-            return s.href ? (
-              <a
-                key={s.label}
-                href={s.href}
-                className="group flex items-center gap-3 bg-card px-4 py-3 transition-colors hover:bg-primary/5"
-              >
-                {body}
-              </a>
-            ) : (
-              <div
-                key={s.label}
-                className="group flex items-center gap-3 bg-card px-4 py-3"
-              >
-                {body}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Stacked sections */}
-      <div className="mt-8 flex flex-col gap-10">
-        <Section
-          id="selectors"
-          title="Selectors"
-          icon={<Fingerprint size={14} className="text-primary" />}
-          action={
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setIsAddSelectorOpen(true)}
-              className="h-7 gap-1.5 text-[10px] font-bold uppercase tracking-widest text-primary hover:text-primary"
-            >
-              <Plus size={13} />
-              Add
-            </Button>
-          }
-        >
-          <EntitySelectors
-            entityId={id}
-            selectors={selectors}
-            selectorMentions={profile?.selectorMentions ?? []}
-            showMentionPreviews={false}
-          />
-        </Section>
-
-        <Section
-          id="faces"
-          title="Faces"
-          icon={<ScanFace size={14} className="text-primary" />}
-        >
-          {facesPending ? (
-            <Loader2 size={16} className="animate-spin text-muted-foreground" />
-          ) : recentFaces.length ? (
-            <>
-              <div className="grid grid-cols-3 gap-3 sm:grid-cols-5 lg:grid-cols-6">
-                {recentFaces.map((face) => (
-                  <FaceCard
-                    key={face.id}
-                    face={face}
-                    onExpand={setSelectedFace}
-                    onFindSimilar={(faceId) =>
-                      router.push(`/faces?similar=${faceId}`)
-                    }
-                  />
-                ))}
-              </div>
-              {hasNextPage && (
-                <div className="mt-4 flex justify-center">
-                  <Button
-                    variant="ghost"
-                    onClick={() => fetchNextPage()}
-                    disabled={isFetchingNextPage}
-                    className="text-[10px] uppercase tracking-widest text-primary"
-                  >
-                    {isFetchingNextPage && (
-                      <Loader2 size={12} className="mr-2 animate-spin" />
-                    )}
-                    Load more
-                  </Button>
-                </div>
-              )}
-            </>
-          ) : (
-            <p className="text-[11px] italic text-muted-foreground">
-              No faces assigned to this person yet.
-            </p>
-          )}
-        </Section>
-
-        <PersonEventsSection entityId={id} />
-
-        <Section
-          id="connections"
-          title="Connections"
-          icon={<Network size={14} className="text-primary" />}
-          action={
-            <div className="flex items-center gap-1">
-              {related.length > 0 && (
-                <>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowConnGraph((v) => !v)}
-                    className="h-7 gap-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary"
-                  >
-                    <Network size={13} />
-                    {showConnGraph ? "Hide graph" : "Show graph"}
-                  </Button>
-                  <Button
-                    asChild
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 gap-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary"
-                  >
-                    <Link href={`/graph?seed=${id}`}>
-                      <Share2 size={13} />
-                      Open in graph
-                    </Link>
-                  </Button>
-                </>
-              )}
+        {/* Stacked sections */}
+        <div className="mt-8 flex flex-col gap-10">
+          <Section
+            id="selectors"
+            title="Selectors"
+            icon={<Fingerprint size={14} className="text-primary" />}
+            action={
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setIsAddConnectionOpen(true)}
-                className="h-7 gap-1.5 text-[10px] font-bold uppercase tracking-widest text-primary hover:text-primary"
+                onClick={() => setIsAddSelectorOpen(true)}
+                className="h-7 gap-1.5 text-xs font-medium text-primary hover:text-primary"
               >
                 <Plus size={13} />
                 Add
               </Button>
-            </div>
-          }
-        >
-          {related.length > 0 ? (
-            <>
-              <ul className="mb-4 flex flex-wrap gap-2">
-                {related.map((r, i) => {
-                  const m = ENTITY_TYPE_META[r.entity.entityType];
-                  const rawRole =
-                    typeof r.attributes?.role === "string"
-                      ? r.attributes.role
-                      : null;
-                  // The stored role is "source is <role> of target"; on an
-                  // incoming edge show the inverse so it reads from here.
-                  const role = rawRole
-                    ? r.direction === "in"
-                      ? (FAMILY_ROLE_INVERSE[rawRole] ?? rawRole)
-                      : rawRole
-                    : null;
-                  return (
-                    <li key={`${r.entity.id}-${i}`}>
-                      <Link
-                        href={`/entities/${r.entity.id}`}
-                        className="flex items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-2.5 py-1.5 text-xs hover:border-primary/40"
-                      >
-                        <m.Icon size={12} className={m.textClass} />
-                        <span className="font-medium text-foreground">
-                          {r.entity.displayName}
-                        </span>
-                        <span className="text-[10px] uppercase text-muted-foreground">
-                          {role ?? r.relationshipType.replace(/_/g, " ")}
-                        </span>
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-              {showConnGraph && <EntityGraph focusEntityId={id} depth={2} compact />}
-            </>
-          ) : (
-            <p className="text-[11px] italic text-muted-foreground">
-              No connections yet. Link this person to family, associates, or
-              other entities.
-            </p>
-          )}
-        </Section>
+            }
+          >
+            <EntitySelectors
+              entityId={id}
+              selectors={selectors}
+              selectorMentions={profile?.selectorMentions ?? []}
+              showMentionPreviews={false}
+            />
+          </Section>
 
-        {/* CommentSection renders its own "Comments" header -- no Section
+          <Section
+            id="faces"
+            title="Faces"
+            icon={<ScanFace size={14} className="text-primary" />}
+          >
+            {facesPending ? (
+              <Loader2
+                size={16}
+                className="animate-spin text-muted-foreground"
+              />
+            ) : recentFaces.length ? (
+              <>
+                <div className="grid grid-cols-3 gap-3 sm:grid-cols-5 lg:grid-cols-6">
+                  {recentFaces.map((face) => (
+                    <FaceCard
+                      key={face.id}
+                      face={face}
+                      onExpand={setSelectedFace}
+                      onFindSimilar={(faceId) =>
+                        router.push(`/faces?similar=${faceId}`)
+                      }
+                      onReject={(f) => rejectFaces.mutate([f.id])}
+                      isSelected={faceSelection.selectedIds.has(face.id)}
+                      isSelectionActive={faceSelection.selectedIds.size > 0}
+                      onToggleSelect={(f, range) =>
+                        faceSelection.toggle(f.id, recentFaceIds, range)
+                      }
+                    />
+                  ))}
+                </div>
+                <FaceSelectionBar
+                  selection={faceSelection}
+                  loadedIds={recentFaceIds}
+                  onUnassign={unassignFaces.mutate}
+                  isUnassigning={unassignFaces.isPending}
+                />
+                {hasNextPage && (
+                  <div className="mt-4 flex justify-center">
+                    <Button
+                      variant="ghost"
+                      onClick={() => fetchNextPage()}
+                      disabled={isFetchingNextPage}
+                      className="text-xs text-primary"
+                    >
+                      {isFetchingNextPage && (
+                        <Loader2 size={12} className="mr-2 animate-spin" />
+                      )}
+                      Load more
+                    </Button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <p className="text-[11px] italic text-muted-foreground">
+                No faces assigned to this person yet.
+              </p>
+            )}
+          </Section>
+
+          <PersonEventsSection entityId={id} />
+
+          <Section
+            id="connections"
+            title="Connections"
+            icon={<Network size={14} className="text-primary" />}
+            action={
+              <div className="flex items-center gap-1">
+                {related.length > 0 && (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowConnGraph((v) => !v)}
+                      className="h-7 gap-1.5 text-xs font-medium text-muted-foreground hover:text-primary"
+                    >
+                      <Network size={13} />
+                      {showConnGraph ? "Hide graph" : "Show graph"}
+                    </Button>
+                    <Button
+                      asChild
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 gap-1.5 text-xs font-medium text-muted-foreground hover:text-primary"
+                    >
+                      <Link href={`/graph?seed=${id}`}>
+                        <Share2 size={13} />
+                        Open in graph
+                      </Link>
+                    </Button>
+                  </>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsAddConnectionOpen(true)}
+                  className="h-7 gap-1.5 text-xs font-medium text-primary hover:text-primary"
+                >
+                  <Plus size={13} />
+                  Add
+                </Button>
+              </div>
+            }
+          >
+            {related.length > 0 ? (
+              <>
+                <ul className="mb-4 flex flex-wrap gap-2">
+                  {related.map((r, i) => {
+                    const m = ENTITY_TYPE_META[r.entity.entityType];
+                    const rawRole =
+                      typeof r.attributes?.role === "string"
+                        ? r.attributes.role
+                        : null;
+                    // The stored role is "source is <role> of target"; on an
+                    // incoming edge show the inverse so it reads from here.
+                    const role = rawRole
+                      ? r.direction === "in"
+                        ? (FAMILY_ROLE_INVERSE[rawRole] ?? rawRole)
+                        : rawRole
+                      : null;
+                    return (
+                      <li key={`${r.entity.id}-${i}`}>
+                        <Link
+                          href={`/entities/${r.entity.id}`}
+                          className="flex items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-2.5 py-1.5 text-xs hover:border-primary/40"
+                        >
+                          <m.Icon size={12} className={m.textClass} />
+                          <span className="font-medium text-foreground">
+                            {r.entity.displayName}
+                          </span>
+                          <span className="text-[11px] uppercase text-muted-foreground">
+                            {role ?? r.relationshipType.replace(/_/g, " ")}
+                          </span>
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+                {showConnGraph && (
+                  <EntityGraph focusEntityId={id} depth={2} compact />
+                )}
+              </>
+            ) : (
+              <p className="text-[11px] italic text-muted-foreground">
+                No connections yet. Link this person to family, associates, or
+                other entities.
+              </p>
+            )}
+          </Section>
+
+          {/* CommentSection renders its own "Comments" header -- no Section
             wrapper, or the heading shows twice. */}
-        <section id="comments" className="scroll-mt-20">
-          <div className="rounded-2xl border border-border bg-muted/40 p-5 backdrop-blur-2xl">
-            <CommentSection commentableType="person" commentableId={id} />
-          </div>
-        </section>
-      </div>
+          <section id="comments" className="scroll-mt-20">
+            <div className="rounded-2xl border border-border bg-muted/40 p-5 backdrop-blur-2xl">
+              <CommentSection commentableType="person" commentableId={id} />
+            </div>
+          </section>
+        </div>
       </div>
 
       <EditPersonDialog
@@ -507,7 +541,9 @@ export default function PersonDetailPage({
           }
           hasMore={selectedIndex < recentFaces.length - 1}
           hasPrev={selectedIndex > 0}
-          onFindSimilarFace={(faceId) => router.push(`/faces?similar=${faceId}`)}
+          onFindSimilarFace={(faceId) =>
+            router.push(`/faces?similar=${faceId}`)
+          }
         />
       )}
     </div>

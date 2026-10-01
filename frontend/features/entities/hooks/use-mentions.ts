@@ -25,6 +25,30 @@ export function useFileMentions(fileId: string | undefined) {
   });
 }
 
+/** The resolver's scored candidates for one mention's name group. */
+export function useMentionResolution(mentionId: string | undefined) {
+  return useQuery({
+    queryKey: ["mentions", "resolution", mentionId],
+    queryFn: () => mentionsService.getResolution(mentionId as string),
+    enabled: !!mentionId,
+  });
+}
+
+/** Entities other mentions of this value already resolve to, most mentions first -- "elsewhere this is …". */
+export function useValueResolvedEntities(datasetId: string, normalizedValue: string | undefined) {
+  return useQuery({
+    queryKey: ["mentions", "value-entities", datasetId, normalizedValue],
+    queryFn: () =>
+      mentionsService.list({ datasetId, normalizedValue: normalizedValue as string, resolved: true, limit: 200 }),
+    enabled: !!normalizedValue,
+    select: (page) => {
+      const counts = new Map<string, number>();
+      for (const m of page.data) if (m.entityId) counts.set(m.entityId, (counts.get(m.entityId) ?? 0) + 1);
+      return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([entityId, count]) => ({ entityId, count }));
+    },
+  });
+}
+
 /** Unresolved mentions in a dataset -- the review queue. */
 export function useUnresolvedMentions(datasetId: string | undefined) {
   return useQuery({
@@ -39,21 +63,23 @@ export function useUnresolvedMentions(datasetId: string | undefined) {
   });
 }
 
-/** The review queue as distinct names -- one row per name, not per mention. */
-export function useUnresolvedNameGroups(
-  datasetId: string | undefined,
-  q: string,
-  page: number
-) {
+/** The Resolve queue: one row per unresolved name group, with its suggested resolutions. */
+export function useUnresolvedNameGroups(params: {
+  datasetId: string | undefined;
+  q?: string;
+  hasResolution?: boolean;
+  entityId?: string;
+  page: number;
+}) {
   return useQuery({
-    queryKey: ["mentions", "unresolved-names", datasetId, q, page],
+    queryKey: ["mentions", "unresolved-names", params],
     queryFn: () =>
       mentionsService.listUnresolvedNames({
-        datasetId: datasetId as string,
-        q: q || undefined,
-        page,
+        ...params,
+        datasetId: params.datasetId as string,
+        q: params.q || undefined,
       }),
-    enabled: !!datasetId,
+    enabled: !!params.datasetId,
     placeholderData: keepPreviousData,
   });
 }
@@ -85,8 +111,11 @@ export function useDismissNameGroup(onSuccess?: () => void) {
 function useMentionInvalidation() {
   const qc = useQueryClient();
   return () => {
-    qc.invalidateQueries({ queryKey: ["mentions"] });
+    // Resolution lookups only go stale: the open popover's mention may have just been deleted or replaced.
+    qc.invalidateQueries({ queryKey: ["mentions"], predicate: (q) => q.queryKey[1] !== "resolution" });
+    qc.invalidateQueries({ queryKey: ["mentions", "resolution"], refetchType: "none" });
     qc.invalidateQueries({ queryKey: ["entities"] });
+    qc.invalidateQueries({ queryKey: ["search"] });
   };
 }
 

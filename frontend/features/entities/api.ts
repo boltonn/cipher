@@ -15,6 +15,7 @@ import type {
   Mention,
   MentionCreatePayload,
   MentionProvenance,
+  MentionResolution,
   MentionResolvePayload,
   MentionUpdatePayload,
   Ontology,
@@ -30,6 +31,9 @@ import type {
   RelatedEntitySort,
   RelationshipType,
   ResolveNameGroupPayload,
+  OrganizationStructure,
+  ResolvedName,
+  SelectorEvidence,
   SelectorLinkPayload,
   SelectorMention,
   SelectorRegion,
@@ -55,7 +59,7 @@ export const entitiesService = {
     apiClient
       .get<EntitySearchResult[]>(`${entitiesBaseURL}/search`, {
         params: {
-          dataset_id: opts.datasetId,
+          datasetId: opts.datasetId,
           q: opts.q,
           selector: opts.selector,
           limit: opts.limit ?? 8,
@@ -116,14 +120,85 @@ export const entitiesService = {
       .post<SelectorMention>(`${entitiesBaseURL}/${id}/selectors`, payload)
       .then((res) => res.data),
 
+  /** Names resolved to an entity, most mentions first, each flagged if it's a curated alias. */
+  getStructure: (id: string) =>
+    apiClient
+      .get<OrganizationStructure>(`${entitiesBaseURL}/${id}/structure`)
+      .then((res) => res.data),
+
+  getNames: (id: string) =>
+    apiClient
+      .get<ResolvedName[]>(`${entitiesBaseURL}/${id}/names`)
+      .then((res) => res.data),
+
+  /** Header usage + current owners of candidate selectors -- the evidence for a proposed link. */
+  getSelectorEvidence: (id: string, selectorIds: string[]) =>
+    apiClient
+      .get<
+        SelectorEvidence[]
+      >(`${entitiesBaseURL}/${id}/selector-evidence`, { params: { ids: selectorIds } })
+      .then((res) => res.data),
+
+  /** Manual has_selector edge to an existing selector node (the one its mentions point at). */
+  linkSelector: (id: string, selectorId: string) =>
+    apiClient
+      .post(`${entitiesBaseURL}/${id}/selectors/${selectorId}`)
+      .then((res) => res.data),
+
   // Remove the has_selector edge; the selector node itself is left intact.
   detachSelector: (id: string, selectorId: string) =>
     apiClient
       .delete(`${entitiesBaseURL}/${id}/selectors/${selectorId}`)
       .then((res) => res.data),
 
-  delete: (id: string) =>
-    apiClient.delete(`${entitiesBaseURL}/${id}`).then((res) => res.data),
+  /** `discardMentions` deletes its mentions too ("not an entity"); otherwise they go back to Review unresolved. */
+  delete: (id: string, opts?: { discardMentions?: boolean }) =>
+    apiClient
+      .delete<{
+        deleted: boolean;
+        mentionsDeleted: number;
+      }>(`${entitiesBaseURL}/${id}`, { params: { discardMentions: opts?.discardMentions } })
+      .then((res) => res.data),
+
+  /** Keep a provisional entity as a new canonical one (a person gets its own person page). */
+  promote: (id: string) =>
+    apiClient
+      .post<Entity>(`${entitiesBaseURL}/${id}/promote`)
+      .then((res) => res.data),
+
+  /** Bulk Verify -- keep each auto-created entity as a real one. */
+  promoteBatch: (entityIds: string[]) =>
+    apiClient
+      .post<{
+        promoted: number;
+      }>(`${entitiesBaseURL}/promote-batch`, { entityIds })
+      .then((res) => res.data),
+
+  /** Person <-> organization for auto-created entities; their name mentions follow. */
+  retype: (entityIds: string[], entityType: EntityType) =>
+    apiClient
+      .post<{ retyped: number; mentions: number; edgesRemoved: number }>(
+        `${entitiesBaseURL}/retype`,
+        {
+          entityIds,
+          entityType,
+        }
+      )
+      .then((res) => res.data),
+
+  /** Fold auto-created duplicates into `id`; their names become its aliases. */
+  merge: (id: string, sourceIds: string[]) =>
+    apiClient
+      .post<{ merged: number }>(`${entitiesBaseURL}/${id}/merge`, { sourceIds })
+      .then((res) => res.data),
+
+  /** Send a resolved name group back to the Resolve queue (aliases untouched). */
+  unresolveName: (id: string, normalizedValue: string) =>
+    apiClient
+      .post<{
+        detached: number;
+      }>(`${entitiesBaseURL}/${id}/names/unresolve`, { normalizedValue })
+      .then((res) => res.data),
 
   getMentions: (
     id: string,
@@ -137,7 +212,7 @@ export const entitiesService = {
     apiClient
       .get<PaginatedMentionsResponse>(`${entitiesBaseURL}/${id}/mentions`, {
         params: {
-          file_id: params?.fileId,
+          fileId: params?.fileId,
           provenance: params?.provenance,
           limit: params?.limit ?? 50,
           page: params?.page ?? 1,
@@ -159,7 +234,7 @@ export const entitiesService = {
         {
           params: {
             direction: params?.direction ?? "both",
-            relationship_type: params?.relationshipType,
+            relationshipType: params?.relationshipType,
             limit: params?.limit ?? 100,
           },
         }
@@ -181,16 +256,19 @@ export const entitiesService = {
     }
   ) =>
     apiClient
-      .get<PaginatedRelatedEntitiesResponse>(`${entitiesBaseURL}/${id}/related`, {
-        params: {
-          direction: params?.direction ?? "both",
-          relationship_type: params?.relationshipType,
-          entity_type: params?.entityType,
-          sort: params?.sort ?? "weight",
-          limit: params?.limit ?? 25,
-          page: params?.page ?? 1,
-        },
-      })
+      .get<PaginatedRelatedEntitiesResponse>(
+        `${entitiesBaseURL}/${id}/related`,
+        {
+          params: {
+            direction: params?.direction ?? "both",
+            relationshipType: params?.relationshipType,
+            entityType: params?.entityType,
+            sort: params?.sort ?? "weight",
+            limit: params?.limit ?? 25,
+            page: params?.page ?? 1,
+          },
+        }
+      )
       .then((res) => res.data),
 
   getGraph: (
@@ -210,7 +288,7 @@ export const entitiesService = {
           direction: params?.direction ?? "both",
           types: params?.types?.length ? params.types.join(",") : undefined,
           limit: params?.limit ?? 500,
-          min_weight: params?.minWeight ?? 0,
+          minWeight: params?.minWeight ?? 0,
         },
       })
       .then((res) => res.data),
@@ -252,7 +330,7 @@ export const entitiesService = {
 
   resolveMatch: (
     matchId: string,
-    review: { status: string; reviewedBy: string; reviewNote?: string }
+    review: { status: string; reviewNote?: string }
   ) =>
     apiClient
       .post<EntityMatch>(
@@ -265,8 +343,10 @@ export const entitiesService = {
   // candidate plus alternatives, each carrying the per-feature `explanation`.
   listMatchGroups: (params: {
     datasetId: string;
+    entityId?: string;
     status?: string;
     minSimilarity?: number;
+    includeProvisionalEntities?: boolean;
     sortBy?: "similarity_score" | "date_created";
     limit?: number;
     page?: number;
@@ -276,10 +356,12 @@ export const entitiesService = {
         `${entitiesBaseURL}/matches/groups`,
         {
           params: {
-            dataset_id: params.datasetId,
+            datasetId: params.datasetId,
+            entityId: params.entityId,
             status: params.status ?? "pending",
-            min_similarity: params.minSimilarity,
-            sort_by: params.sortBy ?? "similarity_score",
+            minSimilarity: params.minSimilarity,
+            includeProvisionalEntities: params.includeProvisionalEntities,
+            sortBy: params.sortBy ?? "similarity_score",
             limit: params.limit ?? 25,
             page: params.page ?? 1,
           },
@@ -288,29 +370,25 @@ export const entitiesService = {
       .then((res) => res.data),
 
   // Confirm / reject many candidates in one transaction (the bulk-annotation path).
-  resolveMatchesBatch: (body: {
-    reviewedBy: string;
-    decisions: EntityMatchBatchItem[];
-  }) =>
+  resolveMatchesBatch: (body: { decisions: EntityMatchBatchItem[] }) =>
     apiClient
-      .post<{ confirmed: number; rejected: number; notFound: number }>(
-        `${entitiesBaseURL}/matches/resolve-batch`,
-        body
-      )
+      .post<{
+        confirmed: number;
+        rejected: number;
+        notFound: number;
+      }>(`${entitiesBaseURL}/matches/resolve-batch`, body)
       .then((res) => res.data),
 
   // "None of these" -- reject every pending candidate for a name group.
   dismissMatchNameGroup: (body: {
     datasetId: string;
     normalizedValue: string;
-    reviewedBy: string;
     reviewNote?: string;
   }) =>
     apiClient
-      .post<{ rejected: number }>(
-        `${entitiesBaseURL}/matches/name-group/dismiss`,
-        body
-      )
+      .post<{
+        rejected: number;
+      }>(`${entitiesBaseURL}/matches/name-group/dismiss`, body)
       .then((res) => res.data),
 
   // Entity->entity merge review queue: one card per provisional stub, the
@@ -324,7 +402,7 @@ export const entitiesService = {
     apiClient
       .get<PaginatedEntityMergeGroupsResponse>(`${entitiesBaseURL}/merges`, {
         params: {
-          dataset_id: params.datasetId,
+          datasetId: params.datasetId,
           status: params.status ?? "pending",
           limit: params.limit ?? 25,
           page: params.page ?? 1,
@@ -370,6 +448,11 @@ export const mentionsService = {
   delete: (id: string) =>
     apiClient.delete(`${mentionsBaseURL}/${id}`).then((res) => res.data),
 
+  getResolution: (id: string) =>
+    apiClient
+      .get<MentionResolution>(`${mentionsBaseURL}/${id}/resolution`, { suppressErrorToast: true })
+      .then((res) => res.data),
+
   resolve: (id: string, payload: MentionResolvePayload) =>
     apiClient
       .post<Mention>(`${mentionsBaseURL}/${id}/resolve`, payload)
@@ -379,6 +462,10 @@ export const mentionsService = {
   listUnresolvedNames: (params: {
     datasetId: string;
     q?: string;
+    /** true: only names with a suggested resolution; false: only names needing a new entity */
+    hasResolution?: boolean;
+    /** only names with a pending resolution to this entity */
+    entityId?: string;
     limit?: number;
     page?: number;
   }) =>

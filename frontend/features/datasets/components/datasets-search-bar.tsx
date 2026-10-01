@@ -1,9 +1,9 @@
 "use client";
 
 import { SearchBarShell } from "@/components/search-bar-shell";
+import { SearchInput } from "@/components/search-input";
 import { Button } from "@/components/ui/button";
-import { Search, X } from "lucide-react";
-import React, { useState } from "react";
+import { Search } from "lucide-react";
 
 interface DatasetsSearchBarProps {
   query?: string;
@@ -18,55 +18,27 @@ export function DatasetsSearchBar({
   onClearFilters,
   isSearching,
 }: DatasetsSearchBarProps) {
-  const [localInput, setLocalInput] = useState(query || "");
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onSearch(localInput);
-  };
-
-  const hasActiveFilters = !!localInput;
+  const hasActiveFilters = !!query;
 
   return (
     <div className="w-full space-y-4">
-      <form onSubmit={handleSubmit} className="flex items-center gap-3">
+      <div className="flex items-center gap-3">
         <SearchBarShell isActive={isSearching} icon={<Search size={18} strokeWidth={1.5} />} className="flex-1">
-          <input
-            type="text"
-            aria-label="Search datasets"
-            autoComplete="off"
-            value={localInput}
-            onChange={(e) => setLocalInput(e.target.value)}
-            placeholder="Search datasets..."
-            className="w-full bg-transparent py-4 px-4 text-foreground placeholder:text-muted-foreground focus:outline-none text-sm tracking-wide"
-          />
-
-          {localInput && (
-            <button
-              type="button"
-              onClick={() => setLocalInput("")}
-              className="text-muted-foreground hover:text-foreground shrink-0"
-            >
-              <X size={14} />
-            </button>
-          )}
+          <SearchInput ariaLabel="Search datasets" placeholder="Search datasets..." value={query ?? ""} onSearch={onSearch} />
         </SearchBarShell>
 
         {/* Clear Filters */}
         {hasActiveFilters && (
           <Button
             type="button"
-            onClick={() => {
-              setLocalInput("");
-              onClearFilters();
-            }}
+            onClick={onClearFilters}
             variant="ghost"
             className="h-9 px-3 text-xs text-muted-foreground hover:text-foreground"
           >
             Clear
           </Button>
         )}
-      </form>
+      </div>
     </div>
   );
 }

@@ -60,7 +60,7 @@ export function EntityTypeBadge({
     <Badge
       variant="outline"
       className={cn(
-        "h-6 gap-1.5 px-2 text-[10px] font-bold uppercase tracking-widest",
+        "h-6 gap-1.5 px-2 text-[11px] font-bold uppercase tracking-wide",
         meta.bgClass,
         meta.textClass,
         meta.borderClass,

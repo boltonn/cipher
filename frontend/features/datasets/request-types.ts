@@ -314,6 +314,8 @@ export interface EnrichmentWorkload {
 
 export interface EnrichmentEstimate {
   enrichmentType: string;
+  /** Device class the analytic runs on; `na` = no local model (CPU parsing or a served LLM). */
+  device: RunDevice;
   eligible: EnrichmentWorkload;
   estimateSeconds: number | null;
   lowSeconds: number | null;
@@ -328,7 +330,7 @@ export interface EnrichmentEstimate {
 export interface DatasetEnrichmentEstimates {
   datasetId: string;
   isStaged: boolean;
-  device: RunDevice;
+  accelerator: RunDevice;
   dateGenerated: string;
   items: EnrichmentEstimate[];
 }
@@ -342,4 +344,31 @@ export function formatDuration(seconds: number | null | undefined): string {
   const hours = minutes / 60;
   if (hours < 36) return `~${hours.toFixed(1)} h`;
   return `~${(hours / 24).toFixed(1)} d`;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Enrichment requests (mirrors backend `EnrichmentRequest`)                 */
+/* -------------------------------------------------------------------------- */
+
+export const enrichmentRequestSchema = z.object({
+  datasetId: z.string().min(1),
+  analytics: z
+    .array(
+      z.object({
+        enrichmentType: z.string(),
+        parameters: z.record(z.string(), z.unknown()),
+      })
+    )
+    .min(1, "Select at least one analytic"),
+  note: z.string().trim().max(5000, "Keep the note under 5000 characters").optional(),
+});
+
+export type EnrichmentRequestInput = z.infer<typeof enrichmentRequestSchema>;
+
+export interface EnrichmentRequestResult {
+  title: string;
+  /** Issue markdown -- copy it into an issue when GitHub isn't configured. */
+  body: string;
+  issueNumber: number | null;
+  issueUrl: string | null;
 }

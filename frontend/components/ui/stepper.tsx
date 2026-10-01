@@ -218,7 +218,7 @@ function StepperTitle({ className, ...props }: React.ComponentProps<"span">) {
     <span
       data-slot="stepper-title"
       className={cn(
-        "text-[10px] font-black uppercase tracking-[0.15em] text-muted-foreground transition-colors",
+        "text-[11px] font-semibold uppercase tracking-wide text-muted-foreground transition-colors",
         "group-data-[state=active]/step:text-foreground group-data-[state=completed]/step:text-foreground",
         "group-data-[state=loading]/step:text-foreground group-data-[state=failed]/step:text-destructive",
         className

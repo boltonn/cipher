@@ -1,4 +1,5 @@
 // @/features/search/types.ts
+import type { MentionProvenance } from "@/features/entities/types";
 import { PaginatedResponse } from "@/types/common";
 
 export type SearchFiletypeGroup = "document" | "email";
@@ -17,8 +18,18 @@ export interface SearchFilters {
   tags?: string[];
   filetypeGroup?: SearchFiletypeGroup;
   filetype?: string;
-  /** Entity-aware filters -- compose with any search mode; require `sync-chunk-entities`. */
+  /** Passages that mention every one of these entities -- composes with any search mode. */
   entityIds?: string[];
+  /** Files with a mention of every one of these values (`normalizedValue`, resolved or not) -- an IP, a name group. */
+  mentionValues?: string[];
+  /** Where a `mentionValues` hit must be found -- body text vs email headers vs other metadata fields; omit for anywhere. */
+  mentionProvenance?: MentionProvenance[];
+  /** Email header filters (entity ids -- a person/org or an address selector); any-of. */
+  sentFrom?: string[];
+  sentTo?: string[];
+  /** Picker ISO timestamps; sent as `yyyy-MM-dd` days (inclusive). */
+  dateFrom?: string;
+  dateTo?: string;
   entityTypes?: string[];
   selectorTypes?: string[];
   selectorSubtypes?: string[];
@@ -38,6 +49,14 @@ export interface ChunkTextSearchRequest extends BaseChunkSearchParameters {
   minSimilarity?: number;
 }
 
+/** Where a filtered entity or mention value occurs, in extracted-text offsets. */
+export interface MentionSpan {
+  entityId?: string | null;
+  normalizedValue?: string | null;
+  startOffset: number;
+  endOffset: number;
+}
+
 // ─── Raw backend shapes (unified /search/{text,semantic,hybrid} router) ───────
 
 interface TextChunkRawBase {
@@ -53,6 +72,7 @@ interface TextChunkRawBase {
   score: number;
   /** Matched words/phrases from Elasticsearch highlighting; empty for pure kNN (semantic) results. */
   highlights?: string[];
+  mentionSpans?: MentionSpan[];
 }
 
 export interface DocumentTextChunkRaw extends TextChunkRawBase {
@@ -81,7 +101,10 @@ export interface FileSearchResultRaw {
   chunks: SearchChunkRaw[];
 }
 
-export type PaginatedFileSearchResponse = PaginatedResponse<FileSearchResultRaw>;
+export type PaginatedFileSearchResponse = PaginatedResponse<FileSearchResultRaw> & {
+  /** False for semantic / hybrid: `total` only counts the ranked candidate pool's files, not every match. */
+  totalIsExact: boolean;
+};
 
 // ─── Normalized UI shapes ───────────────────────────────────────────────────
 
@@ -103,6 +126,8 @@ export interface SearchChunk {
   dateCreated: string;
   /** Matched words/phrases from Elasticsearch highlighting; empty for pure kNN (semantic) results. */
   highlights: string[];
+  /** Mentions of the filtered entities inside this chunk (file-level offsets). */
+  mentionSpans: MentionSpan[];
   /** Document-only: page this chunk's text came from, if known. */
   pageNumber?: number;
   /** Document-only: section heading hierarchy this chunk falls under. */

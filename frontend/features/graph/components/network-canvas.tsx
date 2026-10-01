@@ -1,7 +1,7 @@
 "use client";
 
 import type {
-  EntityType,
+  GraphNodeType,
   RelationshipType,
 } from "@/features/entities/types";
 import type { ColorMode, SizeMode } from "@/features/graph/hooks/use-graph-explore";
@@ -49,7 +49,7 @@ export interface NetworkCanvasProps {
   built: BuiltNetwork;
   hiddenIds: ReadonlySet<string>;
   /** empty = all types visible */
-  visibleTypes: EntityType[];
+  visibleTypes: GraphNodeType[];
   /** empty = all relationship types visible */
   visibleRelTypes: RelationshipType[];
   labelsMode: LabelsMode;
@@ -75,7 +75,7 @@ export interface NetworkCanvasProps {
 
 interface CanvasState {
   hiddenIds: ReadonlySet<string>;
-  visibleTypes: EntityType[];
+  visibleTypes: GraphNodeType[];
   visibleRelTypes: RelationshipType[];
   labelsMode: LabelsMode;
   colorMode: ColorMode;
@@ -216,7 +216,7 @@ export function NetworkCanvas({
       if (s.hiddenIds.has(node)) return false;
       if (
         s.visibleTypes.length &&
-        !s.visibleTypes.includes(attrs.entityType as EntityType)
+        !s.visibleTypes.includes(attrs.entityType as GraphNodeType)
       )
         return false;
       return true;
@@ -498,7 +498,7 @@ export function NetworkCanvas({
         </CanvasButton>
       </div>
 
-      <p className="pointer-events-none absolute bottom-3 left-3 text-[10px] text-muted-foreground/70">
+      <p className="pointer-events-none absolute bottom-3 left-3 text-[11px] text-muted-foreground/70">
         Drag to reposition · click to inspect · double-click to expand ·
         right-click for actions
       </p>

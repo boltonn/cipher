@@ -43,7 +43,7 @@ export function EmailViewer({ email, locationTarget }: EmailViewerProps) {
         <div className="flex items-start justify-between gap-4">
           <p className="font-bold text-sm">{email.metadata.title ?? "(no subject)"}</p>
           {email.html && (
-            <div className="shrink-0 flex rounded-md border border-slate-200 bg-white p-0.5 text-[10px] font-bold uppercase tracking-wide">
+            <div className="shrink-0 flex rounded-md border border-slate-200 bg-white p-0.5 text-[11px] font-bold uppercase tracking-wide">
               <button
                 type="button"
                 onClick={() => setView("html")}

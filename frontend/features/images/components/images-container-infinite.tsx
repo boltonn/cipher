@@ -95,14 +95,14 @@ export function ImagesContainerInfinite({
   if (images.length === 0 && !isFetchingNextPage) {
     return (
       <div className="flex flex-col items-center justify-center py-40 border border-dashed border-border/50 rounded-3xl bg-muted/10">
-        <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-muted-foreground mb-4">
+        <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground mb-4">
           No Assets Resolved
         </p>
         {isFullWidth && (
           <Button
             variant="ghost"
             onClick={onToggleFilters}
-            className="text-[9px] font-bold uppercase tracking-widest text-primary hover:bg-primary/5"
+            className="text-xs font-medium text-primary hover:bg-primary/5"
           >
             <SlidersHorizontal size={12} className="mr-2" /> Expand Filters
           </Button>
@@ -148,13 +148,13 @@ export function ImagesContainerInfinite({
         className="py-20 flex flex-col items-center gap-4"
       >
         {isFetchingNextPage ? (
-          <div className="flex items-center gap-3 text-primary text-[10px] font-bold uppercase tracking-widest">
+          <div className="flex items-center gap-3 text-primary text-[11px] font-bold uppercase tracking-wide">
             <Loader2 className="h-4 w-4 animate-spin" /> Batching
           </div>
         ) : hasNextPage ? (
           <div className="h-1 w-12 rounded-full bg-primary/20 animate-pulse" />
         ) : (
-          <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">
+          <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wide">
             End of Chain
           </span>
         )}

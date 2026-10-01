@@ -5,7 +5,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
-import { CalendarIcon, X } from "lucide-react";
+import { CalendarIcon, ChevronDownIcon, X } from "lucide-react";
 import { useState } from "react";
 import type { DateRange } from "react-day-picker";
 
@@ -18,6 +18,7 @@ interface DateRangePickerProps {
   value: DateRangeValue;
   onChange: (value: DateRangeValue) => void;
   placeholder?: string;
+  /** Sizes the whole control (height + width), like any other trigger -- default `h-8`. */
   className?: string;
 }
 
@@ -41,20 +42,23 @@ export function DateRangePicker({
     : placeholder;
 
   return (
-    <div className={cn("relative", className)}>
+    <div className={cn("relative h-8", className)}>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
             type="button"
             variant="outline"
             className={cn(
-              "w-full justify-start text-left font-normal text-xs h-9 bg-muted/40 border-border hover:bg-muted/60",
+              "h-full w-full justify-start gap-1.5 rounded-md pl-2.5 pr-2 text-left font-normal text-xs bg-muted/40 border-border hover:bg-muted/60",
               selected?.from && "pr-8",
               !selected?.from && "text-muted-foreground"
             )}
           >
-            <CalendarIcon className="mr-2 h-3 w-3 shrink-0" />
-            <span className="truncate">{label}</span>
+            <CalendarIcon className="size-3.5 shrink-0 text-muted-foreground" />
+            <span className="flex-1 truncate">{label}</span>
+            {!selected?.from && (
+              <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground" />
+            )}
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-auto p-0 bg-popover border-border" align="start">
@@ -80,7 +84,7 @@ export function DateRangePicker({
             e.stopPropagation();
             onChange({ from: undefined, to: undefined });
           }}
-          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-white"
+          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
           aria-label="Clear date range"
         >
           <X size={12} />

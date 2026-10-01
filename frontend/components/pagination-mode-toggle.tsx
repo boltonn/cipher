@@ -48,7 +48,7 @@ export function PaginationModeToggle({
         </TooltipTrigger>
         <TooltipContent
           side="bottom"
-          className="text-[9px] font-bold uppercase tracking-widest"
+          className="text-[11px] font-bold uppercase tracking-wide"
         >
           {mode === "infinite" ? "Infinite scroll" : "Paginated"}
         </TooltipContent>

@@ -21,6 +21,8 @@ interface ResultsListProps {
   onLoadMore: () => void;
   currentPage: number;
   total: number;
+  /** False for semantic / hybrid -- `total` then only sizes pagination, so no "of N" label. */
+  totalIsExact: boolean;
   limit: number;
   onPageChange: (page: number) => void;
 }
@@ -39,6 +41,7 @@ export function ResultsList({
   onLoadMore,
   currentPage,
   total,
+  totalIsExact,
   limit,
   onPageChange,
 }: ResultsListProps) {
@@ -78,7 +81,9 @@ export function ResultsList({
           itemsPerPage={limit}
           onPageChange={onPageChange}
           isLoading={isFetching}
-          className="flex-wrap gap-1 px-2 py-4"
+          variant="compact"
+          showRange={totalIsExact}
+          className="px-2"
         />
       ) : (
         hasMore && (
@@ -91,7 +96,9 @@ export function ResultsList({
             {isFetching ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (
-              `Load more (${groupedResults.length.toLocaleString()} of ${total.toLocaleString()})`
+              totalIsExact
+                ? `Load more (${groupedResults.length.toLocaleString()} of ${total.toLocaleString()})`
+                : "Load more"
             )}
           </button>
         )

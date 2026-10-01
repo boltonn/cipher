@@ -14,8 +14,7 @@ import { FileMetadataPanel } from "@/features/files/components/file-metadata-pan
 import { FileViewerContent, useFileViewerData } from "@/features/files/components/file-viewer-content";
 import type { FileBrowserItem } from "@/features/files/types";
 import { cn } from "@/lib/utils";
-import { AlignLeft, ChevronLeft, ChevronRight, Eye, FileText, Info, Loader2, Maximize, Maximize2, Minimize2, MousePointerClick, Waypoints } from "lucide-react";
-import Link from "next/link";
+import { AlignLeft, ChevronLeft, ChevronRight, Eye, FileText, Info, Loader2, Maximize2, Minimize2, MousePointerClick, Waypoints } from "lucide-react";
 import { useState } from "react";
 import { matchTerms } from "../highlight";
 import type { SearchChunk, SearchMode } from "../types";
@@ -33,6 +32,10 @@ interface PreviewPaneProps {
   /** Whether the pane currently has the full width (results list hidden). */
   isExpanded?: boolean;
   onToggleExpand?: () => void;
+  /** Entity filter in effect -- opens on the annotated extracted text, showing only these entities' mentions. */
+  focusEntityIds?: string[];
+  /** Mention-value filter in effect -- same, showing only mentions of these values. */
+  focusMentionValues?: string[];
 }
 
 type FileViewMode = "rendered" | "text";
@@ -49,10 +52,27 @@ type FileViewMode = "rendered" | "text";
  * does both. The text view's chunk-region highlight can still be toggled off.
  * A Details toggle swaps the content for the file's metadata in either mode.
  */
-export function PreviewPane({ fileId, chunk, query, searchMode, matches, onSelectChunk, isExpanded, onToggleExpand }: PreviewPaneProps) {
-  const [fileViewMode, setFileViewMode] = useLocalStorageState<FileViewMode>("cipher:search:file-view-mode", "rendered");
+export function PreviewPane({
+  fileId,
+  chunk,
+  query,
+  searchMode,
+  matches,
+  onSelectChunk,
+  isExpanded,
+  onToggleExpand,
+  focusEntityIds,
+  focusMentionValues,
+}: PreviewPaneProps) {
+  const isFocused = !!focusEntityIds?.length || !!focusMentionValues?.length;
+  const [storedViewMode, setFileViewMode] = useLocalStorageState<FileViewMode>("cipher:search:file-view-mode", "rendered");
+  const [storedShowEntities, setShowEntities] = useLocalStorageState<boolean>("cipher:search:show-entities", false);
+  // An entity filter means "review these mentions": start on the annotated text until the user picks a view.
+  const [viewOverride, setViewOverride] = useState<FileViewMode | null>(isFocused ? "text" : null);
+  const [entitiesOverride, setEntitiesOverride] = useState<boolean | null>(isFocused ? true : null);
+  const fileViewMode = viewOverride ?? storedViewMode;
+  const showEntities = entitiesOverride ?? storedShowEntities;
   const [highlightChunk, setHighlightChunk] = useState(searchMode !== "text");
-  const [showEntities, setShowEntities] = useLocalStorageState<boolean>("cipher:search:show-entities", false);
   const [showMetadata, setShowMetadata] = useState(false);
   const { data: file, isPending } = useFile(fileId ?? undefined);
   const [viewerRef, viewerWidth] = useElementWidth<HTMLDivElement>();
@@ -102,8 +122,7 @@ export function PreviewPane({ fileId, chunk, query, searchMode, matches, onSelec
     );
   }
 
-  // Semantic queries carry no literal words to mark -- the chunk region is the highlight instead.
-  const terms = searchMode === "semantic" ? [] : matchTerms(chunk, query);
+  const terms = matchTerms(chunk, query, searchMode);
   const matchIndex = chunk && matches ? matches.findIndex((m) => m.id === chunk.id) : -1;
   const hasMultipleMatches = matchIndex >= 0 && (matches?.length ?? 0) > 1;
   const stepMatch = (delta: number) => {
@@ -159,6 +178,7 @@ export function PreviewPane({ fileId, chunk, query, searchMode, matches, onSelec
             type="button"
             onClick={() => {
               setFileViewMode(mode);
+              setViewOverride(null);
               setShowMetadata(false);
             }}
             className={cn(
@@ -184,22 +204,18 @@ export function PreviewPane({ fileId, chunk, query, searchMode, matches, onSelec
           <div className="ml-3 flex items-center gap-1 border-l border-border pl-3">
             <button
               type="button"
-              onClick={() => setShowEntities((current) => !current)}
+              onClick={() => {
+                setShowEntities(!showEntities);
+                setEntitiesOverride(null);
+              }}
               className={cn(
                 "flex h-7 items-center gap-1.5 rounded-md px-2 text-xs font-medium transition-colors",
                 showEntities ? "bg-annotation/15 text-annotation" : "text-muted-foreground hover:text-foreground"
               )}
             >
               <Waypoints className="h-3.5 w-3.5 shrink-0" />
-              Entities
+              {isFocused ? "Mentions" : "Entities"}
             </button>
-            <Link
-              href={`/files/${fileId}?from=/search${chunk ? `&focus=${chunk.startOffset}` : ""}`}
-              title="Open the full-page annotated view"
-              className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <Maximize className="h-3.5 w-3.5 shrink-0" />
-            </Link>
           </div>
         )}
         {hasMultipleMatches && fileViewMode === "text" && !showMetadata && (
@@ -235,7 +251,9 @@ export function PreviewPane({ fileId, chunk, query, searchMode, matches, onSelec
             <EntityMentionText
               fileId={fileId}
               datasetId={file.datasetId}
-              focusOffset={chunk?.startOffset}
+              entityIds={focusEntityIds}
+              mentionValues={focusMentionValues}
+              focusOffset={chunk?.mentionSpans[0]?.startOffset ?? chunk?.startOffset}
             />
           ) : (
             <ChunkHighlightedText fileId={fileId} chunk={chunk} terms={terms} highlightChunk={highlightChunk} />
@@ -266,10 +284,10 @@ function MetadataView({ file }: { file: FileBrowserItem }) {
     <div className="min-h-0 flex-1 overflow-y-auto p-4">
       <div className="mx-auto max-w-2xl">
         <div className="mb-1 flex items-center justify-between gap-2">
-          <span className="truncate text-[10px] font-black uppercase tracking-[0.2em] text-white">
+          <span className="truncate text-[11px] font-semibold uppercase tracking-wide text-white">
             {file.filename}
           </span>
-          <span className="shrink-0 rounded border border-primary/20 bg-primary/10 px-2 py-0.5 font-mono text-[10px] text-primary">
+          <span className="shrink-0 rounded border border-primary/20 bg-primary/10 px-2 py-0.5 font-mono text-[11px] text-primary">
             {file.filetype.toUpperCase()}
           </span>
         </div>

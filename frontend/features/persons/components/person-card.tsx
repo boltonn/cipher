@@ -47,7 +47,7 @@ export function PersonCard({ person }: PersonCardProps) {
               <Badge
                 key={tag}
                 variant="outline"
-                className="h-5 border-border bg-muted/40 px-1.5 py-0 text-[10px] text-muted-foreground"
+                className="h-5 border-border bg-muted/40 px-1.5 py-0 text-[11px] text-muted-foreground"
               >
                 #{tag}
               </Badge>

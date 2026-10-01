@@ -69,13 +69,13 @@ export const ImageFilterPanel: React.FC<ImageFilterPanelProps> = ({
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-2.5 text-muted-foreground">
           <Filter size={14} />
-          <h3 className="text-[10px] font-black uppercase tracking-[0.2em]">Filters</h3>
+          <h3 className="text-[11px] font-semibold uppercase tracking-wide">Filters</h3>
         </div>
         {hasActiveFilters && (
           <button
             type="button"
             onClick={clearAllFilters}
-            className="text-[10px] font-bold uppercase tracking-widest text-destructive/70 hover:text-destructive flex items-center gap-1 transition-colors"
+            className="text-xs font-medium text-destructive/70 hover:text-destructive flex items-center gap-1 transition-colors"
           >
             <X size={11} /> Reset
           </button>
@@ -85,10 +85,11 @@ export const ImageFilterPanel: React.FC<ImageFilterPanelProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-x-8 gap-y-6">
         {/* Date Taken */}
         <div className="flex flex-col gap-3 min-w-0">
-          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+          <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
             Date Taken
           </span>
           <DateRangePicker
+            className="h-9"
             placeholder="Any date"
             value={{ from: params.dateFrom, to: params.dateTo }}
             onChange={({ from, to }) => {
@@ -99,7 +100,7 @@ export const ImageFilterPanel: React.FC<ImageFilterPanelProps> = ({
 
         {/* Datasets */}
         <div className="flex flex-col gap-3 min-w-0">
-          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+          <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
             Datasets
           </span>
           <DatasetMultiSelectCombobox
@@ -110,7 +111,7 @@ export const ImageFilterPanel: React.FC<ImageFilterPanelProps> = ({
 
         {/* File Types */}
         <div className="flex flex-col gap-3 min-w-0">
-          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+          <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
             File Types
           </span>
           <div className="flex min-h-9 flex-wrap content-start items-center gap-2">
@@ -126,7 +127,7 @@ export const ImageFilterPanel: React.FC<ImageFilterPanelProps> = ({
                     updateParam("filetypes", next.length ? next : undefined);
                   }}
                   className={cn(
-                    "h-7 rounded-lg border px-2.5 text-[10px] font-bold uppercase transition-all",
+                    "h-7 rounded-lg border px-2.5 text-[11px] font-bold uppercase transition-all",
                     active
                       ? "bg-primary/20 border-primary/40 text-primary"
                       : "bg-transparent border-border text-muted-foreground hover:text-foreground hover:border-white/20"
@@ -137,7 +138,7 @@ export const ImageFilterPanel: React.FC<ImageFilterPanelProps> = ({
               );
             })}
             {filetypes?.length === 0 && (
-              <span className="text-[10px] text-muted-foreground italic self-center">
+              <span className="text-[11px] text-muted-foreground italic self-center">
                 No file types found
               </span>
             )}
@@ -146,7 +147,7 @@ export const ImageFilterPanel: React.FC<ImageFilterPanelProps> = ({
 
         {/* Tags */}
         <div className="flex flex-col gap-3 min-w-0">
-          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+          <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
             Tags
           </span>
           <TagsInput
@@ -163,7 +164,7 @@ export const ImageFilterPanel: React.FC<ImageFilterPanelProps> = ({
           <Label
             htmlFor="image-similarity-slider"
             className={cn(
-              "text-[10px] font-bold uppercase tracking-[0.2em]",
+              "text-[11px] font-bold uppercase tracking-wide",
               isSimilarityMode ? "text-primary" : "text-muted-foreground"
             )}
           >
@@ -185,7 +186,7 @@ export const ImageFilterPanel: React.FC<ImageFilterPanelProps> = ({
           disabled={!isSimilarityMode}
         />
         {!isSimilarityMode && (
-          <span className="text-[10px] text-muted-foreground italic">
+          <span className="text-[11px] text-muted-foreground italic">
             Only applies to similarity searches (text, image, or find-similar)
           </span>
         )}

@@ -27,7 +27,7 @@ export function PersonAvatar({ person, size = "md", className }: PersonAvatarPro
   return (
     <div
       className={cn(
-        "flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary/10 font-black text-primary",
+        "flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary/10 font-semibold text-primary",
         s.box,
         className
       )}

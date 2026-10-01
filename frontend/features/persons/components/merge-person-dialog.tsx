@@ -50,7 +50,7 @@ export function MergePersonDialog({ person, isOpen, onOpenChange }: MergePersonD
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="bg-card border-border sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle className="text-white tracking-[0.1em] uppercase text-xs font-black">
+          <DialogTitle className="text-white tracking-wide uppercase text-xs font-semibold">
             Merge Person
           </DialogTitle>
           <DialogDescription className="text-xs text-muted-foreground">
@@ -101,7 +101,7 @@ function PersonPreview({
     >
       <span
         className={cn(
-          "text-[9px] font-bold uppercase tracking-widest",
+          "text-[11px] font-bold uppercase tracking-wide",
           tone === "remove" ? "text-destructive" : "text-primary"
         )}
       >
@@ -111,7 +111,7 @@ function PersonPreview({
       <div className="min-w-0 w-full">
         <p className="truncate text-sm font-semibold text-foreground">{person.name || "Unnamed"}</p>
         {person.aliases && person.aliases.length > 0 && (
-          <p className="truncate text-[10px] text-muted-foreground">aka {person.aliases.join(", ")}</p>
+          <p className="truncate text-[11px] text-muted-foreground">aka {person.aliases.join(", ")}</p>
         )}
       </div>
       <FaceStrip personId={person.id} />
@@ -142,7 +142,7 @@ function SuggestionChip({
     >
       <PersonAvatar person={suggestion} size="sm" className="shrink-0" />
       <span className="max-w-32 truncate font-medium">{suggestion.name || "Unnamed"}</span>
-      <span className="font-mono text-[10px] text-annotation">
+      <span className="font-mono text-[11px] text-annotation">
         {Math.round(suggestion.similarityScore * 100)}%
       </span>
     </button>
@@ -186,7 +186,7 @@ function MergePersonForm({ person, onDone }: { person: Person; onDone: () => voi
       <div className="space-y-4">
         {candidates.length > 0 && (
           <div className="space-y-1.5">
-            <Label className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-muted-foreground">
+            <Label className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">
               <Sparkles size={12} className="text-annotation" />
               Likely the same person
             </Label>
@@ -204,7 +204,7 @@ function MergePersonForm({ person, onDone }: { person: Person; onDone: () => voi
         )}
 
         <div className="space-y-1.5">
-          <Label className="text-[10px] uppercase tracking-widest text-muted-foreground">
+          <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
             Person to merge in
           </Label>
           <PersonPicker
@@ -231,7 +231,7 @@ function MergePersonForm({ person, onDone }: { person: Person; onDone: () => voi
               size="sm"
               disabled={!idInput.trim()}
               onClick={() => setSourceId(idInput.trim())}
-              className="h-8 shrink-0 text-[10px] uppercase tracking-widest"
+              className="h-8 shrink-0 text-xs"
             >
               Use ID
             </Button>
@@ -261,7 +261,7 @@ function MergePersonForm({ person, onDone }: { person: Person; onDone: () => voi
               tone="remove"
             />
           ) : (
-            <div className="flex flex-1 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border p-3 text-center text-[10px] text-muted-foreground min-h-[168px]">
+            <div className="flex flex-1 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border p-3 text-center text-[11px] text-muted-foreground min-h-[168px]">
               <UserRound size={20} className="text-muted-foreground/60" />
               Pick a person to merge in
             </div>

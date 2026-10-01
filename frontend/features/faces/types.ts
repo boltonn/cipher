@@ -6,7 +6,8 @@ const FaceSortField = {
   DetectionConfidence: "detectionConfidence",
 } as const;
 
-export type FaceSortFieldType = (typeof FaceSortField)[keyof typeof FaceSortField];
+export type FaceSortFieldType =
+  (typeof FaceSortField)[keyof typeof FaceSortField];
 
 export type FaceAssignmentMethodType = "manual" | "automatic";
 
@@ -20,6 +21,8 @@ export interface BaseFaceSearchParameters {
   personId?: string;
   unassignedOnly?: boolean;
   representativeOnly?: boolean;
+  /** Only faces marked "not a face" (otherwise they're excluded everywhere). */
+  rejectedOnly?: boolean;
   minQuality?: number;
   /** Minimum face crop size in pixels (shorter of width/height). */
   minSize?: number;
@@ -31,7 +34,7 @@ export interface BaseFaceSearchParameters {
   page: number;
 }
 
-export type FaceStatusType = "unmatched" | "matched" | "verified";
+export type FaceStatusType = "unmatched" | "matched" | "verified" | "rejected";
 
 export interface FaceSimilaritySearchParameters extends BaseFaceSearchParameters {
   minSimilarity?: number;
@@ -74,6 +77,12 @@ export interface FacePublic {
   isRepresentative: boolean;
   isPrimary: boolean;
   status: FaceStatusType;
+  /** Set when marked "not a face" (detector false positive, e.g. a pet). */
+  dateRejected?: string;
+  /** manual = an analyst said so; automatic = resembles a face an analyst rejected. */
+  rejectionMethod?: FaceAssignmentMethodType;
+  /** Similarity to the analyst-rejected face that triggered an automatic rejection. */
+  rejectionConfidence?: number;
   /** Top pending-match candidate's person, when not yet assigned. */
   candidatePersonId?: string;
   candidatePersonName?: string;
@@ -87,6 +96,21 @@ export interface FaceAssignment {
   personId: string | null;
   assignmentMethod?: FaceAssignmentMethodType;
   assignmentConfidence?: number;
+}
+
+/** Mirrors the backend's `DEFAULT_FACE_REJECT_SIMILARITY`. */
+export const DEFAULT_REJECT_SIMILARITY = 0.64;
+
+export interface FaceRejection {
+  faceIds: string[];
+  /** Also auto-reject unassigned faces this similar (e.g. more photos of the same cat). */
+  rejectSimilar?: boolean;
+  minSimilarity?: number;
+}
+
+export interface FaceRejectionResult {
+  updated: number;
+  autoRejected: number;
 }
 
 export interface FaceRepresentativeUpdate {
@@ -103,10 +127,14 @@ export interface DetectedFace {
 }
 
 export type PaginatedFacesResponse = PaginatedResponse<FacePublic>;
-export type PaginatedFaceSimilarityResponse = PaginatedResponse<FaceSimilarityResult>;
+export type PaginatedFaceSimilarityResponse =
+  PaginatedResponse<FaceSimilarityResult>;
 
 export type FaceMatchStatusType = "pending" | "confirmed" | "rejected";
-export type FaceMatchMethodType = "automatic_similarity" | "automatic_clustering" | "manual";
+export type FaceMatchMethodType =
+  | "automatic_similarity"
+  | "automatic_clustering"
+  | "manual";
 
 /** A candidate face-to-person match awaiting (or having received) analyst review. */
 export interface FaceMatch {

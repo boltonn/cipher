@@ -53,7 +53,7 @@ export function DatePicker({ value, onChange, placeholder = "Pick a date", class
   };
 
   return (
-    <div className={cn("relative", className)}>
+    <div className={cn("relative h-9", className)}>
       <Input
         value={inputValue}
         onChange={(e) => setInputValue(e.target.value)}
@@ -65,7 +65,7 @@ export function DatePicker({ value, onChange, placeholder = "Pick a date", class
           }
         }}
         placeholder="MM/DD/YYYY"
-        className="pr-9 bg-muted/40 border-border text-sm"
+        className="h-full pr-9 bg-muted/40 border-border text-sm"
       />
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
@@ -73,7 +73,7 @@ export function DatePicker({ value, onChange, placeholder = "Pick a date", class
             type="button"
             variant="ghost"
             size="icon"
-            className="absolute right-0 top-1/2 h-9 w-9 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            className="absolute right-0 top-0 aspect-square h-full w-auto text-muted-foreground hover:text-foreground"
             aria-label={placeholder}
           >
             <CalendarIcon size={14} />

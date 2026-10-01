@@ -45,7 +45,7 @@ function ApiKeyField({
       <div className="flex items-center gap-2">
         <Label>{label} API key</Label>
         {hasKey && (
-          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-500">
+          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-500">
             <Check size={11} />
             Saved in this browser
           </span>
@@ -109,7 +109,7 @@ function ProfileSection() {
       description="Your account details, managed outside of Cipher."
     >
       <div className="flex items-center gap-4">
-        <div className="h-12 w-12 rounded-full bg-linear-to-br from-primary to-purple-600 flex items-center justify-center text-sm font-semibold text-white shadow-[0_0_10px_rgba(99,102,241,0.3)] shrink-0">
+        <div className="h-12 w-12 rounded-full bg-linear-to-br from-primary to-purple-600 flex items-center justify-center text-sm font-semibold text-white shrink-0">
           {isLoading ? "" : getInitials(user?.name)}
         </div>
         <div className="min-w-0">
@@ -197,7 +197,7 @@ function PreferencesSection() {
       description="Per-viewer defaults for browsing and triage."
     >
       <div className="flex items-center gap-2">
-        <span className="rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+        <span className="rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
           Coming soon
         </span>
         <span className="text-xs text-muted-foreground">
@@ -223,8 +223,8 @@ export default function SettingsPage() {
   return (
     <div className="max-w-400 mx-auto px-6 relative pb-20 pt-5">
       <PageHeader
-        eyebrow="Account"
-        value="Settings"
+        eyebrow="Settings"
+        value="Account"
         icon={<SettingsIcon className="h-3.5 w-3.5 text-primary/80" />}
       />
 

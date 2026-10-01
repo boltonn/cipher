@@ -77,7 +77,7 @@ export default function PersonsPage() {
 
             <Button
               onClick={() => setIsCreateOpen(true)}
-              className="bg-primary hover:bg-primary gap-2 h-9 text-[10px] font-bold uppercase tracking-widest"
+              className="bg-primary hover:bg-primary gap-2 h-9 text-xs font-medium"
             >
               <Plus size={14} />
               New Person
@@ -100,7 +100,7 @@ export default function PersonsPage() {
 
           <div className="flex items-center gap-2 shrink-0 pr-1">
             <BadgeCheck size={14} className="text-primary" />
-            <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
+            <span className="text-xs text-muted-foreground">
               Verified only
             </span>
             <Switch

@@ -6,6 +6,7 @@ import { ReactQueryProvider } from "@/providers/react-query-provider";
 import { THEME_INIT_SCRIPT, ThemeProvider } from "@/providers/theme-provider";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Inter } from "next/font/google";
+import Script from "next/script";
 import { MotionConfig } from "motion/react";
 import { Toaster } from "sonner";
 import "./globals.css";
@@ -31,9 +32,11 @@ export default function RootLayout({
     <html lang="en" className={inter.variable} suppressHydrationWarning>
       <head>
         {/* Applies the stored theme to <html> before first paint (no flash).
-            Emitted once from this Server Component, so nothing renders a
-            <script> during a client render. */}
-        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+            next/script injects it outside React's tree -- a raw <script> here
+            is still reconciled on the client and trips React 19's warning. */}
+        <Script id="theme-init" strategy="beforeInteractive">
+          {THEME_INIT_SCRIPT}
+        </Script>
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased

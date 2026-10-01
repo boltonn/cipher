@@ -1,11 +1,7 @@
 import Graph from "graphology";
 import forceAtlas2 from "graphology-layout-forceatlas2";
-import { ENTITY_TYPE_META } from "@/features/entities/components/entity-type-meta";
-import {
-  LOW_SIGNAL_RELATIONSHIPS,
-  type EntityType,
-  type GraphResponse,
-} from "@/features/entities/types";
+import { GRAPH_NODE_TYPE_META } from "@/features/entities/components/entity-type-meta";
+import { LOW_SIGNAL_RELATIONSHIPS, type GraphResponse } from "@/features/entities/types";
 
 const NODE_MIN_SIZE = 5;
 const NODE_MAX_SIZE = 16;
@@ -15,7 +11,7 @@ export interface BuiltGraph {
   graph: Graph;
   nodeCount: number;
   edgeCount: number;
-  /** edges dropped as low-signal (e.g. associate_of co-mentions) */
+  /** edges dropped as low-signal (`LOW_SIGNAL_RELATIONSHIPS`) */
   hiddenEdges: number;
 }
 
@@ -30,7 +26,7 @@ export function buildGraph(data: GraphResponse, focusEntityId: string): BuiltGra
 
   data.nodes.forEach((node, i) => {
     if (graph.hasNode(node.id)) return;
-    const meta = ENTITY_TYPE_META[node.entityType as EntityType];
+    const meta = GRAPH_NODE_TYPE_META[node.entityType];
     const angle = (2 * Math.PI * i) / Math.max(1, data.nodes.length);
     graph.addNode(node.id, {
       label: node.displayName,

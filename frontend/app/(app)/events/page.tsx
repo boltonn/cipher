@@ -118,7 +118,7 @@ export default function EventsPage() {
     <div className="relative mx-auto max-w-400 px-6 pb-20">
       <PageHeader
         eyebrow="Events"
-        value={`${total.toLocaleString()} events${datasetId ? " · 1 dataset" : ""}`}
+        value={listQuery.data ? `${total.toLocaleString()} ${total === 1 ? "event" : "events"}` : undefined}
         icon={<CalendarDays size={13} className="text-primary/70" />}
         actions={
           <DatasetSelect
@@ -131,49 +131,52 @@ export default function EventsPage() {
         }
       />
 
-      <div className="mt-4 space-y-4">
-        <SearchBarShell
-          isActive={listQuery.isFetching || calendarQuery.isFetching}
-          icon={<Search size={18} strokeWidth={1.5} />}
-        >
-          <SearchInput
-            value={query}
-            onSearch={(q) => {
-              setQuery(q);
-              resetPage();
-            }}
-            ariaLabel="Search events"
-            placeholder="Search event titles…"
-          />
-        </SearchBarShell>
-
-        <EventFiltersBar
-          value={filters}
-          onChange={(next) => {
-            setFilters(next);
-            resetPage();
-          }}
-          queryActive={!!query}
-          onClear={clearAll}
-          datasetId={datasetId}
-          showDateRange={view === "table"}
-        />
-
+      <div className="mt-4">
         <Tabs
           value={view}
           onValueChange={(v) => setView(v as "calendar" | "table")}
           className="gap-4"
         >
-          <TabsList className="h-9">
-            <TabsTrigger value="calendar" className="gap-1.5 px-3 text-xs">
-              <CalendarRange size={13} />
-              Calendar
-            </TabsTrigger>
-            <TabsTrigger value="table" className="gap-1.5 px-3 text-xs">
-              <Table2 size={13} />
-              Table
-            </TabsTrigger>
-          </TabsList>
+          <div className="flex items-center gap-2">
+            <div className="flex-1">
+              <SearchBarShell
+                isActive={listQuery.isFetching || calendarQuery.isFetching}
+                icon={<Search size={18} strokeWidth={1.5} />}
+              >
+                <SearchInput
+                  value={query}
+                  onSearch={(q) => {
+                    setQuery(q);
+                    resetPage();
+                  }}
+                  ariaLabel="Search events"
+                  placeholder="Search event titles…"
+                />
+              </SearchBarShell>
+            </div>
+            <TabsList className="h-10">
+              <TabsTrigger value="calendar" className="gap-1.5 px-3 text-xs">
+                <CalendarRange size={13} />
+                Calendar
+              </TabsTrigger>
+              <TabsTrigger value="table" className="gap-1.5 px-3 text-xs">
+                <Table2 size={13} />
+                Table
+              </TabsTrigger>
+            </TabsList>
+          </div>
+
+          <EventFiltersBar
+            value={filters}
+            onChange={(next) => {
+              setFilters(next);
+              resetPage();
+            }}
+            queryActive={!!query}
+            onClear={clearAll}
+            datasetId={datasetId}
+            showDateRange={view === "table"}
+          />
 
           <TabsContent value="calendar">
             <EventsCalendar

@@ -16,6 +16,7 @@ import {
   Search,
   Unlink,
 } from "lucide-react";
+import { mentionSearchHref } from "@/features/search/links";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -34,7 +35,7 @@ interface EntitySelectorsProps {
 }
 
 const linkChip =
-  "inline-flex items-center gap-1 rounded-md border border-primary/25 bg-primary/5 px-1.5 py-0.5 text-[10px] font-semibold text-primary transition-colors hover:border-primary/50 hover:bg-primary/15";
+  "inline-flex items-center gap-1 rounded-md border border-primary/25 bg-primary/5 px-1.5 py-0.5 text-[11px] font-semibold text-primary transition-colors hover:border-primary/50 hover:bg-primary/15";
 
 /** Type-aware links out, replacing the inline dropdown on the person dossier. */
 function SelectorLinks({
@@ -52,7 +53,7 @@ function SelectorLinks({
   const plain = match?.patternCount ?? 0;
   const total = match?.mentionCount ?? 0;
   const selectorHref = `/entities/${selectorEntityId}`;
-  const searchHref = `/search?q=${encodeURIComponent(value)}${isEmail ? "&scope=email" : ""}`;
+  const searchHref = mentionSearchHref(value);
 
   const chips: React.ReactNode[] = [];
   if (isEmail && (sent > 0 || received > 0)) {
@@ -111,7 +112,7 @@ export function EntitySelectors({
   if (selectors.length === 0) {
     return (
       <p className="text-[11px] italic text-muted-foreground">
-        No selectors linked yet. Add a phone, email, or handle to tie this person
+        No selectors yet. Add a phone, email, or handle to tie this person
         to communications and records.
       </p>
     );
@@ -148,7 +149,7 @@ export function EntitySelectors({
                     type="button"
                     disabled={!count}
                     onClick={() => setExpanded(isOpen ? null : s.id)}
-                    className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground transition-colors hover:text-foreground disabled:opacity-40 disabled:hover:text-muted-foreground"
+                    className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-40 disabled:hover:text-muted-foreground"
                     aria-expanded={isOpen}
                   >
                     <Quote size={11} />
@@ -168,25 +169,25 @@ export function EntitySelectors({
                   trigger={
                     <button
                       type="button"
-                      aria-label={`Unlink ${s.displayName}`}
+                      aria-label={`Remove ${s.displayName}`}
                       disabled={detach.isPending}
                       className="rounded p-1 text-muted-foreground opacity-60 transition-opacity hover:bg-black/20 hover:text-foreground hover:opacity-100 disabled:opacity-20"
                     >
                       <Unlink size={12} />
                     </button>
                   }
-                  title="Unlink this selector?"
+                  title="Remove this selector?"
                   description={
                     <>
-                      This removes the connection between{" "}
+                      This removes the relationship between{" "}
                       <span className="font-medium text-foreground">
                         {s.displayName}
                       </span>{" "}
                       and this person. The selector and its mentions are kept —
-                      only the link is removed.
+                      only the relationship is removed.
                     </>
                   }
-                  confirmLabel="Unlink"
+                  confirmLabel="Remove"
                   isPending={detach.isPending}
                   onConfirm={() => detach.mutate(s.id)}
                 />

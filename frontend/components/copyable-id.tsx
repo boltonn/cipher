@@ -26,7 +26,7 @@ export function CopyableId({ id, label = "ID", className }: CopyableIdProps) {
       onClick={handleCopy}
       title={copied ? "Copied!" : "Copy ID"}
       className={cn(
-        "group/copy flex items-center gap-1.5 text-[10px] text-muted-foreground font-mono truncate hover:text-foreground transition-colors",
+        "group/copy flex items-center gap-1.5 text-[11px] text-muted-foreground font-mono truncate hover:text-foreground transition-colors",
         className
       )}
     >

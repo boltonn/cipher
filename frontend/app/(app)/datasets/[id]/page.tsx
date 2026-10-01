@@ -19,7 +19,6 @@ import {
 } from "@/features/datasets/api";
 import { DatasetFileBrowser } from "@/features/datasets/components/dataset-file-browser";
 import { EditDatasetDialog } from "@/features/datasets/components/edit-dataset-dialog";
-import { EnrichmentEstimates } from "@/features/datasets/components/enrichment-estimates";
 import { EnrichmentPipeline } from "@/features/datasets/components/enrichment-pipeline";
 import { FiletypeBreakdownList } from "@/features/datasets/components/filetype-breakdown-list";
 import { LoadHistogramChart } from "@/features/datasets/components/load-histogram-chart";
@@ -125,7 +124,7 @@ export default function DatasetDetailPage({
         <div className="flex flex-col">
           <Link
             href="/datasets"
-            className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] hover:text-primary transition-colors"
+            className="text-xs font-medium text-muted-foreground hover:text-primary transition-colors"
           >
             Registry
           </Link>
@@ -151,7 +150,7 @@ export default function DatasetDetailPage({
             variant="outline"
             size="sm"
             onClick={() => setIsEditOpen(true)}
-            className="h-9 bg-muted/40 border-border text-muted-foreground hover:text-primary uppercase text-[10px] font-bold tracking-widest gap-2"
+            className="h-9 bg-muted/40 border-border text-muted-foreground hover:text-primary text-xs font-medium gap-2"
           >
             <Pencil size={14} />
             Edit
@@ -194,13 +193,11 @@ export default function DatasetDetailPage({
 
       <EnrichmentPipeline datasetId={id} />
 
-      <EnrichmentEstimates datasetId={id} />
-
       {/* Date range + granularity filter */}
       <div className="mt-6 flex items-center justify-between gap-4">
         <div className="flex items-center gap-2 text-muted-foreground">
           <BarChart3 size={14} className="text-primary" />
-          <h2 className="text-[10px] font-black uppercase tracking-[0.2em]">
+          <h2 className="text-[11px] font-semibold uppercase tracking-wide">
             Files Loaded Over Time
           </h2>
           <AnimatePresence>
@@ -212,7 +209,7 @@ export default function DatasetDetailPage({
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.8 }}
                 transition={{ duration: 0.15 }}
-                className="flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-primary hover:bg-primary/20 hover:text-primary"
+                className="flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-primary hover:bg-primary/20 hover:text-primary"
               >
                 <X size={11} />
                 Clear filters
@@ -227,13 +224,13 @@ export default function DatasetDetailPage({
               setRange(value);
               setSelectedBucket(undefined);
             }}
-            className="w-64"
+            className="w-60"
           />
           <Select
             value={granularity}
             onValueChange={(v) => setGranularity(v as HistogramGranularityType)}
           >
-            <SelectTrigger className="w-28 data-[size=default]:h-9 text-xs bg-muted/40 border-border">
+            <SelectTrigger className="w-28 text-xs bg-muted/40 border-border">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -282,7 +279,7 @@ export default function DatasetDetailPage({
         <div className="rounded-2xl bg-muted/40 backdrop-blur-2xl border border-border p-6">
           <div className="flex items-center gap-2 text-muted-foreground mb-4">
             <PieChart size={14} className="text-primary" />
-            <h2 className="text-[10px] font-black uppercase tracking-[0.2em]">
+            <h2 className="text-[11px] font-semibold uppercase tracking-wide">
               By Filetype
             </h2>
           </div>
@@ -301,7 +298,7 @@ export default function DatasetDetailPage({
         <div className="rounded-2xl bg-muted/40 backdrop-blur-2xl border border-border p-6">
           <div className="flex items-center gap-2 text-muted-foreground mb-4">
             <PieChart size={14} className="text-primary" />
-            <h2 className="text-[10px] font-black uppercase tracking-[0.2em]">
+            <h2 className="text-[11px] font-semibold uppercase tracking-wide">
               By Filetype Group
             </h2>
           </div>
@@ -324,7 +321,7 @@ export default function DatasetDetailPage({
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2 text-muted-foreground">
             <Fingerprint size={14} className="text-primary" />
-            <h2 className="text-[10px] font-black uppercase tracking-[0.2em]">
+            <h2 className="text-[11px] font-semibold uppercase tracking-wide">
               Entities &amp; Selectors
             </h2>
           </div>
@@ -342,7 +339,7 @@ export default function DatasetDetailPage({
       <div className="mt-6 rounded-2xl bg-muted/40 backdrop-blur-2xl border border-border p-6">
         <div className="flex items-center gap-2 text-muted-foreground mb-4">
           <FolderOpen size={14} className="text-primary" />
-          <h2 className="text-[10px] font-black uppercase tracking-[0.2em]">
+          <h2 className="text-[11px] font-semibold uppercase tracking-wide">
             Files
           </h2>
         </div>
@@ -368,7 +365,7 @@ const StatCard = ({
   <div className="rounded-2xl bg-muted/40 backdrop-blur-2xl border border-border p-4 flex flex-col gap-1.5 overflow-hidden">
     <div className="flex items-center gap-1.5 text-muted-foreground">
       {icon}
-      <span className="text-[9px] font-bold uppercase tracking-widest">
+      <span className="text-[11px] font-bold uppercase tracking-wide">
         {label}
       </span>
     </div>

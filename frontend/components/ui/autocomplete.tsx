@@ -118,8 +118,14 @@ function AutocompleteInput({
     <PopoverAnchor asChild>
       <div
         ref={anchorRef}
+        // Clicks on the padding/addons land on the wrapper -- route focus to the input.
+        onMouseDown={(e) => {
+          if (e.target === inputRef.current || disabled) return;
+          e.preventDefault();
+          inputRef.current?.focus();
+        }}
         className={cn(
-          "group/autocomplete flex h-10 w-full items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 transition duration-300 focus-within:ring-2 focus-within:ring-primary/50",
+          "group/autocomplete flex h-10 w-full items-center gap-2 text-sm rounded-lg border border-border bg-muted/40 px-3 py-2 transition duration-300 focus-within:ring-2 focus-within:ring-primary/50",
           disabled && "cursor-not-allowed opacity-50",
           className
         )}
@@ -168,7 +174,7 @@ function AutocompleteInput({
             }
           }}
           className={cn(
-            "flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed"
+            "h-full min-w-0 flex-1 bg-transparent text-foreground outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed"
           )}
           {...props}
         />
@@ -287,7 +293,7 @@ function AutocompleteItem({
         setOpen(false);
       }}
       className={cn(
-        "relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none",
+        "relative flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none",
         "data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50",
         "data-[selected=true]:bg-muted data-[selected=true]:text-foreground",
         "[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",

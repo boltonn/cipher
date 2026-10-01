@@ -14,11 +14,14 @@ import type {
 } from "../types";
 import { ImageViewerDialog } from "@/features/images/components/image-viewer-dialog";
 import { FaceCard } from "./face-card";
+import type { FaceSelection } from "../hooks/use-face-selection";
+import { useRejectFaces, useUnrejectFaces } from "../hooks/use-reject-faces";
 
 interface FacesContainerPaginatedProps {
   data: PaginatedFacesResponse | PaginatedFaceSimilarityResponse | undefined;
   onSimilar: (id: string) => void;
-  onDelete?: (id: string) => void;
+  /** Enables multi-select checkboxes on the cards. */
+  selection?: FaceSelection;
   currentPage: number;
   onPageChange: (page: number) => void;
   isLoading: boolean;
@@ -30,7 +33,7 @@ interface FacesContainerPaginatedProps {
 export function FacesContainerPaginated({
   data,
   onSimilar,
-  onDelete,
+  selection,
   currentPage,
   onPageChange,
   isLoading,
@@ -39,7 +42,9 @@ export function FacesContainerPaginated({
   onToggleFilters,
 }: FacesContainerPaginatedProps) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
-  const [createPersonFace, setCreatePersonFace] = useState<FacePublic | null>(null);
+  const [createPersonFace, setCreatePersonFace] = useState<FacePublic | null>(
+    null
+  );
 
   const faces = useMemo(
     () => (data?.data ?? []) as (FacePublic | FaceSimilarityResult)[],
@@ -52,6 +57,29 @@ export function FacesContainerPaginated({
     [faces]
   );
 
+  const { mutate: rejectFaces } = useRejectFaces();
+  const { mutate: unrejectFaces } = useUnrejectFaces();
+  const handleReject = useCallback(
+    (face: FacePublic) => rejectFaces([face.id]),
+    [rejectFaces]
+  );
+  const handleRestore = useCallback(
+    (face: FacePublic) => unrejectFaces([face.id]),
+    [unrejectFaces]
+  );
+  const toggleSelection = selection?.toggle;
+  const handleToggleSelect = useCallback(
+    (face: FacePublic, range: boolean) =>
+      toggleSelection?.(
+        face.id,
+        faces.map((f) => f.id),
+        range
+      ),
+    [faces, toggleSelection]
+  );
+  const selectedIds = selection?.selectedIds;
+  const isSelectionActive = !!selectedIds?.size;
+
   // From inside the viewer, a similarity search replaces the whole grid --
   // close the dialog so the new results aren't hidden behind it.
   const handleFindSimilarFromDialog = useCallback(
@@ -63,7 +91,9 @@ export function FacesContainerPaginated({
   );
 
   const handleNext = useCallback(() => {
-    setSelectedIndex((prev) => (prev !== null && prev < faces.length - 1 ? prev + 1 : prev));
+    setSelectedIndex((prev) =>
+      prev !== null && prev < faces.length - 1 ? prev + 1 : prev
+    );
   }, [faces.length]);
 
   const handlePrev = useCallback(() => {
@@ -73,9 +103,13 @@ export function FacesContainerPaginated({
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "ArrowRight")
-        setSelectedIndex((prev) => (prev !== null && prev < faces.length - 1 ? prev + 1 : prev));
+        setSelectedIndex((prev) =>
+          prev !== null && prev < faces.length - 1 ? prev + 1 : prev
+        );
       if (e.key === "ArrowLeft")
-        setSelectedIndex((prev) => (prev !== null && prev > 0 ? prev - 1 : prev));
+        setSelectedIndex((prev) =>
+          prev !== null && prev > 0 ? prev - 1 : prev
+        );
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -84,14 +118,14 @@ export function FacesContainerPaginated({
   if (faces.length === 0 && !isLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-40 border border-dashed border-border/50 rounded-3xl bg-muted/10">
-        <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-muted-foreground mb-4">
+        <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground mb-4">
           No Faces Resolved
         </p>
         {isFullWidth && (
           <Button
             variant="ghost"
             onClick={onToggleFilters}
-            className="text-[9px] font-bold uppercase tracking-widest text-annotation hover:bg-annotation/5"
+            className="text-xs font-medium text-annotation hover:bg-annotation/5"
           >
             <SlidersHorizontal size={12} className="mr-2" /> Expand Filters
           </Button>
@@ -117,6 +151,11 @@ export function FacesContainerPaginated({
             onFindSimilar={onSimilar}
             onExpand={handleExpand}
             onCreatePerson={setCreatePersonFace}
+            onReject={handleReject}
+            onRestore={handleRestore}
+            isSelected={!!selectedIds?.has(face.id)}
+            isSelectionActive={isSelectionActive}
+            onToggleSelect={toggleSelection ? handleToggleSelect : undefined}
           />
         ))}
       </div>
@@ -133,7 +172,6 @@ export function FacesContainerPaginated({
           hasPrev={selectedIndex > 0}
           onFindSimilarFace={handleFindSimilarFromDialog}
           onCreatePersonFromFace={setCreatePersonFace}
-          onDeleteFace={onDelete}
         />
       )}
 

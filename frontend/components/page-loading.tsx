@@ -9,7 +9,7 @@ import { useEffect, useState } from "react";
 interface PageLoadingProps {
   /** Optional glyph shown inside the spinner ring. */
   icon?: IconComponent;
-  /** Short status line, rendered in the spaced-uppercase treatment. */
+  /** Short status line, rendered as a quiet caption. */
   label?: string;
   /**
    * Accent family. `annotation` (amber) is reserved for AI/ML surfaces such
@@ -31,18 +31,16 @@ const ACCENT = {
   primary: {
     ring: "text-primary/20",
     glyph: "text-primary",
-    label: "text-primary/50",
   },
   annotation: {
     ring: "text-annotation/20",
     glyph: "text-annotation",
-    label: "text-annotation/50",
   },
 } as const;
 
 /**
  * Full-height centered loader for page- and panel-level pending states:
- * a spinner ring with an optional glyph and a spaced-uppercase status line.
+ * a spinner ring with an optional glyph and a quiet status line.
  * Small inline spinners inside rows/buttons stay as bare `Loader2`.
  */
 export function PageLoading({
@@ -69,20 +67,15 @@ export function PageLoading({
         className
       )}
     >
-      <div className="relative mb-6 flex items-center justify-center">
-        <Loader2 className={cn("h-12 w-12 animate-spin", tone.ring)} />
+      <div className="relative mb-4 flex items-center justify-center">
+        <Loader2 className={cn("h-8 w-8 animate-spin", tone.ring)} />
         {Icon && (
-          <Icon className={cn("absolute h-5 w-5 animate-pulse", tone.glyph)} />
+          <Icon className={cn("absolute h-3.5 w-3.5 animate-pulse", tone.glyph)} />
         )}
       </div>
       {label && (
         <p
-          className={cn(
-            // pl offsets the trailing letter-spacing so the text optically
-            // centers under the spinner.
-            "pl-[0.5em] text-[10px] font-bold uppercase italic tracking-[0.5em]",
-            tone.label
-          )}
+className="text-xs text-muted-foreground"
         >
           {label}
         </p>

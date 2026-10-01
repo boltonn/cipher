@@ -1,13 +1,14 @@
 "use client";
 
-import { ENTITY_TYPE_META } from "@/features/entities/components/entity-type-meta";
+import { GRAPH_NODE_TYPE_META } from "@/features/entities/components/entity-type-meta";
 import type { BuiltGraph } from "@/features/entities/lib/build-graph";
-import { ENTITY_TYPES } from "@/features/entities/types";
+import { GRAPH_NODE_TYPES } from "@/features/entities/types";
+import { EventDetailSheet } from "@/features/events/components/event-detail-sheet";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/providers/theme-provider";
 import { Maximize2, Minus, Plus, TriangleAlert } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import Sigma from "sigma";
 import type { NodeHoverDrawingFunction } from "sigma/rendering";
 
@@ -83,6 +84,7 @@ export interface EntityGraphCanvasProps {
 }
 
 export function EntityGraphCanvas({ built, compact, className }: EntityGraphCanvasProps) {
+  const [eventId, setEventId] = useState<string | null>(null);
   const router = useRouter();
   const { resolvedTheme } = useTheme();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -150,7 +152,10 @@ export function EntityGraphCanvas({ built, compact, className }: EntityGraphCanv
       hoveredRef.current = null;
       rerender();
     });
-    renderer.on("clickNode", ({ node }) => router.push(`/entities/${node}`));
+    renderer.on("clickNode", ({ node }) => {
+      if (graph.getNodeAttribute(node, "entityType") === "event") setEventId(node);
+      else router.push(`/entities/${node}`);
+    });
 
     sigmaRef.current = renderer;
     return () => {
@@ -173,12 +178,12 @@ export function EntityGraphCanvas({ built, compact, className }: EntityGraphCanv
       {!compact && built.nodeCount > 0 && (
         <>
           <div className="pointer-events-none absolute left-3 top-3 flex flex-wrap gap-1.5">
-            {ENTITY_TYPES.map((type) => {
-              const meta = ENTITY_TYPE_META[type];
+            {GRAPH_NODE_TYPES.map((type) => {
+              const meta = GRAPH_NODE_TYPE_META[type];
               return (
                 <span
                   key={type}
-                  className="flex items-center gap-1 rounded-md border border-border bg-card/80 px-1.5 py-0.5 text-[10px] text-muted-foreground backdrop-blur-sm"
+                  className="flex items-center gap-1 rounded-md border border-border bg-card/80 px-1.5 py-0.5 text-[11px] text-muted-foreground backdrop-blur-sm"
                 >
                   <span className="h-2 w-2 rounded-full" style={{ backgroundColor: meta.color }} />
                   {meta.label}
@@ -200,13 +205,15 @@ export function EntityGraphCanvas({ built, compact, className }: EntityGraphCanv
           </div>
 
           {built.nodeCount >= SOFT_WARN_NODES && (
-            <div className="absolute bottom-3 left-3 flex items-center gap-1.5 rounded-md border border-annotation/30 bg-annotation/5 px-2 py-1 text-[10px] text-muted-foreground">
+            <div className="absolute bottom-3 left-3 flex items-center gap-1.5 rounded-md border border-annotation/30 bg-annotation/5 px-2 py-1 text-[11px] text-muted-foreground">
               <TriangleAlert className="h-3 w-3 text-annotation" />
               {built.nodeCount} nodes — narrow the entity type or depth to reduce clutter
             </div>
           )}
         </>
       )}
+
+      <EventDetailSheet eventId={eventId} onOpenChange={(open) => !open && setEventId(null)} />
     </div>
   );
 }

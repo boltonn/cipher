@@ -64,7 +64,7 @@ function MenuItem({
         >
           <div
             className={cn(
-              "absolute left-0 top-0 h-full w-0.5 bg-primary shadow-[0_0_10px_rgba(99,102,241,0.8)]",
+              "absolute left-0 top-0 h-full w-0.5 bg-primary",
               "transition-opacity duration-200 group-data-[collapsible=icon]:hidden",
               isActive ? "opacity-100" : "opacity-0"
             )}
@@ -118,11 +118,10 @@ export function AppSidebar() {
             className="
         text-base
         font-semibold
-        tracking-[0.18em]
+        tracking-wide
         text-primary
         relative
         -skew-x-6
-        drop-shadow-[0_0_6px_rgba(99,102,241,0.45)]
         group-data-[collapsible=icon]:hidden
       "
           >
@@ -219,7 +218,7 @@ export function AppSidebar() {
           {isLoading ? (
             <div className="h-8 w-8 rounded-full bg-muted animate-pulse shrink-0" />
           ) : (
-            <div className="h-8 w-8 rounded-full bg-linear-to-br from-primary to-purple-600 flex items-center justify-center text-xs font-semibold text-white shadow-[0_0_10px_rgba(99,102,241,0.3)] shrink-0">
+            <div className="h-8 w-8 rounded-full bg-linear-to-br from-primary to-purple-600 flex items-center justify-center text-xs font-semibold text-white shrink-0">
               {getInitials(user?.name)}
             </div>
           )}

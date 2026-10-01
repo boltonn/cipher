@@ -20,7 +20,7 @@ export function EdgeInspector({ edge, onClose }: EdgeInspectorProps) {
   return (
     <aside className="flex w-72 shrink-0 flex-col rounded-xl border border-border bg-muted/40 shadow-xl">
       <div className="flex items-center justify-between border-b border-border/50 px-3 py-2">
-        <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
           Relationship
         </span>
         <button
@@ -35,7 +35,7 @@ export function EdgeInspector({ edge, onClose }: EdgeInspectorProps) {
 
       <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-3">
         <div className="space-y-2">
-          <span className="inline-flex rounded-md border border-primary/40 bg-primary/10 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-primary">
+          <span className="inline-flex rounded-md border border-primary/40 bg-primary/10 px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-primary">
             {edge.relationshipType.replace(/_/g, " ")}
           </span>
 
@@ -85,17 +85,19 @@ export function EdgeInspector({ edge, onClose }: EdgeInspectorProps) {
               <ExternalLink size={12} />
             </Link>
           </Button>
-          <Button
-            asChild
-            variant="outline"
-            size="sm"
-            className="h-8 gap-1.5 border-border bg-muted/40 text-xs"
-          >
-            <Link href={`/entities/${edge.dstId}`}>
-              Open target
-              <ExternalLink size={12} />
-            </Link>
-          </Button>
+          {edge.relationshipType !== "participant_in" && (
+            <Button
+              asChild
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5 border-border bg-muted/40 text-xs"
+            >
+              <Link href={`/entities/${edge.dstId}`}>
+                Open target
+                <ExternalLink size={12} />
+              </Link>
+            </Button>
+          )}
         </div>
       </div>
     </aside>
@@ -106,7 +108,7 @@ function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="bg-card px-2 py-2 text-center">
       <div className="truncate text-sm font-semibold text-foreground">{value}</div>
-      <div className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">
+      <div className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
         {label}
       </div>
     </div>

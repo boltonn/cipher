@@ -32,7 +32,7 @@ export function PersonEventsSection({ entityId }: { entityId: string }) {
       title="Events"
       icon={<CalendarDays size={14} className="text-primary" />}
       action={
-        <span className="text-[10px] uppercase tracking-widest text-muted-foreground">
+        <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
           {data?.total ?? events.length}
         </span>
       }

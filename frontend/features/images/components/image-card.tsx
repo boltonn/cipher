@@ -101,7 +101,7 @@ export const ImageCard: React.FC<ImageCardProps> = ({
           </div>
 
           {similarityScore != null && (
-            <span className="absolute top-2 left-2 text-[9px] font-mono font-bold text-primary bg-primary/10 border border-primary/30 px-1.5 py-0.5 rounded backdrop-blur-sm">
+            <span className="absolute top-2 left-2 text-[11px] font-mono font-bold text-primary bg-primary/10 border border-primary/30 px-1.5 py-0.5 rounded backdrop-blur-sm">
               {(similarityScore * 100).toFixed(0)}% match
             </span>
           )}
@@ -113,7 +113,7 @@ export const ImageCard: React.FC<ImageCardProps> = ({
             {image.dateTaken && (
               <div className="flex items-center gap-1.5 text-muted-foreground">
                 <Calendar size={10} className="text-primary/70" />
-                <span className="text-[9px] font-bold uppercase tracking-widest">
+                <span className="text-[11px] font-bold uppercase tracking-wide">
                   {new Date(image.dateTaken).toLocaleDateString()}
                 </span>
               </div>
@@ -123,13 +123,13 @@ export const ImageCard: React.FC<ImageCardProps> = ({
             {visibleTags.map((tag) => (
               <Badge
                 key={tag}
-                className="bg-primary/10 text-primary text-[8px] border-none px-1.5 py-0 uppercase font-bold tracking-tight"
+                className="bg-primary/10 text-primary text-[11px] border-none px-1.5 py-0 uppercase font-bold tracking-tight"
               >
                 {tag}
               </Badge>
             ))}
             {remainingCount > 0 && (
-              <span className="text-[8px] text-muted-foreground font-bold ml-1">
+              <span className="text-[11px] text-muted-foreground font-bold ml-1">
                 +{remainingCount}
               </span>
             )}
@@ -166,7 +166,7 @@ const NavAction = ({
           "transition-all duration-200 outline-none",
           disabled
             ? "cursor-not-allowed text-muted-foreground"
-            : "cursor-pointer text-muted-foreground hover:text-primary hover:drop-shadow-[0_0_8px_rgba(99,102,241,0.8)]"
+            : "cursor-pointer text-muted-foreground hover:text-primary"
         )}
       >
         {icon}
@@ -175,7 +175,7 @@ const NavAction = ({
     {/* Explicitly no TooltipArrow component used here to keep it clean */}
     <TooltipContent
       sideOffset={12}
-      className="bg-popover border-border text-[9px] font-bold uppercase tracking-widest text-primary px-2 py-1 rounded-md shadow-2xl border [&_svg]:hidden!"
+      className="bg-popover border-border text-[11px] font-bold uppercase tracking-wide text-primary px-2 py-1 rounded-md shadow-2xl border [&_svg]:hidden!"
     >
       {disabled ? disabledLabel : label}
     </TooltipContent>
@@ -194,7 +194,7 @@ const TagPopoverAction = ({ image }: { image: ImagePublic }) => {
             <button
               type="button"
               onClick={(e) => e.stopPropagation()}
-              className="cursor-pointer text-muted-foreground hover:text-primary transition-all duration-200 hover:drop-shadow-[0_0_8px_rgba(99,102,241,0.8)] outline-none"
+              className="cursor-pointer text-muted-foreground hover:text-primary transition-all duration-200 outline-none"
             >
               <Tag size={18} />
             </button>
@@ -202,7 +202,7 @@ const TagPopoverAction = ({ image }: { image: ImagePublic }) => {
         </TooltipTrigger>
         <TooltipContent
           sideOffset={12}
-          className="bg-popover border-border text-[9px] font-bold uppercase tracking-widest text-primary px-2 py-1 rounded-md shadow-2xl border [&_svg]:hidden!"
+          className="bg-popover border-border text-[11px] font-bold uppercase tracking-wide text-primary px-2 py-1 rounded-md shadow-2xl border [&_svg]:hidden!"
         >
           Tags
         </TooltipContent>

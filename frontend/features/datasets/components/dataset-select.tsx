@@ -41,7 +41,7 @@ export function DatasetSelect({ datasetId, onChange, className }: DatasetSelectP
           role="combobox"
           aria-expanded={open}
           className={cn(
-            "h-7 w-56 justify-between border-border bg-muted/40 text-xs hover:bg-muted/60",
+            "h-8 w-52 justify-between border-border bg-muted/40 text-xs hover:bg-muted/60",
             className
           )}
         >
@@ -54,7 +54,7 @@ export function DatasetSelect({ datasetId, onChange, className }: DatasetSelectP
               role="button"
               tabIndex={0}
               aria-label="Clear dataset filter"
-              className="ml-2 shrink-0 text-muted-foreground hover:text-white"
+              className="ml-2 shrink-0 text-muted-foreground hover:text-foreground"
               onClick={(e) => {
                 e.stopPropagation();
                 onChange(undefined);

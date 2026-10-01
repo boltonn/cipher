@@ -125,12 +125,12 @@ export function useDeletePerson(onSuccess?: () => void) {
   return useMutation({
     mutationFn: (personId: string) => personsService.delete(personId),
     onSuccess: (_result, personId) => {
-      // The page viewing this person is often still mounted at this point (the
-      // route change hasn't unmounted it yet) -- excluding its id from the
-      // broad invalidation below stops that live observer from refetching a
-      // 404 for the id we just removeQueries'd.
-      queryClient.removeQueries({ queryKey: ["persons", personId] });
-      queryClient.removeQueries({ queryKey: ["entities", personId] });
+      // The page viewing this person is still mounted until the route change
+      // lands. Removing a query that has a live observer makes the observer
+      // rebuild it on its next render and refetch a 404 -- so only drop the
+      // unobserved ones and leave the rest to gc once the page unmounts.
+      queryClient.removeQueries({ queryKey: ["persons", personId], type: "inactive" });
+      queryClient.removeQueries({ queryKey: ["entities", personId], type: "inactive" });
       const notDeleted = (key: readonly unknown[]) => key[1] !== personId;
       queryClient.invalidateQueries({ queryKey: ["persons"], predicate: (q) => notDeleted(q.queryKey) });
       queryClient.invalidateQueries({ queryKey: ["entities"], predicate: (q) => notDeleted(q.queryKey) });

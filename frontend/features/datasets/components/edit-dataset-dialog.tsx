@@ -17,7 +17,7 @@ import { Dataset, DatasetUpdateSchema } from "@/features/datasets/types";
 import { Loader2 } from "lucide-react";
 import { useState } from "react";
 
-const FIELD_LABEL = "text-[10px] uppercase tracking-widest text-muted-foreground";
+const FIELD_LABEL = "text-[11px] uppercase tracking-wide text-muted-foreground";
 
 interface EditDatasetDialogProps {
   dataset: Dataset;
@@ -30,7 +30,7 @@ export function EditDatasetDialog({ dataset, isOpen, onOpenChange }: EditDataset
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="bg-card border-border sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle className="text-white tracking-[0.1em] uppercase text-xs font-black">
+          <DialogTitle className="text-white tracking-wide uppercase text-xs font-semibold">
             Edit Dataset
           </DialogTitle>
         </DialogHeader>

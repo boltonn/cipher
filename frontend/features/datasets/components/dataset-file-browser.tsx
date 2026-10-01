@@ -170,7 +170,7 @@ export function DatasetFileBrowser({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[10px] uppercase tracking-widest text-muted-foreground">
+        <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
           {viewMode === "tree" ? "Folder hierarchy" : "All files in dataset"}
         </span>
 
@@ -180,7 +180,7 @@ export function DatasetFileBrowser({
             onClick={() => switchViewMode("tree")}
             aria-label="Tree view"
             className={cn(
-              "flex items-center gap-1.5 rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-widest transition-colors",
+              "flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors",
               viewMode === "tree"
                 ? "bg-primary text-white"
                 : "text-muted-foreground hover:text-primary"
@@ -193,7 +193,7 @@ export function DatasetFileBrowser({
             onClick={() => switchViewMode("table")}
             aria-label="Table view"
             className={cn(
-              "flex items-center gap-1.5 rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-widest transition-colors",
+              "flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors",
               viewMode === "table"
                 ? "bg-primary text-white"
                 : "text-muted-foreground hover:text-primary"

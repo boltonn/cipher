@@ -12,6 +12,7 @@ import { ENTITY_TYPE_META } from "@/features/entities/components/entity-type-met
 import { useEntityRelatedInfinite } from "@/features/entities/hooks/use-entities";
 import {
   FAMILY_ROLE_INVERSE,
+  DERIVED_RELATIONSHIPS,
   RELATIONSHIP_TYPES,
   type RelatedEntitySort,
   type RelationshipType,
@@ -81,7 +82,7 @@ export function EntityRelationships({ entityId }: { entityId: string }) {
             <SelectItem value="all" className="text-xs">
               All types
             </SelectItem>
-            {RELATIONSHIP_TYPES.map((t) => (
+            {RELATIONSHIP_TYPES.filter((t) => !DERIVED_RELATIONSHIPS.includes(t)).map((t) => (
               <SelectItem key={t} value={t} className="text-xs">
                 {t.replace(/_/g, " ")}
               </SelectItem>
@@ -116,13 +117,13 @@ export function EntityRelationships({ entityId }: { entityId: string }) {
                 <span className="min-w-0 flex-1 truncate font-medium text-foreground">
                   {r.entity.displayName}
                 </span>
-                <span className="shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground">
+                <span className="shrink-0 text-[11px] uppercase tracking-wide text-muted-foreground">
                   {r.direction === "in" ? "← " : ""}
                   {role ?? r.relationshipType.replace(/_/g, " ")}
                 </span>
                 {typeof r.weight === "number" && (
                   <span
-                    className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground"
+                    className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[11px] font-semibold text-muted-foreground"
                     title="messages exchanged"
                   >
                     {r.weight.toLocaleString()}
@@ -130,7 +131,7 @@ export function EntityRelationships({ entityId }: { entityId: string }) {
                 )}
                 {typeof r.mentionCount === "number" &&
                   r.entity.entityType === "selector" && (
-                    <span className="shrink-0 text-[10px] text-muted-foreground">
+                    <span className="shrink-0 text-[11px] text-muted-foreground">
                       {r.mentionCount.toLocaleString()} mentions
                     </span>
                   )}
@@ -146,7 +147,7 @@ export function EntityRelationships({ entityId }: { entityId: string }) {
             variant="ghost"
             onClick={() => fetchNextPage()}
             disabled={isFetchingNextPage}
-            className="text-[10px] uppercase tracking-widest text-primary"
+            className="text-xs text-primary"
           >
             {isFetchingNextPage && (
               <Loader2 size={12} className="mr-2 animate-spin" />
@@ -176,7 +177,7 @@ function Seg<T extends string>({
           type="button"
           onClick={() => onChange(o.value)}
           className={cn(
-            "px-2 py-1 text-[10px] font-bold uppercase tracking-widest transition-colors",
+            "px-2 py-1 text-xs font-medium transition-colors",
             value === o.value
               ? "bg-primary/10 text-primary"
               : "text-muted-foreground hover:text-foreground"

@@ -1,7 +1,7 @@
 // @/features/chat/types.ts
 
 /** Which family of source a citation is (see backend `cipher/schemas/chat.py`). */
-export type CitationKind = "document" | "email" | "person" | "dataset" | "entity";
+export type CitationKind = "document" | "email" | "person" | "dataset" | "entity" | "action";
 
 /** A source the chat agent grounded its answer in.
  *

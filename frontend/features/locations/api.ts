@@ -17,12 +17,17 @@ export const locationsService = {
           bbox: bbox ? bbox.join(",") : undefined,
           datasetIds: filters.datasetIds.length ? filters.datasetIds : undefined,
           sources: filters.sources.length ? filters.sources : undefined,
+          categories: filters.categories.length ? filters.categories : undefined,
           dateFrom: filters.dateFrom,
           dateTo: filters.dateTo,
           limit: 10000,
         },
       })
       .then((res) => res.data),
+
+  // GET /locations/categories -> distinct categories, most common first
+  categories: (): Promise<string[]> =>
+    apiClient.get<string[]>(`${locationsBaseURL}/categories`).then((res) => res.data),
 };
 
 /** Points for the current filters + map viewport. `bbox` changes on pan/zoom. */
@@ -33,5 +38,14 @@ export function useLocations(filters: LocationFilters, bbox: BBox | undefined) {
     enabled: !!bbox,
     placeholderData: keepPreviousData,
     staleTime: 30_000,
+  });
+}
+
+/** Distinct categories present among locations, for the category filter. */
+export function useLocationCategories() {
+  return useQuery({
+    queryKey: ["locations", "categories"],
+    queryFn: locationsService.categories,
+    staleTime: 5 * 60_000,
   });
 }

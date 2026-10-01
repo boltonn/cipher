@@ -59,7 +59,7 @@ export function CommentSection({ commentableType, commentableId }: CommentSectio
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-2">
         <MessageSquare size={14} className="text-primary" />
-        <h4 className="text-[10px] font-black text-foreground uppercase tracking-widest">
+        <h4 className="text-[11px] font-semibold text-foreground uppercase tracking-wide">
           Comments {comments?.length ? `(${comments.length})` : ""}
         </h4>
       </div>
@@ -149,7 +149,7 @@ export function CommentSection({ commentableType, commentableId }: CommentSectio
         <Button
           onClick={handleAdd}
           disabled={!draft.trim() || addComment.isPending}
-          className="self-end h-9 gap-2 text-xs font-bold uppercase tracking-widest bg-primary hover:bg-primary"
+          className="self-end h-9 gap-2 text-xs font-medium bg-primary hover:bg-primary"
         >
           {addComment.isPending && <Loader2 size={14} className="animate-spin" />}
           Comment

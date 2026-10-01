@@ -1,13 +1,16 @@
 import {
   SELECTOR_TYPE_LABELS,
   type EntityType,
+  type GraphNodeType,
   type SelectorType,
 } from "@/features/entities/types";
 import {
   AtSign,
   Bitcoin,
   Building2,
+  CalendarDays,
   Car,
+  Globe,
   CreditCard,
   Fingerprint,
   IdCard,
@@ -79,6 +82,20 @@ export const ENTITY_TYPE_META: Record<EntityType, EntityTypeMeta> = {
   },
 };
 
+/** Graph-node palette: the entity types plus `event` (lime -- distinct from the four above and from amber). */
+export const GRAPH_NODE_TYPE_META: Record<GraphNodeType, EntityTypeMeta> = {
+  ...ENTITY_TYPE_META,
+  event: {
+    label: "Event",
+    Icon: CalendarDays,
+    color: "#a3e635",
+    textClass: "text-lime-300",
+    bgClass: "bg-lime-500/10",
+    borderClass: "border-lime-500/30",
+    markClass: "bg-lime-400/25 decoration-lime-400/60",
+  },
+};
+
 /**
  * Per-kind icon for a selector. A selector node/badge is far more legible when
  * a phone reads as a phone and an email as an envelope, rather than every
@@ -101,6 +118,7 @@ export const SELECTOR_TYPE_META: Record<
   social_handle: { label: SELECTOR_TYPE_LABELS.social_handle, Icon: AtSign },
   crypto_address: { label: SELECTOR_TYPE_LABELS.crypto_address, Icon: Bitcoin },
   license_plate: { label: SELECTOR_TYPE_LABELS.license_plate, Icon: Car },
+  domain: { label: SELECTOR_TYPE_LABELS.domain, Icon: Globe },
 };
 
 /** Icon for an entity, refined by selector kind where one is known. */
