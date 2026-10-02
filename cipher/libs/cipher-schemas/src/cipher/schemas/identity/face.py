@@ -267,7 +267,7 @@ class BaseFaceSearchParameters(PageParams):
         description="Filter to faces assigned to, or with a pending match for, any of these persons",
     )
     limit: int = Field(default=10, ge=1, le=100)
-    sort_by: FaceSortField = Field(default=FaceSortField.DATE_CREATED)
+    sort_by: FaceSortField = Field(default=FaceSortField.DETECTION_CONFIDENCE)
 
 
 class FaceSimilaritySearchParameters(BaseFaceSearchParameters):

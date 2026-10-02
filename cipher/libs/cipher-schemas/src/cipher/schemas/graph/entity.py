@@ -156,6 +156,7 @@ class EntitySearchParameters(PageParams):
 class EntitySearchResult(EntitySummary):
     """An entity returned from a resolution/fuzzy search, with why it matched."""
 
+    is_provisional: bool = Field(default=False, description="Auto-created by the resolver, not yet verified or merged")
     match_reason: str = Field(description="e.g. 'exact selector', 'name trigram', 'name embedding'")
     score: float = Field(ge=0, le=1, description="Blended match confidence")
 

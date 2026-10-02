@@ -1,16 +1,16 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-export interface FaceSelection {
+export interface GridSelection {
   selectedIds: Set<string>;
-  /** Toggle one face; `range` (shift-click) selects everything between it and the last toggled face. */
+  /** Toggle one item; `range` (shift-click) selects everything between it and the last toggled item. */
   toggle: (id: string, orderedIds: string[], range: boolean) => void;
   selectAll: (ids: string[]) => void;
   clear: () => void;
 }
 
-/** Multi-select over a face grid. Escape clears. Callbacks are stable so memoized cards don't re-render. */
-export function useFaceSelection(): FaceSelection {
+/** Multi-select over a card grid (faces, images). Escape clears. Callbacks are stable so memoized cards don't re-render. */
+export function useGridSelection(): GridSelection {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const anchorRef = useRef<string | null>(null);
 

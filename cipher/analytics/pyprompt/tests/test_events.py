@@ -4,7 +4,7 @@ from pyprompt.runner import _coerce_event
 from pyprompt.schemas import LlmEvent
 
 from cipher.schemas.graph.event import (
-    DeadlineDetails,
+    DeliveryDetails,
     LodgingDetails,
     ReservationDetails,
     TravelDetails,
@@ -26,8 +26,8 @@ def test_build_details_maps_each_type():
     reservation = _coerce_event(_event(event_type="reservation", operator="Borchardt", party_size=4))
     assert isinstance(reservation.details, ReservationDetails) and reservation.details.party_size == 4
 
-    deadline = _coerce_event(_event(event_type="deadline", amount=250.0, currency="USD", payee="IRS"))
-    assert isinstance(deadline.details, DeadlineDetails) and deadline.details.currency == "USD"
+    delivery = _coerce_event(_event(event_type="delivery", carrier="DHL", tracking_number="JD014"))
+    assert isinstance(delivery.details, DeliveryDetails) and delivery.details.carrier == "DHL"
 
 
 def test_no_details_when_type_has_none_or_fields_empty():
@@ -36,7 +36,7 @@ def test_no_details_when_type_has_none_or_fields_empty():
 
 
 def test_bad_detail_value_drops_the_blob_not_the_event():
-    parsed = _coerce_event(_event(event_type="deadline", currency="$", payee="landlord"))
+    parsed = _coerce_event(_event(event_type="lodging", operator="Adlon", nights=-1))
     assert parsed.details is None
     assert parsed.title == "x"
 

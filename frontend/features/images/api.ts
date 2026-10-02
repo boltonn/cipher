@@ -3,12 +3,15 @@ import {
   BaseImageSearchParameters,
   ImagePublic,
   ImageSimilaritySearchParameters,
+  ImageTagRequest,
+  ImageTagResult,
   PaginatedImagesResponse,
   PaginatedImageSimilarityResponse,
   TextImageKnnSearchRequest,
 } from "@/features/images/types";
 import { apiClient, baseURL } from "@/lib/api-client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 const imagesBaseURL = "/images";
 
@@ -73,6 +76,12 @@ export const imagesService = {
       .patch<ImagePublic>(`${imagesBaseURL}/${id}`, { tags })
       .then((res) => res.data),
 
+  // POST /images/tag - bulk label: positive, negative, or (no type) clear
+  tag: (payload: ImageTagRequest) =>
+    apiClient
+      .post<ImageTagResult>(`${imagesBaseURL}/tag`, payload)
+      .then((res) => res.data),
+
   // GET /files/{id}/image -- a 404 just means this file has no Image record yet
   getByFileId: (fileId: string): Promise<ImagePublic> =>
     apiClient
@@ -133,5 +142,26 @@ export function useUpdateImageTags() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["images"] });
     },
+  });
+}
+
+/** Label a set of images with one tag; accepting or rejecting a predicted tag is the same call. */
+export function useTagImages(onSuccess?: () => void) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: ImageTagRequest) => imagesService.tag(payload),
+    onSuccess: ({ updated }, { tag, type }) => {
+      queryClient.invalidateQueries({ queryKey: ["images"] });
+      const images = `${updated.toLocaleString()} image${updated === 1 ? "" : "s"}`;
+      toast.success(
+        type === "positive"
+          ? `Tagged ${images} “${tag}”`
+          : type === "negative"
+            ? `Marked ${images} not “${tag}”`
+            : `Removed “${tag}” from ${images}`
+      );
+      onSuccess?.();
+    },
+    onError: () => toast.error("Couldn't update tags"),
   });
 }

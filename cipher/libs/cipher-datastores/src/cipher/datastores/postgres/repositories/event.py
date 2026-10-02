@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import asc, delete, desc, exists, func, select, update
+from sqlalchemy import asc, delete, desc, exists, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cipher.datastores.postgres.tables.event import EventTable
@@ -9,6 +9,7 @@ from cipher.datastores.postgres.tables.event_place import EventPlaceTable
 from cipher.datastores.postgres.utils import strip_null_bytes
 from cipher.schemas._base.common import SortOrder
 from cipher.schemas.graph.event import (
+    EVENT_FILE_TAG,
     Event,
     EventCreate,
     EventSearchParameters,
@@ -151,9 +152,28 @@ class PostgresEventRepository:
 
     async def delete_event(self, event_id: str) -> bool:
         """Delete an event row (participant/place rows cascade)."""
-        result = await self.session.execute(delete(EventTable).where(EventTable.id == event_id))
+        return bool(await self.delete_events([event_id]))
+
+    async def delete_events(self, event_ids: list[str]) -> int:
+        """Mark events invalid: delete them (participant/place rows cascade). Returns rows deleted.
+
+        A source file tagged `event` that is left with no events moves to
+        `negative_tags` -- the analyst's verdict replaces the extractor's label.
+        """
+        deleted = await self.session.execute(
+            delete(EventTable).where(EventTable.id.in_(event_ids)).returning(EventTable.file_id)
+        )
+        file_ids = deleted.scalars().all()
+        await self.session.execute(
+            text(
+                "UPDATE file SET tags = tags - :tag, negative_tags = negative_tags || to_jsonb(cast(:tag as text)) "
+                "WHERE id = ANY(:file_ids) AND tags ? :tag "
+                "AND NOT EXISTS (SELECT 1 FROM event WHERE event.file_id = file.id)"
+            ),
+            {"tag": EVENT_FILE_TAG, "file_ids": [file_id for file_id in set(file_ids) if file_id]},
+        )
         await self.session.commit()
-        return bool(result.rowcount)
+        return len(file_ids)
 
     async def delete_extracted_by_dataset_id(self, dataset_id: str) -> int:
         """Delete a dataset's extraction-built events, keeping manual + analyst-verified rows.

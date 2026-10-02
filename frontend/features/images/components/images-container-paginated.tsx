@@ -6,13 +6,21 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { SlidersHorizontal } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import type { PaginatedImagesResponse, PaginatedImageSimilarityResponse } from "../types";
+import type {
+  PaginatedImagesResponse,
+  PaginatedImageSimilarityResponse,
+} from "../types";
+import type { GridSelection } from "@/hooks/use-grid-selection";
 import { ImageCard } from "./image-card";
 import { ImageViewerDialog } from "./image-viewer-dialog";
 
 interface ImagesContainerPaginatedProps {
   data: PaginatedImagesResponse | PaginatedImageSimilarityResponse | undefined;
   onSimilar: (id: string) => void;
+  /** Enables multi-select checkboxes on the cards. */
+  selection?: GridSelection;
+  /** Tags the grid is filtered to, so cards can show their rejected / predicted state. */
+  reviewTags?: string[];
   currentPage: number;
   onPageChange: (page: number) => void;
   isLoading: boolean;
@@ -24,6 +32,8 @@ interface ImagesContainerPaginatedProps {
 export function ImagesContainerPaginated({
   data,
   onSimilar,
+  selection,
+  reviewTags,
   currentPage,
   onPageChange,
   isLoading,
@@ -37,23 +47,25 @@ export function ImagesContainerPaginated({
   const totalAssets = data?.total ?? 0;
 
   const handleNext = useCallback(() => {
-    setSelectedIndex(prev =>
+    setSelectedIndex((prev) =>
       prev !== null && prev < images.length - 1 ? prev + 1 : prev
     );
   }, [images.length]);
 
   const handlePrev = useCallback(() => {
-    setSelectedIndex(prev => (prev !== null && prev > 0 ? prev - 1 : prev));
+    setSelectedIndex((prev) => (prev !== null && prev > 0 ? prev - 1 : prev));
   }, []);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "ArrowRight")
-        setSelectedIndex(prev =>
+        setSelectedIndex((prev) =>
           prev !== null && prev < images.length - 1 ? prev + 1 : prev
         );
       if (e.key === "ArrowLeft")
-        setSelectedIndex(prev => (prev !== null && prev > 0 ? prev - 1 : prev));
+        setSelectedIndex((prev) =>
+          prev !== null && prev > 0 ? prev - 1 : prev
+        );
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -94,6 +106,18 @@ export function ImagesContainerPaginated({
             image={image}
             onFindSimilar={onSimilar}
             onExpand={() => setSelectedIndex(index)}
+            reviewTags={reviewTags}
+            isSelected={!!selection?.selectedIds.has(image.id)}
+            isSelectionActive={!!selection?.selectedIds.size}
+            onToggleSelect={
+              selection &&
+              ((target, range) =>
+                selection.toggle(
+                  target.id,
+                  images.map((i) => i.id),
+                  range
+                ))
+            }
           />
         ))}
       </div>

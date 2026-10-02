@@ -50,6 +50,13 @@ class File(FileBase):
 
     id: str
     dataset_id: str
+    tags: list[str] = Field(default_factory=list, description="Positive labels: the file is this")
+    negative_tags: list[str] = Field(
+        default_factory=list, description="Negative labels: the file is explicitly not this (hard negatives)"
+    )
+    tag_scores: dict[str, float] = Field(
+        default_factory=dict, description="Model confidence (0-1) that a tag applies; a prediction, not a label"
+    )
 
     model_config = {
         "from_attributes": True,

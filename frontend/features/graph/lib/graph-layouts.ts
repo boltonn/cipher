@@ -7,7 +7,8 @@ import noverlap from "graphology-layout-noverlap";
 /**
  * The layout choices offered in the toolbar. `force` is ForceAtlas2 (the
  * default); the others are cheap deterministic arrangements. Every static run
- * finishes with a Noverlap anti-collision pass so nodes/labels stop overlapping.
+ * except `circular` finishes with a Noverlap anti-collision pass (it would bend
+ * the ring) so nodes/labels stop overlapping.
  */
 export const LAYOUT_KINDS = [
   "force",
@@ -28,9 +29,8 @@ function fa2Settings(graph: Graph) {
   return {
     ...forceAtlas2.inferSettings(graph),
     barnesHutOptimize: graph.order > 60,
-    adjustSizes: true,
-    gravity: 0.6,
-    scalingRatio: 14,
+    gravity: 1,
+    scalingRatio: 10,
   };
 }
 
@@ -38,14 +38,14 @@ export function applyStaticLayout(graph: Graph, kind: LayoutKind) {
   if (graph.order === 0) return;
 
   if (kind === "circular") {
-    circular.assign(graph, { scale: Math.max(10, graph.order * 1.4) });
+    circular.assign(graph, { scale: Math.max(40, graph.order * 4) });
   } else if (kind === "circlepack") {
     circlepack.assign(graph, { hierarchyAttributes: ["community"] });
   } else if (kind === "scatter") {
     random.assign(graph, { scale: Math.max(20, graph.order * 2.2) });
   } else {
     // Deterministic circular seed so `force` settles the same way every run.
-    circular.assign(graph, { scale: Math.max(10, graph.order) });
+    circular.assign(graph, { scale: Math.max(100, graph.order * 12) });
     if (graph.order > 1) {
       forceAtlas2.assign(graph, {
         iterations: Math.min(600, 150 + graph.order * 3),
@@ -54,7 +54,7 @@ export function applyStaticLayout(graph: Graph, kind: LayoutKind) {
     }
   }
 
-  if (graph.order > 1) {
+  if (graph.order > 1 && kind !== "circular") {
     noverlap.assign(graph, {
       maxIterations: 60,
       settings: { margin: 4, ratio: 1, gridSize: 20 },
@@ -62,7 +62,12 @@ export function applyStaticLayout(graph: Graph, kind: LayoutKind) {
   }
 }
 
-/** A live ForceAtlas2 worker; nodes with `fixed: true` stay pinned while it runs. */
+/**
+ * A live ForceAtlas2 worker; nodes with `fixed: true` stay pinned while it runs.
+ * It has no Noverlap pass to follow it, so node sizes go into the simulation.
+ */
 export function createLiveLayout(graph: Graph) {
-  return new FA2Layout(graph, { settings: fa2Settings(graph) });
+  return new FA2Layout(graph, {
+    settings: { ...fa2Settings(graph), adjustSizes: true },
+  });
 }

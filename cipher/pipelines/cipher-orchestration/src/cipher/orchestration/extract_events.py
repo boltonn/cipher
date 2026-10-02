@@ -16,30 +16,52 @@ Two producers, both writing `event` rows plus *unresolved* `event_participant`
   against existing rows on `uid` then `(title, start date)` /
   `(type, start date, place)`. Opt-in (`cipher extract-events --llm`).
 
+The LLM is too slow to read every file, so a **gate** runs first
+(`gate_text_events_workflow`): a zero-shot classifier scores each text for "a
+person is taking part in something", the score lands on the file as
+`tag_scores["event"]`, and files under the threshold are SKIPPED -- except a small deterministic sample
+that still goes to the LLM, so what the gate misses can be measured
+(`get_event_gate_report`). Every file the LLM reads is then tagged on `file`:
+`event` in `tags` when it found one, in `negative_tags` when it did not --
+labels for training a faster first pass later.
+
 Re-runnable: a file with a completed EVENT_EXTRACTION row is skipped until
 `reset-events` clears it (which drops both `ics` and `llm` rows).
 """
 
+import asyncio
+import hashlib
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from loguru import logger
-from sqlalchemy import select
+from sqlalchemy import func, select, text
 from tqdm import tqdm
 
 from cipher.datastores.postgres.repositories import (
     PostgresEnrichmentRepository,
     PostgresEventRepository,
     PostgresExtractedTextRepository,
+    PostgresFileRepository,
     PostgresLocationRepository,
 )
 from cipher.datastores.postgres.tables.enrichment import EnrichmentTable
 from cipher.datastores.postgres.tables.event import EventTable
 from cipher.datastores.postgres.tables.event_place import EventPlaceTable
+from cipher.datastores.postgres.tables.extracted_text import ExtractedTextTable
 from cipher.datastores.postgres.tables.file import FileTable
 from cipher.datastores.postgres.utils import normalize_name
-from cipher.schemas.graph.event import DatePrecision, EventCreate, EventSensitivity, EventStatus, EventType
+from cipher.schemas._base.common import ModelTagType
+from cipher.schemas.graph.event import (
+    EVENT_FILE_TAG,
+    DatePrecision,
+    EventCreate,
+    EventSensitivity,
+    EventStatus,
+    EventType,
+)
 from cipher.schemas.graph.event_participant import EventParticipantCreate, EventParticipantRole, RsvpStatus
 from cipher.schemas.graph.event_place import EventPlaceCreate, EventPlaceRole
 from cipher.schemas.graph.location import LocationCreate
@@ -89,7 +111,7 @@ _TYPE_KEYWORDS: tuple[tuple[EventType, tuple[str, ...]], ...] = (
     (EventType.LODGING, ("hotel", "lodging", "check-in", "check in", "checkin", "airbnb", "stay")),
     (EventType.RESERVATION, ("reservation", "dinner", "lunch", "table", "booking")),
     (EventType.DELIVERY, ("delivery", "shipment", "package", "arriving")),
-    (EventType.DEADLINE, ("due", "deadline", "payment", "renew")),
+    (EventType.GATHERING, ("conference", "summit", "wedding", "party", "ceremony", "festival", "reunion")),
     (EventType.MEETING, ("meeting", "call", "sync", "1:1", "standup", "interview")),
 )
 
@@ -470,27 +492,128 @@ async def persist_llm_events(
     return written
 
 
-async def _extract_text_events_file(
-    file_resource: dict,
+# --------------------------------------------------------------------------- #
+# Gate: a cheap first pass deciding which files the LLM reads                 #
+# --------------------------------------------------------------------------- #
+EVENT_GATE_LABELS: dict[str, str] = {
+    "personal_event": "booking confirmation, itinerary, reservation, or arranging to meet",
+    "marketing": "marketing, promotion, or newsletter",
+}
+_GATE_POSITIVE_LABEL = "personal_event"
+_GATE_MARKETING_LABEL = "marketing"
+# Recall first: junk is cheap to mark invalid in bulk, a missed event is never seen.
+DEFAULT_GATE_THRESHOLD = 0.4
+DEFAULT_GATE_SAMPLE_RATE = 0.05
+_GATE_MAX_CHARS = 20_000
+
+
+def event_gate_score(label_scores: dict[str, float]) -> float:
+    """Collapse the gate labels' scores into one "someone is taking part in something" score."""
+    return label_scores.get(_GATE_POSITIVE_LABEL, 0.0)
+
+
+def _in_gate_sample(file_id: str, sample_rate: float) -> bool:
+    """Whether a gate-rejected file is still read by the LLM (a stable slice, so re-runs agree)."""
+    return int(hashlib.sha256(file_id.encode()).hexdigest()[:8], 16) < sample_rate * 0x1_0000_0000
+
+
+async def gate_text_events_workflow(
+    session: "AsyncSession",
+    dataset_id: str,
     *,
-    extracted_text_repo: PostgresExtractedTextRepository,
-    event_repo: PostgresEventRepository,
-    runner,
-    model: str | None,
-    seen: set[str],
+    score_texts: Callable[[list[str]], list[float]],
+    threshold: float = DEFAULT_GATE_THRESHOLD,
+    sample_rate: float = DEFAULT_GATE_SAMPLE_RATE,
+    filetype_groups: tuple[str, ...] = TEXT_EVENT_GROUPS_EMAIL,
+    batch_size: int = 64,
 ) -> int:
-    """Run the LLM events pack over one file's extracted text. Returns events written."""
-    file_id = file_resource["id"]
-    dataset_id = file_resource["dataset_id"]
+    """Score every pending, ungated text file and skip the ones unlikely to hold an event.
 
-    extracted = await extracted_text_repo.get_by_file_id(file_id)
-    if extracted is None or not (extracted.content or "").strip():
-        return 0
-
-    result = await runner.extract_events(extracted.content, reference_date=_reference_date(extracted))
-    return await persist_llm_events(
-        result.events, dataset_id=dataset_id, file_id=file_id, model=model, seen=seen, event_repo=event_repo
+    Returns files skipped. `score_texts` maps texts to scores (0-1), stored as the
+    file's `tag_scores["event"]`. Files scoring under `threshold` are marked
+    SKIPPED unless they fall in the `sample_rate` slice kept for measuring the gate.
+    """
+    await queue_text_event_extraction_enrichments(
+        session=session, dataset_id=dataset_id, filetype_groups=filetype_groups
     )
+    enrichment_repo = PostgresEnrichmentRepository(session=session)
+    file_repo = PostgresFileRepository(session=session)
+    pending = (
+        select(EnrichmentTable.id, FileTable.id, func.left(ExtractedTextTable.content, _GATE_MAX_CHARS))
+        .join(FileTable, EnrichmentTable.enrichable_id == FileTable.id)
+        .join(ExtractedTextTable, ExtractedTextTable.file_id == FileTable.id)
+        .where(
+            EnrichmentTable.enrichable_type == EnrichableType.FILE,
+            EnrichmentTable.enrichment_type == EnrichmentType.EVENT_EXTRACTION,
+            EnrichmentTable.status == ProcessingStatus.PENDING,
+            ~FileTable.tag_scores.has_key(EVENT_FILE_TAG),
+            FileTable.dataset_id == dataset_id,
+            FileTable.filetype_group.in_(filetype_groups),
+            FileTable.mime_type != _CALENDAR_MIME,
+        )
+    )
+    total = (await session.execute(select(func.count()).select_from(pending.subquery()))).scalar_one()
+    gated = skipped = 0
+
+    with tqdm(total=total, desc="Gating events", unit=" file") as pbar:
+        while rows := (await session.execute(pending.limit(batch_size))).all():
+            scores = await asyncio.to_thread(score_texts, [content for _, _, content in rows])
+            await file_repo.set_tag_scores(
+                tag=EVENT_FILE_TAG, scores={file_id: score for (_, file_id, _), score in zip(rows, scores, strict=True)}
+            )
+            rejected = [
+                enrichment_id
+                for (enrichment_id, file_id, _), score in zip(rows, scores, strict=True)
+                if score < threshold and not _in_gate_sample(file_id, sample_rate)
+            ]
+            await enrichment_repo.mark_skipped_batch(rejected)
+            await session.commit()
+
+            gated += len(rows)
+            skipped += len(rejected)
+            pbar.set_postfix(skipped=skipped)
+            pbar.update(len(rows))
+
+    logger.success(f"Gated {gated} text files: {gated - skipped} go to the LLM, {skipped} skipped")
+    return skipped
+
+
+async def tag_event_files(session: "AsyncSession", *, with_events: list[str], without_events: list[str]) -> None:
+    """Label files the LLM read: `event` positive when it found one, negative when it did not."""
+    file_repo = PostgresFileRepository(session=session)
+    await file_repo.tag_files(file_ids=with_events, tag=EVENT_FILE_TAG, tag_type=ModelTagType.POSITIVE)
+    await file_repo.tag_files(file_ids=without_events, tag=EVENT_FILE_TAG, tag_type=ModelTagType.NEGATIVE)
+
+
+async def get_event_gate_report(session: "AsyncSession", dataset_id: str, *, threshold: float) -> dict:
+    """How the gate did against the LLM: pass rate, and recall estimated from the sampled rejects."""
+    row = (
+        await session.execute(
+            text(
+                """
+                SELECT count(*) AS gated,
+                       count(*) FILTER (WHERE s.score >= :threshold) AS passed,
+                       count(*) FILTER (WHERE e.status = 'SKIPPED') AS skipped,
+                       count(*) FILTER (WHERE s.score >= :threshold AND e.status = 'COMPLETED') AS passed_read,
+                       count(*) FILTER (WHERE s.score >= :threshold AND f.tags ? :tag) AS passed_with_events,
+                       count(*) FILTER (WHERE s.score < :threshold AND e.status = 'COMPLETED') AS rejected_read,
+                       count(*) FILTER (WHERE s.score < :threshold AND f.tags ? :tag) AS rejected_with_events
+                FROM enrichment e JOIN file f ON f.id = e.enrichable_id
+                CROSS JOIN LATERAL (SELECT cast(f.tag_scores ->> :tag as float) AS score) s
+                WHERE e.enrichment_type = 'EVENT_EXTRACTION' AND e.enrichable_type = 'FILE'
+                  AND f.tag_scores ? :tag AND f.dataset_id = :dataset_id
+                """
+            ),
+            {"threshold": threshold, "tag": EVENT_FILE_TAG, "dataset_id": dataset_id},
+        )
+    ).one()
+    report = dict(row._mapping) | {"threshold": threshold}
+    rejected = report["gated"] - report["passed"]
+    if report["rejected_read"] and report["passed_read"]:
+        missed = report["rejected_with_events"] / report["rejected_read"] * rejected
+        found = report["passed_with_events"] / report["passed_read"] * report["passed"]
+        report["estimated_recall"] = round(found / (found + missed), 3) if found + missed else None
+    return report
 
 
 def _reference_date(extracted) -> str | None:
@@ -559,12 +682,15 @@ async def extract_text_events_workflow(
     batch_size: int = 20,
     model: str | None = None,
     filetype_groups: tuple[str, ...] = TEXT_EVENT_GROUPS_EMAIL,
+    concurrency: int = 8,
 ) -> int:
     """Run `pyprompt` over a dataset's email (and optionally document) bodies into `event` rows.
 
     Returns files processed. Each file's text is anchored to its authored date so
     relative dates ("next Friday") resolve; events are deduped against every
-    existing row in the dataset (`.ics` included).
+    existing row in the dataset (`.ics` included). `concurrency` LLM calls are in
+    flight at once so the server can batch them; writes stay serial. Each file
+    read is tagged `event` positive or negative (see `tag_event_files`).
     """
     from pyprompt import PromptRunner, Settings
 
@@ -579,6 +705,14 @@ async def extract_text_events_workflow(
     runner = PromptRunner(settings)
     resolved_model = model or settings.llm.model
     seen = await _load_event_dedup_keys(session, dataset_id)
+    semaphore = asyncio.Semaphore(concurrency)
+
+    async def _call(item, extracted):
+        async with semaphore:
+            try:
+                return item, await runner.extract_events(extracted.content, reference_date=_reference_date(extracted))
+            except Exception as e:  # noqa: BLE001 -- reported per file below
+                return item, e
 
     total = 0
     for group in filetype_groups:
@@ -589,6 +723,7 @@ async def extract_text_events_workflow(
             filetype_group_filter=group,
         )
     count = failed_count = event_count = 0
+    attempted: set[str] = set()
 
     with tqdm(total=total, desc="Extracting events (llm)", unit=" file") as pbar:
         for group in filetype_groups:
@@ -600,32 +735,50 @@ async def extract_text_events_workflow(
                     dataset_id=dataset_id,
                     filetype_group_filter=group,
                 )
+                batch = [item for item in batch if item.enrichment.id not in attempted]
                 if not batch:
                     break
+                attempted.update(item.enrichment.id for item in batch)
 
                 await enrichment_repo.mark_processing(enrichment_ids=[item.enrichment.id for item in batch])
                 await session.commit()
 
-                completed, failed = [], []
+                completed, failed, work = [], [], []
                 for item in batch:
-                    if item.resource.get("mime_type") == _CALENDAR_MIME:
+                    extracted = (
+                        await extracted_text_repo.get_by_file_id(item.resource["id"])
+                        if item.resource.get("mime_type") != _CALENDAR_MIME
+                        else None
+                    )
+                    if extracted is None or not (extracted.content or "").strip():
                         completed.append(item.enrichment.id)
+                    else:
+                        work.append((item, extracted))
+
+                with_events, without_events = [], []
+                for item, result in await asyncio.gather(*(_call(*w) for w in work)):
+                    file_id = item.resource["id"]
+                    if isinstance(result, Exception):
+                        logger.error(f"LLM event extraction failed for file {file_id}: {result}")
+                        failed.append(item.enrichment.id)
                         continue
                     try:
-                        event_count += await _extract_text_events_file(
-                            item.resource,
-                            extracted_text_repo=extracted_text_repo,
-                            event_repo=event_repo,
-                            runner=runner,
+                        event_count += await persist_llm_events(
+                            result.events,
+                            dataset_id=item.resource["dataset_id"],
+                            file_id=file_id,
                             model=resolved_model,
                             seen=seen,
+                            event_repo=event_repo,
                         )
+                        (with_events if result.events else without_events).append(file_id)
                         completed.append(item.enrichment.id)
                     except Exception as e:
-                        logger.error(f"LLM event extraction failed for file {item.resource['id']}: {e}")
+                        logger.error(f"Persisting LLM events failed for file {file_id}: {e}")
                         await session.rollback()
                         failed.append(item.enrichment.id)
 
+                await tag_event_files(session, with_events=with_events, without_events=without_events)
                 if completed:
                     await enrichment_repo.mark_completed_batch(completed)
                 if failed:
@@ -636,6 +789,10 @@ async def extract_text_events_workflow(
                 failed_count += len(failed)
                 pbar.set_postfix(failed=failed_count, events=event_count)
                 pbar.update(len(completed) + len(failed))
+
+                if failed and not completed:
+                    logger.error(f"Every file in the batch failed ({len(failed)}); stopping. Check the LLM server.")
+                    return count
 
     logger.success(f"Extracted {event_count} events from {count} text files ({failed_count} failed)")
     return count

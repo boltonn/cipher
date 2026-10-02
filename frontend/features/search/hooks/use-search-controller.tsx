@@ -22,12 +22,12 @@ export const useSearchController = (paginationMode: PaginationModeType = "infini
   const [searchMode, setSearchMode] = useState<SearchMode>("text");
   const [filters, setFiltersState] = useState<SearchFilters>(() => {
     // Deep links from an entity/selector page compose an entity filter with an
-    // empty-query browse: /search?entityId=<id>&datasetId=<id> (also &mentionValue=, &selectorType=).
+    // empty-query browse: /search?entityId=<id>&datasetId=<id> (repeat entityId to require all; also &mentionValue=, &selectorType=).
     const next: SearchFilters = {};
     const scope = params.get("scope");
     if (scope === "email" || scope === "document") next.filetypeGroup = scope;
     if (params.get("datasetId")) next.datasetId = params.get("datasetId") ?? undefined;
-    if (params.get("entityId")) next.entityIds = [params.get("entityId") as string];
+    if (params.getAll("entityId").length) next.entityIds = params.getAll("entityId");
     if (params.getAll("mentionValue").length) next.mentionValues = params.getAll("mentionValue");
     if (params.get("selectorType")) next.selectorTypes = [params.get("selectorType") as string];
     return next;

@@ -1,7 +1,7 @@
 # Events & the Calendar
 
 How the event layer fits into CIPHER: dated occurrences — travel, lodging,
-reservations, meetings, deadlines, deliveries — pulled from documents (mostly
+reservations, meetings, gatherings, deliveries — pulled from documents (mostly
 email) by an LLM, or parsed straight from a calendar (`.ics`) attachment.
 
 Status: **Phase 0 (backend skeleton) landed** — schemas, tables, repository,
@@ -26,7 +26,7 @@ back to the entity and location layers where those references resolve.
 
 ```
 event(id, dataset_id (NULLABLE) → dataset, file_id → file,
-      event_type ∈ travel|lodging|reservation|meeting|deadline|delivery|occasion|other,
+      event_type ∈ travel|lodging|reservation|meeting|gathering|delivery|other,
       title, summary,
       date_start, date_end, timezone (IANA), is_all_day,
       date_precision ∈ exact|day|month|year|approximate,
@@ -68,8 +68,8 @@ Type-specific fields that only make sense for *some* events —
 `operator`, `confirmation`, flight `number`, `nights`, `party_size`, `amount` /
 `currency` / `payee`, `carrier` / `tracking_number` — live in **`details`**, a
 Pydantic **discriminated union** keyed by `kind` (`TravelDetails`,
-`LodgingDetails`, `ReservationDetails`, `DeadlineDetails`, `DeliveryDetails`;
-`meeting` / `occasion` / `other` carry no detail row). Adding a field to one
+`LodgingDetails`, `ReservationDetails`, `DeliveryDetails`;
+`meeting` / `gathering` / `other` carry no detail row). Adding a field to one
 event type is an edit to one small model — no migration, no wide nullable
 columns on the base table.
 
@@ -143,7 +143,8 @@ Router `backend/src/cipher/api/routes/events.py`, prefix `/events`:
 ```
 load-files → extract-text
           → extract-events            (EVENT_EXTRACTION enrichment, per calendar file — deterministic .ics parse)
-          → extract-events --llm      (same enrichment, per email file — pyprompt LLM pass; opt-in; --docs adds documents)
+          → extract-events --llm      (same enrichment, per email file — GLiNER gate, then pyprompt LLM pass on
+                                        what passes; opt-in; --docs adds documents; --no-gate reads everything)
             └ or extract-llm --tasks entities,events   (one pyprompt call per email/doc file → mentions + events
                                         together; completes ENTITY_EXTRACTION + EVENT_EXTRACTION; halves the calls.
                                         --concurrency N in flight; refuses > --max-files (15k) without --yes —
@@ -182,7 +183,26 @@ the chat agent.
   writes one `event` row per returned event (`extractor = "llm"`,
   `extraction_model` / `confidence` / typed `details` set). Skips an
   event already in the dataset by the dedup keys above. Needs `pyprompt` and an
-  `LLM__*` config; `--llm-only` skips the `.ics` pass.
+  `LLM__*` config; `--llm-only` skips the `.ics` pass. `--concurrency N` keeps
+  N calls in flight.
+- **The gate** (`gate_text_events_workflow`, on by default with `--llm`) — the
+  LLM takes seconds per file, so GLiNER2.5 reads everything first
+  (`GlinerModel.classify`, ~18 emails/s on a 3090) and scores each text for *a
+  person is taking part in something* (`EVENT_GATE_LABELS`). The score is stored
+  on the file as `tag_scores["event"]` -- the model's confidence in the tag. Files under `--gate-threshold` are marked
+  `SKIPPED`, except a deterministic `--gate-sample-rate` slice (5%) that the LLM
+  still reads: those are the only way to learn what the gate misses. The run
+  ends with a report (`get_event_gate_report`) — pass rate, events found on each
+  side of the threshold, and the recall that implies.
+- **Tags** — every file the LLM reads is labelled on `file`: `event` in `tags`
+  when it found at least one event, in `negative_tags` when it found none.
+  `SKIPPED` files stay unlabelled. These are the training set for a classifier
+  over the stored embeddings that can later replace the zero-shot gate; an
+  analyst corrects a label with `PATCH /files/{id}/tag`.
+- **What counts** — an event is something a person in the correspondence takes
+  part in (travels, stays, meets, attends, receives). Marketing, product
+  announcements, and advertised webinars or conferences are not events, and
+  neither are deadlines. Both the gate labels and the prompt carry that rule.
 - **`resolve-event-links`** (`resolve_event_links.py`, CLI
   `cipher resolve-event-links`) — dataset-wide, re-runnable. Matches an
   `event_participant` by `raw_email` → the owning `selector`'s person/org, then

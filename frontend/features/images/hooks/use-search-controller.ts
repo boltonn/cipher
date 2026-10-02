@@ -39,6 +39,12 @@ type ImageSearchKeyPaginated = [
   } & ImageFilters,
 ];
 
+/** Predictions are reviewed most-confident first; everything else keeps the default sort. */
+const withSort = (filters: ImageFilters): ImageFilters =>
+  filters.tagState === "predicted" && filters.tags?.length
+    ? { ...filters, sortBy: "tagScore" }
+    : filters;
+
 export const useSearchController = (mode: PaginationModeType = "infinite") => {
   const [file, setFile] = useState<File | null>(null);
   const [id, setId] = useState<string | null>(null);
@@ -74,7 +80,7 @@ export const useSearchController = (mode: PaginationModeType = "infinite") => {
     queryKey: ["images", "search", { file: file?.name, id, text, ...filters }],
     queryFn: ({ pageParam = 1 }) => {
       const currentParams: ImageSimilaritySearchParameters = {
-        ...filters,
+        ...withSort(filters),
         page: pageParam,
       };
 
@@ -114,7 +120,7 @@ export const useSearchController = (mode: PaginationModeType = "infinite") => {
     ] as ImageSearchKeyPaginated,
     queryFn: () => {
       const currentParams: ImageSimilaritySearchParameters = {
-        ...filters,
+        ...withSort(filters),
         page,
       };
 

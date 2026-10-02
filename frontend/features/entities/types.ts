@@ -237,6 +237,8 @@ export interface EntitySummary {
 }
 
 export interface EntitySearchResult extends EntitySummary {
+  /** Auto-created by the resolver, not yet verified or merged. */
+  isProvisional?: boolean;
   matchReason: string;
   score: number;
 }
@@ -332,6 +334,8 @@ export interface GraphNode extends Omit<EntitySummary, "entityType"> {
 export interface GraphResponse {
   nodes: GraphNode[];
   edges: EntityRelationship[];
+  /** the edge limit was hit -- only the heaviest edges came back */
+  truncated?: boolean;
 }
 
 /** A linked selector plus how many mentions carry its normalized value (any dataset, resolved or not). */

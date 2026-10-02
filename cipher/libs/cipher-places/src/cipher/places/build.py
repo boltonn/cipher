@@ -80,8 +80,7 @@ class _Index:
     def __init__(self):
         self.places: list[Place] = []
         self.tables: dict[str, dict[str, set[int]]] = {
-            t: defaultdict(set)
-            for t in ("names", "codes", "alt_names", "alt_codes", "admin_names")
+            t: defaultdict(set) for t in ("names", "codes", "alt_names", "alt_codes", "admin_names")
         }
         self.tables |= {f"exact_{t}": defaultdict(set) for t in ("names", "alt_names", "admin_names")}
 
@@ -149,7 +148,11 @@ def _add_countries(index: _Index, path: Path) -> dict[str, int]:
 def _add_admin1(index: _Index, path: Path) -> None:
     for p in _features(path):
         cc = p.get("iso_a2")
-        if cc not in _ADMIN1_COUNTRIES | _ADMIN1_ALTERNATE_COUNTRIES or not p.get("name") or not (p.get("gn_a1_code") or "").partition(".")[2]:
+        if (
+            cc not in _ADMIN1_COUNTRIES | _ADMIN1_ALTERNATE_COUNTRIES
+            or not p.get("name")
+            or not (p.get("gn_a1_code") or "").partition(".")[2]
+        ):
             continue
         place = Place(
             id=f"wikidata:{p['wikidataid']}" if p.get("wikidataid") else f"ne:{p['adm1_code']}",

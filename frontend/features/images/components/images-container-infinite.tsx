@@ -12,12 +12,19 @@ import type {
   PaginatedImagesResponse,
   PaginatedImageSimilarityResponse,
 } from "../types";
+import type { GridSelection } from "@/hooks/use-grid-selection";
 import { ImageCard } from "./image-card";
 import { ImageViewerDialog } from "./image-viewer-dialog";
 
 interface ImagesContainerInfiniteProps {
-  data: InfiniteData<PaginatedImagesResponse | PaginatedImageSimilarityResponse> | undefined;
+  data:
+    | InfiniteData<PaginatedImagesResponse | PaginatedImageSimilarityResponse>
+    | undefined;
   onSimilar: (id: string) => void;
+  /** Enables multi-select checkboxes on the cards. */
+  selection?: GridSelection;
+  /** Tags the grid is filtered to, so cards can show their rejected / predicted state. */
+  reviewTags?: string[];
   fetchNextPage: () => void;
   hasNextPage: boolean;
   isFetchingNextPage: boolean;
@@ -28,6 +35,8 @@ interface ImagesContainerInfiniteProps {
 export function ImagesContainerInfinite({
   data,
   onSimilar,
+  selection,
+  reviewTags,
   fetchNextPage,
   hasNextPage,
   isFetchingNextPage,
@@ -38,7 +47,10 @@ export function ImagesContainerInfinite({
 
   const images = useMemo(() => {
     if (!data) return [];
-    const flat = data.pages.flatMap((page) => page.data) as (ImagePublic | ImageSimilarityResult)[];
+    const flat = data.pages.flatMap((page) => page.data) as (
+      | ImagePublic
+      | ImageSimilarityResult
+    )[];
     // The backend returns one row per distinct image (`id` == sha256), but an
     // ANN similarity page boundary can still transiently repeat one; drop it so
     // React keys stay unique.
@@ -51,23 +63,25 @@ export function ImagesContainerInfinite({
   }, [data]);
 
   const handleNext = useCallback(() => {
-    setSelectedIndex(prev =>
+    setSelectedIndex((prev) =>
       prev !== null && prev < images.length - 1 ? prev + 1 : prev
     );
   }, [images.length]);
 
   const handlePrev = useCallback(() => {
-    setSelectedIndex(prev => (prev !== null && prev > 0 ? prev - 1 : prev));
+    setSelectedIndex((prev) => (prev !== null && prev > 0 ? prev - 1 : prev));
   }, []);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "ArrowRight")
-        setSelectedIndex(prev =>
+        setSelectedIndex((prev) =>
           prev !== null && prev < images.length - 1 ? prev + 1 : prev
         );
       if (e.key === "ArrowLeft")
-        setSelectedIndex(prev => (prev !== null && prev > 0 ? prev - 1 : prev));
+        setSelectedIndex((prev) =>
+          prev !== null && prev > 0 ? prev - 1 : prev
+        );
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -127,6 +141,18 @@ export function ImagesContainerInfinite({
             image={image}
             onFindSimilar={onSimilar}
             onExpand={() => setSelectedIndex(index)}
+            reviewTags={reviewTags}
+            isSelected={!!selection?.selectedIds.has(image.id)}
+            isSelectionActive={!!selection?.selectedIds.size}
+            onToggleSelect={
+              selection &&
+              ((target, range) =>
+                selection.toggle(
+                  target.id,
+                  images.map((i) => i.id),
+                  range
+                ))
+            }
           />
         ))}
       </div>

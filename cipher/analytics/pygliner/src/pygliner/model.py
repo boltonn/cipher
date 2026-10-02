@@ -1,8 +1,9 @@
-"""GLiNER2.5 wrapper producing typed entity and relation spans.
+"""GLiNER2.5 wrapper producing typed entity and relation spans, and zero-shot text labels.
 
-One boundary checkpoint serves both tasks: entities via the extractor's
+One boundary checkpoint serves every task: entities via the extractor's
 long-text API, entities + relations jointly via `JointIE` with a schema whose
-relation endpoints are typed from the ontology. Loads from a local directory
+relation endpoints are typed from the ontology, and `classify` scoring whole
+texts against described labels. Loads from a local directory
 with no hub access (the checkpoint bundles its encoder config and tokenizer).
 """
 
@@ -112,6 +113,29 @@ class GlinerModel:
                 )
             )
         return entities, relations
+
+    def classify(self, texts: list[str], labels: dict[str, str], batch_size: int = 32) -> list[dict[str, float]]:
+        """Score each text against every label (name -> description), labels judged independently.
+
+        A long text is scored per chunk; a label's score is its highest chunk, so
+        one relevant passage is enough however much boilerplate surrounds it.
+        """
+        import torch
+
+        schema = self._model.create_schema().classification("label", labels, multi_label=True, cls_threshold=0.0)
+        with torch.inference_mode(), torch.autocast(self._device, dtype=torch.float16, enabled=self._device == "cuda"):
+            results = self._model.batch_extract_long(
+                [text if text.strip() else " " for text in texts],
+                schema,
+                batch_size=batch_size,
+                include_confidence=True,
+                chunk_size=_CHUNK_SIZE,
+                chunk_overlap=_CHUNK_OVERLAP,
+            )
+        return [
+            {label: 0.0 for label in labels} | {s["label"]: float(s["confidence"]) for s in result.get("label") or []}
+            for result in results
+        ]
 
     def _schema(self, *, labels: tuple[str, ...], relation_labels: tuple[str, ...]):
         """Compiled JointIE schema with each relation's head/tail restricted to ontology-permitted labels.

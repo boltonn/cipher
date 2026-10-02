@@ -1,11 +1,11 @@
 """Events: dated occurrences pulled from documents.
 
-Travel, lodging, reservations, meetings, deadlines, deliveries.
+Travel, lodging, reservations, meetings, gatherings, deliveries.
 An event is not a graph identity like a person or a place; it is a dated thing
 that happened (or will happen), found by an LLM over extracted text or parsed
 straight from a calendar (`.ics`) attachment. The table carries only the fields
 every event shares; type-specific fields (a flight number, a booking reference,
-an amount owed) live in the discriminated `details` payload. The people and
+a tracking number) live in the discriminated `details` payload. The people and
 places involved are rows in `event_participant` / `event_place`, each pointing at
 a resolved `entity` / `location` or just carrying surface text until resolution
 runs.
@@ -22,17 +22,23 @@ from cipher.schemas._base.common import PageParams, PaginatedResponse
 from cipher.schemas.graph.event_participant import EventParticipant
 from cipher.schemas.graph.event_place import EventPlace
 
+# `file.tags` / `file.negative_tags` label: the file does / does not describe an event someone takes part in.
+EVENT_FILE_TAG = "event"
+
 
 class EventType(StrEnum):
-    """Coarse kind of an event; the calendar colours by category (see `EVENT_CATEGORY`)."""
+    """Coarse kind of an event; the calendar colours by category (see `EVENT_CATEGORY`).
+
+    `MEETING` is named people getting together (call, sync, interview, appointment);
+    `GATHERING` is an organized event many people attend (conference, wedding, party, ceremony).
+    """
 
     TRAVEL = "travel"
     LODGING = "lodging"
     RESERVATION = "reservation"
     MEETING = "meeting"
-    DEADLINE = "deadline"
+    GATHERING = "gathering"
     DELIVERY = "delivery"
-    OCCASION = "occasion"
     OTHER = "other"
 
 
@@ -74,9 +80,8 @@ EVENT_CATEGORY: dict[EventType, str] = {
     EventType.LODGING: "travel",
     EventType.RESERVATION: "personal",
     EventType.MEETING: "work",
-    EventType.DEADLINE: "admin",
+    EventType.GATHERING: "personal",
     EventType.DELIVERY: "logistics",
-    EventType.OCCASION: "personal",
     EventType.OTHER: "other",
 }
 
@@ -85,9 +90,8 @@ EVENT_TYPE_LABELS: dict[EventType, str] = {
     EventType.LODGING: "Lodging",
     EventType.RESERVATION: "Reservation",
     EventType.MEETING: "Meeting",
-    EventType.DEADLINE: "Deadline",
+    EventType.GATHERING: "Gathering",
     EventType.DELIVERY: "Delivery",
-    EventType.OCCASION: "Occasion",
     EventType.OTHER: "Other",
 }
 
@@ -126,15 +130,6 @@ class ReservationDetails(BaseModel):
     party_size: int | None = Field(default=None, ge=0)
 
 
-class DeadlineDetails(BaseModel):
-    """Type-specific fields for `event_type == deadline`."""
-
-    kind: Literal["deadline"] = "deadline"
-    amount: float | None = Field(default=None, description="Amount due, if the source states one")
-    currency: str | None = Field(default=None, min_length=3, max_length=3)
-    payee: str | None = Field(default=None)
-
-
 class DeliveryDetails(BaseModel):
     """Type-specific fields for `event_type == delivery`."""
 
@@ -145,7 +140,7 @@ class DeliveryDetails(BaseModel):
 
 
 EventDetails = Annotated[
-    TravelDetails | LodgingDetails | ReservationDetails | DeadlineDetails | DeliveryDetails,
+    TravelDetails | LodgingDetails | ReservationDetails | DeliveryDetails,
     Field(discriminator="kind"),
 ]
 
@@ -229,6 +224,12 @@ class EventUpdate(BaseModel):
     is_verified: bool | None = Field(default=None)
     tags: list[str] | None = Field(default=None)
     notes: str | None = Field(default=None)
+
+
+class EventIdsRequest(BaseModel):
+    """A set of events to act on together (e.g. mark invalid)."""
+
+    event_ids: list[str] = Field(min_length=1)
 
 
 class Event(EventBase):

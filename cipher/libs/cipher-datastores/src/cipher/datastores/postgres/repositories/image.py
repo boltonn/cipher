@@ -1,11 +1,11 @@
 import numpy as np
-from sqlalchemy import asc, delete, desc, exists, func, literal, select, text
-from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy import Float, and_, asc, delete, desc, exists, func, literal, or_, select, text
+from sqlalchemy.dialects.postgresql import array, insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cipher.datastores.postgres.tables.file import FileTable
 from cipher.datastores.postgres.tables.image import ImageTable
-from cipher.schemas._base.common import SortOrder, UriResponse
+from cipher.schemas._base.common import ModelTagType, SortOrder, TagState, UriResponse
 from cipher.schemas.content.image import (
     BaseImageSearchParameters,
     Image,
@@ -14,6 +14,7 @@ from cipher.schemas.content.image import (
     ImageSimilarityResult,
     ImageSimilaritySearchRequest,
     ImageSortField,
+    ImageTagResult,
     ImageUpdate,
     PaginatedImageSimilarityResponse,
     PaginatedImagesResponse,
@@ -36,19 +37,34 @@ def _upsert_set(excluded) -> dict:
         "gps_latitude": excluded.gps_latitude,
         "gps_longitude": excluded.gps_longitude,
         "gps_altitude": excluded.gps_altitude,
-        "tags": excluded.tags,
     }
 
 
-def _tags_overlap_expr(tags: list[str]):
-    """Build a "some element of ImageTable.tags is in `tags`" filter.
+def _tag_score(tag: str):
+    """`tag_scores[tag]` as a float (NULL when the tag was never scored)."""
+    return ImageTable.tag_scores[tag].astext.cast(Float)
 
-    ImageTable.tags is JSONB (not a native Postgres array), so the array
-    comparator's `.overlap()` isn't available -- unnest it with
-    jsonb_array_elements_text and check membership instead.
+
+def _tags_expr(tags: list[str], tag_state: TagState, min_tag_score: float):
+    """Build an "image carries any of `tags`" filter against the store `tag_state` names.
+
+    Labels use JSONB `?|`, which the GIN indexes on `tags` / `negative_tags` serve.
+    A predicted tag is one scored at least `min_tag_score` that has no label yet.
     """
-    tag_elements = func.jsonb_array_elements_text(ImageTable.tags).table_valued("value")
-    return exists(select(literal(1)).select_from(tag_elements).where(tag_elements.c.value.in_(tags)))
+    if tag_state == TagState.POSITIVE:
+        return ImageTable.tags.has_any(array(tags))
+    if tag_state == TagState.NEGATIVE:
+        return ImageTable.negative_tags.has_any(array(tags))
+    return or_(
+        *(
+            and_(
+                _tag_score(tag) >= min_tag_score,
+                ~ImageTable.tags.has_key(tag),
+                ~ImageTable.negative_tags.has_key(tag),
+            )
+            for tag in tags
+        )
+    )
 
 
 def _file_scoped_expr(datasets: list[str] | None, filetypes: list[str] | None):
@@ -64,6 +80,20 @@ def _file_scoped_expr(datasets: list[str] | None, filetypes: list[str] | None):
     if filetypes:
         conditions.append(FileTable.filetype.in_(filetypes))
     return exists(select(literal(1)).select_from(FileTable).where(*conditions))
+
+
+def _search_filters(request: BaseImageSearchParameters) -> list:
+    """Filters shared by the browse and similarity searches."""
+    filters = []
+    if request.datasets or request.filetypes:
+        filters.append(_file_scoped_expr(request.datasets, request.filetypes))
+    if request.date_from:
+        filters.append(ImageTable.date_taken >= request.date_from)
+    if request.date_to:
+        filters.append(ImageTable.date_taken <= request.date_to)
+    if request.tags:
+        filters.append(_tags_expr(request.tags, request.tag_state, request.min_tag_score))
+    return filters
 
 
 class PostgresImageRepository:
@@ -162,10 +192,40 @@ class PostgresImageRepository:
 
         for field, value in data.model_dump(exclude_unset=True).items():
             setattr(image_table, field, value)
+        if data.tags:
+            image_table.negative_tags = [tag for tag in image_table.negative_tags if tag not in data.tags]
 
         await self.session.commit()
         await self.session.refresh(image_table)
         return await self.get_image_by_id(image_id)
+
+    async def tag_images(self, *, image_ids: list[str], tag: str, tag_type: ModelTagType | None) -> ImageTagResult:
+        """Label images with `tag`: positive -> `tags`, negative -> `negative_tags`, None clears both.
+
+        The tag always leaves the list it isn't going into, so it sits in at most one.
+        """
+        put, drop = "({col} - :tag) || to_jsonb(cast(:tag as text))", "{col} - :tag"
+        tags = (put if tag_type == ModelTagType.POSITIVE else drop).format(col="tags")
+        negative_tags = (put if tag_type == ModelTagType.NEGATIVE else drop).format(col="negative_tags")
+        result = await self.session.execute(
+            text(f"UPDATE image SET tags = {tags}, negative_tags = {negative_tags} WHERE id = ANY(:image_ids)"),
+            {"tag": tag, "image_ids": image_ids},
+        )
+        await self.session.commit()
+        return ImageTagResult(updated=result.rowcount)
+
+    async def set_tag_scores(self, *, tag: str, scores: dict[str, float]) -> None:
+        """Record a model's confidence that `tag` applies, keyed by image id."""
+        if not scores:
+            return
+        await self.session.execute(
+            text(
+                "UPDATE image SET tag_scores = tag_scores || jsonb_build_object(cast(:tag as text), cast(:score as float)) "
+                "WHERE id = :id"
+            ),
+            [{"tag": tag, "id": image_id, "score": score} for image_id, score in scores.items()],
+        )
+        await self.session.commit()
 
     async def get_image_uri(self, image_id: str) -> UriResponse | None:
         """Retrieve a URI to download this image's content from (any file with it will do)."""
@@ -262,27 +322,21 @@ class PostgresImageRepository:
         than a join that would fan a row out per file. The files an image belongs
         to are fetched separately via `get_files_for_image`.
         """
-        filters = []
-        if request.datasets or request.filetypes:
-            filters.append(_file_scoped_expr(request.datasets, request.filetypes))
-        if request.date_from:
-            filters.append(ImageTable.date_taken >= request.date_from)
-        if request.date_to:
-            filters.append(ImageTable.date_taken <= request.date_to)
-        if request.tags:
-            filters.append(_tags_overlap_expr(request.tags))
+        filters = _search_filters(request)
 
         count_query = select(func.count()).select_from(ImageTable).where(*filters)
         total_count = (await self.session.execute(count_query)).scalar_one()
 
-        sort_column = ImageTable.date_taken
+        # `tag_score` ranks by the first filtered tag's score, so predictions are reviewed in confidence order.
+        is_score_sort = request.sort_by == ImageSortField.TAG_SCORE and request.tags
+        sort_column = _tag_score(request.tags[0]) if is_score_sort else ImageTable.date_taken
         direction = sort_column.desc() if request.sort_order == SortOrder.DESC else sort_column.asc()
         # ImageTable.id is unique -- append it so offset pagination is
-        # deterministic even when date_taken is null or shared.
+        # deterministic even when the sort key is null or shared.
         paginated_query = (
             select(ImageTable)
             .where(*filters)
-            .order_by(direction, ImageTable.id)
+            .order_by(direction.nulls_last(), ImageTable.id)
             .offset((request.page - 1) * request.limit)
             .limit(request.limit)
         )
@@ -316,15 +370,7 @@ class PostgresImageRepository:
         """
         distance_expr = ImageTable.embedding.max_inner_product(request.embedding)
 
-        filters = []
-        if request.datasets or request.filetypes:
-            filters.append(_file_scoped_expr(request.datasets, request.filetypes))
-        if request.date_from:
-            filters.append(ImageTable.date_taken >= request.date_from)
-        if request.date_to:
-            filters.append(ImageTable.date_taken <= request.date_to)
-        if request.tags:
-            filters.append(_tags_overlap_expr(request.tags))
+        filters = _search_filters(request)
         if request.min_similarity is not None:
             filters.append(distance_expr <= -request.min_similarity)
 

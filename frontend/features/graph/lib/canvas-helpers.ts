@@ -13,6 +13,24 @@ export function resolveColor(varName: string, fallback: string): string {
   return value || fallback;
 }
 
+/**
+ * `fg` composited over `bg` at `alpha`, as an opaque rgb() string. Sigma's WebGL
+ * programs don't premultiply alpha, so a translucent token (e.g. `--border`)
+ * paints near-white on a dark canvas; flatten it first.
+ */
+export function blendColor(fg: string, bg: string, alpha: number): string {
+  if (typeof document === "undefined") return fg;
+  const ctx = document.createElement("canvas").getContext("2d");
+  if (!ctx) return fg;
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, 1, 1);
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = fg;
+  ctx.fillRect(0, 0, 1, 1);
+  const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
 export interface ChipColors {
   text: string;
   chip: string;
@@ -31,7 +49,7 @@ function drawChipLabel(
   if (ring) {
     context.beginPath();
     context.arc(data.x, data.y, data.size + 2, 0, Math.PI * 2);
-    context.strokeStyle = data.color;
+    context.strokeStyle = (data as { ringColor?: string }).ringColor ?? data.color;
     context.lineWidth = 2;
     context.stroke();
   }

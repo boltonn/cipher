@@ -3,6 +3,7 @@ import {
   LOW_SIGNAL_RELATIONSHIPS,
   type EntityRelationship,
   type GraphNode,
+  type RelationshipType,
 } from "@/features/entities/types";
 import { annotateAnalytics } from "@/features/graph/lib/graph-analytics";
 import {
@@ -30,6 +31,22 @@ export interface NetworkInput {
   pinned: ReadonlyMap<string, { x: number; y: number }>;
 }
 
+/** One stored relationship riding on a drawn edge (an edge carries every type between its two nodes). */
+export interface EdgeRelationship {
+  relationshipType: RelationshipType;
+  directed: boolean;
+  weight: number;
+  source: string;
+  attributes: Record<string, unknown>;
+  dateStart: number | null;
+  dateEnd: number | null;
+}
+
+const relationshipLabel = (r: EdgeRelationship) =>
+  r.weight > 1
+    ? `${r.relationshipType.replace(/_/g, " ")} · ${r.weight.toLocaleString()}`
+    : r.relationshipType.replace(/_/g, " ");
+
 export interface BuiltNetwork {
   graph: Graph;
   nodeCount: number;
@@ -38,7 +55,10 @@ export interface BuiltNetwork {
 }
 
 /**
- * Merge of every depth-1 response into one laid-out graphology graph. Node size
+ * Merge of every depth-1 response into one laid-out graphology graph. Two nodes
+ * share at most one drawn edge per direction; when several relationship types
+ * run the same way (emailed + family of) they ride on it as `relationships`,
+ * heaviest first, rather than the later ones being dropped. Node size
  * is `sqrt(degree)` (seeds fixed larger); edge width is `sqrt(weight)`. Layout,
  * Louvain communities and PageRank are baked in here; visibility (type filters,
  * hidden nodes, selection focus, colour/size mode, path highlight) is NOT -- the
@@ -84,26 +104,45 @@ export function buildNetwork({
   // baseline; only genuinely weighted edges scale up, so a heavy edge reads as
   // heavy rather than everything looking the same.
   const BASE = 1.4;
-  const MAX_EXTRA = 7;
+  const MAX_EXTRA = 4;
   const maxWeight = Math.max(1, ...edges.map((e) => e.weight ?? 1));
   const weightSpan = Math.sqrt(Math.max(1, maxWeight - 1));
+  const bySrcDst = new Map<string, { src: string; dst: string; rels: EdgeRelationship[] }>();
   edges.forEach((edge) => {
     if (LOW_SIGNAL_RELATIONSHIPS.includes(edge.relationshipType)) return;
     if (!graph.hasNode(edge.srcEntityId) || !graph.hasNode(edge.dstEntityId)) return;
-    if (graph.hasEdge(edge.srcEntityId, edge.dstEntityId)) return;
-    const w = edge.weight ?? 1;
-    const label =
-      w > 1
-        ? `${edge.relationshipType.replace(/_/g, " ")} · ${w.toLocaleString()}`
-        : edge.relationshipType.replace(/_/g, " ");
-    graph.addEdge(edge.srcEntityId, edge.dstEntityId, {
-      label,
+    const key = `${edge.srcEntityId} ${edge.dstEntityId}`;
+    const group = bySrcDst.get(key) ?? {
+      src: edge.srcEntityId,
+      dst: edge.dstEntityId,
+      rels: [],
+    };
+    group.rels.push({
       relationshipType: edge.relationshipType,
       directed: edge.directed,
-      relSource: edge.source,
+      weight: edge.weight ?? 1,
+      source: edge.source,
       attributes: edge.attributes,
-      srcName: graph.getNodeAttribute(edge.srcEntityId, "label"),
-      dstName: graph.getNodeAttribute(edge.dstEntityId, "label"),
+      dateStart: edge.dateObservedStart ? Date.parse(edge.dateObservedStart) : null,
+      dateEnd: edge.dateObservedEnd ? Date.parse(edge.dateObservedEnd) : null,
+    });
+    bySrcDst.set(key, group);
+  });
+  bySrcDst.forEach(({ src, dst, rels }) => {
+    const relationships = rels.toSorted((a, b) => b.weight - a.weight);
+    const w = relationships[0].weight;
+    // one undated relationship keeps the whole edge outside the time filter
+    const dated = relationships.every((r) => r.dateStart != null);
+    graph.addEdge(src, dst, {
+      label: relationships.map(relationshipLabel).join(" + "),
+      relationships,
+      relationshipType: relationships[0].relationshipType,
+      dateStart: dated ? Math.min(...relationships.map((r) => r.dateStart as number)) : null,
+      dateEnd: dated
+        ? Math.max(...relationships.map((r) => r.dateEnd ?? (r.dateStart as number)))
+        : null,
+      srcName: graph.getNodeAttribute(src, "label"),
+      dstName: graph.getNodeAttribute(dst, "label"),
       weight: w,
       type: "straight",
       size: w <= 1 ? BASE : BASE + (Math.sqrt(w - 1) / weightSpan) * MAX_EXTRA,
@@ -130,13 +169,14 @@ export function buildNetwork({
   });
 
   // The graph is simple + directed, so the only "parallel" case is a reciprocal
-  // A->B / B->A pair. Bow each side the opposite way (sign keyed on id order) so
-  // their arrowheads stop overlapping; everything else stays a straight line.
+  // A->B / B->A pair. Give both the same curvature: each bows relative to its
+  // own direction, so the pair opens into a lens instead of overlapping (opposite
+  // signs cancel out and draw both on one arc). Everything else stays straight.
   graph.forEachEdge((edge, _attrs, src, dst) => {
     if (graph.hasDirectedEdge(dst, src)) {
       graph.mergeEdgeAttributes(edge, {
         type: "curved",
-        curvature: src < dst ? RECIPROCAL_CURVATURE : -RECIPROCAL_CURVATURE,
+        curvature: RECIPROCAL_CURVATURE,
       });
     } else {
       graph.setEdgeAttribute(edge, "type", "straight");

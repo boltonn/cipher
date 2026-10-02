@@ -17,6 +17,8 @@ from cipher.schemas.content.image import (
     ImagePublic,
     ImageSimilaritySearchParameters,
     ImageSimilaritySearchRequest,
+    ImageTagRequest,
+    ImageTagResult,
     ImageUpdate,
     PaginatedImageSimilarityResponse,
     PaginatedImagesResponse,
@@ -161,6 +163,20 @@ async def similarity_search_images_by_upload(
         {**params.model_dump(exclude_none=True), "embedding": embedding}
     )
     return await datastore.search_similar_images(request=search_request)
+
+
+@router.post(
+    "/tag",
+    summary="Label a set of images with a positive or negative tag, or clear it",
+    response_model=ImageTagResult,
+    response_model_by_alias=True,
+)
+async def tag_images(body: ImageTagRequest, datastore: ImageDatastoreDep):
+    """Bulk label: `positive` goes in `tags`, `negative` in `negativeTags`; no `type` clears the label.
+
+    This is also how a predicted tag (`tagScores`) is accepted or rejected.
+    """
+    return await datastore.tag_images(image_ids=body.image_ids, tag=body.tag, tag_type=body.type)
 
 
 @router.patch(

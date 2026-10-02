@@ -146,6 +146,7 @@ class GraphResponse(BaseModel):
 
     nodes: list[GraphNode] = Field(default_factory=list)
     edges: list[EntityRelationship] = Field(default_factory=list)
+    truncated: bool = Field(default=False, description="The edge `limit` was hit; only the heaviest edges are here")
 
 
 class TopConnectionsRequest(BaseModel):

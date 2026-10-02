@@ -9,7 +9,7 @@ from cipher.utils.fastapi.middleware import (
     validation_exception_handler,
 )
 from pygliner.api.deps import PyglinerModelDep, model_lifespan, settings
-from pygliner.schemas import EntitySpan, ExtractRequest, ExtractResponse, NerRequest
+from pygliner.schemas import ClassifyRequest, EntitySpan, ExtractRequest, ExtractResponse, NerRequest
 
 service_info = get_package_info("pygliner")
 
@@ -67,6 +67,12 @@ async def extract(request: ExtractRequest, model: PyglinerModelDep) -> ExtractRe
         model.extract, request.text, request.labels, request.relation_labels, request.threshold
     )
     return ExtractResponse(entities=entities, relations=relations)
+
+
+@app.post("/classify")
+async def classify(request: ClassifyRequest, model: PyglinerModelDep) -> list[dict[str, float]]:
+    """Score each text against every described label; one `{label: score}` per text."""
+    return await run_in_threadpool(model.classify, request.texts, request.labels)
 
 
 def main():

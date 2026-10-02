@@ -42,11 +42,17 @@ from cipher.orchestration.extract_documents import (
 from cipher.orchestration.extract_emails import extract_emails_workflow
 from cipher.orchestration.extract_entities import extract_entities_workflow, get_entity_extraction_stats
 from cipher.orchestration.extract_events import (
+    DEFAULT_GATE_SAMPLE_RATE,
+    DEFAULT_GATE_THRESHOLD,
+    EVENT_GATE_LABELS,
     TEXT_EVENT_GROUPS_ALL,
     TEXT_EVENT_GROUPS_EMAIL,
+    event_gate_score,
     extract_events_workflow,
     extract_text_events_workflow,
+    gate_text_events_workflow,
     get_event_extraction_stats,
+    get_event_gate_report,
 )
 from cipher.orchestration.extract_exif_locations import extract_exif_locations_workflow, get_exif_location_stats
 from cipher.orchestration.extract_llm import (
@@ -299,8 +305,12 @@ def extract_text_cmd(
         typer.Option(help="Cap xberg's internal batch parallelism -- default is xberg's own num_cpus*2"),
     ] = None,
     ocr_backend: Annotated[
-        OcrBackend, typer.Option(help="OCR for image-based PDF pages during extraction (none = record them only)")
-    ] = OcrBackend.EASYOCR,
+        OcrBackend,
+        typer.Option(
+            help="Inline OCR for image-based PDF pages. Default none: they are recorded and `cipher ocr` reads them. "
+            "easyocr is the fallback for a machine that can't run the pyocr engine"
+        ),
+    ] = OcrBackend.NONE,
     ocr_language: Annotated[
         list[str] | None, typer.Option(help="OCR language code, repeatable (EasyOCR: en, fr...; Tesseract: eng...)")
     ] = None,
@@ -362,7 +372,10 @@ def ocr_cmd(
     ] = None,
     service_url: Annotated[
         list[str] | None,
-        typer.Option(help="pyocr service URL, repeatable -- one per GPU (`make start-vllm-all`). Default :8010"),
+        typer.Option(
+            help="pyocr service URL, repeatable -- one per GPU (`make start-vllm-all`). "
+            "Default: the engine on :8010, started for this run if it isn't already up"
+        ),
     ] = None,
     concurrency: Annotated[
         int, typer.Option(help="Files in flight across all services; each decodes its files' pages together")
@@ -371,21 +384,30 @@ def ocr_cmd(
     force: Annotated[bool, typer.Option(help="OCR every PDF page, not just image-based ones")] = False,
     figures: Annotated[bool, typer.Option(help="Also locate + caption figures (grounding prompt)")] = False,
     clip_model_dir: Annotated[
-        Path | None, typer.Option(help="CLIP model dir: only OCR images matching --clip-tag (needs embed-images)")
+        Path | None,
+        typer.Option(
+            envvar="IMAGE_EMBEDDING_MODEL_DIR",
+            help="CLIP model dir for the image text gate: only images matching --clip-tag are OCR'd (needs embed-images)",
+        ),
     ] = None,
+    all_images: Annotated[bool, typer.Option(help="Skip the text gate and OCR every image")] = False,
     clip_tag: Annotated[list[str] | None, typer.Option(help="Text-bearing CLIP tag, repeatable")] = None,
     clip_negative_tag: Annotated[list[str] | None, typer.Option(help="Competing non-text CLIP tag, repeatable")] = None,
     clip_threshold: Annotated[float, typer.Option(help="Min probability mass on --clip-tag to OCR an image")] = 0.5,
 ):
     """OCR image-based PDF pages and images into extracted text (run after extract-text).
 
-    Needs the pyocr service running (`make start-vllm` in analytics/pyocr). With
-    --clip-model-dir, images are filtered by zero-shot CLIP tags scored against the
-    embeddings `embed-images` already stored, so only likely text-bearing images
+    The pyocr engine runs locally: one already listening is reused, otherwise it is
+    started for this run and stopped afterwards. Images pass a text gate first --
+    zero-shot CLIP tags scored against the embeddings `embed-images` already stored,
+    kept as each file's `has_text` tag score -- so only likely text-bearing images
     (screenshots, scans, receipts, signs...) are sent to the model.
     """
     ensure_stage_env("ocr")
+    from contextlib import AsyncExitStack
+
     from pyocr.client import OcrClient
+    from pyocr.launcher import local_service
 
     from cipher.orchestration.ocr import (
         DEFAULT_CLIP_NEGATIVE_TAGS,
@@ -396,7 +418,11 @@ def ocr_cmd(
     )
 
     clip_filter = None
-    if clip_model_dir:
+    if all_images:
+        logger.info("Text gate off: every image will be OCR'd")
+    elif clip_model_dir is None:
+        logger.warning("No CLIP model dir (IMAGE_EMBEDDING_MODEL_DIR) -- no text gate, every image will be OCR'd")
+    else:
         from setfitcv.model import CLIP
 
         clip_filter = ClipTagFilter.from_model(
@@ -407,8 +433,10 @@ def ocr_cmd(
         )
 
     async def _run():
-        client = OcrClient(base_urls=service_url)
-        try:
+        async with AsyncExitStack() as stack:
+            urls = service_url or [await stack.enter_async_context(local_service())]
+            client = OcrClient(base_urls=urls)
+            stack.push_async_callback(client.aclose)
             async with get_session_context() as session:
                 resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
                 async with record_run(
@@ -430,8 +458,6 @@ def ocr_cmd(
                         figures=figures,
                     )
                 logger.success(f"OCR stats: {await get_ocr_stats(session=session, dataset_id=resolved_id)}")
-        finally:
-            await client.aclose()
 
     asyncio.run(_run())
 
@@ -793,6 +819,20 @@ def extract_events_cmd(
     llm_only: Annotated[bool, typer.Option(help="Run only the LLM text-body path, skip the .ics parse")] = False,
     docs: Annotated[bool, typer.Option(help="LLM pass also scans document files (PDF/DOCX), not just email")] = False,
     model: Annotated[str | None, typer.Option(help="Override the configured LLM model id")] = None,
+    concurrency: Annotated[int, typer.Option(help="LLM calls in flight at once")] = DEFAULT_CONCURRENCY,
+    gate: Annotated[
+        bool, typer.Option(help="Score every text with GLiNER first and send only likely events to the LLM")
+    ] = True,
+    gate_threshold: Annotated[
+        float, typer.Option(help="Gate score a file needs to reach the LLM")
+    ] = DEFAULT_GATE_THRESHOLD,
+    gate_sample_rate: Annotated[
+        float, typer.Option(help="Share of gate-rejected files the LLM still reads, to measure what the gate misses")
+    ] = DEFAULT_GATE_SAMPLE_RATE,
+    gliner_model_dir: Annotated[
+        str | None, typer.Option(envvar="GLINER_MODEL_DIR", help="Local GLiNER2.5 checkpoint dir (gate)")
+    ] = None,
+    device: Annotated[ModelDevice, typer.Option(help="Gate inference device")] = ModelDevice.CPU,
 ):
     """Parse a dataset's `.ics` files into `event` rows (deterministic), optionally plus an LLM pass.
 
@@ -804,8 +844,17 @@ def extract_events_cmd(
     then `(title, start date)` / `(type, start date, place)`. Both leave
     unresolved participant / place links for `resolve-event-links`. Requires the
     `event-extraction` stage (for `pyparse`); `--llm` also needs an `LLM__*` config.
+
+    The LLM pass is gated by default: GLiNER scores each text for "a person is
+    taking part in something" and only files at or above `--gate-threshold` are
+    read, plus a `--gate-sample-rate` slice of the rest so the gate's misses can
+    be measured (printed as a report at the end). Files the LLM reads are tagged
+    `event` in `file.tags` / `file.negative_tags`. `--no-gate` reads everything.
     """
-    ensure_stage_env("event-extraction")
+    use_gate = gate and (llm or llm_only)
+    if use_gate and not gliner_model_dir:
+        raise typer.BadParameter("the gate needs --gliner-model-dir (or GLINER_MODEL_DIR); pass --no-gate to skip it")
+    ensure_stage_env(*(("event-extraction", "gliner") if use_gate else ("event-extraction",)))
 
     async def _run():
         async with get_session_context() as session:
@@ -815,7 +864,7 @@ def extract_events_cmd(
                 dataset_id=resolved_id,
                 device="na",
                 unit=WorkUnit.LLM_FILE,
-                params={"llm": llm or llm_only, "docs": docs},
+                params={"llm": llm or llm_only, "docs": docs, "gate": use_gate, "gate_threshold": gate_threshold},
             ) as run:
                 if not llm_only:
                     ics_count = await extract_events_workflow(session=session, dataset_id=resolved_id)
@@ -823,11 +872,33 @@ def extract_events_cmd(
                     run.units += ics_count
                 if llm or llm_only:
                     groups = TEXT_EVENT_GROUPS_ALL if docs else TEXT_EVENT_GROUPS_EMAIL
+                    if use_gate:
+                        from pygliner.model import GlinerModel
+
+                        gliner = GlinerModel(gliner_model_dir, device=device)
+                        await gate_text_events_workflow(
+                            session=session,
+                            dataset_id=resolved_id,
+                            score_texts=lambda texts: [
+                                event_gate_score(scores) for scores in gliner.classify(texts, EVENT_GATE_LABELS)
+                            ],
+                            threshold=gate_threshold,
+                            sample_rate=gate_sample_rate,
+                            filetype_groups=groups,
+                        )
+                        gliner.unload()
                     text_count = await extract_text_events_workflow(
-                        session=session, dataset_id=resolved_id, model=model, filetype_groups=groups
+                        session=session,
+                        dataset_id=resolved_id,
+                        model=model,
+                        filetype_groups=groups,
+                        concurrency=concurrency,
                     )
                     logger.success(f"Extracted events for {text_count} text files (llm)")
                     run.units += text_count
+                    if use_gate:
+                        report = await get_event_gate_report(session, resolved_id, threshold=gate_threshold)
+                        typer.echo(json.dumps(report, indent=2))
 
     asyncio.run(_run())
 

@@ -15,7 +15,7 @@ import { useEntityList } from "@/features/entities/hooks/use-entities";
 import type { EntityType } from "@/features/entities/types";
 import { useDebounce } from "@/hooks/use-debounce";
 import { cn } from "@/lib/utils";
-import { Check, ChevronsUpDown, TextQuote } from "lucide-react";
+import { BadgeCheck, Check, ChevronsUpDown, Sparkles, TextQuote } from "lucide-react";
 import { useState } from "react";
 
 interface EntityPickerProps {
@@ -30,6 +30,9 @@ interface EntityPickerProps {
   className?: string;
   /** Offer the typed text itself as a pick (e.g. "any mention of …" -- values with no entity). */
   onSelectText?: (text: string) => void;
+  /** Mirror the typed text to the caller (e.g. the graph highlights matching nodes). */
+  onQueryChange?: (query: string) => void;
+  disabled?: boolean;
 }
 
 /** Type-ahead picker over the entity graph, backed by `GET /entities`. */
@@ -42,9 +45,15 @@ export function EntityPicker({
   placeholder = "Search entities…",
   className,
   onSelectText,
+  onQueryChange,
+  disabled = false,
 }: EntityPickerProps) {
   const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
+  const [query, setQueryState] = useState("");
+  const setQuery = (next: string) => {
+    setQueryState(next);
+    onQueryChange?.(next);
+  };
   const debouncedQuery = useDebounce(query, 250);
 
   const singleType = entityTypes.length === 1 ? entityTypes[0] : undefined;
@@ -52,9 +61,9 @@ export function EntityPicker({
     query: debouncedQuery || undefined,
     entityType: singleType,
     datasetId,
-    // typing: best name match first; empty: the most-mentioned entities are the likeliest picks
-    sortBy: debouncedQuery ? "relevance" : "mention_count",
-    sortOrder: debouncedQuery ? undefined : "desc",
+    // most-mentioned first, typing or not -- one-off spellings of a name sink to the bottom
+    sortBy: "mention_count",
+    sortOrder: "desc",
     limit: 20,
     page: 1,
   }, open); // closed pickers (three sit in the search filter bar) shouldn't load on page render
@@ -72,6 +81,7 @@ export function EntityPicker({
           variant="outline"
           role="combobox"
           aria-expanded={open}
+          disabled={disabled}
           className={cn(
             "h-10 w-full justify-between border-border bg-muted/40 text-xs hover:bg-muted/60",
             className
@@ -142,6 +152,12 @@ export function EntityPicker({
                     />
                     <meta.Icon size={12} aria-label={meta.label} className={cn("shrink-0", meta.textClass)} />
                     <span className="flex-1 truncate">{e.displayName}</span>
+                    {e.isVerified && (
+                      <BadgeCheck size={12} aria-label="Verified" className="shrink-0 text-primary" />
+                    )}
+                    {e.isProvisional && (
+                      <Sparkles size={11} aria-label="Auto-created" className="shrink-0 text-annotation" />
+                    )}
                     <span className="text-[11px] tabular-nums text-muted-foreground" title="Mentions">
                       {e.mentionCount.toLocaleString()}
                     </span>

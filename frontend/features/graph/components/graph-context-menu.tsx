@@ -3,7 +3,9 @@
 import {
   EyeOff,
   Focus,
+  Maximize2,
   Minimize2,
+  PinOff,
   Route,
   ScanSearch,
   Sparkles,
@@ -26,6 +28,7 @@ interface GraphContextMenuProps {
   onExpand: (id: string) => void;
   onCollapse: (id: string) => void;
   onAddSeed: (id: string) => void;
+  onRemoveSeed: (id: string) => void;
   onIsolate: (id: string) => void;
   onHide: (id: string) => void;
   onPathAnchor: (id: string) => void;
@@ -43,6 +46,7 @@ export function GraphContextMenu({
   onExpand,
   onCollapse,
   onAddSeed,
+  onRemoveSeed,
   onIsolate,
   onHide,
   onPathAnchor,
@@ -80,11 +84,15 @@ export function GraphContextMenu({
             Collapse neighbours
           </Item>
         ) : (
-          <Item icon={Focus} onClick={run(() => onExpand(id))}>
+          <Item icon={Maximize2} onClick={run(() => onExpand(id))}>
             Expand neighbours
           </Item>
         )}
-        {!isSeed && (
+        {isSeed ? (
+          <Item icon={PinOff} onClick={run(() => onRemoveSeed(id))}>
+            Remove seed
+          </Item>
+        ) : (
           <Item icon={Sparkles} onClick={run(() => onAddSeed(id))}>
             Pin as seed
           </Item>

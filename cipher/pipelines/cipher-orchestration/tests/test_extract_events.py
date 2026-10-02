@@ -5,8 +5,10 @@ from datetime import datetime
 from cipher.orchestration.extract_events import (
     _cal_participant,
     _dedup_keys,
+    _in_gate_sample,
     _parse_iso,
     _to_event_create,
+    event_gate_score,
 )
 from cipher.schemas.graph.event import EventSensitivity, EventType
 from cipher.schemas.graph.event_participant import EventParticipantRole, RsvpStatus
@@ -77,3 +79,19 @@ def test_to_event_create_carries_ical_fields():
     assert create.recurrence_rule == "FREQ=WEEKLY"
     assert create.categories == ["Work"]
     assert create.sensitivity == EventSensitivity.PRIVATE
+
+
+def test_gate_sample_is_stable_and_near_its_rate():
+    file_ids = [f"file-{i}" for i in range(4000)]
+    sampled = [f for f in file_ids if _in_gate_sample(f, 0.05)]
+    assert sampled == [f for f in file_ids if _in_gate_sample(f, 0.05)]
+    assert 120 < len(sampled) < 280
+    assert not any(_in_gate_sample(f, 0.0) for f in file_ids)
+    assert all(_in_gate_sample(f, 1.0) for f in file_ids)
+
+
+def test_gate_score_reads_the_participation_label():
+    assert event_gate_score({"personal_event": 0.8, "marketing": 0.1}) > event_gate_score(
+        {"personal_event": 0.2, "marketing": 0.1}
+    )
+    assert event_gate_score({}) == 0.0

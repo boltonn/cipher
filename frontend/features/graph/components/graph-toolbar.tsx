@@ -1,11 +1,6 @@
 "use client";
 
-import {
-  Autocomplete,
-  AutocompleteContent,
-  AutocompleteInput,
-  AutocompleteItem,
-} from "@/components/ui/autocomplete";
+import { DatePicker } from "@/components/date-picker";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -19,11 +14,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import {
-  ENTITY_TYPE_META,
-  GRAPH_NODE_TYPE_META,
-} from "@/features/entities/components/entity-type-meta";
-import { useEntitySearch } from "@/features/entities/hooks/use-entities";
+import { GRAPH_NODE_TYPE_META } from "@/features/entities/components/entity-type-meta";
+import { EntityPicker } from "@/features/entities/components/entity-picker";
 import {
   GRAPH_NODE_TYPES,
   RELATIONSHIP_TYPES,
@@ -32,10 +24,11 @@ import {
   type TraversalDirection,
 } from "@/features/entities/types";
 import type { LabelsMode } from "@/features/graph/components/network-canvas";
-import type {
-  ColorMode,
-  GraphFilters,
-  SizeMode,
+import {
+  EMPTY_GRAPH_FILTERS,
+  type ColorMode,
+  type GraphFilters,
+  type SizeMode,
 } from "@/features/graph/hooks/use-graph-explore";
 import {
   LAYOUT_KINDS,
@@ -45,6 +38,7 @@ import {
 import { useDebounce } from "@/hooks/use-debounce";
 import { cn } from "@/lib/utils";
 import {
+  CalendarRange,
   Download,
   Eye,
   Info,
@@ -54,7 +48,9 @@ import {
   RotateCw,
   Route,
   SlidersHorizontal,
+  Sparkles,
   Tag,
+  X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -72,9 +68,6 @@ const LABEL_MODES: { value: LabelsMode; label: string }[] = [
 
 /** One shell height for every control on the bar. */
 const CTRL = "h-9";
-
-/** Backend entity name search needs at least this many characters to match. */
-const ENTITY_SEARCH_MIN_CHARS = 2;
 
 interface GraphToolbarProps {
   datasetId: string | undefined;
@@ -98,7 +91,12 @@ interface GraphToolbarProps {
   onTogglePathMode: () => void;
   pathAnchorCount: number;
   onExportPng: () => void;
+  timeBarOpen: boolean;
+  onToggleTimeBar: () => void;
   onAddSeed: (id: string) => void;
+  seeds: { id: string; label: string }[];
+  onRemoveSeed: (id: string) => void;
+  onSelectSeed: (id: string) => void;
   onHighlightChange: (q: string) => void;
   onReset: () => void;
   hiddenCount: number;
@@ -106,6 +104,8 @@ interface GraphToolbarProps {
   visibleNodeCount: number;
   nodeCount: number;
   edgeCount: number;
+  visibleEdgeCount: number;
+  truncatedCount: number;
   isLoading: boolean;
 }
 
@@ -131,7 +131,12 @@ export function GraphToolbar({
   onTogglePathMode,
   pathAnchorCount,
   onExportPng,
+  timeBarOpen,
+  onToggleTimeBar,
   onAddSeed,
+  seeds,
+  onRemoveSeed,
+  onSelectSeed,
   onHighlightChange,
   onReset,
   hiddenCount,
@@ -139,31 +144,15 @@ export function GraphToolbar({
   visibleNodeCount,
   nodeCount,
   edgeCount,
+  visibleEdgeCount,
+  truncatedCount,
   isLoading,
 }: GraphToolbarProps) {
   const [q, setQ] = useState("");
-  const [minWeightDraft, setMinWeightDraft] = useState(filters.minWeight);
+  // Only set while the slider is held, so an outside reset shows through.
+  const [minWeightDrag, setMinWeightDrag] = useState<number | null>(null);
+  const minWeightDraft = minWeightDrag ?? filters.minWeight;
   const debouncedQ = useDebounce(q, 350);
-  const trimmed = q.trim();
-  const searchable = debouncedQ.trim().length >= ENTITY_SEARCH_MIN_CHARS;
-  const { data: results, isFetching } = useEntitySearch(
-    { datasetId, q: debouncedQ.trim() },
-    searchable
-  );
-
-  // True while the query the user sees hasn't been searched yet: either the
-  // debounce hasn't caught up, or the request is still in flight. Used to hold
-  // back the "No matches" message until a real result comes back.
-  const pendingSearch =
-    trimmed.length >= ENTITY_SEARCH_MIN_CHARS &&
-    (isFetching || debouncedQ.trim() !== trimmed);
-
-  const emptyMessage =
-    trimmed.length === 0
-      ? "Type to find an entity"
-      : trimmed.length < ENTITY_SEARCH_MIN_CHARS
-        ? `Type at least ${ENTITY_SEARCH_MIN_CHARS} characters`
-        : "No matches";
 
   // Canvas node-highlight follows the debounced query, not every keystroke.
   useEffect(() => {
@@ -174,7 +163,8 @@ export function GraphToolbar({
     filters.entityTypes.length +
     filters.relationshipTypes.length +
     (filters.minWeight > 0 ? 1 : 0) +
-    (filters.direction !== "both" ? 1 : 0);
+    (filters.direction !== "both" ? 1 : 0) +
+    (filters.dateFrom || filters.dateTo ? 1 : 0);
 
   const toggle = <T,>(list: T[], value: T): T[] =>
     list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
@@ -182,40 +172,14 @@ export function GraphToolbar({
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-border bg-muted/30 p-2">
       <div className="flex flex-wrap items-center gap-2">
-        <Autocomplete className="w-72">
-          <AutocompleteInput
-            className={cn(CTRL, "rounded-md")}
-            value={q}
-            onValueChange={setQ}
-            placeholder={datasetId ? "Add / find an entity…" : "Pick a dataset above first"}
-            disabled={!datasetId}
-          />
-          <AutocompleteContent
-            isLoading={pendingSearch}
-            emptyMessage={emptyMessage}
-          >
-            {(searchable ? (results ?? []) : []).map((r) => {
-              const meta = ENTITY_TYPE_META[r.entityType];
-              return (
-                <AutocompleteItem
-                  key={r.id}
-                  value={r.id}
-                  onSelect={() => {
-                    onAddSeed(r.id);
-                    setQ("");
-                    onHighlightChange("");
-                  }}
-                >
-                  <meta.Icon size={12} className={meta.textClass} />
-                  <span className="flex-1 truncate">{r.displayName}</span>
-                  <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                    {meta.label}
-                  </span>
-                </AutocompleteItem>
-              );
-            })}
-          </AutocompleteContent>
-        </Autocomplete>
+        <EntityPicker
+          className={cn(CTRL, "w-72 rounded-md")}
+          datasetId={datasetId}
+          disabled={!datasetId}
+          placeholder={datasetId ? "Add / find an entity…" : "Pick a dataset above first"}
+          onSelect={(entityId) => onAddSeed(entityId)}
+          onQueryChange={setQ}
+        />
 
         <Segmented
           icon={Tag}
@@ -337,14 +301,41 @@ export function GraphToolbar({
             >
               <Slider
                 value={[minWeightDraft]}
-                onValueChange={([v]) => setMinWeightDraft(v)}
-                onValueCommit={([v]) =>
-                  onFiltersChange({ ...filters, minWeight: v })
-                }
+                onValueChange={([v]) => setMinWeightDrag(v)}
+                onValueCommit={([v]) => {
+                  setMinWeightDrag(null);
+                  onFiltersChange({ ...filters, minWeight: v });
+                }}
                 min={0}
                 max={50}
                 step={1}
               />
+            </FilterBlock>
+
+            <FilterBlock
+              label="Active between"
+              hint="Keep dated relationships (emails, events) that were active inside this window. Undated ones always stay. The timeline button gives the same filter as a draggable chart."
+            >
+              <div className="grid grid-cols-2 gap-2">
+                <DatePicker
+                  className="h-8"
+                  placeholder="From"
+                  value={filters.dateFrom}
+                  onChange={(dateFrom) => onFiltersChange({ ...filters, dateFrom })}
+                />
+                <DatePicker
+                  className="h-8"
+                  placeholder="To"
+                  value={filters.dateTo}
+                  onChange={(iso) =>
+                    onFiltersChange({
+                      ...filters,
+                      // the picked day is inclusive
+                      dateTo: iso && new Date(Date.parse(iso) + 86_399_999).toISOString(),
+                    })
+                  }
+                />
+              </div>
             </FilterBlock>
 
             <FilterBlock
@@ -359,6 +350,18 @@ export function GraphToolbar({
                 step={0.1}
               />
             </FilterBlock>
+
+            {activeFilterCount > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onFiltersChange(EMPTY_GRAPH_FILTERS)}
+                className="h-7 w-full gap-1.5 text-xs text-muted-foreground"
+              >
+                <X size={12} />
+                Clear filters
+              </Button>
+            )}
           </PopoverContent>
         </Popover>
 
@@ -387,7 +390,7 @@ export function GraphToolbar({
           )}
         >
           <RotateCcw size={13} />
-          Reset
+          Clear graph
         </Button>
 
         <span className="ml-auto flex items-center gap-1.5 pr-1 font-mono text-[11px] text-muted-foreground">
@@ -397,12 +400,51 @@ export function GraphToolbar({
               loading
             </span>
           )}
+          {truncatedCount > 0 && (
+            <span title="Some nodes have more connections than are drawn; only their strongest are shown. Select one to see how many.">
+              {truncatedCount} truncated ·
+            </span>
+          )}
           {visibleNodeCount === nodeCount
             ? `${nodeCount} nodes`
             : `${visibleNodeCount} / ${nodeCount} nodes`}{" "}
-          · {edgeCount} edges
+          ·{" "}
+          {visibleEdgeCount === edgeCount
+            ? `${edgeCount} edges`
+            : `${visibleEdgeCount} / ${edgeCount} edges`}
         </span>
       </div>
+
+      {seeds.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-border/60 pt-2">
+          <span className="flex items-center gap-1 px-1 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+            <Sparkles size={11} />
+            Seeds
+          </span>
+          {seeds.map((seed) => (
+            <span
+              key={seed.id}
+              className="flex h-7 items-center overflow-hidden rounded-md border border-border bg-muted/40 text-xs"
+            >
+              <button
+                type="button"
+                onClick={() => onSelectSeed(seed.id)}
+                className="max-w-48 truncate px-2 text-foreground hover:text-primary"
+              >
+                {seed.label}
+              </button>
+              <button
+                type="button"
+                aria-label={`Remove seed ${seed.label}`}
+                onClick={() => onRemoveSeed(seed.id)}
+                className="flex h-full items-center border-l border-border px-1.5 text-muted-foreground hover:text-destructive"
+              >
+                <X size={11} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
 
       <TooltipProvider delayDuration={150}>
         <div className="flex flex-wrap items-center gap-2 border-t border-border/60 pt-2">
@@ -472,6 +514,15 @@ export function GraphToolbar({
                   ? "Path · pick 1 more"
                   : "Path · on"
               : "Find path"}
+          </MiniButton>
+
+          <MiniButton
+            icon={CalendarRange}
+            onClick={onToggleTimeBar}
+            active={timeBarOpen}
+            hint="Show a timeline of when relationships were active. Drag across it to keep only what was active in that window."
+          >
+            {filters.dateFrom || filters.dateTo ? "Timeline · on" : "Timeline"}
           </MiniButton>
 
           <MiniButton

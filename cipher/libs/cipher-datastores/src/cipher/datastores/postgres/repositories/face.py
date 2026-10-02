@@ -570,13 +570,14 @@ class PostgresFaceRepository:
             FaceSortField.DATE_CREATED: FaceTable.date_created,
             FaceSortField.QUALITY: FaceTable.quality_score,
             FaceSortField.DETECTION_CONFIDENCE: FaceTable.detection_confidence,
-        }.get(request.sort_by, FaceTable.date_created)
+        }.get(request.sort_by, FaceTable.detection_confidence)
+        direction = desc if request.sort_order == SortOrder.DESC else asc
 
         data_stmt = (
             self._joined_for_public(select(FaceTable))
             .options(defer(FaceTable.embedding))
             .where(*filters)
-            .order_by(desc(sort_column) if request.sort_order == SortOrder.DESC else asc(sort_column))
+            .order_by(direction(sort_column).nulls_last(), FaceTable.id)
             .offset((request.page - 1) * request.limit)
             .limit(request.limit)
         )

@@ -1,6 +1,7 @@
 from io import BytesIO
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query, Response
+from fastapi import APIRouter, Body, HTTPException, Query, Response
 from pydantic import Field
 from pyparse.parsers.email import EmlParser
 
@@ -8,6 +9,7 @@ from cipher.api.deps.elasticsearch import TextChunkDatastoreDep
 from cipher.api.deps.postgres import ExtractedTextDatastoreDep, FileDatastoreDep, ImageDatastoreDep
 from cipher.api.utils import download_uri
 from cipher.schemas._base.base import BaseModel
+from cipher.schemas._base.common import TagRequest
 from cipher.schemas.content.document import DocumentMetadata
 from cipher.schemas.content.email import EmailBase
 from cipher.schemas.content.image import ImagePublic
@@ -26,6 +28,15 @@ async def get_file(id: str, datastore: FileDatastoreDep):
     file = await datastore.get_file_by_id(file_id=id)
     if file is None:
         raise HTTPException(status_code=404, detail=f"File not found: {id}")
+    return file
+
+
+@router.patch("/{id}/tag", summary="Toggle a positive or negative tag on a file", response_model=File)
+async def toggle_file_tag(id: str, tag_data: Annotated[TagRequest, Body(...)], datastore: FileDatastoreDep):
+    """Toggle a tag: `positive` goes in `tags`, `negative` in `negativeTags`; a tag is in at most one."""
+    file = await datastore.toggle_tag(file_id=id, tag=tag_data.tag, tag_type=tag_data.type)
+    if file is None:
+        raise HTTPException(status_code=404, detail="File not found")
     return file
 
 

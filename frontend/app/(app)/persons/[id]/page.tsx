@@ -18,7 +18,7 @@ import { PersonEventsSection } from "@/features/events/components/person-events-
 import { FaceCard } from "@/features/faces/components/face-card";
 import { FaceSelectionBar } from "@/features/faces/components/face-selection-bar";
 import { useUnassignFaces } from "@/features/faces/hooks/use-assign-face";
-import { useFaceSelection } from "@/features/faces/hooks/use-face-selection";
+import { useGridSelection } from "@/hooks/use-grid-selection";
 import { usePersonFaces } from "@/features/faces/hooks/use-person-faces";
 import { useRejectFaces } from "@/features/faces/hooks/use-reject-faces";
 import { ImageViewerDialog } from "@/features/images/components/image-viewer-dialog";
@@ -90,7 +90,7 @@ export default function PersonDetailPage({
     ? recentFaces.findIndex((f) => f.id === selectedFace.id)
     : -1;
 
-  const faceSelection = useFaceSelection();
+  const faceSelection = useGridSelection();
   const unassignFaces = useUnassignFaces(faceSelection.clear);
   const rejectFaces = useRejectFaces();
   const recentFaceIds = useMemo(

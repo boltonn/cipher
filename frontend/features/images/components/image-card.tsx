@@ -10,7 +10,16 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { Calendar, Check, Copy, Maximize2, Search, Tag } from "lucide-react";
+import {
+  Ban,
+  Calendar,
+  Check,
+  Copy,
+  Maximize2,
+  Search,
+  Sparkles,
+  Tag,
+} from "lucide-react";
 import Image from "next/image";
 import { useState } from "react";
 import { imagesService, useUpdateImageTags } from "../api";
@@ -20,14 +29,40 @@ interface ImageCardProps {
   image: ImagePublic | ImageSimilarityResult;
   onFindSimilar?: (id: string) => void;
   onExpand?: (image: ImagePublic) => void;
+  /** Tags the grid is filtered to: their rejected / predicted state is shown on the card. */
+  reviewTags?: string[];
+  isSelected?: boolean;
+  /** Something in the grid is selected: a click toggles selection instead of expanding. */
+  isSelectionActive?: boolean;
+  onToggleSelect?: (image: ImagePublic, range: boolean) => void;
 }
 
 export const ImageCard: React.FC<ImageCardProps> = ({
   image,
   onFindSimilar,
   onExpand,
+  reviewTags,
+  isSelected,
+  isSelectionActive,
+  onToggleSelect,
 }) => {
   const [copied, setCopied] = useState(false);
+  const activate = (range: boolean) => {
+    if (onToggleSelect && (isSelectionActive || range))
+      onToggleSelect(image, range);
+    else onExpand?.(image);
+  };
+  // Of the filtered tags: the ones this image is explicitly not, and the ones a
+  // model predicted that nobody has labelled yet.
+  const rejectedTags = (reviewTags ?? []).filter((tag) =>
+    image.negativeTags.includes(tag)
+  );
+  const predictedTags = (reviewTags ?? []).filter(
+    (tag) =>
+      tag in image.tagScores &&
+      !image.tags.includes(tag) &&
+      !image.negativeTags.includes(tag)
+  );
   const imageUrl = imagesService.getImageUrl(image.id);
   const visibleTags = image.tags.slice(0, 3);
   const remainingCount = image.tags.length - visibleTags.length;
@@ -43,17 +78,23 @@ export const ImageCard: React.FC<ImageCardProps> = ({
 
   return (
     <TooltipProvider>
-      <div className="group relative rounded-xl overflow-hidden bg-muted/40 border border-border/50 transition-all duration-300 hover:border-primary/40 hover:bg-muted/60">
+      <div
+        className={cn(
+          "group relative rounded-xl overflow-hidden bg-muted/40 border border-border/50 transition-all duration-300 hover:border-primary/40 hover:bg-muted/60",
+          isSelected && "border-primary ring-2 ring-primary/40"
+        )}
+      >
         {/* Flush Image Container */}
         <div
           role="button"
           tabIndex={0}
+          aria-pressed={isSelectionActive ? !!isSelected : undefined}
           className="aspect-4/5 relative w-full bg-background cursor-pointer"
-          onClick={() => onExpand?.(image)}
+          onClick={(e) => activate(e.shiftKey)}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault();
-              onExpand?.(image);
+              activate(e.shiftKey);
             }
           }}
         >
@@ -67,11 +108,32 @@ export const ImageCard: React.FC<ImageCardProps> = ({
             sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
           />
 
+          {onToggleSelect && (
+            <button
+              type="button"
+              aria-label={isSelected ? "Deselect image" : "Select image"}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleSelect(image, e.shiftKey);
+              }}
+              className={cn(
+                "absolute top-2 right-2 z-10 flex size-5 items-center justify-center rounded-md border transition-opacity",
+                isSelected
+                  ? "bg-primary border-primary text-primary-foreground opacity-100"
+                  : "bg-background/80 border-border text-transparent opacity-0 group-hover:opacity-100",
+                isSelectionActive && "opacity-100"
+              )}
+            >
+              <Check size={12} strokeWidth={3} />
+            </button>
+          )}
+
           {/* Action Bar */}
           <div className="absolute inset-x-0 bottom-4 flex justify-center opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all duration-300 z-10">
             <div
               className="flex items-center gap-4 bg-popover/95 border border-border px-4 py-2 rounded-full shadow-2xl"
               onClick={(e) => e.stopPropagation()} // Prevent card click when clicking bar
+              onKeyDown={(e) => e.stopPropagation()}
             >
               <NavAction
                 icon={<Search size={18} />}
@@ -120,6 +182,24 @@ export const ImageCard: React.FC<ImageCardProps> = ({
             )}
           </div>
           <div className="flex flex-wrap gap-1">
+            {predictedTags.map((tag) => (
+              <Badge
+                key={tag}
+                className="bg-annotation/10 text-annotation text-[11px] border-none px-1.5 py-0 uppercase font-bold tracking-tight gap-1"
+              >
+                <Sparkles size={10} className="shrink-0" />
+                {tag} {(image.tagScores[tag] * 100).toFixed(0)}%
+              </Badge>
+            ))}
+            {rejectedTags.map((tag) => (
+              <Badge
+                key={tag}
+                className="bg-destructive/10 text-destructive text-[11px] border-none px-1.5 py-0 uppercase font-bold tracking-tight gap-1"
+              >
+                <Ban size={10} className="shrink-0" />
+                Not {tag}
+              </Badge>
+            ))}
             {visibleTags.map((tag) => (
               <Badge
                 key={tag}

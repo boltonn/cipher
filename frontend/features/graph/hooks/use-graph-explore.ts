@@ -11,6 +11,8 @@ import type {
 import { buildNetwork, neighbourhood } from "@/features/graph/lib/build-network";
 import { shortestPath } from "@/features/graph/lib/graph-analytics";
 import type { LayoutKind } from "@/features/graph/lib/graph-layouts";
+import { edgeInWindow, toTimeWindow } from "@/features/graph/lib/time-window";
+import { useLocalStorageState } from "@/hooks/use-local-storage-state";
 import { useQueries } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 
@@ -19,6 +21,9 @@ export interface GraphFilters {
   relationshipTypes: RelationshipType[];
   minWeight: number;
   direction: TraversalDirection;
+  /** ISO timestamps bounding when a dated edge must have been active; client-side only */
+  dateFrom: string | undefined;
+  dateTo: string | undefined;
 }
 
 export const EMPTY_GRAPH_FILTERS: GraphFilters = {
@@ -26,24 +31,30 @@ export const EMPTY_GRAPH_FILTERS: GraphFilters = {
   relationshipTypes: [],
   minWeight: 0,
   direction: "both",
+  dateFrom: undefined,
+  dateTo: undefined,
 };
 
 export type ColorMode = "type" | "community";
 export type SizeMode = "degree" | "importance";
 
-const HOP_LIMIT = 250;
+export const HOP_LIMIT = 250;
+
+const NO_IDS: string[] = [];
 
 /**
  * The explore state machine for the network viewer. Holds the seed set, which
  * nodes the user has expanded / hidden / dragged, the active layout, and the
  * colour / size / path-finding modes; fans one depth-1
  * `GET /entities/{id}/graph` out per seed / expanded node and merges the
- * responses into a single laid-out graph.
+ * responses into a single laid-out graph. Seeds / expanded / hidden survive a
+ * page navigation (localStorage) so opening an entity doesn't lose the canvas.
  */
 export function useGraphExplore(datasetId: string | undefined) {
-  const [seedIds, setSeedIds] = useState<string[]>([]);
-  const [expandedIds, setExpandedIds] = useState<string[]>([]);
-  const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
+  const [seedIds, setSeedIds] = useLocalStorageState<string[]>("graph:seedIds", NO_IDS);
+  const [expandedIds, setExpandedIds] = useLocalStorageState<string[]>("graph:expandedIds", NO_IDS);
+  const [hiddenList, setHiddenList] = useLocalStorageState<string[]>("graph:hiddenIds", NO_IDS);
+  const hiddenIds = useMemo(() => new Set(hiddenList), [hiddenList]);
   const [filters, setFilters] = useState<GraphFilters>(EMPTY_GRAPH_FILTERS);
 
   const [layout, setLayoutState] = useState<LayoutKind>("force");
@@ -93,7 +104,8 @@ export function useGraphExplore(datasetId: string | undefined) {
   });
 
   const isLoading = results.some((r) => r.isLoading);
-  const isError = results.length > 0 && results.every((r) => r.isError);
+  // any failure: with nothing built the page shows the error rather than "No connections"
+  const isError = results.some((r) => r.isError);
   // Stable-ish signature so the expensive merge + layout only re-runs on new data.
   const dataSig = results.map((r) => r.dataUpdatedAt ?? 0).join(",");
 
@@ -129,47 +141,60 @@ export function useGraphExplore(datasetId: string | undefined) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `pinned` read at build time but must not retrigger a rebuild on drag
   }, [merged, seedSet, expandedSet, layout, relayoutNonce]);
 
-  const addSeed = useCallback((id: string) => {
-    setSeedIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
-    setHiddenIds((prev) => {
-      if (!prev.has(id)) return prev;
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
-  }, []);
-
-  const removeSeed = useCallback((id: string) => {
-    setSeedIds((prev) => prev.filter((s) => s !== id));
-    setExpandedIds((prev) => prev.filter((e) => e !== id));
-  }, []);
-
-  const expand = useCallback((id: string) => {
-    setExpandedIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
-  }, []);
-
-  const collapse = useCallback((id: string) => {
-    setExpandedIds((prev) => prev.filter((e) => e !== id));
-  }, []);
-
-  const hide = useCallback((id: string) => {
-    setHiddenIds((prev) => new Set(prev).add(id));
-  }, []);
-
-  const unhideAll = useCallback(() => setHiddenIds(new Set()), []);
-
-  const isolate = useCallback(
+  const addSeed = useCallback(
     (id: string) => {
-      if (!built) return;
-      const keep = neighbourhood(built.graph, id);
-      const next = new Set<string>();
-      built.graph.forEachNode((n) => {
-        if (!keep.has(n)) next.add(n);
-      });
-      setHiddenIds(next);
+      setSeedIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+      setHiddenList((prev) => (prev.includes(id) ? prev.filter((h) => h !== id) : prev));
     },
-    [built]
+    [setSeedIds, setHiddenList]
   );
+
+  const removeSeed = useCallback(
+    (id: string) => {
+      setSeedIds((prev) => prev.filter((s) => s !== id));
+      setExpandedIds((prev) => prev.filter((e) => e !== id));
+    },
+    [setSeedIds, setExpandedIds]
+  );
+
+  const addSeeds = useCallback(
+    (ids: string[]) => {
+      setSeedIds((prev) => [...new Set([...prev, ...ids])]);
+      setHiddenList((prev) => prev.filter((h) => !ids.includes(h)));
+    },
+    [setSeedIds, setHiddenList]
+  );
+
+  const expandMany = useCallback(
+    (ids: string[]) => setExpandedIds((prev) => [...new Set([...prev, ...ids])]),
+    [setExpandedIds]
+  );
+  const expand = useCallback((id: string) => expandMany([id]), [expandMany]);
+
+  const collapse = useCallback(
+    (id: string) => {
+      setExpandedIds((prev) => prev.filter((e) => e !== id));
+    },
+    [setExpandedIds]
+  );
+
+  const hideMany = useCallback(
+    (ids: string[]) => setHiddenList((prev) => [...new Set([...prev, ...ids])]),
+    [setHiddenList]
+  );
+  const hide = useCallback((id: string) => hideMany([id]), [hideMany]);
+
+  const unhideAll = useCallback(() => setHiddenList(NO_IDS), [setHiddenList]);
+
+  const isolateMany = useCallback(
+    (ids: string[]) => {
+      if (!built) return;
+      const keep = new Set(ids.flatMap((id) => [...neighbourhood(built.graph, id)]));
+      setHiddenList(built.graph.filterNodes((n) => !keep.has(n)));
+    },
+    [built, setHiddenList]
+  );
+  const isolate = useCallback((id: string) => isolateMany([id]), [isolateMany]);
 
   const pinPosition = useCallback(
     (id: string, pos: { x: number; y: number }) => {
@@ -207,13 +232,14 @@ export function useGraphExplore(datasetId: string | undefined) {
 
   const reset = useCallback(() => {
     setPinned(new Map());
-    setSeedIds([]);
-    setExpandedIds([]);
-    setHiddenIds(new Set());
+    setSeedIds(NO_IDS);
+    setExpandedIds(NO_IDS);
+    setHiddenList(NO_IDS);
+    setFilters(EMPTY_GRAPH_FILTERS);
     setPathAnchors([]);
     setPathMode(false);
     setHighlightQuery("");
-  }, []);
+  }, [setSeedIds, setExpandedIds, setHiddenList]);
 
   const pathIds = useMemo(() => {
     if (!built || pathAnchors.length < 2) return [] as string[];
@@ -235,20 +261,59 @@ export function useGraphExplore(datasetId: string | undefined) {
     return set;
   }, [built, highlightQuery]);
 
-  const visibleNodeCount = useMemo(() => {
-    if (!built) return 0;
-    let n = 0;
-    built.graph.forEachNode((id, attrs) => {
-      if (hiddenIds.has(id)) return;
-      if (
-        filters.entityTypes.length &&
-        !filters.entityTypes.includes(attrs.entityType as GraphNodeType)
-      )
-        return;
-      n += 1;
+  const timeWindow = useMemo(
+    () => toTimeWindow(filters.dateFrom, filters.dateTo),
+    [filters.dateFrom, filters.dateTo]
+  );
+
+  // Nodes the time window empties out: every edge they have is dated and falls
+  // outside it. Seeds stay so the canvas never loses its anchors.
+  const timeHiddenIds = useMemo(() => {
+    const out = new Set<string>();
+    if (!built || !timeWindow) return out;
+    const { graph } = built;
+    graph.forEachNode((id) => {
+      if (seedSet.has(id) || graph.degree(id) === 0) return;
+      if (!graph.someEdge(id, (_e, attrs) => edgeInWindow(attrs, timeWindow))) {
+        out.add(id);
+      }
     });
-    return n;
-  }, [built, hiddenIds, filters.entityTypes]);
+    return out;
+  }, [built, timeWindow, seedSet]);
+
+  const visible = useMemo(() => {
+    if (!built) return { nodes: 0, edges: 0 };
+    const { graph } = built;
+    const shown = (id: string) =>
+      !hiddenIds.has(id) &&
+      !timeHiddenIds.has(id) &&
+      (!filters.entityTypes.length ||
+        filters.entityTypes.includes(
+          graph.getNodeAttribute(id, "entityType") as GraphNodeType
+        ));
+    return {
+      nodes: graph.filterNodes(shown).length,
+      edges: graph.filterEdges(
+        (_e, attrs, src, dst) =>
+          shown(src) &&
+          shown(dst) &&
+          (!timeWindow || edgeInWindow(attrs, timeWindow))
+      ).length,
+    };
+  }, [built, hiddenIds, timeHiddenIds, timeWindow, filters.entityTypes]);
+
+  // Nodes whose depth-1 fetch hit HOP_LIMIT: only their heaviest edges are drawn.
+  const truncatedIds = useMemo(
+    () =>
+      new Set(
+        fetchIds.filter((_id, i) => {
+          const data = results[i]?.data;
+          return data?.truncated ?? (data?.edges.length ?? 0) >= HOP_LIMIT;
+        })
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dataSig captures result content
+    [fetchIds, dataSig]
+  );
 
   return {
     seedIds,
@@ -263,7 +328,11 @@ export function useGraphExplore(datasetId: string | undefined) {
     nodeCount: built?.nodeCount ?? 0,
     edgeCount: built?.edgeCount ?? 0,
     communityCount: built?.communityCount ?? 0,
-    visibleNodeCount,
+    visibleNodeCount: visible.nodes,
+    visibleEdgeCount: visible.edges,
+    truncatedIds,
+    timeWindow,
+    timeHiddenIds,
     layout,
     setLayout,
     relayout,
@@ -281,12 +350,16 @@ export function useGraphExplore(datasetId: string | undefined) {
     setHighlightQuery,
     highlightIds,
     addSeed,
+    addSeeds,
     removeSeed,
     expand,
+    expandMany,
     collapse,
     hide,
+    hideMany,
     unhideAll,
     isolate,
+    isolateMany,
     pinPosition,
     reset,
   };

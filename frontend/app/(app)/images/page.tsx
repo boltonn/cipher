@@ -3,15 +3,17 @@
 import { PageError, PageLoading } from "@/components/page-loading";
 import { PageHeader } from "@/components/page-header";
 import { PaginationModeToggle } from "@/components/pagination-mode-toggle";
+import { ImageSelectionBar } from "@/features/images/components/image-selection-bar";
 import { ImageSearchBar } from "@/features/images/components/image-search-bar";
 import { ImagesContainerInfinite } from "@/features/images/components/images-container-infinite";
 import { ImagesContainerPaginated } from "@/features/images/components/images-container-paginated";
 import { useSearchController } from "@/features/images/hooks/use-search-controller";
+import { useGridSelection } from "@/hooks/use-grid-selection";
 import { PaginationModeType } from "@/types/common";
 import { useQueryClient } from "@tanstack/react-query";
 import { ImageIcon, Search, X } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 
 function ImageSearchPageInner() {
   const [paginationMode, setPaginationMode] =
@@ -42,6 +44,39 @@ function ImageSearchPageInner() {
   const retry = () => queryClient.invalidateQueries({ queryKey: ["images"] });
 
   const totalAssets = data?.pages[0]?.total ?? paginatedData?.total ?? 0;
+
+  // A selection only makes sense for the grid it was made in: drop it when the
+  // filters or the search change, so a bulk action never hits images out of view.
+  const selection = useGridSelection();
+  const [selectionScope, setSelectionScope] = useState({ filters, queryLabel });
+  if (
+    selectionScope.filters !== filters ||
+    selectionScope.queryLabel !== queryLabel
+  ) {
+    setSelectionScope({ filters, queryLabel });
+    selection.clear();
+  }
+  const loadedImages = useMemo(
+    () =>
+      paginationMode === "infinite"
+        ? (data?.pages.flatMap((page) => page.data) ?? [])
+        : (paginatedData?.data ?? []),
+    [paginationMode, data, paginatedData]
+  );
+  const loadedIds = useMemo(
+    () => [...new Set(loadedImages.map((image) => image.id))],
+    [loadedImages]
+  );
+  const knownTags = useMemo(
+    () =>
+      [
+        ...new Set([
+          ...(filters.tags ?? []),
+          ...loadedImages.flatMap((image) => image.tags),
+        ]),
+      ].sort(),
+    [filters.tags, loadedImages]
+  );
 
   useEffect(() => {
     if (hasProcessedParams.current) return;
@@ -112,6 +147,8 @@ function ImageSearchPageInner() {
           <ImagesContainerInfinite
             data={data}
             onSimilar={actions.handleSimilar}
+            selection={selection}
+            reviewTags={filters.tags}
             fetchNextPage={fetchNextPage}
             hasNextPage={hasNextPage}
             isFetchingNextPage={isFetchingNextPage}
@@ -122,6 +159,8 @@ function ImageSearchPageInner() {
           <ImagesContainerPaginated
             data={paginatedData}
             onSimilar={actions.handleSimilar}
+            selection={selection}
+            reviewTags={filters.tags}
             currentPage={currentPage}
             onPageChange={actions.handlePageChange}
             isLoading={isFetching}
@@ -130,6 +169,13 @@ function ImageSearchPageInner() {
             onToggleFilters={() => setIsFiltersOpen(true)}
           />
         )}
+        <ImageSelectionBar
+          selection={selection}
+          loadedIds={loadedIds}
+          reviewTag={filters.tags?.length === 1 ? filters.tags[0] : undefined}
+          reviewTagState={filters.tagState}
+          knownTags={knownTags}
+        />
       </main>
     </div>
   );

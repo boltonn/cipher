@@ -8,8 +8,9 @@ carries one span per page so chunks keep real page numbers.
 
 Speed: files are kept in a rolling in-flight window (not batch-and-wait), and the
 service decodes every page of every in-flight file concurrently, so the GPU stays
-saturated. Optionally, images are pre-filtered by zero-shot CLIP tags scored against
-the embeddings `embed-images` already stored -- no image is re-read to decide.
+saturated. Images are gated by zero-shot CLIP tags scored against the embeddings
+`embed-images` already stored -- no image is re-read to decide. The gate's score is
+kept as the file's `tag_scores["has_text"]`, so the cut-off can be reviewed and tuned.
 """
 
 import asyncio
@@ -66,6 +67,7 @@ DEFAULT_CLIP_NEGATIVE_TAGS = (
     "a photo of a building",
     "a photo of an object",
 )
+HAS_TEXT_TAG = "has_text"
 # Enrichments that read `ExtractedText.content` and append rows (not idempotent per file).
 _TEXT_CONSUMERS = (
     EnrichmentType.SELECTOR_EXTRACTION,
@@ -95,13 +97,13 @@ class ClipTagFilter:
             threshold=threshold,
         )
 
-    def keep(self, embedding: list[float]) -> bool:
-        """Softmax over all tags (CLIP logit scale 100); keep on enough mass on the text-bearing ones."""
+    def score(self, embedding: list[float]) -> float:
+        """Softmax over all tags (CLIP logit scale 100); the probability mass on the text-bearing ones."""
         vector = np.asarray(embedding, dtype=np.float32)
         logits = 100.0 * self.tag_embeddings @ (vector / np.linalg.norm(vector))
         probabilities = np.exp(logits - logits.max())
         probabilities /= probabilities.sum()
-        return float(probabilities[: self.positive_count].sum()) >= self.threshold
+        return float(probabilities[: self.positive_count].sum())
 
 
 async def queue_ocr_enrichments(
@@ -113,9 +115,10 @@ async def queue_ocr_enrichments(
     """Queue OCR for eligible files; filetypes default to every PDF + supported image type.
 
     PDFs wait for `extract-text` (their OCR merges into that row, and a later
-    extract-text would otherwise overwrite it). With `clip_filter`, only images whose
-    stored CLIP embedding matches the tags are queued -- the rest stay unqueued, so a
-    later unfiltered run still reaches them.
+    extract-text would otherwise overwrite it). With `clip_filter`, every candidate
+    image's score is stored as its `has_text` tag score and only those at or above the
+    threshold are queued -- the rest stay unqueued, so a later unfiltered run still
+    reaches them.
     """
     enrichment_repo = PostgresEnrichmentRepository(session=session)
     extracted_text_repo = PostgresExtractedTextRepository(session=session)
@@ -134,8 +137,10 @@ async def queue_ocr_enrichments(
         embeddings = await PostgresImageRepository(session=session).get_embeddings(list({c["sha256"] for c in images}))
         if unembedded := sum(c["sha256"] not in embeddings for c in images):
             logger.warning(f"{unembedded} images have no CLIP embedding -- run `embed-images` first; skipping them")
-        kept = [c for c in images if c["sha256"] in embeddings and clip_filter.keep(embeddings[c["sha256"]])]
-        logger.info(f"CLIP tag filter kept {len(kept)} of {len(images)} images")
+        scores = {c["id"]: clip_filter.score(embeddings[c["sha256"]]) for c in images if c["sha256"] in embeddings}
+        await PostgresFileRepository(session=session).set_tag_scores(tag=HAS_TEXT_TAG, scores=scores)
+        kept = [c for c in images if scores.get(c["id"], 0.0) >= clip_filter.threshold]
+        logger.info(f"CLIP text gate kept {len(kept)} of {len(images)} images")
         images = kept
 
     count = await enrichment_repo.queue_enrichments_for_files(
@@ -357,7 +362,7 @@ async def ocr_workflow(
     in_flight: dict[asyncio.Task, tuple] = {}
     twins: dict[str, list[tuple]] = {}
     exhausted = False
-    written = skipped = failed = pages = 0
+    written = skipped = failed = pages = truncated = 0
 
     def spawn(item, existing) -> None:
         task = asyncio.create_task(_ocr_file(client, item.resource, min_chars, force, figures))
@@ -410,6 +415,7 @@ async def ocr_workflow(
                     if result is not None:
                         response, native = result
                         pages += len(response.pages)
+                        truncated += sum(page.is_truncated for page in response.pages)
                         extracted = build_ocr_extracted_text(item.resource, response, existing, native)
                     await complete(item, extracted, existing)
                     for twin, twin_existing in waiting:
@@ -436,8 +442,8 @@ async def ocr_workflow(
             "the old text -- `reset-entities` + re-run to re-extract them"
         )
     logger.success(
-        f"OCR wrote text for {written} files ({pages} pages), {deduped} deduped, "
-        f"{skipped} with nothing to OCR, {failed} failed"
+        f"OCR wrote text for {written} files ({pages} pages, {truncated} cut short after the model looped), "
+        f"{deduped} deduped, {skipped} with nothing to OCR, {failed} failed"
     )
     return written + deduped
 

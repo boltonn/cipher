@@ -127,7 +127,7 @@ class LlmEvent(BaseModel):
     title: str
     summary: str | None = None
     event_type: str = Field(
-        description="travel | lodging | reservation | meeting | deadline | delivery | occasion | other"
+        description="travel | lodging | reservation | meeting | gathering | delivery | other"
     )
     date_start: str | None = Field(default=None, description="ISO 8601; date or datetime")
     date_end: str | None = Field(default=None, description="ISO 8601; date or datetime")
@@ -151,9 +151,6 @@ class LlmEvent(BaseModel):
     carrier: str | None = Field(default=None, description="Shipping carrier (delivery)")
     tracking_number: str | None = Field(default=None, description="Tracking number (delivery)")
     order_number: str | None = Field(default=None, description="Order number (delivery)")
-    amount: float | None = Field(default=None, description="Amount due (deadline)")
-    currency: str | None = Field(default=None, description="3-letter currency code (deadline)")
-    payee: str | None = Field(default=None, description="Who is owed (deadline)")
 
 
 class LlmEventOutput(BaseModel):

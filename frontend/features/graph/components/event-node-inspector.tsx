@@ -6,9 +6,20 @@ import { useEvent } from "@/features/events/api";
 import { EventDetailSheet } from "@/features/events/components/event-detail-sheet";
 import { EVENT_TYPE_META } from "@/features/events/components/event-type-meta";
 import { formatDateRange, formatEventStart } from "@/features/events/lib/format";
-import { InspectorAction } from "@/features/graph/components/node-inspector";
+import {
+  INSPECTOR_SHELL,
+  InspectorAction,
+} from "@/features/graph/components/node-inspector";
 import { cn } from "@/lib/utils";
-import { EyeOff, ExternalLink, Focus, Loader2, Minimize2, X } from "lucide-react";
+import {
+  EyeOff,
+  ExternalLink,
+  Focus,
+  Loader2,
+  Maximize2,
+  Minimize2,
+  X,
+} from "lucide-react";
 import { useState } from "react";
 
 interface EventNodeInspectorProps {
@@ -37,7 +48,7 @@ export function EventNodeInspector({
   const typeMeta = event ? EVENT_TYPE_META[event.eventType] : null;
 
   return (
-    <aside className="flex w-72 shrink-0 flex-col rounded-xl border border-border bg-muted/40 shadow-xl">
+    <aside className={INSPECTOR_SHELL}>
       <div className="flex items-center justify-between border-b border-border/50 px-3 py-2">
         <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
           Event
@@ -72,7 +83,10 @@ export function EventNodeInspector({
               {typeMeta?.label ?? nodeMeta.label}
             </span>
             <p className="text-xs text-muted-foreground">
-              {formatDateRange(event) ?? formatEventStart(event)}
+              {formatEventStart(event)}
+              {event.dateEnd && event.dateEnd !== event.dateStart && (
+                <span className="block">{formatDateRange(event)}</span>
+              )}
             </p>
           </div>
 
@@ -99,7 +113,7 @@ export function EventNodeInspector({
                 Collapse participants
               </InspectorAction>
             ) : (
-              <InspectorAction icon={Focus} onClick={() => onExpand(eventId)}>
+              <InspectorAction icon={Maximize2} onClick={() => onExpand(eventId)}>
                 Expand participants
               </InspectorAction>
             )}

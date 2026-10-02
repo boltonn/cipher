@@ -63,3 +63,20 @@ def test_unlocated_image_placeholder_and_special_tokens_are_dropped():
     page = parse_page("Contact: J. Alvarez\n\n![image](image_placeholder)<｜end▁of▁sentence｜>", page_number=1)
     assert page.markdown == "Contact: J. Alvarez"
     assert page.regions == []
+
+
+def test_runaway_repetition_is_trimmed():
+    """A decoding loop is cut back to one copy of the repeated unit and the page is flagged."""
+    page = parse_page(
+        "# Invoice\n\nTotal due: 40 USD\n\n" + "**USD CURRENCY: 1 USD = 1.0000 USD**\n\n" * 60 + "**USD CUR", 1
+    )
+    assert page.is_truncated
+    assert page.markdown.count("USD CURRENCY") == 1
+    assert page.markdown.startswith("# Invoice\n\nTotal due: 40 USD")
+
+
+def test_ordinary_page_is_not_trimmed():
+    """Short natural repetition (a list, a signature block) is left alone."""
+    page = parse_page("Yes.\n\nYes.\n\nYes.\n\n- item\n- item\n- item", 1)
+    assert not page.is_truncated
+    assert page.markdown.count("Yes.") == 3

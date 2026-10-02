@@ -138,9 +138,32 @@ def _extract_figures(text: str) -> tuple[str, list[OcrRegion]]:
     return _UNLOCATED_IMAGE_RE.sub("", text), regions
 
 
+_RUNAWAY_MAX_PERIOD = 400
+_RUNAWAY_MIN_REPEATS = 4
+_RUNAWAY_MIN_CHARS = 200
+
+
+def trim_runaway(text: str) -> tuple[str, bool]:
+    """Cut a decoding loop off the end of `text`, keeping one copy of the repeated unit.
+
+    A page that makes the model loop (an empty table header, a boilerplate line) runs
+    to the token cap repeating itself -- sometimes text that isn't on the page at all.
+    The loop shows as a tail that repeats with a fixed period.
+    """
+    for period in range(1, min(_RUNAWAY_MAX_PERIOD, len(text) // _RUNAWAY_MIN_REPEATS) + 1):
+        span = max(period * _RUNAWAY_MIN_REPEATS, _RUNAWAY_MIN_CHARS)
+        if span + period > len(text) or text[-span:] != text[-span - period : -period]:
+            continue
+        start = len(text) - span - period
+        while start > 0 and text[start - 1] == text[start - 1 + period]:
+            start -= 1
+        return text[: start + period].rstrip(), True
+    return text, False
+
+
 def parse_page(raw: str, page_number: int) -> OcrPage:
     """Split one page's raw model output into clean markdown, tables, and figure regions."""
-    text = _SPECIAL_TOKENS_RE.sub("", raw).strip()
+    text, is_truncated = trim_runaway(_SPECIAL_TOKENS_RE.sub("", raw).strip())
     if text.lower() in _EMPTY_OUTPUTS:
         return OcrPage(page_number=page_number, markdown="")
     text, regions = _extract_figures(text)
@@ -148,4 +171,6 @@ def parse_page(raw: str, page_number: int) -> OcrPage:
     markdown = re.sub(r"\n{3,}", "\n\n", text).strip()
     if markdown.lower() in _EMPTY_OUTPUTS:
         markdown = ""
-    return OcrPage(page_number=page_number, markdown=markdown, tables=tables, regions=regions)
+    return OcrPage(
+        page_number=page_number, markdown=markdown, tables=tables, regions=regions, is_truncated=is_truncated
+    )

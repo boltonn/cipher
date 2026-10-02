@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, String, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from cipher.datastores.postgres.tables.base import Base
@@ -40,6 +41,13 @@ class FileTable(Base):
         String, ForeignKey("file.id", ondelete="CASCADE"), nullable=True, index=True
     )
 
+    # Labels for training classifiers over this file's embeddings: `tags` says "is this",
+    # `negative_tags` says "is explicitly not this" (a hard negative). A tag is in at most one.
+    tags: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
+    negative_tags: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
+    # A model's confidence that a tag applies ({tag: 0-1}) -- a prediction, kept apart from the labels above.
+    tag_scores: Mapped[dict[str, float]] = mapped_column(JSONB, nullable=False, default=dict, server_default="{}")
+
     # Relationships (only defined if dependencies are available)
     dataset: Mapped["DatasetTable"] = relationship(back_populates="files")
     contacts: Mapped[list["ContactTable"]] = relationship(
@@ -57,4 +65,6 @@ class FileTable(Base):
         UniqueConstraint("dataset_id", "uri", name="uq_dataset_uri"),
         # Index for finding duplicates across datasets
         Index("ix_file_sha256_dataset", "sha256", "dataset_id"),
+        Index("ix_file_tags_gin", "tags", postgresql_using="gin"),
+        Index("ix_file_negative_tags_gin", "negative_tags", postgresql_using="gin"),
     )

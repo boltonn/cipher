@@ -2,14 +2,26 @@
 
 import { DateRangePicker } from "@/components/date-range-picker";
 import { TagsInput } from "@/components/tags-input";
+import { Button } from "@/components/ui/button";
+import { ButtonGroup } from "@/components/ui/button-group";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { DatasetMultiSelectCombobox } from "@/features/datasets/components/dataset-multi-select-combobox";
 import { useImageFiletypes } from "@/features/images/api";
 import { ImageFilters } from "@/features/images/hooks/use-search-controller";
+import type { TagStateType } from "@/features/images/types";
 import { cn } from "@/lib/utils";
 import { Filter, X } from "lucide-react";
 import React, { useState } from "react";
+
+const DEFAULT_MIN_TAG_SCORE = 0.5;
+
+/** Which tag store the Tags filter reads; `predicted` is model output awaiting review. */
+const TAG_STATES: { value: TagStateType; label: string }[] = [
+  { value: "positive", label: "Tagged" },
+  { value: "predicted", label: "Predicted" },
+  { value: "negative", label: "Rejected" },
+];
 
 export function hasActiveImageFilters(params: ImageFilters): boolean {
   return !!(
@@ -40,6 +52,15 @@ export const ImageFilterPanel: React.FC<ImageFilterPanelProps> = ({
 
   const [prevMinSimilarity, setPrevMinSimilarity] = useState(params.minSimilarity);
   const [localSimilarity, setLocalSimilarity] = useState(params.minSimilarity ?? 0);
+  const [prevMinTagScore, setPrevMinTagScore] = useState(params.minTagScore);
+  const [localTagScore, setLocalTagScore] = useState(
+    params.minTagScore ?? DEFAULT_MIN_TAG_SCORE
+  );
+  if (params.minTagScore !== prevMinTagScore) {
+    setPrevMinTagScore(params.minTagScore);
+    setLocalTagScore(params.minTagScore ?? DEFAULT_MIN_TAG_SCORE);
+  }
+  const tagState = params.tagState ?? "positive";
   if (params.minSimilarity !== prevMinSimilarity) {
     setPrevMinSimilarity(params.minSimilarity);
     setLocalSimilarity(params.minSimilarity ?? 0);
@@ -155,6 +176,49 @@ export const ImageFilterPanel: React.FC<ImageFilterPanelProps> = ({
             onChange={(tags) => updateParam("tags", tags.length ? tags : undefined)}
             placeholder="Add a tag..."
           />
+          <ButtonGroup>
+            {TAG_STATES.map((state) => (
+              <Button
+                key={state.value}
+                size="sm"
+                variant={tagState === state.value ? "default" : "outline"}
+                className={cn(
+                  "h-7 text-[11px]",
+                  state.value === "predicted" &&
+                    tagState === "predicted" &&
+                    "bg-annotation text-annotation-foreground hover:bg-annotation/90"
+                )}
+                onClick={() => updateParam("tagState", state.value)}
+              >
+                {state.label}
+              </Button>
+            ))}
+          </ButtonGroup>
+          {tagState === "predicted" && (
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center justify-between">
+                <Label
+                  htmlFor="image-tag-score-slider"
+                  className="text-[11px] text-muted-foreground"
+                >
+                  Min score
+                </Label>
+                <span className="text-[11px] font-mono font-bold text-annotation tabular-nums">
+                  {(localTagScore * 100).toFixed(0)}%
+                </span>
+              </div>
+              <Slider
+                id="image-tag-score-slider"
+                value={[localTagScore]}
+                min={0}
+                max={1}
+                step={0.01}
+                onValueChange={([v]) => setLocalTagScore(v)}
+                onValueCommit={([v]) => updateParam("minTagScore", v)}
+                className="py-2"
+              />
+            </div>
+          )}
         </div>
       </div>
 

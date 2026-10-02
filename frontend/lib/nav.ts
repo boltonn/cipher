@@ -92,7 +92,7 @@ export const NAV = {
       title: "Events",
       url: "/events",
       icon: CalendarDays,
-      blurb: "Travel, meetings, and deadlines on a calendar, pulled from files.",
+      blurb: "Travel, meetings, and gatherings on a calendar, pulled from files.",
     },
   ] as NavItem[],
 

@@ -1,7 +1,7 @@
 /**
  * Editable fields for an event's typed `details` blob, mirroring the backend
  * discriminated union `cipher.schemas.graph.event.{Travel,Lodging,Reservation,
- * Deadline,Delivery}Details`. `meeting` / `occasion` / `other` carry no detail row.
+ * Delivery}Details`. `meeting` / `gathering` / `other` carry no detail row.
  */
 import type { EventType } from "@/features/events/types";
 
@@ -37,11 +37,6 @@ export const DETAIL_FIELDS: Partial<Record<EventType, readonly DetailField[]>> =
     { name: "operator", label: "Provider", kind: "text" },
     { name: "confirmation", label: "Confirmation", kind: "text" },
     { name: "party_size", label: "Party size", kind: "int" },
-  ],
-  deadline: [
-    { name: "amount", label: "Amount", kind: "number" },
-    { name: "currency", label: "Currency (3-letter)", kind: "text" },
-    { name: "payee", label: "Payee", kind: "text" },
   ],
   delivery: [
     { name: "carrier", label: "Carrier", kind: "text" },

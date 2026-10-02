@@ -34,7 +34,7 @@ from cipher.datastores.postgres.repositories.mention import PostgresMentionRepos
 from cipher.datastores.postgres.repositories.person import PostgresPersonRepository
 from cipher.datastores.postgres.repositories.user import PostgresUserRepository
 from cipher.datastores.postgres.tables.base import Base
-from cipher.schemas._base.common import SortOrder
+from cipher.schemas._base.common import SortOrder, TagState
 from cipher.schemas.content.image import Image, ImageSimilaritySearchParameters, ImageSortField
 from cipher.schemas.identity.face import Face, FaceSimilaritySearchParameters, FaceSortField
 from cipher.schemas.identity.face_match import FaceMatch
@@ -255,6 +255,8 @@ def image_similarity_params_form(
     datasets: Annotated[list[str] | None, Form()] = None,
     filetypes: Annotated[list[str] | None, Form()] = None,
     tags: Annotated[list[str] | None, Form()] = None,
+    tag_state: Annotated[TagState, Form()] = TagState.POSITIVE,
+    min_tag_score: Annotated[float, Form(ge=0.0, le=1.0)] = 0.5,
 ):
     """Dependency injector for ImageSimilaritySearchParameters from form data.
 
@@ -274,6 +276,8 @@ def image_similarity_params_form(
             "datasets": datasets,
             "filetypes": filetypes,
             "tags": tags,
+            "tag_state": tag_state,
+            "min_tag_score": min_tag_score,
         }
     )
 

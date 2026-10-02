@@ -16,6 +16,8 @@ export function makeGraphPrograms() {
     objectFit: "contain",
     padding: 0,
     size: { mode: "force", value: 128 },
+    // default 500ms: every rebuild (expand, filter) showed bare circles for half a second
+    debounceTimeout: 40,
   });
 
   return {

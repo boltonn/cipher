@@ -5,9 +5,8 @@ export const EVENT_TYPES = [
   "lodging",
   "reservation",
   "meeting",
-  "deadline",
+  "gathering",
   "delivery",
-  "occasion",
   "other",
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];

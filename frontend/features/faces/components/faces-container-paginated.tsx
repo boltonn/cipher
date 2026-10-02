@@ -14,14 +14,15 @@ import type {
 } from "../types";
 import { ImageViewerDialog } from "@/features/images/components/image-viewer-dialog";
 import { FaceCard } from "./face-card";
-import type { FaceSelection } from "../hooks/use-face-selection";
+import type { GridSelection } from "@/hooks/use-grid-selection";
+import { useAssignFaces } from "../hooks/use-assign-face";
 import { useRejectFaces, useUnrejectFaces } from "../hooks/use-reject-faces";
 
 interface FacesContainerPaginatedProps {
   data: PaginatedFacesResponse | PaginatedFaceSimilarityResponse | undefined;
   onSimilar: (id: string) => void;
   /** Enables multi-select checkboxes on the cards. */
-  selection?: FaceSelection;
+  selection?: GridSelection;
   currentPage: number;
   onPageChange: (page: number) => void;
   isLoading: boolean;
@@ -66,6 +67,12 @@ export function FacesContainerPaginated({
   const handleRestore = useCallback(
     (face: FacePublic) => unrejectFaces([face.id]),
     [unrejectFaces]
+  );
+  const { mutate: assignFaces } = useAssignFaces();
+  const handleAssign = useCallback(
+    (face: FacePublic, personId: string, personName?: string) =>
+      assignFaces({ faceIds: [face.id], personId, personName }),
+    [assignFaces]
   );
   const toggleSelection = selection?.toggle;
   const handleToggleSelect = useCallback(
@@ -151,6 +158,7 @@ export function FacesContainerPaginated({
             onFindSimilar={onSimilar}
             onExpand={handleExpand}
             onCreatePerson={setCreatePersonFace}
+            onAssign={handleAssign}
             onReject={handleReject}
             onRestore={handleRestore}
             isSelected={!!selectedIds?.has(face.id)}

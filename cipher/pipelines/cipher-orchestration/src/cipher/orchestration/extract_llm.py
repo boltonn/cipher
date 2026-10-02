@@ -44,6 +44,7 @@ from cipher.orchestration.extract_events import (
     _load_event_dedup_keys,
     _reference_date,
     persist_llm_events,
+    tag_event_files,
 )
 from cipher.schemas.ingestion.enrichment import EnrichableType, EnrichmentType
 
@@ -172,6 +173,7 @@ async def extract_llm_workflow(
                 await session.commit()
 
                 completed, failed, files_done = [], [], []
+                with_events, without_events = [], []
 
                 # 1. resolve each file's text (serial DB reads); short-circuit empties.
                 work = []
@@ -234,6 +236,7 @@ async def extract_llm_workflow(
                                 seen=seen,
                                 event_repo=event_repo,
                             )
+                            (with_events if res.events.events else without_events).append(file_id)
                         completed.append(item.enrichment.id)
                         files_done.append(file_id)
                     except Exception as exc:  # noqa: BLE001
@@ -241,6 +244,7 @@ async def extract_llm_workflow(
                         await session.rollback()
                         failed.append(item.enrichment.id)
 
+                await tag_event_files(session, with_events=with_events, without_events=without_events)
                 if completed:
                     await enrichment_repo.mark_completed_batch(completed)
                 if failed:

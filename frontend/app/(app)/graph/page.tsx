@@ -9,6 +9,9 @@ import {
   type ContextTarget,
 } from "@/features/graph/components/graph-context-menu";
 import { DatasetSelect } from "@/features/datasets/components/dataset-select";
+import { GraphLegend } from "@/features/graph/components/graph-legend";
+import { GraphSelectionBar } from "@/features/graph/components/graph-selection-bar";
+import { GraphTimeBar } from "@/features/graph/components/graph-time-bar";
 import { GraphToolbar } from "@/features/graph/components/graph-toolbar";
 import type {
   EdgePick,
@@ -54,6 +57,8 @@ function GraphPageInner() {
   const [labelDensity, setLabelDensity] = useState(1);
   const [liveLayout, setLiveLayout] = useState(false);
   const [exportNonce, setExportNonce] = useState(0);
+  const [timeBarOpen, setTimeBarOpen] = useState(false);
+  const [multiIds, setMultiIds] = useState<string[]>([]);
 
   const explore = useGraphExplore(datasetId);
   const { addSeed } = explore;
@@ -66,6 +71,32 @@ function GraphPageInner() {
     if (qsSeed) addSeed(qsSeed);
     processed.current = true;
   }, [searchParams, setDatasetId, addSeed]);
+
+  const graph = explore.built?.graph;
+  const seeds = explore.seedIds.map((id) => ({
+    id,
+    label: graph?.hasNode(id)
+      ? String(graph.getNodeAttribute(id, "label"))
+      : "Loading…",
+  }));
+  const removeSeed = (id: string) => {
+    explore.removeSeed(id);
+    if (selectedId === id) setSelectedId(null);
+    setSelectedEdge(null);
+  };
+  const selectNode = (id: string) => {
+    setSelectedEdge(null);
+    setSelectedId(id);
+  };
+  const multiSet = new Set(multiIds);
+  const toggleMulti = (id: string) =>
+    setMultiIds((prev) =>
+      prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]
+    );
+  const withMulti = (action: (ids: string[]) => void) => () => {
+    action(multiIds);
+    setMultiIds([]);
+  };
 
   const selectedIsEvent =
     !!selectedId &&
@@ -87,6 +118,7 @@ function GraphPageInner() {
       explore.pushPathAnchor(id);
       return;
     }
+    setMultiIds([]);
     setSelectedEdge(null);
     setSelectedId(id);
   };
@@ -99,9 +131,11 @@ function GraphPageInner() {
         value={
           !datasetId
             ? "No dataset selected"
-            : explore.nodeCount
-              ? `${explore.nodeCount.toLocaleString()} nodes`
-              : "No nodes"
+            : !explore.nodeCount
+              ? "No nodes"
+              : explore.visibleNodeCount === explore.nodeCount
+                ? `${explore.nodeCount.toLocaleString()} nodes`
+                : `${explore.visibleNodeCount.toLocaleString()} of ${explore.nodeCount.toLocaleString()} nodes`
         }
         actions={
           <DatasetSelect
@@ -139,7 +173,12 @@ function GraphPageInner() {
           onTogglePathMode={explore.togglePathMode}
           pathAnchorCount={explore.pathAnchors.length}
           onExportPng={() => setExportNonce((n) => n + 1)}
+          timeBarOpen={timeBarOpen}
+          onToggleTimeBar={() => setTimeBarOpen((v) => !v)}
           onAddSeed={explore.addSeed}
+          seeds={seeds}
+          onRemoveSeed={removeSeed}
+          onSelectSeed={selectNode}
           onHighlightChange={explore.setHighlightQuery}
           onReset={() => {
             explore.reset();
@@ -151,9 +190,21 @@ function GraphPageInner() {
           visibleNodeCount={explore.visibleNodeCount}
           nodeCount={explore.nodeCount}
           edgeCount={explore.edgeCount}
+          visibleEdgeCount={explore.visibleEdgeCount}
+          truncatedCount={explore.truncatedIds.size}
           isLoading={explore.isLoading}
         />
       </div>
+
+      {timeBarOpen && explore.built && (
+        <GraphTimeBar
+          graph={explore.built.graph}
+          dateFrom={explore.filters.dateFrom}
+          dateTo={explore.filters.dateTo}
+          onChange={(range) => explore.setFilters({ ...explore.filters, ...range })}
+          onClose={() => setTimeBarOpen(false)}
+        />
+      )}
 
       {explore.pathMode && explore.pathAnchors.length === 2 && (
         <div className="mt-2 flex shrink-0 items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs text-primary">
@@ -173,8 +224,8 @@ function GraphPageInner() {
         </div>
       )}
 
-      <div className="relative z-0 mt-3 flex min-h-0 flex-1 gap-3">
-        <div className="min-w-0 flex-1">
+      <div className="relative z-0 mt-3 min-h-0 flex-1">
+        <div className="h-full">
           {!datasetId ? (
             <EmptyState
               icon={Database}
@@ -199,6 +250,9 @@ function GraphPageInner() {
             <NetworkCanvas
               built={explore.built}
               hiddenIds={explore.hiddenIds}
+              timeHiddenIds={explore.timeHiddenIds}
+              timeWindow={explore.timeWindow}
+              multiIds={multiSet}
               visibleTypes={explore.filters.entityTypes}
               visibleRelTypes={explore.filters.relationshipTypes}
               labelsMode={labelsMode}
@@ -207,11 +261,13 @@ function GraphPageInner() {
               sizeMode={explore.sizeMode}
               liveLayout={liveLayout}
               selectedId={selectedId}
+              selectedEdgeId={selectedEdge?.id ?? null}
               highlightIds={explore.highlightIds}
               pathIds={explore.pathIds}
               pathAnchors={explore.pathAnchors}
               exportNonce={exportNonce}
               onSelect={handleSelect}
+              onToggleMulti={toggleMulti}
               onSelectEdge={(e) => {
                 if (e) setSelectedId(null);
                 setSelectedEdge(e);
@@ -228,6 +284,35 @@ function GraphPageInner() {
             />
           )}
         </div>
+
+        {multiIds.length > 0 && explore.built && (
+          <GraphSelectionBar
+            count={multiIds.length}
+            onExpand={withMulti(explore.expandMany)}
+            onIsolate={withMulti(explore.isolateMany)}
+            onHide={withMulti(explore.hideMany)}
+            onAddSeeds={withMulti(explore.addSeeds)}
+            onClear={() => setMultiIds([])}
+          />
+        )}
+
+        {explore.built && explore.seedIds.length > 0 && (
+          <GraphLegend
+            graph={explore.built.graph}
+            hiddenIds={explore.hiddenIds}
+            timeHiddenIds={explore.timeHiddenIds}
+            colorMode={explore.colorMode}
+            visibleTypes={explore.filters.entityTypes}
+            onToggleType={(type) =>
+              explore.setFilters({
+                ...explore.filters,
+                entityTypes: explore.filters.entityTypes.includes(type)
+                  ? explore.filters.entityTypes.filter((t) => t !== type)
+                  : [...explore.filters.entityTypes, type],
+              })
+            }
+          />
+        )}
 
         {selectedId && selectedIsEvent && (
           <EventNodeInspector
@@ -249,10 +334,15 @@ function GraphPageInner() {
           <NodeInspector
             key={selectedId}
             entityId={selectedId}
+            datasetId={datasetId}
+            graph={graph}
             isSeed={selectedIsSeed}
             isExpanded={selectedIsExpanded}
+            isTruncated={explore.truncatedIds.has(selectedId)}
             onClose={() => setSelectedId(null)}
+            onSelect={selectNode}
             onAddSeed={explore.addSeed}
+            onRemoveSeed={removeSeed}
             onExpand={explore.expand}
             onCollapse={explore.collapse}
             onHide={(id) => {
@@ -267,6 +357,7 @@ function GraphPageInner() {
           <EdgeInspector
             key={selectedEdge.id}
             edge={selectedEdge}
+            datasetId={datasetId}
             onClose={() => setSelectedEdge(null)}
           />
         )}
@@ -279,13 +370,11 @@ function GraphPageInner() {
           isExpanded={ctxIsExpanded}
           pathMode={explore.pathMode}
           onClose={() => setContextTarget(null)}
-          onInspect={(id) => {
-            setSelectedEdge(null);
-            setSelectedId(id);
-          }}
+          onInspect={selectNode}
           onExpand={explore.expand}
           onCollapse={explore.collapse}
           onAddSeed={explore.addSeed}
+          onRemoveSeed={removeSeed}
           onIsolate={explore.isolate}
           onHide={(id) => {
             explore.hide(id);

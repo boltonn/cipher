@@ -1,6 +1,7 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -29,6 +30,8 @@ interface EventsTableProps {
   sortOrder: SortOrder;
   onSortChange: (key: EventSortField) => void;
   onSelect: (event: CipherEvent) => void;
+  checkedIds: ReadonlySet<string>;
+  onCheckedIdsChange: (next: Set<string>) => void;
 }
 
 function SortHead({
@@ -69,12 +72,41 @@ export function EventsTable({
   sortOrder,
   onSortChange,
   onSelect,
+  checkedIds,
+  onCheckedIdsChange,
 }: EventsTableProps) {
+  const checkedOnPage = events.filter((e) => checkedIds.has(e.id)).length;
+  const setChecked = (ids: string[], checked: boolean) => {
+    const next = new Set(checkedIds);
+    for (const id of ids) {
+      if (checked) next.add(id);
+      else next.delete(id);
+    }
+    onCheckedIdsChange(next);
+  };
   return (
     <div className="overflow-hidden rounded-xl border border-border">
       <Table>
         <TableHeader>
           <TableRow className="bg-muted/40 hover:bg-muted/40">
+            <TableHead className="w-9">
+              <Checkbox
+                checked={
+                  checkedOnPage === 0
+                    ? false
+                    : checkedOnPage === events.length
+                      ? true
+                      : "indeterminate"
+                }
+                onCheckedChange={(checked) =>
+                  setChecked(
+                    events.map((e) => e.id),
+                    checked === true
+                  )
+                }
+                aria-label="Select all on this page"
+              />
+            </TableHead>
             <SortHead
               label="When"
               sortKey="date_start"
@@ -107,9 +139,16 @@ export function EventsTable({
             return (
               <TableRow
                 key={e.id}
-                className="group cursor-pointer"
+                className={cn("group cursor-pointer", checkedIds.has(e.id) && "bg-primary/5")}
                 onClick={() => onSelect(e)}
               >
+                <TableCell onClick={(click) => click.stopPropagation()}>
+                  <Checkbox
+                    checked={checkedIds.has(e.id)}
+                    onCheckedChange={(checked) => setChecked([e.id], checked === true)}
+                    aria-label={`Select ${e.title}`}
+                  />
+                </TableCell>
                 <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
                   {formatEventStart(e)}
                 </TableCell>

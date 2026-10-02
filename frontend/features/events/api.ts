@@ -71,6 +71,11 @@ export const eventsService = {
   remove: (id: string): Promise<void> =>
     apiClient.delete(`${eventsBaseURL}/${id}`).then(() => undefined),
 
+  markInvalid: (eventIds: string[]): Promise<void> =>
+    apiClient
+      .post(`${eventsBaseURL}/mark-invalid`, { eventIds })
+      .then(() => undefined),
+
   addParticipant: (
     eventId: string,
     body: EventParticipantCreatePayload
@@ -238,5 +243,23 @@ export function useDeleteEvent(onSuccess?: () => void) {
       toast.success("Event marked invalid");
       onSuccess?.();
     },
+  });
+}
+
+export function useMarkEventsInvalid(onSuccess?: () => void) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (eventIds: string[]) => eventsService.markInvalid(eventIds),
+    onSuccess: (_, eventIds) => {
+      for (const eventId of eventIds) {
+        qc.removeQueries({ queryKey: ["events", eventId] });
+      }
+      qc.invalidateQueries({ queryKey: ["events"] });
+      toast.success(
+        `${eventIds.length.toLocaleString()} ${eventIds.length === 1 ? "event" : "events"} marked invalid`
+      );
+      onSuccess?.();
+    },
+    onError: (e) => toast.error((e as Error).message || "Change failed"),
   });
 }

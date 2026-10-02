@@ -15,7 +15,8 @@ import type {
 } from "../types";
 import { ImageViewerDialog } from "@/features/images/components/image-viewer-dialog";
 import { FaceCard } from "./face-card";
-import type { FaceSelection } from "../hooks/use-face-selection";
+import type { GridSelection } from "@/hooks/use-grid-selection";
+import { useAssignFaces } from "../hooks/use-assign-face";
 import { useRejectFaces, useUnrejectFaces } from "../hooks/use-reject-faces";
 
 // Mirrors this grid's `grid-cols-*` breakpoints as plain numbers for virtualization.
@@ -38,7 +39,7 @@ interface FacesContainerInfiniteProps {
     | undefined;
   onSimilar: (id: string) => void;
   /** Enables multi-select checkboxes on the cards. */
-  selection?: FaceSelection;
+  selection?: GridSelection;
   fetchNextPage: () => void;
   hasNextPage: boolean;
   isFetchingNextPage: boolean;
@@ -88,6 +89,12 @@ export function FacesContainerInfinite({
     (face: FacePublic) => unrejectFaces([face.id]),
     [unrejectFaces]
   );
+  const { mutate: assignFaces } = useAssignFaces();
+  const handleAssign = useCallback(
+    (face: FacePublic, personId: string, personName?: string) =>
+      assignFaces({ faceIds: [face.id], personId, personName }),
+    [assignFaces]
+  );
   const toggleSelection = selection?.toggle;
   const handleToggleSelect = useCallback(
     (face: FacePublic, range: boolean) =>
@@ -111,6 +118,7 @@ export function FacesContainerInfinite({
         onFindSimilar={onSimilar}
         onExpand={handleExpand}
         onCreatePerson={setCreatePersonFace}
+        onAssign={handleAssign}
         onReject={handleReject}
         onRestore={handleRestore}
         isSelected={!!selectedIds?.has(face.id)}
@@ -121,6 +129,7 @@ export function FacesContainerInfinite({
     [
       onSimilar,
       handleExpand,
+      handleAssign,
       handleReject,
       handleRestore,
       selectedIds,

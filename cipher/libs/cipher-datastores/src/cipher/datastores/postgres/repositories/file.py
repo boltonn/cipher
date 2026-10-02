@@ -1,8 +1,9 @@
-from sqlalchemy import asc, desc, distinct, func, select, tuple_
+from sqlalchemy import asc, desc, distinct, func, select, text, tuple_
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cipher.datastores.postgres.tables.file import FileTable
+from cipher.schemas._base.common import ModelTagType
 from cipher.schemas.ingestion.file import (
     File,
     FileBrowserItem,
@@ -13,6 +14,11 @@ from cipher.schemas.ingestion.file import (
     FileInstanceSortField,
     SortOrder,
 )
+
+
+def _tag_columns(tag_type: ModelTagType) -> tuple[str, str]:
+    """(column the tag goes in, column it must leave) for a positive or negative tag."""
+    return ("tags", "negative_tags") if tag_type == ModelTagType.POSITIVE else ("negative_tags", "tags")
 
 
 class PostgresFileRepository:
@@ -96,6 +102,44 @@ class PostgresFileRepository:
         if file_orm is None:
             return None
         return File.model_validate(file_orm)
+
+    async def tag_files(self, *, file_ids: list[str], tag: str, tag_type: ModelTagType) -> None:
+        """Put `tag` on the files' positive or negative list, removing it from the other."""
+        if not file_ids:
+            return
+        target, other = _tag_columns(tag_type)
+        await self.session.execute(
+            text(
+                f"UPDATE file SET {target} = ({target} - :tag) || to_jsonb(cast(:tag as text)), "
+                f"{other} = {other} - :tag WHERE id = ANY(:file_ids)"
+            ),
+            {"tag": tag, "file_ids": file_ids},
+        )
+
+    async def set_tag_scores(self, *, tag: str, scores: dict[str, float]) -> None:
+        """Record a model's confidence that `tag` applies, keyed by file id."""
+        if not scores:
+            return
+        await self.session.execute(
+            text(
+                "UPDATE file SET tag_scores = tag_scores || jsonb_build_object(cast(:tag as text), cast(:score as float)) "
+                "WHERE id = :id"
+            ),
+            [{"tag": tag, "id": file_id, "score": score} for file_id, score in scores.items()],
+        )
+
+    async def toggle_tag(self, *, file_id: str, tag: str, tag_type: ModelTagType) -> File | None:
+        """Toggle `tag` on one file: set it (clearing the opposite list), or clear it if already set."""
+        target, other = _tag_columns(tag_type)
+        await self.session.execute(
+            text(
+                f"UPDATE file SET {target} = CASE WHEN {target} ? :tag THEN {target} - :tag "
+                f"ELSE {target} || to_jsonb(cast(:tag as text)) END, {other} = {other} - :tag WHERE id = :file_id"
+            ),
+            {"tag": tag, "file_id": file_id},
+        )
+        await self.session.commit()
+        return await self.get_file_by_id(file_id=file_id)
 
     async def get_file_by_sha256(self, sha256: str) -> File | None:
         """Retrieve a file by its SHA256 hash."""

@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from cipher.schemas.graph.ontology import default_ner_labels, default_relation_labels
 from cipher.schemas.graph.spans import EntitySpan, RelationSpan
 
-__all__ = ["EntitySpan", "RelationSpan", "NerRequest", "ExtractRequest", "ExtractResponse"]
+__all__ = ["EntitySpan", "RelationSpan", "NerRequest", "ExtractRequest", "ExtractResponse", "ClassifyRequest"]
 
 
 class NerRequest(BaseModel):
@@ -32,3 +32,10 @@ class ExtractResponse(BaseModel):
 
     entities: list[EntitySpan]
     relations: list[RelationSpan]
+
+
+class ClassifyRequest(BaseModel):
+    """Request body for `POST /classify`: zero-shot labels, each with a description of what it covers."""
+
+    texts: list[str]
+    labels: dict[str, str] = Field(description="Label name -> description")

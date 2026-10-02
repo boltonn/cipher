@@ -2,6 +2,7 @@
 .env
 scripts/
 /data/
+scratchpad/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

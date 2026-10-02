@@ -161,6 +161,17 @@ BLOCK_BREAK_TAGS: Final[frozenset[str]] = frozenset(
 )
 
 
+MIN_ALT_WORDS: Final[int] = 3
+
+# Preheader padding marketing mail hides after its preview line. Zero-width
+# (non-)joiners are only padding outside a word -- inside one they are spelling
+# (Persian, Indic scripts, emoji sequences) and stay.
+INVISIBLE_RE: Final[re.Pattern[str]] = re.compile(
+    r"[\u00ad\u034f\u200b\u2060\ufeff]|(?<![^\W\d_])[\u200c\u200d]|[\u200c\u200d](?![^\W\d_])"
+)
+SPACE_LIKE: Final[dict[int, str]] = str.maketrans({"\u00a0": " ", "\u2007": " ", "\u202f": " "})
+
+
 @dataclass(frozen=True)
 class SanitizeConfig:
     """Configuration for HTML sanitization.
@@ -244,8 +255,9 @@ class HtmlParser:
             text = HtmlParser._sanitize_doc(doc)
         else:
             HtmlParser._drop_subtrees(doc)
+            HtmlParser._surface_inline_text(doc)
+            HtmlParser._insert_block_breaks(doc)  # before tables: cells flatten their own blocks
             HtmlParser._format_tables_inplace(doc)
-            HtmlParser._insert_block_breaks(doc)
             text = HtmlParser._normalize_text(doc.text_content() or "")
 
         return HtmlParseResult(text=text, children=children)
@@ -273,21 +285,32 @@ class HtmlParser:
 
     @staticmethod
     def _format_tables_inplace(doc: Any) -> None:
-        """Replaces ``<table>`` elements with ASCII text representations in-place.
+        """Replaces data ``<table>`` elements with pipe-table text in-place.
+
+        Only a table with no table inside it and 2+ columns is data. Anything
+        else is page layout (HTML email is built from nested layout tables):
+        its cells are left in the tree as blocks, so their text appears once,
+        on its own line, instead of once per nesting level.
 
         Args:
             doc: An lxml element whose table descendants will be replaced.
         """
-        for table in list(doc.xpath("//table")):
-            table_text = HtmlParser._format_table(table)
+        for table in doc.xpath("//table"):
+            rows = table.xpath("./tr | ./thead/tr | ./tbody/tr | ./tfoot/tr")
+            cells = [row.xpath("./td | ./th") for row in rows]
             parent = table.getparent()
-            if parent is not None:
-                prev = table.getprevious()
-                if prev is not None:
-                    prev.tail = (prev.tail or "") + table_text + (table.tail or "")
-                else:
-                    parent.text = (parent.text or "") + table_text + (table.tail or "")
-                parent.remove(table)
+            is_data = parent is not None and not table.xpath(".//table") and max(map(len, cells), default=0) >= 2
+            if not is_data:
+                for cell in (cell for row in cells for cell in row):
+                    cell.tail = "\n" + (cell.tail or "")
+                continue
+            table_text = HtmlParser._format_table(cells)
+            prev = table.getprevious()
+            if prev is not None:
+                prev.tail = (prev.tail or "") + table_text + (table.tail or "")
+            else:
+                parent.text = (parent.text or "") + table_text + (table.tail or "")
+            parent.remove(table)
 
     @staticmethod
     def extract_links(
@@ -333,8 +356,9 @@ class HtmlParser:
         """
         doc = HtmlParser._parse(html)
         HtmlParser._drop_subtrees(doc)
-        HtmlParser._format_tables_inplace(doc)
+        HtmlParser._surface_inline_text(doc)
         HtmlParser._insert_block_breaks(doc)
+        HtmlParser._format_tables_inplace(doc)
         return HtmlParser._normalize_text(doc.text_content() or "")
 
     @staticmethod
@@ -346,6 +370,7 @@ class HtmlParser:
         holding only inherited indentation, which ``\n{3,}`` alone never
         matches.
         """
+        content = INVISIBLE_RE.sub("", content).translate(SPACE_LIKE)
         content = re.sub(r"[ \t]{2,}", " ", content)
         content = re.sub(r"[ \t]*\n[ \t]*", "\n", content)
         return re.sub(r"\n{3,}", "\n\n", content).strip()
@@ -393,21 +418,16 @@ class HtmlParser:
         return children
 
     @staticmethod
-    def _format_table(table_el: Any) -> str:
+    def _format_table(cells: list[list[Any]]) -> str:
         rows: list[str] = []
-        for tr in table_el.xpath(".//tr"):
-            cells = []
-            for c in tr.xpath("./td | ./th"):
-                # Get text and collapse whitespace
-                raw_text = re.sub(r"\s+", " ", c.text_content()).strip()
-
-                # CLEANING STEP: Remove NULL bytes and non-printable control characters
-                clean_text = "".join(ch for ch in raw_text if ch.isprintable() or ch in "\n\r\t").replace("\x00", "")
-
-                cells.append(clean_text)
-
-            if any(cells):
-                rows.append(f"| {' | '.join(cells)} |")
+        for row in cells:
+            texts = []
+            for cell in row:
+                collapsed = re.sub(r"\s+", " ", cell.text_content()).strip()
+                # drop NULL bytes and non-printable control characters
+                texts.append("".join(ch for ch in collapsed if ch.isprintable()))
+            if any(texts):
+                rows.append(f"| {' | '.join(texts)} |")
 
         if not rows:
             return ""
@@ -449,9 +469,44 @@ class HtmlParser:
         return "".join(parts)
 
     @staticmethod
+    def _surface_inline_text(doc: Any) -> None:
+        """Keeps text a browser would show that text_content() loses.
+
+        A descriptive image ``alt`` (3+ words -- image-only emails carry their
+        whole message there; "logo" / "Facebook" icons are skipped) becomes
+        text, and a link sitting flush against a neighbouring element gets the
+        space its CSS padding draws ("<a>Ada Lovelace</a><span>in</span>").
+        """
+        for image in doc.iter("img"):
+            alt = (image.get("alt") or "").strip()
+            if len(alt.split()) >= MIN_ALT_WORDS:
+                image.tail = f" {alt} " + (image.tail or "")
+        for link in doc.iter("a"):
+            previous = link.getprevious()
+            if previous is not None and not previous.tail:
+                previous.tail = " "
+            if link.getnext() is not None and not link.tail:
+                link.tail = " "
+
+    @staticmethod
     def _insert_block_breaks(doc: Any) -> None:
-        """Appends a newline after each block-level element so text_content() keeps block boundaries."""
-        for element in doc.iter(*BLOCK_BREAK_TAGS):
+        """Puts a newline around each block-level element so text_content() keeps block boundaries.
+
+        The leading break only goes in where inline content runs straight into
+        the block ("Algebra<div>Imperial</div>"); a preceding block already
+        ends with its own.
+        """
+        blocks = list(doc.iter(*BLOCK_BREAK_TAGS))
+        for element in blocks:
+            previous, parent = element.getprevious(), element.getparent()
+            if element.tag in ("br", "hr") or parent is None:
+                continue
+            if previous is None:
+                if (parent.text or "").strip():
+                    parent.text += "\n"
+            elif previous.tag not in BLOCK_BREAK_TAGS or (previous.tail or "").strip():
+                previous.tail = (previous.tail or "") + "\n"
+        for element in blocks:
             element.tail = "\n" + (element.tail or "")
 
     @staticmethod

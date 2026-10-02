@@ -7,6 +7,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { facesService } from "@/features/faces/api";
+import { PersonPicker } from "@/features/persons/components/person-picker";
 import { FacePublic, FaceSimilarityResult } from "@/features/faces/types";
 import { cn } from "@/lib/utils";
 import {
@@ -29,6 +30,8 @@ interface FaceCardProps {
   onFindSimilar?: (id: string) => void;
   onExpand?: (face: FacePublic) => void;
   onCreatePerson?: (face: FacePublic) => void;
+  /** Assign this one face to a person chosen from the hover picker. */
+  onAssign?: (face: FacePublic, personId: string, personName?: string) => void;
   /** Mark (or, for a rejected face, restore) this one face as not a face. */
   onReject?: (face: FacePublic) => void;
   onRestore?: (face: FacePublic) => void;
@@ -43,6 +46,7 @@ const FaceCardImpl: React.FC<FaceCardProps> = ({
   onFindSimilar,
   onExpand,
   onCreatePerson,
+  onAssign,
   onReject,
   onRestore,
   isSelected,
@@ -120,10 +124,12 @@ const FaceCardImpl: React.FC<FaceCardProps> = ({
           </button>
         )}
 
-        <div className="absolute inset-x-0 bottom-3 flex justify-center opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all duration-300 z-10">
+        {/* Stays visible while the assign picker (aria-expanded trigger) is open. */}
+        <div className="absolute inset-x-0 bottom-3 flex justify-center opacity-0 group-hover:opacity-100 has-[[aria-expanded=true]]:opacity-100 translate-y-2 group-hover:translate-y-0 has-[[aria-expanded=true]]:translate-y-0 transition-all duration-300 z-10">
           <div
-            className="flex items-center gap-4 bg-popover/95 border border-border px-4 py-2 rounded-full shadow-2xl"
+            className="flex items-center gap-3 bg-popover/95 border border-border px-3.5 py-2 rounded-full shadow-2xl"
             onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
           >
             <NavAction
               icon={<Search size={16} />}
@@ -135,6 +141,21 @@ const FaceCardImpl: React.FC<FaceCardProps> = ({
               label="Expand"
               onClick={() => onExpand?.(face)}
             />
+            {!isRejected && onAssign && (
+              <PersonPicker
+                value={face.personId ?? undefined}
+                withAvatars
+                allowCreate={false}
+                onSelect={(personId, personName) =>
+                  onAssign(face, personId, personName)
+                }
+              >
+                <NavAction
+                  icon={<UserCheck size={16} />}
+                  label="Assign to person"
+                />
+              </PersonPicker>
+            )}
             {!isRejected && (
               <NavAction
                 icon={<UserPlus size={16} />}
@@ -239,20 +260,21 @@ const FaceCardImpl: React.FC<FaceCardProps> = ({
  */
 export const FaceCard = memo(FaceCardImpl);
 
+/** Extra props (ref, aria-*, handlers) pass through so it can be a popover trigger. */
 const NavAction = ({
   icon,
   label,
-  onClick,
+  ...props
 }: {
   icon: React.ReactNode;
   label: string;
-  onClick?: () => void;
-}) => (
+} & React.ComponentProps<"button">) => (
   <Tooltip delayDuration={0}>
     <TooltipTrigger asChild>
       <button
         type="button"
-        onClick={onClick}
+        aria-label={label}
+        {...props}
         className="cursor-pointer text-muted-foreground hover:text-annotation transition-all duration-200 outline-none"
       >
         {icon}

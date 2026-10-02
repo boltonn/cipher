@@ -32,13 +32,13 @@ removes another's packages.
 | Stage extra | Commands | Pulls in |
 |---|---|---|
 | `staging` | `load-files` | filetyper (magika) |
-| `text-extraction` | `extract-text` | pyxberg (kreuzberg + EasyOCR), pyparse[email] |
+| `text-extraction` | `extract-text` | pyxberg (kreuzberg; EasyOCR only as the fallback OCR), pyparse[email] |
 | `ocr` | `ocr` | pyocr client, pyxberg, setfitcv (CLIP filter) |
 | `text-embedding` | `embed-text` | clir |
 | `image-embedding` / `exif-location` | `embed-images` / `extract-locations` | setfitcv |
 | `face-detection` | `detect-faces` | face[cuda] (InsightFace) |
 | `contact-extraction` | `extract-contact-entities` | pyparse[contacts] |
-| `event-extraction` | `extract-events`, `extract-llm` | pyparse |
+| `event-extraction` | `extract-events`, `extract-llm` | pyparse (`extract-events --llm` also pulls `gliner` for the gate) |
 | `gliner` / `nerd` | `extract-entities --extractor gliner\|nerd` | pygliner / nerd |
 
 Variants: `CIPHER_STAGE_ENV_ISOLATED=1` gives each call a throwaway env (`uv run
@@ -51,7 +51,7 @@ the extras in `pipelines/cipher-orchestration/pyproject.toml`.
 |---|---|---|
 | everything | Postgres (ParadeDB image: pgvector + pg_search + PostGIS) | `.env` `POSTGRES__*`; `cipher create-tables` on a fresh DB |
 | `embed-text`/`reset-text` only if `RETRIEVAL__BACKEND=elasticsearch` | Elasticsearch | `.env` `ELASTICSEARCH__*`. The default postgres backend never opens ES. |
-| `ocr` (optional tier 2) | pyocr service (jina-ocr-v1 on vLLM) | `cd analytics/pyocr && make start-vllm` (:8010) or `make start-vllm-all` (one per GPU) |
+| `ocr` | pyocr engine (jina-ocr-v1 on vLLM), local | Nothing to start: `cipher ocr` launches it from `analytics/pyocr/.venv-vllm` (`make install-vllm` once) and stops it afterwards. To keep one up, or one per GPU: `make start-vllm` (:8010) / `make start-vllm-all` + `--service-url` |
 | `extract-llm`, `extract-entities --extractor llm`, `extract-events --llm` | LLM endpoint | `.env` `LLM__PROVIDER/MODEL/API_KEY` (or `LOCAL_LLM_BASE_URL`) |
 | models | local checkpoints | `$TEXT_EMBEDDING_MODEL_DIR`, `$IMAGE_EMBEDDING_MODEL_DIR`, `$FACE_MODEL_DIR`, `$EASYOCR_MODEL_DIR`, `$GLINER_MODEL_DIR`, `$NERD_MODEL_DIR` |
 
@@ -66,8 +66,7 @@ flowchart LR
     A[create-dataset] --> B[load-files]
   end
   subgraph Text
-    C["extract-text<br/>(+ EasyOCR on image pages)"] --> E[embed-text]
-    C -. optional: better OCR .-> D[ocr] --> E
+    C["extract-text<br/>(records image-based pages)"] --> D[ocr] --> E[embed-text]
   end
   subgraph Images
     F[embed-images]
@@ -86,7 +85,7 @@ flowchart LR
     S[extract-relationships]
   end
   B --> C & F & G & H & N
-  F -. CLIP filter .-> D
+  F -- text gate --> D
   C --> K & L & M
   K & L --> S
   K & L & N --> P
@@ -108,8 +107,8 @@ cipher estimate --dataset-name rag --device cuda        # optional: ETA per anal
 
 | # | Command | Notes |
 |---|---|---|
-| 2a | `cipher extract-text --dataset-name rag` | Parses emails (pyparse; attachments become child files), then documents (xberg). For every PDF it records its **image-based pages** (`metadata.image_pages`, read from xberg's per-page output) and OCRs just those with EasyOCR, offline from `$EASYOCR_MODEL_DIR`. Use `--ocr-backend none` to only record them. Keep `--chunk-size` the same as in 2c. |
-| 2b | *(optional)* `cipher ocr --dataset-name rag [--service-url …] [--clip-model-dir $IMAGE_EMBEDDING_MODEL_DIR]` | Stronger OCR (pyocr service). Replaces the EasyOCR text on image-based pages and also OCRs standalone images. Run it now, or later when the file viewer shows image-based pages worth redoing (then re-run 2c). |
+| 2a | `cipher extract-text --dataset-name rag` | Parses emails (pyparse; attachments become child files), then documents (xberg). For every PDF it records its **image-based pages** (`metadata.image_pages`, read from xberg's per-page output) and leaves them for 2b. Keep `--chunk-size` the same as in 2c. |
+| 2b | `cipher ocr --dataset-name rag` (after 3a) | Reads the image-based pages and text-bearing images with pyocr, merging page by page into the extracted text. Images pass a **gate** first: zero-shot CLIP tags over the embeddings from 3a, kept as each file's `has_text` **tag score**; under `--clip-threshold` (0.5) an image is not OCR'd (`--all-images` turns the gate off). A page that makes the model loop is cut back to one copy of the repeated text and counted in the run summary. |
 | 2c | `cipher embed-text --dataset-name rag --model-dir $TEXT_EMBEDDING_MODEL_DIR --device cuda` | Writes the chunks that power keyword, semantic and entity search. `--max-pages N` limits very long documents. |
 
 ## 3. Image track
@@ -125,7 +124,7 @@ cipher estimate --dataset-name rag --device cuda        # optional: ETA per anal
 
 ## 4. Mentions (after 2a)
 
-These can run in any order.
+These can run in any order, but after 2b: OCR'd text is only seen by what runs after it.
 
 | Command | Produces |
 |---|---|
@@ -133,6 +132,11 @@ These can run in any order.
 | `cipher extract-entities --dataset-name rag --extractor gliner --gliner-model-dir $GLINER_MODEL_DIR --device cuda` | person / org / location name mentions + relations. Engines: `llm` (default), `gliner`, `nerd`. |
 | `cipher extract-events --dataset-name rag` | `.ics` → events (deterministic) |
 | `cipher extract-contact-entities --dataset-name rag` | Parses vCard files into `contact` rows, then name + selector mentions and `member_of` for orgs |
+
+**LLM events:** `cipher extract-events --dataset-name rag --llm-only --gliner-model-dir $GLINER_MODEL_DIR --device cuda`
+gates every email with GLiNER, sends the likely ones (plus a 5% sample of the
+rest) to the LLM, tags each file read `event` positive or negative, and prints a
+gate report. `--no-gate` reads everything.
 
 **LLM option:** `cipher extract-llm --dataset-name rag --concurrency 16` covers LLM
 entities *and* events in one model call per email. It replaces
@@ -146,7 +150,7 @@ mailbox takes overnight), and runs over 15,000 files are refused unless you pass
 |---|---|---|
 | 5a | `cipher extract-relationships --dataset-name rag` | Directed `emailed` edges, sender → recipient address, weight = emails sent that way. Needs no resolution; feeds `top_connections`. |
 | 5b | `cipher resolve-entities --dataset-name rag --concurrency 8` | Matches mention groups to entities: auto-attach, send to review, or create a provisional entity. `--concurrency` makes it about 6× faster. |
-| 5b′ | `cipher resolve-locations --dataset-name rag` | Place mentions → shared country / state / city / region entities via the offline gazetteer (`cipher-places-build` once, writes `~/models/gazetteer/`). Per mention, using nearby text (`Dover, DE 19904` → Delaware); ambiguous names (`Washington`, `Georgia`) stay unresolved. Runs automatically at the end of 5b (`--skip-locations` to opt out). |
+| 5b′ | `cipher resolve-locations --dataset-name rag` | Place mentions → shared country / state / city / region entities via the offline gazetteer (`cipher-places-build` once, writes `~/models/gazetteer/`). Per mention, using nearby text (`Dover, DE 19904` → Delaware); ambiguous names (`Washington`, `Georgia`) stay unresolved. Runs automatically at the end of 5b (`--skip-locations` to opt out). Matches dictionary forms in any indexed language, then lemmas (ru/uk case forms, ar/fa prefixes, zh suffixes). Places are entities, not map points. Own places: `~/models/gazetteer/custom_places.jsonl` + rebuild (see `libs/cipher-places/README.md`). |
 | 5c | `cipher dedupe-entities --dataset-name rag` | Proposes merges between provisional and canonical entities (always goes to review) |
 | 5d | `cipher resolve-event-links --dataset-name rag` | Links event participants and places to entities / locations |
 
@@ -159,15 +163,16 @@ flags image-based pages and which OCR produced their text. After confirming face
 re-run `link-face-cooccurrence`. After confirming entities, re-running 5b/5c picks up
 what changed.
 
-## Full copy-paste (GPU box, gliner NER, no LLM, no pyocr service)
+## Full copy-paste (GPU box, gliner NER, no LLM)
 
 ```bash
 D=rag
 cipher create-dataset --name $D
 cipher load-files /data/$D --dataset-name $D
 cipher extract-text  --dataset-name $D
-cipher embed-text    --dataset-name $D --model-dir $TEXT_EMBEDDING_MODEL_DIR --device cuda
 cipher embed-images  --dataset-name $D --model-dir $IMAGE_EMBEDDING_MODEL_DIR --device cuda
+cipher ocr           --dataset-name $D
+cipher embed-text    --dataset-name $D --model-dir $TEXT_EMBEDDING_MODEL_DIR --device cuda
 cipher extract-locations --dataset-name $D
 cipher detect-faces  --dataset-name $D --model-dir $FACE_MODEL_DIR --device cuda
 cipher match-faces   --dataset-name $D
@@ -187,7 +192,8 @@ cipher stats --dataset-name $D
 
 | Situation | Run |
 |---|---|
-| Better OCR for image-based pages | `ocr` (pyocr service up) → `embed-text` (OCR re-queues the files it rewrote) |
+| OCR added after the fact, or re-done | `ocr` → `embed-text` (OCR re-queues the files it rewrote); mentions extracted before it need `reset-entities` + step 4 |
+| No GPU / pyocr engine not installed | `extract-text --ocr-backend easyocr` OCRs image-based pages inline (English by default, `--ocr-language`; much weaker on poor scans) and skip `ocr` |
 | Changed chunk size or embedding model | `reset-text` → `extract-text` → (`ocr`) → `embed-text` (then re-run mentions: offsets moved) |
 | Re-extract entities/selectors from scratch | `reset-entities` → step 4 → step 5 (manual entities are kept) |
 | Re-extract events | `reset-events` → `extract-events` → `resolve-event-links` (manual/verified events are kept) |

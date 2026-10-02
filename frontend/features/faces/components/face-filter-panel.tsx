@@ -87,7 +87,7 @@ export const FaceFilterPanel: React.FC<FaceFilterPanelProps> = ({
   const clearAllFilters = () => {
     setParams({
       limit: params.limit,
-      sortBy: "dateCreated",
+      sortBy: "detectionConfidence",
       sortOrder: "desc",
       minSimilarity: DEFAULT_MIN_SIMILARITY,
       minSize: DEFAULT_MIN_SIZE,
@@ -195,7 +195,7 @@ export const FaceFilterPanel: React.FC<FaceFilterPanelProps> = ({
                 Sort By
               </Label>
               <Select
-                value={params.sortBy || "dateCreated"}
+                value={params.sortBy || "detectionConfidence"}
                 onValueChange={(v) =>
                   updateParam("sortBy", v as FaceFilters["sortBy"])
                 }
@@ -204,10 +204,10 @@ export const FaceFilterPanel: React.FC<FaceFilterPanelProps> = ({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="dateCreated">Date detected</SelectItem>
                   <SelectItem value="detectionConfidence">
                     Confidence
                   </SelectItem>
+                  <SelectItem value="dateCreated">Date detected</SelectItem>
                   <SelectItem value="qualityScore">Quality</SelectItem>
                 </SelectContent>
               </Select>

@@ -7,7 +7,7 @@ import { FaceSelectionBar } from "@/features/faces/components/face-selection-bar
 import { FaceUploadSearchBar } from "@/features/faces/components/face-upload-search-bar";
 import { FacesContainerInfinite } from "@/features/faces/components/faces-container-infinite";
 import { FacesContainerPaginated } from "@/features/faces/components/faces-container-paginated";
-import { useFaceSelection } from "@/features/faces/hooks/use-face-selection";
+import { useGridSelection } from "@/hooks/use-grid-selection";
 import { useSearchController } from "@/features/faces/hooks/use-search-controller";
 import { PaginationModeType } from "@/types/common";
 import { useQueryClient } from "@tanstack/react-query";
@@ -45,7 +45,7 @@ function FacesPageInner() {
 
   const totalFaces = data?.pages[0]?.total ?? paginatedData?.total ?? 0;
 
-  const selection = useFaceSelection();
+  const selection = useGridSelection();
   const isRejectedView = !!filters.rejectedOnly;
   const [prevRejectedView, setPrevRejectedView] = useState(isRejectedView);
   if (isRejectedView !== prevRejectedView) {

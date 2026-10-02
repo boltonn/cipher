@@ -3,10 +3,10 @@ from enum import StrEnum
 from typing import Annotated, Any
 
 import numpy as np
-from pydantic import BeforeValidator, Field, field_serializer
+from pydantic import BeforeValidator, Field, StringConstraints, field_serializer
 
 from cipher.schemas._base.base import BaseModel
-from cipher.schemas._base.common import PageParams, PaginatedResponse
+from cipher.schemas._base.common import ModelTagType, PageParams, PaginatedResponse, TagState
 
 IMAGE_EMBEDDING_DIMENSION = 512
 
@@ -14,6 +14,7 @@ IMAGE_EMBEDDING_DIMENSION = 512
 class ImageSortField(StrEnum):
     SIMILARITY = "similarity"
     DATE_TAKEN = "date_taken"
+    TAG_SCORE = "tag_score"
 
 
 def _coerce_embedding(v: Any) -> Any:
@@ -46,7 +47,13 @@ class ImageBase(BaseModel):
     gps_latitude: float | None = Field(None, ge=-90, le=90, description="EXIF GPS latitude")
     gps_longitude: float | None = Field(None, ge=-180, le=180, description="EXIF GPS longitude")
     gps_altitude: float | None = Field(None, description="Altitude in meters")
-    tags: list[str] = Field(default_factory=list, description="Image tags")
+    tags: list[str] = Field(default_factory=list, description="Positive labels: the image is this")
+    negative_tags: list[str] = Field(
+        default_factory=list, description="Negative labels: the image is explicitly not this"
+    )
+    tag_scores: dict[str, float] = Field(
+        default_factory=dict, description="Model confidence (0-1) that a tag applies; a prediction, not a label"
+    )
     embedding_model: str | None = Field(None, description="Embedding model name")
 
 
@@ -67,6 +74,25 @@ class ImageUpdate(BaseModel):
     tags: list[str] | None = None
     embedding: ImageEmbedding | None = None
     embedding_model: str | None = None
+
+
+class ImageTagRequest(BaseModel):
+    """Label a set of images with one tag.
+
+    `positive` puts the tag in `tags`, `negative` in `negative_tags` (a tag is in
+    at most one); omitting `type` clears the label, leaving the images unlabelled.
+    Accepting or rejecting a predicted tag is the same call -- the score stays.
+    """
+
+    image_ids: list[str] = Field(min_length=1, max_length=10_000)
+    tag: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+    type: ModelTagType | None = Field(default=None)
+
+
+class ImageTagResult(BaseModel):
+    """Outcome of a bulk tag call."""
+
+    updated: int = Field(default=0, description="Images the label was applied to")
 
 
 class Image(ImageBase):
@@ -135,7 +161,14 @@ class BaseImageSearchParameters(PageParams):
     date_to: datetime | None = Field(None, description="Filter images before this date")
     datasets: list[str] | None = Field(None, description="Dataset IDs to filter")
     filetypes: list[str] | None = Field(None, description="File types to filter")
-    tags: list[str] | None = Field(None, description="Tags to filter")
+    tags: list[str] | None = Field(None, description="Tags to filter (any of)")
+    tag_state: TagState = Field(
+        default=TagState.POSITIVE,
+        description="Which store `tags` matches: positive labels, negative labels, or unlabelled predictions",
+    )
+    min_tag_score: float = Field(
+        default=0.5, ge=0, le=1, description="Score a predicted tag must reach (`tag_state=predicted` only)"
+    )
     limit: int = Field(10, description="Number of results to return", ge=1, le=100)
     sort_by: ImageSortField = Field(ImageSortField.DATE_TAKEN, description="Sort field")
 

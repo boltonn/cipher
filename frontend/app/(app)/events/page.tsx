@@ -1,14 +1,20 @@
 "use client";
 
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
 import { PageLoading } from "@/components/page-loading";
 import { Pagination } from "@/components/pagination";
 import { SearchBarShell } from "@/components/search-bar-shell";
 import { SearchInput } from "@/components/search-input";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DatasetSelect } from "@/features/datasets/components/dataset-select";
-import { useEvents, useEventsCalendar } from "@/features/events/api";
+import {
+  useEvents,
+  useEventsCalendar,
+  useMarkEventsInvalid,
+} from "@/features/events/api";
 import { EventDetailSheet } from "@/features/events/components/event-detail-sheet";
 import { EventFiltersBar } from "@/features/events/components/event-filters";
 import { EventsCalendar, monthGridRange } from "@/features/events/components/events-calendar";
@@ -22,7 +28,7 @@ import {
 } from "@/features/events/types";
 import { useLocalStorageState } from "@/hooks/use-local-storage-state";
 import { startOfMonth } from "date-fns";
-import { CalendarDays, CalendarRange, Search, Table2 } from "lucide-react";
+import { CalendarDays, CalendarRange, Search, Table2, Trash2, X } from "lucide-react";
 import { useMemo, useState } from "react";
 
 const LIMIT = 25;
@@ -46,6 +52,8 @@ export default function EventsPage() {
   const [month, setMonth] = useState(() => startOfMonth(new Date()));
   const [monthSeeded, setMonthSeeded] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
+  const markInvalid = useMarkEventsInvalid(() => setCheckedIds(new Set()));
 
   const resetPage = () => setPage(1);
 
@@ -203,12 +211,48 @@ export default function EventsPage() {
               />
             ) : (
               <>
+                {checkedIds.size > 0 && (
+                  <div className="flex items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-1.5 text-[11px]">
+                    <b className="text-foreground">
+                      {checkedIds.size.toLocaleString()} selected
+                    </b>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 gap-1 px-2 text-[11px]"
+                      onClick={() => setCheckedIds(new Set())}
+                      disabled={markInvalid.isPending}
+                    >
+                      <X size={11} /> Clear
+                    </Button>
+                    <div className="ml-auto">
+                      <ConfirmDialog
+                        trigger={
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 gap-1 px-2 text-[11px] text-destructive hover:text-destructive"
+                          >
+                            <Trash2 size={11} /> Mark invalid
+                          </Button>
+                        }
+                        title={`Mark ${checkedIds.size.toLocaleString()} ${checkedIds.size === 1 ? "event" : "events"} invalid?`}
+                        description="Not real events — they are deleted along with their participants and places. The source files are kept."
+                        confirmLabel="Mark invalid"
+                        onConfirm={() => markInvalid.mutate([...checkedIds])}
+                        isPending={markInvalid.isPending}
+                      />
+                    </div>
+                  </div>
+                )}
                 <EventsTable
                   events={events}
                   sortBy={sort.by}
                   sortOrder={sort.order}
                   onSortChange={changeSort}
                   onSelect={(e) => setSelectedId(e.id)}
+                  checkedIds={checkedIds}
+                  onCheckedIdsChange={setCheckedIds}
                 />
                 <Pagination
                   currentPage={page}

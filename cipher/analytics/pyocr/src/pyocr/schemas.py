@@ -26,6 +26,10 @@ class OcrPage(BaseModel):
     markdown: str = Field(description="Transcribed page text as markdown; empty when the page has no text")
     tables: list[ExtractedTableInfo] = Field(default_factory=list, description="Tables, also inlined as pipe tables")
     regions: list[OcrRegion] = Field(default_factory=list)
+    is_truncated: bool = Field(
+        default=False,
+        description="The model looped on a repeated phrase; the repeats were cut and the page may be incomplete",
+    )
 
 
 class OcrRequest(BaseModel):

@@ -1,11 +1,10 @@
 import type { EventStatus, EventType } from "@/features/events/types";
 import {
   CalendarClock,
-  CalendarDays,
-  Hourglass,
   type LucideIcon,
   MapPin,
   Package,
+  PartyPopper,
   Plane,
   UtensilsCrossed,
   Users,
@@ -14,7 +13,7 @@ import {
 /**
  * Events colour by **category** (derived from `eventType` server-side), not by
  * type -- so travel + lodging read as one trip colour on the calendar. There is
- * no semantic token set for these six buckets in globals.css, so a small
+ * no semantic token set for these five buckets in globals.css, so a small
  * documented palette lives here, matching the `entity-type-meta` precedent.
  * Amber is intentionally avoided: reserved for AI/ML annotation surfaces.
  */
@@ -53,14 +52,6 @@ export const EVENT_CATEGORY_META: Record<string, EventCategoryMeta> = {
     borderClass: "border-violet-500/30",
     dotClass: "bg-violet-400",
   },
-  admin: {
-    label: "Admin",
-    color: "#f472b6",
-    textClass: "text-pink-300",
-    bgClass: "bg-pink-500/10",
-    borderClass: "border-pink-500/30",
-    dotClass: "bg-pink-400",
-  },
   logistics: {
     label: "Logistics",
     color: "#fb923c",
@@ -94,9 +85,8 @@ export const EVENT_TYPE_META: Record<EventType, EventTypeMeta> = {
     category: "personal",
   },
   meeting: { label: "Meeting", Icon: Users, category: "work" },
-  deadline: { label: "Deadline", Icon: Hourglass, category: "admin" },
+  gathering: { label: "Gathering", Icon: PartyPopper, category: "personal" },
   delivery: { label: "Delivery", Icon: Package, category: "logistics" },
-  occasion: { label: "Occasion", Icon: CalendarDays, category: "personal" },
   other: { label: "Other", Icon: CalendarClock, category: "other" },
 };
 

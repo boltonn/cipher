@@ -425,7 +425,14 @@ class PostgresEntityRepository:
             .outerjoin(SelectorTable, SelectorTable.entity_id == EntityTable.id)
             .where(*where)
         )
-        if request.sort_by == EntitySortField.MENTION_COUNT:
+        if request.sort_by == EntitySortField.MENTION_COUNT and request.query:
+            # typeahead: a name query leaves few rows, so count per match instead of totalling the dataset
+            sort_column = (
+                select(func.count())
+                .where(MentionTable.entity_id == EntityTable.id, *mention_where)
+                .scalar_subquery()
+            )
+        elif request.sort_by == EntitySortField.MENTION_COUNT:
             mention_totals = (
                 # count(*) not count(id): answerable from ix_mention_dataset_entity alone (index-only scan)
                 select(MentionTable.entity_id, func.count().label("mention_count"))
@@ -575,18 +582,25 @@ class PostgresEntityRepository:
         if entity_type:
             where.append(EntityTable.entity_type == entity_type)
 
-        # Prefix hits first, then other substring hits, then pure fuzzy -- each
-        # tier by descending trigram score.
+        # Canonical entities ahead of auto-created ones (a name's many provisional
+        # spellings would otherwise fill the page), then prefix hits, other
+        # substring hits, pure fuzzy -- each tier by descending trigram score.
         rank = case(
             (EntityTable.display_name_normalized.ilike(f"{normalized}%"), 2),
             (substring, 1),
             else_=0,
         )
-        stmt = select(EntityTable, score.label("score")).where(*where).order_by(desc(rank), desc("score")).limit(limit)
+        stmt = (
+            select(EntityTable, score.label("score"))
+            .where(*where)
+            .order_by(desc(is_canonical_entity()), desc(rank), desc("score"))
+            .limit(limit)
+        )
         result = await self.session.execute(stmt)
         return [
             EntitySearchResult(
                 **EntitySummary.model_validate(row).model_dump(),
+                is_provisional=Entity.model_validate(row).is_provisional,
                 match_reason="name trigram",
                 score=max(0.0, min(1.0, float(value))),
             )

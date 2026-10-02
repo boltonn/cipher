@@ -1,6 +1,6 @@
 """Events: the dated-occurrence surface.
 
-Travel, lodging, reservations, meetings, deadlines, deliveries pulled from
+Travel, lodging, reservations, meetings, gatherings, deliveries pulled from
 documents or parsed from calendar attachments.
 Feeds the calendar and table views. Events link to people via `event_participant`
 (-> entity) and to places via `event_place` (-> location); each link carries
@@ -17,6 +17,7 @@ from cipher.schemas._base.exceptions import EntityNotFoundError
 from cipher.schemas.graph.event import (
     Event,
     EventCreate,
+    EventIdsRequest,
     EventSearchParameters,
     EventUpdate,
     EventWithLinks,
@@ -75,6 +76,13 @@ async def tag_values(
 async def create_event(payload: EventCreate, datastore: EventDatastoreDep) -> Event:
     """Record an event (analyst-authored, or written by an extraction pass)."""
     return await datastore.add_event(payload)
+
+
+@router.post("/mark-invalid", summary="Mark events invalid", status_code=204)
+async def mark_events_invalid(payload: EventIdsRequest, datastore: EventDatastoreDep) -> Response:
+    """Delete events that are not real; a source file left with none is tagged `event` negative."""
+    await datastore.delete_events(payload.event_ids)
+    return Response(status_code=204)
 
 
 @router.get("/{event_id}", summary="Get an event", response_model=EventWithLinks, **_BY_ALIAS)

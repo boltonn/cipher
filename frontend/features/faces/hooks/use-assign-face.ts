@@ -22,6 +22,44 @@ export function useAssignFace(onSuccess?: () => void) {
   });
 }
 
+/** Assign several faces to one person (a manual decision, like the triage panel's picker). */
+export function useAssignFaces(onSuccess?: () => void) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      faceIds,
+      personId,
+    }: {
+      faceIds: string[];
+      personId: string;
+      personName?: string;
+    }) =>
+      Promise.all(
+        faceIds.map((id) =>
+          facesService.assign(id, { personId, assignmentMethod: "manual" })
+        )
+      ),
+    onSuccess: (faces, { personName }) => {
+      for (const queryKey of [
+        ["faces"],
+        ["face-matches"],
+        ["persons"],
+        ["graph-explore"],
+      ])
+        queryClient.invalidateQueries({ queryKey });
+      toast.success(
+        `Assigned ${faces.length.toLocaleString()} face${faces.length === 1 ? "" : "s"} to ${personName || "person"}`
+      );
+      onSuccess?.();
+    },
+    onError: () => {
+      queryClient.invalidateQueries({ queryKey: ["faces"] });
+      toast.error("Couldn't assign faces");
+    },
+  });
+}
+
 /** Detach several faces from their person ("wrong person", not "not a face"). */
 export function useUnassignFaces(onSuccess?: () => void) {
   const queryClient = useQueryClient();

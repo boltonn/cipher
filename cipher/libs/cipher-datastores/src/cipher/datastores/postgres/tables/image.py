@@ -42,7 +42,12 @@ class ImageTable(Base):
     gps_longitude: Mapped[float | None] = mapped_column(nullable=True)
     gps_altitude: Mapped[float | None] = mapped_column(nullable=True)
 
-    tags: Mapped[list[str]] = mapped_column(JSONB, nullable=False, server_default="[]")
+    # Labels for training classifiers over this image's embedding: `tags` says "is this",
+    # `negative_tags` says "is explicitly not this" (a hard negative). A tag is in at most one.
+    tags: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
+    negative_tags: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
+    # A model's confidence that a tag applies ({tag: 0-1}) -- a prediction, kept apart from the labels above.
+    tag_scores: Mapped[dict[str, float]] = mapped_column(JSONB, nullable=False, default=dict, server_default="{}")
 
     embedding: Mapped[list[float] | None] = mapped_column(Vector(IMAGE_EMBEDDING_DIMENSION), nullable=True)
 
@@ -58,9 +63,6 @@ class ImageTable(Base):
             postgresql_with={"m": 16, "ef_construction": 64},
             postgresql_ops={"embedding": "vector_ip_ops"},
         ),
-        Index(
-            "ix_image_tags_gin",
-            "tags",
-            postgresql_using="gin",
-        ),
+        Index("ix_image_tags_gin", "tags", postgresql_using="gin"),
+        Index("ix_image_negative_tags_gin", "negative_tags", postgresql_using="gin"),
     )

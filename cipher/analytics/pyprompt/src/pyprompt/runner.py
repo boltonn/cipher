@@ -16,7 +16,6 @@ from pydantic import BaseModel, ValidationError
 
 from cipher.schemas.graph.event import (
     DatePrecision,
-    DeadlineDetails,
     DeliveryDetails,
     EventStatus,
     EventType,
@@ -297,7 +296,6 @@ _DETAIL_FIELDS: dict[EventType, tuple[type, tuple[str, ...]]] = {
     EventType.TRAVEL: (TravelDetails, ("operator", "number", "confirmation")),
     EventType.LODGING: (LodgingDetails, ("operator", "confirmation", "nights", "guests")),
     EventType.RESERVATION: (ReservationDetails, ("operator", "confirmation", "party_size")),
-    EventType.DEADLINE: (DeadlineDetails, ("amount", "currency", "payee")),
     EventType.DELIVERY: (DeliveryDetails, ("carrier", "tracking_number", "order_number")),
 }
 

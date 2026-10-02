@@ -174,6 +174,16 @@ class PostgresEnrichmentRepository:
         )
         await self.session.execute(statement)
 
+    async def mark_skipped_batch(self, enrichment_ids: list[str]) -> None:
+        """Mark enrichments SKIPPED: a gate decided the expensive pass is not worth running."""
+        if not enrichment_ids:
+            return
+        await self.session.execute(
+            update(EnrichmentTable)
+            .where(EnrichmentTable.id.in_(enrichment_ids))
+            .values(status=ProcessingStatus.SKIPPED, date_updated=datetime.now(UTC))
+        )
+
     async def mark_failed_batch(
         self,
         enrichment_ids: list[str],
