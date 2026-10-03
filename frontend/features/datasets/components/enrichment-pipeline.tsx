@@ -12,6 +12,11 @@ import {
   useEnrichmentEstimates,
   useEnrichmentProgress,
 } from "@/features/datasets/api";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { EnrichmentFailuresDialog } from "@/features/datasets/components/enrichment-failures-dialog";
 import { EnrichmentRequestDialog } from "@/features/datasets/components/enrichment-request-dialog";
 import { EstimateBadge } from "@/features/datasets/components/estimate-badge";
@@ -323,30 +328,45 @@ export function EnrichmentPipeline({ datasetId }: { datasetId: string }) {
 
               {progress && (
                 <div className="mt-1.5 pl-14">
-                  <div className="flex h-1 w-full overflow-hidden rounded-full bg-border">
-                    <div
-                      className="h-full bg-primary transition-all"
-                      style={{
-                        width: `${progress.completed > 0 ? Math.max(completedPct, 2) : 0}%`,
-                      }}
-                    />
-                    <div
-                      className="h-full bg-muted-foreground/40 transition-all"
-                      style={{ width: `${skipped > 0 ? Math.max(skippedPct, 2) : 0}%` }}
-                    />
-                    <div
-                      className="h-full bg-destructive/70 transition-all"
-                      style={{
-                        width: `${failed > 0 ? Math.max(failedPct, 2) : 0}%`,
-                      }}
-                    />
-                  </div>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex h-2 w-full cursor-default items-center">
+                        <div className="flex h-1 w-full overflow-hidden rounded-full bg-border">
+                          <div
+                            className="h-full bg-primary transition-all"
+                            style={{
+                              width: `${progress.completed > 0 ? Math.max(completedPct, 2) : 0}%`,
+                            }}
+                          />
+                          <div
+                            className="h-full bg-muted-foreground/40 transition-all"
+                            style={{ width: `${skipped > 0 ? Math.max(skippedPct, 2) : 0}%` }}
+                          />
+                          <div
+                            className="h-full bg-destructive/70 transition-all"
+                            style={{
+                              width: `${failed > 0 ? Math.max(failedPct, 2) : 0}%`,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent className="text-xs">
+                      <p>{formatCompactNumber(progress.completed)} done</p>
+                      {skipped > 0 && (
+                        <p>
+                          {formatCompactNumber(skipped)} skipped: deliberately not processed
+                          (filtered out by a gate, or nothing to read)
+                        </p>
+                      )}
+                      {failed > 0 && <p>{formatCompactNumber(failed)} failed</p>}
+                      {queued > 0 && <p>{formatCompactNumber(queued)} queued</p>}
+                    </TooltipContent>
+                  </Tooltip>
                   <p className="mt-1 flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground">
                     <span>{formatCompactNumber(progress.completed)} done</span>
                     {skipped > 0 && (
-                      <span title="Deliberately not processed, e.g. filtered out by a gate or an unreadable image">
-                        · {formatCompactNumber(skipped)} skipped
-                      </span>
+                      <span>· {formatCompactNumber(skipped)} skipped</span>
                     )}
                     {failed > 0 && (
                       <button

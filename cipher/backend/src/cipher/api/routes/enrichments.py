@@ -15,23 +15,12 @@ from cipher.schemas.ingestion.enrichment import (
     FailedEnrichment,
     ProcessingStatus,
 )
+from cipher.schemas.ingestion.estimation import ESTIMATE_ORDER
 
 router = APIRouter(prefix="/enrichments", tags=["enrichments"])
 
 # Order the pipeline steps are surfaced in: roughly the order they run.
-PIPELINE_ORDER: tuple[EnrichmentType, ...] = (
-    EnrichmentType.TEXT_EXTRACTION,
-    EnrichmentType.OCR,
-    EnrichmentType.TEXT_EMBEDDING,
-    EnrichmentType.IMAGE_EMBEDDING,
-    EnrichmentType.EXIF_LOCATION,
-    EnrichmentType.FACE_DETECTION,
-    EnrichmentType.FACE_MATCHING,
-    EnrichmentType.FACE_CLUSTERING,
-    EnrichmentType.SELECTOR_EXTRACTION,
-    EnrichmentType.ENTITY_EXTRACTION,
-    EnrichmentType.RELATIONSHIP_EXTRACTION,
-)
+PIPELINE_ORDER: tuple[EnrichmentType, ...] = ESTIMATE_ORDER
 
 # Enrichments that need no ML model and are cheap enough to run in-process via
 # BackgroundTasks when triggered from the UI.
@@ -149,13 +138,10 @@ async def get_enrichment_progress(
     response_model_by_alias=True,
 )
 async def get_dataset_enrichment_progress(datastore: EnrichmentDatastoreDep, dataset_id: DatasetIdQueryDep):
-    """Progress for every analytic that has run against `dataset_id`, in pipeline order."""
+    """Progress for every analytic that has run against `dataset_id`, in pipeline order (others appended)."""
     stats = await datastore.get_enrichment_stats(dataset_id=dataset_id)
-    return [
-        _to_progress(dataset_id, enrichment_type, stats[enrichment_type])
-        for enrichment_type in PIPELINE_ORDER
-        if stats.get(enrichment_type)
-    ]
+    ordered = [*PIPELINE_ORDER, *(t for t in stats if t not in PIPELINE_ORDER)]
+    return [_to_progress(dataset_id, t, stats[t]) for t in ordered if stats.get(t)]
 
 
 @router.get(
