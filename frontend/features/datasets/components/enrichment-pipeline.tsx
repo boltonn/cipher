@@ -261,12 +261,15 @@ export function EnrichmentPipeline({ datasetId }: { datasetId: string }) {
           // Already-run analytics aren't requestable: a request asks for work that hasn't happened.
           const requestable = isApplicable(row) && state !== "done";
           const failed = progress?.counts.failed ?? 0;
+          // Skipped rows were deliberately not processed (a gate, an unreadable image): resolved, not outstanding.
+          const skipped = progress?.counts.skipped ?? 0;
           const queued =
             (progress?.counts.pending ?? 0) + (progress?.counts.processing ?? 0);
           const completedPct = progress?.total
             ? (progress.completed / progress.total) * 100
             : 0;
           const failedPct = progress?.total ? (failed / progress.total) * 100 : 0;
+          const skippedPct = progress?.total ? (skipped / progress.total) * 100 : 0;
           const deviceLabel =
             estimate && state !== "done" ? DEVICE_LABEL[estimate.device] : undefined;
 
@@ -328,6 +331,10 @@ export function EnrichmentPipeline({ datasetId }: { datasetId: string }) {
                       }}
                     />
                     <div
+                      className="h-full bg-muted-foreground/40 transition-all"
+                      style={{ width: `${skipped > 0 ? Math.max(skippedPct, 2) : 0}%` }}
+                    />
+                    <div
                       className="h-full bg-destructive/70 transition-all"
                       style={{
                         width: `${failed > 0 ? Math.max(failedPct, 2) : 0}%`,
@@ -336,6 +343,11 @@ export function EnrichmentPipeline({ datasetId }: { datasetId: string }) {
                   </div>
                   <p className="mt-1 flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground">
                     <span>{formatCompactNumber(progress.completed)} done</span>
+                    {skipped > 0 && (
+                      <span title="Deliberately not processed, e.g. filtered out by a gate or an unreadable image">
+                        · {formatCompactNumber(skipped)} skipped
+                      </span>
+                    )}
                     {failed > 0 && (
                       <button
                         type="button"

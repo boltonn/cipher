@@ -58,7 +58,7 @@ async def build_dataset_estimates(
         )
         counts = stats.get(enrichment_type, {}) or {}
         total = sum(counts.values())
-        progress = (counts.get("completed", 0) / total) if total else 0.0
+        progress = ((counts.get("completed", 0) + counts.get("skipped", 0)) / total) if total else 0.0
         items.append(estimate_enrichment(workload=workload, rate=rate, progress=progress))
 
     return DatasetEnrichmentEstimates(

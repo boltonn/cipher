@@ -113,6 +113,7 @@ def _to_progress(
     counts: dict[ProcessingStatus, int],
 ) -> DatasetEnrichmentProgress:
     completed = counts.get(ProcessingStatus.COMPLETED, 0)
+    resolved = completed + counts.get(ProcessingStatus.SKIPPED, 0)  # skipped = deliberately not processed
     total = sum(counts.values())
     return DatasetEnrichmentProgress(
         dataset_id=dataset_id,
@@ -120,7 +121,7 @@ def _to_progress(
         counts={k.value: v for k, v in counts.items()},
         total=total,
         completed=completed,
-        progress=(completed / total) if total else 0.0,
+        progress=(resolved / total) if total else 0.0,
     )
 
 

@@ -747,7 +747,7 @@ def extract_relationships_cmd(
                 enrichment_type=EnrichmentType.RELATIONSHIP_EXTRACTION,
                 dataset_id=resolved_id,
                 device="na",
-                unit=WorkUnit.LLM_FILE,
+                unit=WorkUnit.TEXT_FILE,
             ) as run:
                 run.units = await extract_relationships_workflow(
                     session=session, dataset_id=resolved_id, rebuild=rebuild
@@ -1630,7 +1630,7 @@ def estimate_cmd(
                 stats = await enr_repo.get_enrichment_stats(dataset_id=resolved_id, enrichment_type=enrichment_type)
                 counts = stats.get(enrichment_type, {})
                 done = sum(counts.values())
-                progress = (counts.get("completed", 0) / done) if done else 0.0
+                progress = ((counts.get("completed", 0) + counts.get("skipped", 0)) / done) if done else 0.0
                 estimates.append(estimate_enrichment(workload=workload, rate=rate, progress=progress))
 
             width = max(len(e.enrichment_type.value) for e in estimates)

@@ -21,6 +21,10 @@ from pygliner.schemas import EntitySpan, RelationSpan
 
 _CHUNK_SIZE = 384
 _CHUNK_OVERLAP = 64
+# `classify` windows texts by characters first: the extractor chunks by words, so text with few
+# breaks (base64, URLs, CJK) made one 384-word chunk 12k+ tokens and ~19 GB of attention.
+_CLASSIFY_WINDOW_CHARS = 2_000
+_CLASSIFY_WINDOW_OVERLAP = 200
 # Greedy matches beam's relations on real data (749 vs 748, full overlap) at ~6x the speed;
 # beam's Python search dominates runtime (entities alone are ~0.07s/file on GPU).
 
@@ -117,25 +121,34 @@ class GlinerModel:
     def classify(self, texts: list[str], labels: dict[str, str], batch_size: int = 32) -> list[dict[str, float]]:
         """Score each text against every label (name -> description), labels judged independently.
 
-        A long text is scored per chunk; a label's score is its highest chunk, so
+        A long text is scored per character window; a label's score is its highest window, so
         one relevant passage is enough however much boilerplate surrounds it.
         """
         import torch
 
+        windows, owners = [], []
+        step = _CLASSIFY_WINDOW_CHARS - _CLASSIFY_WINDOW_OVERLAP
+        for index, text in enumerate(texts):
+            text = text if text.strip() else " "
+            for start in range(0, max(len(text) - _CLASSIFY_WINDOW_OVERLAP, 1), step):
+                windows.append(text[start : start + _CLASSIFY_WINDOW_CHARS])
+                owners.append(index)
+
         schema = self._model.create_schema().classification("label", labels, multi_label=True, cls_threshold=0.0)
         with torch.inference_mode(), torch.autocast(self._device, dtype=torch.float16, enabled=self._device == "cuda"):
             results = self._model.batch_extract_long(
-                [text if text.strip() else " " for text in texts],
+                windows,
                 schema,
                 batch_size=batch_size,
                 include_confidence=True,
                 chunk_size=_CHUNK_SIZE,
                 chunk_overlap=_CHUNK_OVERLAP,
             )
-        return [
-            {label: 0.0 for label in labels} | {s["label"]: float(s["confidence"]) for s in result.get("label") or []}
-            for result in results
-        ]
+        scores = [dict.fromkeys(labels, 0.0) for _ in texts]
+        for owner, result in zip(owners, results, strict=True):
+            for match in result.get("label") or []:
+                scores[owner][match["label"]] = max(scores[owner][match["label"]], float(match["confidence"]))
+        return scores
 
     def _schema(self, *, labels: tuple[str, ...], relation_labels: tuple[str, ...]):
         """Compiled JointIE schema with each relation's head/tail restricted to ontology-permitted labels.
