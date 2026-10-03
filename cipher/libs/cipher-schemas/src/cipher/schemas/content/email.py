@@ -102,6 +102,36 @@ class EmailState(StrEnum):
         return next((state for label, state in _priority if label in lowered), None)
 
 
+class EmailCategory(StrEnum):
+    """Uniform inbox-category vocabulary (the mail client's own classifier) every `EmailClient` maps onto.
+
+    Gmail tabs messages with `Category *` labels; other clients' conventions get a
+    mapper here once a real sample confirms them (see `EmailClient`). Several can
+    apply at once (Gmail tags an order receipt both Purchases and Updates).
+    """
+
+    PERSONAL = "personal"
+    SOCIAL = "social"
+    PROMOTIONS = "promotions"
+    UPDATES = "updates"
+    FORUMS = "forums"
+    PURCHASES = "purchases"
+    TRAVEL = "travel"
+
+    @classmethod
+    def from_gmail_labels(cls, labels: list[str]) -> list[Self]:
+        """Gmail: `Category Promotions` etc. in `X-Gmail-Labels`."""
+        lowered = {label.lower() for label in labels}
+        return [category for category in cls if f"category {category.value}" in lowered]
+
+    @classmethod
+    def for_email(cls, client: EmailClient, labels: list[str]) -> list[Self]:
+        """The client's categories for an email in the common vocabulary; empty when the client has none."""
+        if client == EmailClient.GMAIL:
+            return cls.from_gmail_labels(labels)
+        return []
+
+
 class ParticipantType(StrEnum):
     """What kind of contact string a `Participant.value` holds."""
 
@@ -162,8 +192,15 @@ class EmailMetadata(BaseModel):
     state: EmailState | None = None
     message_id: str | None = None
     labels: list[str] = Field(default_factory=list, description="Labels or folders associated with the email")
+    categories: list[EmailCategory] = Field(
+        default_factory=list, description="The mail client's inbox categories (promotions, social, ...)"
+    )
 
     model_config = {"populate_by_name": True}
+
+    def client_categories(self) -> list[EmailCategory]:
+        """`categories`, or derived from `labels` for emails parsed before categories were stored."""
+        return self.categories or EmailCategory.for_email(self.email_client, self.labels)
 
 
 class EmailBase(BaseModel):

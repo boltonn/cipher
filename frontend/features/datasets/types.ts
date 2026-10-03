@@ -108,6 +108,19 @@ export interface EnrichmentProgress {
   completed: number;
   /** 0..1, share of rows completed. */
   progress: number;
+  /** Per-pass progress when the analytic runs in passes (event extraction: calendar, gate, LLM). */
+  stages: EnrichmentStageProgress[];
+}
+
+/** One pass of a multi-pass analytic (see backend `EnrichmentStageProgress`). */
+export interface EnrichmentStageProgress {
+  name: string;
+  label: string;
+  total: number;
+  completed: number;
+  /** Filtered out by this pass. */
+  skipped: number;
+  failed: number;
 }
 
 /** A distinct failure message and how many failed rows share it. */

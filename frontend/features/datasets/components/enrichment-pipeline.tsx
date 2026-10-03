@@ -18,6 +18,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { EnrichmentFailuresDialog } from "@/features/datasets/components/enrichment-failures-dialog";
+import { EnrichmentStages } from "@/features/datasets/components/enrichment-stages";
 import { EnrichmentRequestDialog } from "@/features/datasets/components/enrichment-request-dialog";
 import { EstimateBadge } from "@/features/datasets/components/estimate-badge";
 import { useDatasetRequestConfig } from "@/features/datasets/hooks/use-request-dataset";
@@ -313,7 +314,7 @@ export function EnrichmentPipeline({ datasetId }: { datasetId: string }) {
                     )}
                 </span>
                 <span className="flex shrink-0 items-center gap-2">
-                  {state === "running" && progress && (
+                  {state === "running" && progress && !progress.stages?.length && (
                     <span className="font-mono text-[11px] text-muted-foreground">
                       {Math.round(progress.progress * 100)}%
                     </span>
@@ -326,7 +327,13 @@ export function EnrichmentPipeline({ datasetId }: { datasetId: string }) {
                 </span>
               </div>
 
-              {progress && (
+              {!!progress?.stages?.length && (
+                <EnrichmentStages
+                  stages={progress.stages}
+                  onShowFailures={() => setFailuresType(row.enrichmentType)}
+                />
+              )}
+              {progress && !progress.stages?.length && (
                 <div className="mt-1.5 pl-14">
                   <Tooltip>
                     <TooltipTrigger asChild>

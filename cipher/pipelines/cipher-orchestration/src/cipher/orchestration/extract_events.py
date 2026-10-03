@@ -37,7 +37,7 @@ from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from loguru import logger
-from sqlalchemy import Float, func, select, text
+from sqlalchemy import Float, func, select
 from tqdm import tqdm
 
 from cipher.datastores.postgres.repositories import (
@@ -54,6 +54,7 @@ from cipher.datastores.postgres.tables.extracted_text import ExtractedTextTable
 from cipher.datastores.postgres.tables.file import FileTable
 from cipher.datastores.postgres.utils import normalize_name
 from cipher.schemas._base.common import ModelTagType
+from cipher.schemas.content.email import EmailCategory, EmailClient, EmailState
 from cipher.schemas.graph.event import (
     EVENT_FILE_TAG,
     DatePrecision,
@@ -503,12 +504,38 @@ _GATE_MARKETING_LABEL = "marketing"
 # Recall first: junk is cheap to mark invalid in bulk, a missed event is never seen.
 DEFAULT_GATE_THRESHOLD = 0.4
 DEFAULT_GATE_SAMPLE_RATE = 0.05
+# The mail client's own classifier: its promotions tab and spam folder held none of the events the LLM
+# found on a real mailbox, yet a third of what the GLiNER score passes. Skipped emails are still scored
+# (and sampled), so what this costs stays measurable.
+DEFAULT_GATE_SKIP_CATEGORIES = frozenset({EmailCategory.PROMOTIONS})
+DEFAULT_GATE_SKIP_STATES = frozenset({EmailState.SPAM})
 _GATE_MAX_CHARS = 20_000
 
 
 def event_gate_score(label_scores: dict[str, float]) -> float:
     """Collapse the gate labels' scores into one "someone is taking part in something" score."""
     return label_scores.get(_GATE_POSITIVE_LABEL, 0.0)
+
+
+def gate_rejects(
+    score: float,
+    metadata: dict | None,
+    *,
+    threshold: float,
+    skip_categories: frozenset[EmailCategory] = DEFAULT_GATE_SKIP_CATEGORIES,
+    skip_states: frozenset[EmailState] = DEFAULT_GATE_SKIP_STATES,
+) -> bool:
+    """Whether the gate keeps a text from the LLM: a low score, or a client category / state to skip."""
+    if score < threshold:
+        return True
+    if not metadata or "email_client" not in metadata:
+        return False
+    if metadata.get("state") in skip_states:
+        return True
+    categories = metadata.get("categories") or EmailCategory.for_email(
+        EmailClient(metadata["email_client"]), metadata.get("labels") or []
+    )
+    return bool(skip_categories.intersection(categories))
 
 
 def _in_gate_sample(file_id: str, sample_rate: float) -> bool:
@@ -524,6 +551,8 @@ async def gate_text_events_workflow(
     threshold: float = DEFAULT_GATE_THRESHOLD,
     sample_rate: float = DEFAULT_GATE_SAMPLE_RATE,
     filetype_groups: tuple[str, ...] = TEXT_EVENT_GROUPS_EMAIL,
+    skip_categories: frozenset[EmailCategory] = DEFAULT_GATE_SKIP_CATEGORIES,
+    skip_states: frozenset[EmailState] = DEFAULT_GATE_SKIP_STATES,
     batch_size: int = 64,
     model: str,
 ) -> int:
@@ -531,17 +560,24 @@ async def gate_text_events_workflow(
 
     Returns files skipped. `score_texts` maps texts to scores (0-1), stored as the
     file content's `tag_scores["event"]` and attributed to `model`. Files scoring under
-    `threshold` are marked SKIPPED unless they fall in the `sample_rate` slice kept for
-    measuring the gate. Tags follow content, so a copy of an already-scored file reuses
-    that score instead of being re-read.
+    `threshold`, or emails the mail client filed under `skip_categories` / `skip_states`,
+    are marked SKIPPED unless they fall in the `sample_rate` slice kept for measuring the
+    gate. Pending files already scored (a copy of scored content, or a re-run with new
+    settings) are re-decided from their stored score instead of being re-read.
     """
+    rule = {"threshold": threshold, "skip_categories": skip_categories, "skip_states": skip_states}
     await queue_text_event_extraction_enrichments(
         session=session, dataset_id=dataset_id, filetype_groups=filetype_groups
     )
     enrichment_repo = PostgresEnrichmentRepository(session=session)
     file_repo = PostgresFileRepository(session=session)
     pending = (
-        select(EnrichmentTable.id, FileTable.id, func.left(ExtractedTextTable.content, _GATE_MAX_CHARS))
+        select(
+            EnrichmentTable.id,
+            FileTable.id,
+            func.left(ExtractedTextTable.content, _GATE_MAX_CHARS),
+            ExtractedTextTable.metadata_,
+        )
         .join(FileTable, EnrichmentTable.enrichable_id == FileTable.id)
         .join(ExtractedTextTable, ExtractedTextTable.file_id == FileTable.id)
         .where(
@@ -556,8 +592,14 @@ async def gate_text_events_workflow(
     )
     already_scored = (
         await session.execute(
-            select(EnrichmentTable.id, FileTable.id, FileTable.tag_scores[EVENT_FILE_TAG].astext.cast(Float))
+            select(
+                EnrichmentTable.id,
+                FileTable.id,
+                FileTable.tag_scores[EVENT_FILE_TAG].astext.cast(Float),
+                ExtractedTextTable.metadata_,
+            )
             .join(FileTable, EnrichmentTable.enrichable_id == FileTable.id)
+            .outerjoin(ExtractedTextTable, ExtractedTextTable.file_id == FileTable.id)
             .where(
                 EnrichmentTable.enrichable_type == EnrichableType.FILE,
                 EnrichmentTable.enrichment_type == EnrichmentType.EVENT_EXTRACTION,
@@ -568,26 +610,29 @@ async def gate_text_events_workflow(
         )
     ).all()
     copies = [
-        e for e, file_id, score in already_scored if score < threshold and not _in_gate_sample(file_id, sample_rate)
+        e
+        for e, file_id, score, metadata in already_scored
+        if gate_rejects(score, metadata, **rule) and not _in_gate_sample(file_id, sample_rate)
     ]
     await enrichment_repo.mark_skipped_batch(copies)
-    skipped = len(copies)
+    redecided = len(copies)
+    skipped = 0
 
     total = (await session.execute(select(func.count()).select_from(pending.subquery()))).scalar_one()
     gated = 0
 
     with tqdm(total=total, desc="Gating events", unit=" file") as pbar:
         while rows := (await session.execute(pending.limit(batch_size))).all():
-            scores = await asyncio.to_thread(score_texts, [content for _, _, content in rows])
+            scores = await asyncio.to_thread(score_texts, [content for _, _, content, _ in rows])
             await file_repo.set_tag_scores(
                 tag=EVENT_FILE_TAG,
-                scores={file_id: score for (_, file_id, _), score in zip(rows, scores, strict=True)},
+                scores={file_id: score for (_, file_id, _, _), score in zip(rows, scores, strict=True)},
                 model=model,
             )
             rejected = [
                 enrichment_id
-                for (enrichment_id, file_id, _), score in zip(rows, scores, strict=True)
-                if score < threshold and not _in_gate_sample(file_id, sample_rate)
+                for (enrichment_id, file_id, _, metadata), score in zip(rows, scores, strict=True)
+                if gate_rejects(score, metadata, **rule) and not _in_gate_sample(file_id, sample_rate)
             ]
             await enrichment_repo.mark_skipped_batch(rejected)
             await session.commit()
@@ -597,8 +642,11 @@ async def gate_text_events_workflow(
             pbar.set_postfix(skipped=skipped)
             pbar.update(len(rows))
 
-    logger.success(f"Gated {gated} text files: {gated - skipped} go to the LLM, {skipped} skipped")
-    return skipped
+    logger.success(
+        f"Gated {gated} new text files: {gated - skipped} go to the LLM, {skipped} skipped; "
+        f"{redecided} already-scored files skipped under the current gate settings"
+    )
+    return skipped + redecided
 
 
 async def tag_event_files(
@@ -610,29 +658,48 @@ async def tag_event_files(
         await file_repo.tag_files(file_ids=file_ids, tag=EVENT_FILE_TAG, label=label, source=TagSource.model(model))
 
 
-async def get_event_gate_report(session: "AsyncSession", dataset_id: str, *, threshold: float) -> dict:
+async def get_event_gate_report(
+    session: "AsyncSession",
+    dataset_id: str,
+    *,
+    threshold: float,
+    skip_categories: frozenset[EmailCategory] = DEFAULT_GATE_SKIP_CATEGORIES,
+    skip_states: frozenset[EmailState] = DEFAULT_GATE_SKIP_STATES,
+) -> dict:
     """How the gate did against the LLM: pass rate, and recall estimated from the sampled rejects."""
-    row = (
+    rows = (
         await session.execute(
-            text(
-                """
-                SELECT count(*) AS gated,
-                       count(*) FILTER (WHERE s.score >= :threshold) AS passed,
-                       count(*) FILTER (WHERE e.status = 'SKIPPED') AS skipped,
-                       count(*) FILTER (WHERE s.score >= :threshold AND e.status = 'COMPLETED') AS passed_read,
-                       count(*) FILTER (WHERE s.score >= :threshold AND f.tags ? :tag) AS passed_with_events,
-                       count(*) FILTER (WHERE s.score < :threshold AND e.status = 'COMPLETED') AS rejected_read,
-                       count(*) FILTER (WHERE s.score < :threshold AND f.tags ? :tag) AS rejected_with_events
-                FROM enrichment e JOIN file f ON f.id = e.enrichable_id
-                CROSS JOIN LATERAL (SELECT cast(f.tag_scores ->> :tag as float) AS score) s
-                WHERE e.enrichment_type = 'EVENT_EXTRACTION' AND e.enrichable_type = 'FILE'
-                  AND f.tag_scores ? :tag AND f.dataset_id = :dataset_id
-                """
-            ),
-            {"threshold": threshold, "tag": EVENT_FILE_TAG, "dataset_id": dataset_id},
+            select(
+                FileTable.tag_scores[EVENT_FILE_TAG].astext.cast(Float),
+                EnrichmentTable.status,
+                FileTable.tags.has_key(EVENT_FILE_TAG),
+                ExtractedTextTable.metadata_,
+            )
+            .join(FileTable, EnrichmentTable.enrichable_id == FileTable.id)
+            .outerjoin(ExtractedTextTable, ExtractedTextTable.file_id == FileTable.id)
+            .where(
+                EnrichmentTable.enrichment_type == EnrichmentType.EVENT_EXTRACTION,
+                EnrichmentTable.enrichable_type == EnrichableType.FILE,
+                FileTable.tag_scores.has_key(EVENT_FILE_TAG),
+                FileTable.dataset_id == dataset_id,
+            )
         )
-    ).one()
-    report = dict(row._mapping) | {"threshold": threshold}
+    ).all()
+    report = dict.fromkeys(
+        ("gated", "passed", "skipped", "passed_read", "passed_with_events", "rejected_read", "rejected_with_events"), 0
+    )
+    for score, status, has_event, metadata in rows:
+        passed = not gate_rejects(
+            score, metadata, threshold=threshold, skip_categories=skip_categories, skip_states=skip_states
+        )
+        read = status == ProcessingStatus.COMPLETED
+        side = "passed" if passed else "rejected"
+        report["gated"] += 1
+        report["passed"] += passed
+        report["skipped"] += status == ProcessingStatus.SKIPPED
+        report[f"{side}_read"] += read
+        report[f"{side}_with_events"] += bool(has_event)
+    report |= {"threshold": threshold, "skip_categories": sorted(skip_categories), "skip_states": sorted(skip_states)}
     rejected = report["gated"] - report["passed"]
     if report["rejected_read"] and report["passed_read"]:
         missed = report["rejected_with_events"] / report["rejected_read"] * rejected

@@ -6,11 +6,13 @@ from loguru import logger
 from cipher.api.deps.access import DatasetAccessDep, DatasetIdQueryDep
 from cipher.api.deps.postgres import EnrichmentDatastoreDep, get_session
 from cipher.schemas._base.base import BaseModel
+from cipher.schemas.graph.event import EVENT_FILE_TAG
 from cipher.schemas.ingestion.enrichment import (
     ENRICHMENT_DEPENDENCIES,
     DatasetEnrichmentFailures,
     DatasetEnrichmentProgress,
     EnrichmentFailureReason,
+    EnrichmentStageProgress,
     EnrichmentType,
     FailedEnrichment,
     ProcessingStatus,
@@ -114,6 +116,64 @@ def _to_progress(
     )
 
 
+async def _event_stages(datastore, dataset_id: str) -> list[EnrichmentStageProgress]:
+    """Event extraction's passes: `.ics` parsing, then (for email / document text) the gate and the LLM read."""
+    rows = await datastore.gated_stage_counts(
+        dataset_id=dataset_id,
+        enrichment_type=EnrichmentType.EVENT_EXTRACTION,
+        scored_tag=EVENT_FILE_TAG,
+        calendar_filetype="ics",
+    )
+
+    def count(*, calendar: bool, status: ProcessingStatus | None = None, scored: bool | None = None) -> int:
+        return sum(
+            n
+            for cal, row_status, has, n in rows
+            if cal == calendar and status in (None, row_status) and scored in (None, has)
+        )
+
+    stages = []
+    if calendar_total := count(calendar=True):
+        stages.append(
+            EnrichmentStageProgress(
+                name="calendar",
+                label="Calendar files (.ics)",
+                total=calendar_total,
+                completed=count(calendar=True, status=ProcessingStatus.COMPLETED),
+                failed=count(calendar=True, status=ProcessingStatus.FAILED),
+            )
+        )
+    text_total = count(calendar=False)
+    gate_skipped = count(calendar=False, status=ProcessingStatus.SKIPPED)
+    if gate_scored := count(calendar=False, scored=True):
+        stages.append(
+            EnrichmentStageProgress(
+                name="gate",
+                label="Gate (GLiNER + mail categories)",
+                total=text_total,
+                completed=gate_scored,
+                skipped=gate_skipped,
+            )
+        )
+    if text_total:
+        stages.append(
+            EnrichmentStageProgress(
+                name="llm",
+                label="LLM read",
+                total=text_total - gate_skipped,
+                completed=count(calendar=False, status=ProcessingStatus.COMPLETED),
+                failed=count(calendar=False, status=ProcessingStatus.FAILED),
+            )
+        )
+    return stages
+
+
+async def _with_stages(datastore, progress: DatasetEnrichmentProgress) -> DatasetEnrichmentProgress:
+    if progress.enrichment_type == EnrichmentType.EVENT_EXTRACTION and progress.total:
+        progress.stages = await _event_stages(datastore, progress.dataset_id)
+    return progress
+
+
 @router.get(
     "/progress",
     response_model=DatasetEnrichmentProgress,
@@ -129,7 +189,7 @@ async def get_enrichment_progress(
         dataset_id=dataset_id,
         enrichment_type=enrichment_type,
     )
-    return _to_progress(dataset_id, enrichment_type, stats.get(enrichment_type, {}))
+    return await _with_stages(datastore, _to_progress(dataset_id, enrichment_type, stats.get(enrichment_type, {})))
 
 
 @router.get(
@@ -141,7 +201,7 @@ async def get_dataset_enrichment_progress(datastore: EnrichmentDatastoreDep, dat
     """Progress for every analytic that has run against `dataset_id`, in pipeline order (others appended)."""
     stats = await datastore.get_enrichment_stats(dataset_id=dataset_id)
     ordered = [*PIPELINE_ORDER, *(t for t in stats if t not in PIPELINE_ORDER)]
-    return [_to_progress(dataset_id, t, stats[t]) for t in ordered if stats.get(t)]
+    return [await _with_stages(datastore, _to_progress(dataset_id, t, stats[t])) for t in ordered if stats.get(t)]
 
 
 @router.get(

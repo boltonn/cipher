@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 
+from pydantic import Field
+
 from cipher.schemas._base.base import BaseModel
 
 
@@ -159,6 +161,17 @@ class Enrichment(EnrichmentBase):
     }
 
 
+class EnrichmentStageProgress(BaseModel):
+    """One pass of a multi-pass analytic, e.g. event extraction's gate and then its LLM read."""
+
+    name: str
+    label: str
+    total: int
+    completed: int
+    skipped: int = Field(default=0, description="Filtered out by this pass")
+    failed: int = Field(default=0)
+
+
 class DatasetEnrichmentProgress(BaseModel):
     """Progress tracking for enrichments across a dataset."""
 
@@ -168,6 +181,9 @@ class DatasetEnrichmentProgress(BaseModel):
     total: int
     completed: int
     progress: float
+    stages: list[EnrichmentStageProgress] = Field(
+        default_factory=list, description="Per-pass progress when the analytic runs in passes"
+    )
 
 
 class FailedEnrichment(BaseModel):

@@ -2,7 +2,7 @@ from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
 from loguru import logger
-from sqlalchemy import delete, func, or_, select, update
+from sqlalchemy import delete, func, literal, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cipher.datastores.postgres.tables.enrichment import EnrichmentTable
@@ -238,6 +238,24 @@ class PostgresEnrichmentRepository:
         result = await self.session.execute(statement)
         await self.session.commit()
         return result.rowcount or 0
+
+    async def gated_stage_counts(
+        self, *, dataset_id: str, enrichment_type: EnrichmentType, scored_tag: str, calendar_filetype: str | None = None
+    ) -> list[tuple[bool, ProcessingStatus, bool, int]]:
+        """`(is_calendar_file, status, has_gate_score, count)` for a gated analytic's file rows in one dataset."""
+        is_calendar = (FileTable.filetype == calendar_filetype) if calendar_filetype else literal(False)
+        scored = FileTable.tag_scores.has_key(scored_tag)
+        rows = await self.session.execute(
+            select(is_calendar, EnrichmentTable.status, scored, func.count())
+            .join(FileTable, EnrichmentTable.enrichable_id == FileTable.id)
+            .where(
+                EnrichmentTable.enrichable_type == EnrichableType.FILE,
+                EnrichmentTable.enrichment_type == enrichment_type,
+                FileTable.dataset_id == dataset_id,
+            )
+            .group_by(is_calendar, EnrichmentTable.status, scored)
+        )
+        return [(bool(cal), ProcessingStatus(status), bool(has), n) for cal, status, has, n in rows.all()]
 
     async def get_enrichment_stats(
         self,

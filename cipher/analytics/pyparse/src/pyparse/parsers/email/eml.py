@@ -32,7 +32,7 @@ from typing import Any
 import chardet
 from filetyper import FileTyper
 
-from cipher.schemas.content.email import EmailBase, EmailClient, EmailState, NamedParticipantDict
+from cipher.schemas.content.email import EmailBase, EmailCategory, EmailClient, EmailState, NamedParticipantDict
 from cipher.schemas.ingestion.file import FileBase
 from pyparse.parsers.text.html import HtmlParser
 from pyparse.utils.io import get_encoding_families, map_unsupported_encoding, safe_open
@@ -353,6 +353,7 @@ class EmlParser:
 
         client = EmailClient.detect(headers)
         out["email_client"] = client
+        out["categories"] = EmailCategory.for_email(client, out["labels"])
         if client == EmailClient.GMAIL:
             out["state"] = EmailState.from_gmail_labels(out["labels"])
         elif client == EmailClient.OUTLOOK:

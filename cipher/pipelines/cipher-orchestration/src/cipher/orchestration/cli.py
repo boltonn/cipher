@@ -43,6 +43,8 @@ from cipher.orchestration.extract_emails import extract_emails_workflow
 from cipher.orchestration.extract_entities import extract_entities_workflow, get_entity_extraction_stats
 from cipher.orchestration.extract_events import (
     DEFAULT_GATE_SAMPLE_RATE,
+    DEFAULT_GATE_SKIP_CATEGORIES,
+    DEFAULT_GATE_SKIP_STATES,
     DEFAULT_GATE_THRESHOLD,
     EVENT_GATE_LABELS,
     TEXT_EVENT_GROUPS_ALL,
@@ -85,7 +87,7 @@ from cipher.orchestration.schema import create_tables, stamp_head
 from cipher.orchestration.session import get_elasticsearch_client_context, get_session_context
 from cipher.orchestration.sync_chunk_entities import sync_chunk_entities_workflow
 from cipher.schemas._base.common import ModelDevice
-from cipher.schemas.content.email import EmailState
+from cipher.schemas.content.email import EmailCategory, EmailState
 from cipher.schemas.graph.entity_resolution import EntityResolutionConfig
 from cipher.schemas.identity.face import DEFAULT_FACE_REJECT_SIMILARITY
 from cipher.schemas.ingestion.enrichment import EnrichmentType
@@ -940,6 +942,14 @@ def extract_events_cmd(
     gate_sample_rate: Annotated[
         float, typer.Option(help="Share of gate-rejected files the LLM still reads, to measure what the gate misses")
     ] = DEFAULT_GATE_SAMPLE_RATE,
+    gate_skip_category: Annotated[
+        list[EmailCategory] | None,
+        typer.Option(help="Mail-client inbox category the gate skips (repeatable; default: promotions)"),
+    ] = None,
+    gate_skip_state: Annotated[
+        list[EmailState] | None,
+        typer.Option(help="Mail state the gate skips (repeatable; default: spam)"),
+    ] = None,
     gliner_model_dir: Annotated[
         str | None, typer.Option(envvar="GLINER_MODEL_DIR", help="Local GLiNER2.5 checkpoint dir (gate)")
     ] = None,
@@ -963,6 +973,10 @@ def extract_events_cmd(
     `event` in `file.tags` / `file.negative_tags`. `--no-gate` reads everything.
     """
     use_gate = gate and (llm or llm_only)
+    skip = {
+        "skip_categories": frozenset(gate_skip_category or DEFAULT_GATE_SKIP_CATEGORIES),
+        "skip_states": frozenset(gate_skip_state or DEFAULT_GATE_SKIP_STATES),
+    }
     if use_gate and not gliner_model_dir:
         raise typer.BadParameter("the gate needs --gliner-model-dir (or GLINER_MODEL_DIR); pass --no-gate to skip it")
     ensure_stage_env(*(("event-extraction", "gliner") if use_gate else ("event-extraction",)))
@@ -975,7 +989,13 @@ def extract_events_cmd(
                 dataset_id=resolved_id,
                 device="na",
                 unit=WorkUnit.LLM_FILE,
-                params={"llm": llm or llm_only, "docs": docs, "gate": use_gate, "gate_threshold": gate_threshold},
+                params={
+                    "llm": llm or llm_only,
+                    "docs": docs,
+                    "gate": use_gate,
+                    "gate_threshold": gate_threshold,
+                    **{k: sorted(v) for k, v in skip.items()},
+                },
             ) as run:
                 if not llm_only:
                     ics_count = await extract_events_workflow(session=session, dataset_id=resolved_id)
@@ -995,6 +1015,7 @@ def extract_events_cmd(
                             ],
                             threshold=gate_threshold,
                             sample_rate=gate_sample_rate,
+                            **skip,
                             filetype_groups=groups,
                             model=f"gliner:{Path(gliner_model_dir).name}",
                         )
@@ -1009,7 +1030,7 @@ def extract_events_cmd(
                     logger.success(f"Extracted events for {text_count} text files (llm)")
                     run.units += text_count
                     if use_gate:
-                        report = await get_event_gate_report(session, resolved_id, threshold=gate_threshold)
+                        report = await get_event_gate_report(session, resolved_id, threshold=gate_threshold, **skip)
                         typer.echo(json.dumps(report, indent=2))
 
     asyncio.run(_run())
