@@ -17,6 +17,7 @@ from cipher.datastores.postgres.repositories import (
 )
 from cipher.orchestration.exif_location import exif_location_create
 from cipher.orchestration.image_heads import DEFAULT_MIN_STORED_SCORE, write_head_scores
+from cipher.orchestration.image_size import DEFAULT_MIN_IMAGE_SIDE, is_below_min_side
 from cipher.schemas.content.image import ImageCreate
 from cipher.schemas.ingestion.enrichment import EnrichableType, EnrichmentType
 from cipher.utils.io import fetch_bytes_from_uri
@@ -28,14 +29,16 @@ if TYPE_CHECKING:
 _EXECUTOR = ThreadPoolExecutor(max_workers=10)
 
 
-def _sync_prepare_image(uri: str, preprocessor):
-    """CPU worker: fetch and preprocess image."""
+def _sync_prepare_image(uri: str, preprocessor, min_image_side: int):
+    """CPU worker: fetch and preprocess image; None when it's under `min_image_side`."""
     from PIL import Image
     from setfitcv.utils import ImageMetadataExtractor
 
     try:
         img_bytes = fetch_bytes_from_uri(uri)
         img = Image.open(BytesIO(img_bytes)).convert("RGB")
+        if is_below_min_side(img, min_image_side):
+            return None
         meta = {"width": img.width, "height": img.height}
         exif_meta = ImageMetadataExtractor.extract_metadata(img)
         if exif_meta:
@@ -52,6 +55,7 @@ async def _producer(
     batch_size: int,
     dataset_id: str | None,
     preprocessor,
+    min_image_side: int,
 ):
     """Producer: fetch and prepare image batches."""
     from torch import cat as concat
@@ -80,22 +84,31 @@ async def _producer(
                 _sync_prepare_image,
                 item.resource["uri"],
                 preprocessor,
+                min_image_side,
             )
             for item in batch
         ]
         results = await asyncio.gather(*tasks)
 
-        tensor_list, metadata_list, items, failed_ids = [], [], [], []
+        tensor_list, metadata_list, items = [], [], []
+        failed: dict[str, str | Exception] = {}
+        skipped: list[str] = []
         for item, res in zip(batch, results, strict=True):
-            if isinstance(res, Exception):
-                failed_ids.append(item.enrichment.id)
-                continue
-            tensor_list.append(res[0])
-            metadata_list.append(res[1])
-            items.append(item)
+            if res is None:
+                skipped.append(item.enrichment.id)
+            elif isinstance(res, Exception):
+                failed[item.enrichment.id] = res
+            else:
+                tensor_list.append(res[0])
+                metadata_list.append(res[1])
+                items.append(item)
+
+        await enrichment_repo.mark_skipped_batch(enrichment_ids=skipped)
+        await enrichment_repo.mark_failed(failed)
+        await session.commit()
 
         if tensor_list:
-            await queue.put((concat(tensor_list, dim=0), metadata_list, items, failed_ids))
+            await queue.put((concat(tensor_list, dim=0), metadata_list, items))
 
 
 async def _consumer(
@@ -118,7 +131,7 @@ async def _consumer(
             queue.task_done()
             break
 
-        tensors, metas, items, fails = batch_data
+        tensors, metas, items = batch_data
 
         start_inf = perf_counter()
         if heads is None:
@@ -146,7 +159,7 @@ async def _consumer(
             if location is not None:
                 pending_locs.append(location)
 
-        pending_data.append({"completed": [i.enrichment.id for i in items], "failed": fails})
+        pending_data.append([i.enrichment.id for i in items])
         stats["count"] += len(items)
 
         if len(pending_imgs) >= commit_batch_size:
@@ -167,8 +180,7 @@ async def _flush_to_db(session: "AsyncSession", images, locations, data, heads=N
     loc_repo = PostgresLocationRepository(session)
     enr_repo = PostgresEnrichmentRepository(session)
 
-    done = [idx for d in data for idx in d["completed"]]
-    fails = [idx for d in data for idx in d["failed"]]
+    done = [idx for ids in data for idx in ids]
 
     # Two pending files can share a sha256 (identical image content at different
     # paths) and land in the same flush -- Postgres rejects an upsert batch that
@@ -178,8 +190,6 @@ async def _flush_to_db(session: "AsyncSession", images, locations, data, heads=N
     if locations:
         await loc_repo.upsert_file_locations(rows=locations)
     await enr_repo.mark_completed_batch(enrichment_ids=done)
-    if fails:
-        await enr_repo.mark_failed_batch(enrichment_ids=fails, increment_retry=True)
     await session.commit()
     if heads is not None and scores:
         image_ids = list(scores)
@@ -193,6 +203,7 @@ async def embed_images(
     commit_batch_size: int = 128,
     dataset_id: str | None = None,
     heads: "TagHeads | None" = None,
+    min_image_side: int = DEFAULT_MIN_IMAGE_SIDE,
 ) -> int:
     """Run image embedding pipeline, returning the number of images processed.
 
@@ -213,7 +224,7 @@ async def embed_images(
     async with AsyncSession(engine, expire_on_commit=False) as producer_session:  # noqa: SIM117
         async with AsyncSession(engine, expire_on_commit=False) as consumer_session:
             await asyncio.gather(
-                _producer(queue, producer_session, batch_size, dataset_id, model.img_preprocessor),
+                _producer(queue, producer_session, batch_size, dataset_id, model.img_preprocessor, min_image_side),
                 _consumer(queue, consumer_session, model, commit_batch_size, stats, heads),
             )
 
@@ -325,6 +336,7 @@ async def embed_images_workflow(
     batch_size: int = 32,
     commit_batch_size: int = 128,
     heads: "TagHeads | None" = None,
+    min_image_side: int = DEFAULT_MIN_IMAGE_SIDE,
 ) -> int:
     """Queue, dedupe, then embed (and optionally tag-score) a dataset's images. Returns images run through CLIP."""
     await queue_image_enrichments(session=session, dataset_id=dataset_id)
@@ -336,4 +348,5 @@ async def embed_images_workflow(
         commit_batch_size=commit_batch_size,
         dataset_id=dataset_id,
         heads=heads,
+        min_image_side=min_image_side,
     )

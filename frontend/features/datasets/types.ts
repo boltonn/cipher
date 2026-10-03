@@ -22,6 +22,8 @@ export interface Dataset {
   dateLastUpdated: string;
   /** Listed (locked) for users who aren't members. */
   isDiscoverable: boolean;
+  /** When staging first completed (files loaded + typed); null until then. */
+  dateStaged: string | null;
   /** Whether you can open, triage and search it; false = discoverable only (locked). */
   hasAccess: boolean;
 }
@@ -30,11 +32,14 @@ export interface DatasetSummary extends Dataset {
   fileCount: number;
   totalSizeBytes: number;
   filetypeCount: number;
+  /** Users with explicit membership (admins see every dataset regardless). */
+  memberCount: number;
 }
 
 export const DatasetCreateSchema = z.object({
   name: z.string().min(1, "Name is required"),
   description: z.string().optional(),
+  isDiscoverable: z.boolean().optional(),
 });
 
 export type DatasetCreate = z.infer<typeof DatasetCreateSchema>;
@@ -117,6 +122,11 @@ export interface FailedEnrichment {
   enrichableId: string;
   filename: string;
   path: string;
+  uri: string;
+  filetype: string;
+  filetypeGroup: string;
+  mimeType: string;
+  size: number;
   errorMessage: string | null;
   retryCount: number;
   dateUpdated: string;

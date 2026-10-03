@@ -6,7 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from cipher.api.deps.access import invalidate_access
 from cipher.api.deps.authentication import AdminOnly, AdminUserDep
-from cipher.api.deps.postgres import UserDatastoreDep
+from cipher.api.deps.postgres import DatabaseMetricsDatastoreDep, UserDatastoreDep
+from cipher.schemas.ingestion.database_metrics import DatabaseMetrics, DatasetDatabaseUsage
 from cipher.schemas.ingestion.user import (
     PaginatedUsersResponse,
     User,
@@ -92,3 +93,20 @@ async def revoke_dataset_access(id: ExistingUserIdDep, dataset_id: str, datastor
     if not await datastore.revoke_dataset_access(user_id=id, dataset_ids=[dataset_id]):
         raise HTTPException(status_code=404, detail="That user isn't a member of that dataset.")
     invalidate_access(user_id=id)
+
+
+@router.get("/database", summary="Database metrics", response_model=DatabaseMetrics)
+async def get_database_metrics(datastore: DatabaseMetricsDatastoreDep) -> DatabaseMetrics:
+    """Postgres size, each table's footprint and row count, and an estimated breakdown by dataset."""
+    return await datastore.get_metrics()
+
+
+@router.get(
+    "/database/datasets/{dataset_id}", summary="One dataset's database usage", response_model=DatasetDatabaseUsage
+)
+async def get_dataset_database_usage(dataset_id: str, datastore: DatabaseMetricsDatastoreDep) -> DatasetDatabaseUsage:
+    """A dataset's rows and estimated bytes (including indexes) in each table it has data in."""
+    usage = await datastore.get_dataset_usage(dataset_id=dataset_id)
+    if usage is None:
+        raise HTTPException(status_code=404, detail=f"Dataset not found: {dataset_id}")
+    return usage

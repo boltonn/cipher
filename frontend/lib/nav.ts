@@ -35,8 +35,8 @@ export interface NavItem {
  *  - `explore`    — the knowledge graph and its derived layers, as analytical
  *                   surfaces you read and annotate.
  *  - `media`      — raw visual assets you browse directly.
- *  - `admin`      — admin-only management pages, reached from the sidebar's
- *                   admin launcher (rendered only for admins).
+ *  - `admin`      — admin-only pages (`adminPages`), nested under the
+ *                   sidebar's Admin entry (rendered only for admins).
  */
 export const NAV = {
   home: {
@@ -115,19 +115,25 @@ export const NAV = {
     },
   ] as NavItem[],
 
-  adminHome: {
+  admin: {
     title: "Admin",
     url: "/admin",
     icon: ShieldCheck,
     blurb: "Admin-only management.",
   } as NavItem,
 
-  admin: [
+  adminPages: [
     {
       title: "Users",
       url: "/admin/users",
       icon: Users,
       blurb: "Who can sign in, who is an admin, and which datasets each user can access.",
+    },
+    {
+      title: "Database",
+      url: "/admin/database",
+      icon: Database,
+      blurb: "Postgres size by table and by dataset.",
     },
   ] as NavItem[],
 

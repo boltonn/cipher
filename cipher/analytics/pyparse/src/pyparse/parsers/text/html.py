@@ -445,8 +445,10 @@ class HtmlParser:
         raw = html if isinstance(html, bytes) else html.encode("utf-8")
 
         # 1. Pre-clean self-closing html/body tags which cause the "too many bodies" error
-        # This fixes: <html /> or <body />
+        # This fixes: <html /> or <body />. Then drop control bytes lxml refuses
+        # when text is reassigned (corrupt trailing binary in some emails).
         raw = re.sub(rb"<(html|body)([^>]*)\s/>", rb"<\1\2>", raw, flags=re.IGNORECASE)
+        raw = re.sub(rb"[\x00-\x08\x0b\x0c\x0e-\x1f]", b"", raw)
 
         # 2. Use fromstring for better resilience with full documents
         try:

@@ -1,5 +1,6 @@
 "use client";
 
+import { DatasetAdminActions } from "@/features/datasets/components/dataset-admin-actions";
 import { DatasetLock } from "@/features/datasets/components/dataset-lock";
 import { cn, formatBytes, formatCompactNumber } from "@/lib/utils";
 import type { DatasetSummary } from "@/features/datasets/types";
@@ -15,16 +16,20 @@ export function DatasetCard({ dataset }: DatasetCardProps) {
     "group flex flex-col rounded-xl bg-muted/40 border border-border/50 p-5 transition-all duration-300";
   const body = <DatasetCardBody dataset={dataset} />;
 
-  if (!dataset.hasAccess) {
-    return <div className={cn(className, "opacity-70")}>{body}</div>;
-  }
   return (
-    <Link
-      href={`/datasets/${dataset.id}`}
-      className={cn(className, "hover:border-primary/40 hover:bg-muted/60")}
-    >
-      {body}
-    </Link>
+    <div className="relative">
+      {dataset.hasAccess ? (
+        <Link
+          href={`/datasets/${dataset.id}`}
+          className={cn(className, "hover:border-primary/40 hover:bg-muted/60")}
+        >
+          {body}
+        </Link>
+      ) : (
+        <div className={cn(className, "opacity-70")}>{body}</div>
+      )}
+      <DatasetAdminActions dataset={dataset} className="absolute top-3.5 right-3.5" />
+    </div>
   );
 }
 

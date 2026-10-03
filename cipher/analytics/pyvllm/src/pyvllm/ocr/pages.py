@@ -25,11 +25,15 @@ Source = Path | bytes
 
 
 def is_pdf(source: Source) -> bool:
-    """Sniff the PDF magic bytes rather than trusting an extension."""
+    """Sniff the PDF magic bytes rather than trusting an extension.
+
+    Like Acrobat and pdfium, the header may sit anywhere in the first 1024 bytes
+    (e.g. a PDF saved with its HTTP response headers in front).
+    """
     if isinstance(source, bytes):
-        return source[:5] == b"%PDF-"
+        return b"%PDF-" in source[:1024]
     with open(source, "rb") as f:
-        return f.read(5) == b"%PDF-"
+        return b"%PDF-" in f.read(1024)
 
 
 def _open_pdf(source: Source) -> pdfium.PdfDocument:

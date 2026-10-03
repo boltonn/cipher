@@ -95,6 +95,18 @@ async def run_enrichment(
     return {"status": "started", "detail": f"{_RUNNABLE[request.enrichment_type]} started for {request.dataset_id}"}
 
 
+@router.post("/retry-failed")
+async def retry_failed_enrichments(
+    request: EnrichmentRunRequest, access: DatasetAccessDep, datastore: EnrichmentDatastoreDep
+) -> dict[str, int]:
+    """Put a dataset's failed rows for one analytic back to pending; the step's next run picks them up."""
+    access.require(request.dataset_id)
+    count = await datastore.retry_failed_enrichments(
+        enrichment_type=request.enrichment_type, dataset_id=request.dataset_id
+    )
+    return {"count": count}
+
+
 def _to_progress(
     dataset_id: str,
     enrichment_type: EnrichmentType,
@@ -135,9 +147,7 @@ async def get_enrichment_progress(
     response_model=list[DatasetEnrichmentProgress],
     response_model_by_alias=True,
 )
-async def get_dataset_enrichment_progress(
-    datastore: EnrichmentDatastoreDep, dataset_id: DatasetIdQueryDep
-):
+async def get_dataset_enrichment_progress(datastore: EnrichmentDatastoreDep, dataset_id: DatasetIdQueryDep):
     """Progress for every analytic that has run against `dataset_id`, in pipeline order."""
     stats = await datastore.get_enrichment_stats(dataset_id=dataset_id)
     return [
@@ -177,8 +187,13 @@ async def get_enrichment_failures(
             FailedEnrichment(
                 id=item["enrichment"].id,
                 enrichable_id=item["enrichment"].enrichable_id,
-                filename=item["filename"],
-                path=item["path"],
+                filename=item["file"].filename,
+                path=item["file"].path,
+                uri=item["file"].uri,
+                filetype=item["file"].filetype,
+                filetype_group=item["file"].filetype_group,
+                mime_type=item["file"].mime_type,
+                size=item["file"].size,
                 error_message=item["enrichment"].error_message,
                 retry_count=item["enrichment"].retry_count,
                 date_updated=item["enrichment"].date_updated,

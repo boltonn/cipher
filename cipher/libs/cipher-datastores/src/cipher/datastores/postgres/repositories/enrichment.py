@@ -184,30 +184,20 @@ class PostgresEnrichmentRepository:
             .values(status=ProcessingStatus.SKIPPED, date_updated=datetime.now(UTC))
         )
 
-    async def mark_failed_batch(
-        self,
-        enrichment_ids: list[str],
-        error_message: str | None = None,
-        increment_retry: bool = True,
-    ) -> None:
-        """Mark enrichment as FAILED."""
-        if not enrichment_ids:
-            return
+    async def mark_failed(self, failures: dict[str, str | BaseException], increment_retry: bool = True) -> None:
+        """Mark enrichments FAILED, each with why -- an exception or a message, shown in the failures dialog."""
+        by_message: dict[str, list[str]] = {}
+        for enrichment_id, reason in failures.items():
+            message = f"{type(reason).__name__}: {reason}" if isinstance(reason, BaseException) else reason
+            by_message.setdefault(message[:2000], []).append(enrichment_id)
 
-        values = {
-            "status": ProcessingStatus.FAILED,
-            "date_updated": datetime.now(UTC),
-        }
-
-        if error_message:
-            values["error_message"] = error_message
-
-        if increment_retry:
-            values["retry_count"] = EnrichmentTable.retry_count + 1
-
-        await self.session.execute(
-            update(EnrichmentTable).where(EnrichmentTable.id.in_(enrichment_ids)).values(**values)
-        )
+        for message, enrichment_ids in by_message.items():
+            values = {"status": ProcessingStatus.FAILED, "error_message": message, "date_updated": datetime.now(UTC)}
+            if increment_retry:
+                values["retry_count"] = EnrichmentTable.retry_count + 1
+            await self.session.execute(
+                update(EnrichmentTable).where(EnrichmentTable.id.in_(enrichment_ids)).values(**values)
+            )
 
     async def reset_stuck_enrichments(
         self,
@@ -327,7 +317,7 @@ class PostgresEnrichmentRepository:
         )
 
         statement = (
-            select(EnrichmentTable, FileTable.filename, FileTable.path)
+            select(EnrichmentTable, FileTable)
             .join(FileTable, join_condition)
             .where(*filters)
             .order_by(EnrichmentTable.date_updated.desc())
@@ -336,12 +326,7 @@ class PostgresEnrichmentRepository:
         )
         result = await self.session.execute(statement)
         items = [
-            {
-                "enrichment": Enrichment.model_validate(enrichment),
-                "filename": filename,
-                "path": path,
-            }
-            for enrichment, filename, path in result.all()
+            {"enrichment": Enrichment.model_validate(enrichment), "file": file} for enrichment, file in result.all()
         ]
         return total or 0, items
 
@@ -352,7 +337,7 @@ class PostgresEnrichmentRepository:
         enrichable_type: EnrichableType | None = None,
         dataset_id: str | None = None,
     ) -> int:
-        """Reset failed enrichments back to pending."""
+        """Reset failed enrichments back to pending with a fresh retry budget."""
         statement = update(EnrichmentTable).where(EnrichmentTable.status == ProcessingStatus.FAILED)
 
         if enrichment_ids:
@@ -374,6 +359,7 @@ class PostgresEnrichmentRepository:
         result = await self.session.execute(
             statement.values(
                 status=ProcessingStatus.PENDING,
+                retry_count=0,
                 error_message=None,
                 date_started=None,
                 date_updated=datetime.now(UTC),
@@ -387,6 +373,17 @@ class PostgresEnrichmentRepository:
         statement = delete(EnrichmentTable).where(EnrichmentTable.id.in_(enrichment_ids))
         result = await self.session.execute(statement)
         await self.session.commit()
+        return result.rowcount or 0
+
+    async def delete_unfinished_for_files(self, file_ids: list[str]) -> int:
+        """Drop these files' not-yet-completed enrichment rows, e.g. ones queued under a wrong filetype."""
+        result = await self.session.execute(
+            delete(EnrichmentTable).where(
+                EnrichmentTable.enrichable_type == EnrichableType.FILE,
+                EnrichmentTable.enrichable_id.in_(file_ids),
+                EnrichmentTable.status != ProcessingStatus.COMPLETED,
+            )
+        )
         return result.rowcount or 0
 
     async def delete_by_type(

@@ -32,6 +32,7 @@ from cipher.datastores.postgres.repositories import (
     PostgresImageRepository,
 )
 from cipher.orchestration.extract_documents import _find_extracted_duplicate
+from cipher.orchestration.image_size import DEFAULT_MIN_IMAGE_SIDE, is_below_min_side
 from cipher.schemas.content.document import DocumentMetadata, DocumentStructureNode
 from cipher.schemas.content.extraction import (
     ExtractedText,
@@ -238,10 +239,12 @@ def build_ocr_extracted_text(
 
 
 async def _ocr_file(
-    client: "OcrClient", file_resource: dict, min_chars: int, force: bool, figures: bool
+    client: "OcrClient", file_resource: dict, min_chars: int, force: bool, figures: bool, min_image_side: int
 ) -> tuple[OcrResponse, dict[int, str]] | None:
     """Network + CPU only (no DB): pick pages, call the service, fetch native text for mixed PDFs."""
     path = Path(file_resource["path"])
+    if file_resource["filetype"] in IMAGE_FILETYPES and is_below_min_side(path, min_image_side):
+        return None
     pages = None
     if file_resource["filetype"] in PDF_FILETYPES and not force:
         pages = await asyncio.to_thread(scanned_pages, path, min_chars)
@@ -346,6 +349,7 @@ async def ocr_workflow(
     min_chars: int = DEFAULT_MIN_CHARS,
     force: bool = False,
     figures: bool = False,
+    min_image_side: int = DEFAULT_MIN_IMAGE_SIDE,
 ) -> int:
     """Queue, dedupe, then OCR a dataset's eligible files. Returns files whose text was written.
 
@@ -353,7 +357,9 @@ async def ocr_workflow(
     for the first and copy its result.
     """
     if not await client.health():
-        raise RuntimeError("the ocr model is not reachable -- `pyvllm up ocr` (analytics/pyvllm), or let `cipher ocr` start it")
+        raise RuntimeError(
+            "the ocr model is not reachable -- `pyvllm up ocr` (analytics/pyvllm), or let `cipher ocr` start it"
+        )
     await queue_ocr_enrichments(session=session, dataset_id=dataset_id, filetypes=filetypes, clip_filter=clip_filter)
     deduped, stale = await dedupe_pending_ocr(session=session, dataset_id=dataset_id)
 
@@ -369,7 +375,7 @@ async def ocr_workflow(
     written = skipped = failed = pages = truncated = 0
 
     def spawn(item, existing) -> None:
-        task = asyncio.create_task(_ocr_file(client, item.resource, min_chars, force, figures))
+        task = asyncio.create_task(_ocr_file(client, item.resource, min_chars, force, figures, min_image_side))
         in_flight[task] = (item, existing)
 
     async def complete(item, extracted: ExtractedTextCreate | None, existing) -> None:
@@ -428,9 +434,7 @@ async def ocr_workflow(
                 except Exception as e:
                     logger.error(f"OCR failed for file {item.resource['id']}: {e}")
                     await session.rollback()
-                    await enrichment_repo.mark_failed_batch(
-                        [item.enrichment.id], error_message=str(e)[:2000], increment_retry=True
-                    )
+                    await enrichment_repo.mark_failed({item.enrichment.id: e})
                     await session.commit()
                     failed += 1
                     pbar.update(1)

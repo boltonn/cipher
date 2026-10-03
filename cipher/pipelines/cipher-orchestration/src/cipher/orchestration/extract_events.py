@@ -307,7 +307,7 @@ async def extract_events_workflow(
             await enrichment_repo.mark_processing(enrichment_ids=[item.enrichment.id for item in batch])
             await session.commit()
 
-            completed, failed = [], []
+            completed, failed = [], {}
             for item in batch:
                 if item.resource.get("mime_type") != _CALENDAR_MIME:
                     completed.append(item.enrichment.id)
@@ -320,12 +320,11 @@ async def extract_events_workflow(
                 except Exception as e:
                     logger.error(f"Calendar extraction failed for file {item.resource['id']}: {e}")
                     await session.rollback()
-                    failed.append(item.enrichment.id)
+                    failed[item.enrichment.id] = e
 
             if completed:
                 await enrichment_repo.mark_completed_batch(completed)
-            if failed:
-                await enrichment_repo.mark_failed_batch(failed, increment_retry=True)
+            await enrichment_repo.mark_failed(failed)
             await session.commit()
 
             count += len(completed)
@@ -569,7 +568,9 @@ async def gate_text_events_workflow(
             )
         )
     ).all()
-    copies = [e for e, file_id, score in already_scored if score < threshold and not _in_gate_sample(file_id, sample_rate)]
+    copies = [
+        e for e, file_id, score in already_scored if score < threshold and not _in_gate_sample(file_id, sample_rate)
+    ]
     await enrichment_repo.mark_skipped_batch(copies)
     skipped = len(copies)
 
@@ -607,9 +608,7 @@ async def tag_event_files(
     """Label files the LLM read: `event` positive when it found one, negative when it did not (as `model`)."""
     file_repo = PostgresFileRepository(session=session)
     for file_ids, label in ((with_events, ModelTagType.POSITIVE), (without_events, ModelTagType.NEGATIVE)):
-        await file_repo.tag_files(
-            file_ids=file_ids, tag=EVENT_FILE_TAG, label=label, source=TagSource.model(model)
-        )
+        await file_repo.tag_files(file_ids=file_ids, tag=EVENT_FILE_TAG, label=label, source=TagSource.model(model))
 
 
 async def get_event_gate_report(session: "AsyncSession", dataset_id: str, *, threshold: float) -> dict:
@@ -770,7 +769,7 @@ async def extract_text_events_workflow(
                 await enrichment_repo.mark_processing(enrichment_ids=[item.enrichment.id for item in batch])
                 await session.commit()
 
-                completed, failed, work = [], [], []
+                completed, failed, work = [], {}, []
                 for item in batch:
                     extracted = (
                         await extracted_text_repo.get_by_file_id(item.resource["id"])
@@ -787,7 +786,7 @@ async def extract_text_events_workflow(
                     file_id = item.resource["id"]
                     if isinstance(result, Exception):
                         logger.error(f"LLM event extraction failed for file {file_id}: {result}")
-                        failed.append(item.enrichment.id)
+                        failed[item.enrichment.id] = result
                         continue
                     try:
                         event_count += await persist_llm_events(
@@ -803,15 +802,14 @@ async def extract_text_events_workflow(
                     except Exception as e:
                         logger.error(f"Persisting LLM events failed for file {file_id}: {e}")
                         await session.rollback()
-                        failed.append(item.enrichment.id)
+                        failed[item.enrichment.id] = e
 
                 await tag_event_files(
                     session, with_events=with_events, without_events=without_events, model=resolved_model
                 )
                 if completed:
                     await enrichment_repo.mark_completed_batch(completed)
-                if failed:
-                    await enrichment_repo.mark_failed_batch(failed, increment_retry=True)
+                await enrichment_repo.mark_failed(failed)
                 await session.commit()
 
                 count += len(completed)

@@ -401,7 +401,7 @@ async def extract_entities_workflow(
                 except Exception as e:
                     logger.warning(f"Batched nerd pass failed, falling back to per-file: {e}")
 
-            completed, failed = [], []
+            completed, failed = [], {}
             for item in batch:
                 file_id = item.resource["id"]
                 try:
@@ -432,12 +432,11 @@ async def extract_entities_workflow(
                 except Exception as e:
                     logger.error(f"Entity extraction failed for file {file_id}: {e}")
                     await session.rollback()
-                    failed.append(item.enrichment.id)
+                    failed[item.enrichment.id] = e
 
             if completed:
                 await enrichment_repo.mark_completed_batch(completed)
-            if failed:
-                await enrichment_repo.mark_failed_batch(failed, increment_retry=True)
+            await enrichment_repo.mark_failed(failed)
             await session.commit()
 
             count += len(completed)

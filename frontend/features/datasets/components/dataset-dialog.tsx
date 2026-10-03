@@ -14,29 +14,32 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useUpdateDataset } from "@/features/datasets/api";
-import { Dataset, DatasetUpdateSchema } from "@/features/datasets/types";
+import { useCreateDataset } from "@/features/datasets/hooks/use-create-dataset";
+import { Dataset, DatasetCreate, DatasetCreateSchema, DatasetUpdateSchema } from "@/features/datasets/types";
 import { Loader2 } from "lucide-react";
 import { useState } from "react";
 
 const FIELD_LABEL = "text-[11px] uppercase tracking-wide text-muted-foreground";
 
-interface EditDatasetDialogProps {
-  dataset: Dataset;
+interface DatasetDialogProps {
+  /** The dataset to edit; omit to create a new one. */
+  dataset?: Dataset;
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-export function EditDatasetDialog({ dataset, isOpen, onOpenChange }: EditDatasetDialogProps) {
+/** Create (admin) or edit a dataset's name, description and discoverability. */
+export function DatasetDialog({ dataset, isOpen, onOpenChange }: DatasetDialogProps) {
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="bg-card border-border sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="text-white tracking-wide uppercase text-xs font-semibold">
-            Edit Dataset
+            {dataset ? "Edit dataset" : "New dataset"}
           </DialogTitle>
         </DialogHeader>
         {/* keyed by isOpen so each time the dialog opens it remounts with fresh state from `dataset` */}
-        <EditDatasetForm key={String(isOpen)} dataset={dataset} onDone={() => onOpenChange(false)} />
+        <DatasetForm key={String(isOpen)} dataset={dataset} onDone={() => onOpenChange(false)} />
       </DialogContent>
     </Dialog>
   );
@@ -44,16 +47,18 @@ export function EditDatasetDialog({ dataset, isOpen, onOpenChange }: EditDataset
 
 type DatasetFieldErrors = { name?: string[]; description?: string[] };
 
-function EditDatasetForm({ dataset, onDone }: { dataset: Dataset; onDone: () => void }) {
-  const [name, setName] = useState(dataset.name);
-  const [description, setDescription] = useState(dataset.description ?? "");
-  const [isDiscoverable, setIsDiscoverable] = useState(dataset.isDiscoverable);
+function DatasetForm({ dataset, onDone }: { dataset?: Dataset; onDone: () => void }) {
+  const [name, setName] = useState(dataset?.name ?? "");
+  const [description, setDescription] = useState(dataset?.description ?? "");
+  const [isDiscoverable, setIsDiscoverable] = useState(dataset?.isDiscoverable ?? false);
   const [fieldErrors, setFieldErrors] = useState<DatasetFieldErrors>({});
 
-  const updateDataset = useUpdateDataset(dataset.id, onDone);
+  const updateDataset = useUpdateDataset(dataset?.id ?? "", onDone);
+  const createDataset = useCreateDataset(onDone);
+  const saveDataset = dataset ? updateDataset : createDataset;
 
   const handleSubmit = () => {
-    const result = DatasetUpdateSchema.safeParse({
+    const result = (dataset ? DatasetUpdateSchema : DatasetCreateSchema).safeParse({
       name: name.trim(),
       description: description.trim() || undefined,
       isDiscoverable,
@@ -63,7 +68,8 @@ function EditDatasetForm({ dataset, onDone }: { dataset: Dataset; onDone: () => 
       return;
     }
     setFieldErrors({});
-    updateDataset.mutate(result.data);
+    if (dataset) updateDataset.mutate(result.data);
+    else createDataset.mutate(result.data as DatasetCreate);
   };
 
   return (
@@ -115,10 +121,10 @@ function EditDatasetForm({ dataset, onDone }: { dataset: Dataset; onDone: () => 
           />
         </Field>
 
-        {updateDataset.isError && (
+        {saveDataset.isError && (
           <Alert variant="destructive">
             <AlertDescription>
-              {(updateDataset.error as Error).message || "Failed to update dataset"}
+              {(saveDataset.error as Error).message || "Failed to save dataset"}
             </AlertDescription>
           </Alert>
         )}
@@ -130,11 +136,11 @@ function EditDatasetForm({ dataset, onDone }: { dataset: Dataset; onDone: () => 
         </Button>
         <Button
           onClick={handleSubmit}
-          disabled={updateDataset.isPending}
+          disabled={saveDataset.isPending}
           className="bg-primary hover:bg-primary gap-2"
         >
-          {updateDataset.isPending && <Loader2 size={14} className="animate-spin" />}
-          Save Changes
+          {saveDataset.isPending && <Loader2 size={14} className="animate-spin" />}
+          {dataset ? "Save changes" : "Create dataset"}
         </Button>
       </DialogFooter>
     </>

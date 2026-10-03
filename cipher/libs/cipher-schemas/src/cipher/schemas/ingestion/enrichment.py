@@ -177,6 +177,11 @@ class FailedEnrichment(BaseModel):
     enrichable_id: str
     filename: str
     path: str
+    uri: str
+    filetype: str
+    filetype_group: str
+    mime_type: str
+    size: int
     error_message: str | None = None
     retry_count: int = 0
     date_updated: datetime

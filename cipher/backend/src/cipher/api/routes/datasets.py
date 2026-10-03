@@ -84,9 +84,10 @@ async def get_datasets(
     summary="List a dataset's members",
     response_model=list[User],
     response_model_by_alias=True,
+    dependencies=[AdminOnly],
 )
 async def get_dataset_users(id: DatasetIdDep, user_datastore: UserDatastoreDep) -> list[User]:
-    """Users with explicit membership in a dataset (admins can see it too, without being listed)."""
+    """Admin: users with explicit membership in a dataset (admins can see it too, without being listed)."""
     return await user_datastore.get_dataset_users(dataset_id=id)
 
 

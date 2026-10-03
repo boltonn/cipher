@@ -180,8 +180,9 @@
     },
     {
         "name": "asf",
-        "group": "application",
-        "mime_type": "video/x-ms-wma",
+        "group": "video",
+        "mime_type": "video/x-ms-asf",
+        "magic": [48, 38, 178, 117, 142, 102, 207, 17, 166, 217, 0, 170, 0, 98, 206, 108],
         "extensions": [
             "asf"
         ]

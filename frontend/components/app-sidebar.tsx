@@ -17,7 +17,7 @@ import {
   SidebarSeparator,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { useMe } from "@/features/users/hooks/use-me";
+import { useIsAdmin, useMe } from "@/features/users/hooks/use-me";
 import { getInitials } from "@/features/users/utils";
 import { NAV, type NavItem } from "@/lib/nav";
 import { cn } from "@/lib/utils";
@@ -96,6 +96,7 @@ const data = {
 export function AppSidebar() {
   const pathname = usePathname();
   const { data: user, isLoading } = useMe();
+  const isAdmin = useIsAdmin();
 
   return (
     <Sidebar className="border-r-0" collapsible="icon">
@@ -189,6 +190,24 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
+        {isAdmin && (
+          <>
+            <SidebarSeparator className="my-1.5 h-px w-2/3 mx-auto bg-transparent bg-gradient-to-r from-transparent via-primary/25 to-transparent group-data-[collapsible=icon]:w-8" />
+
+            {/* Admin-only management */}
+            <SidebarGroup>
+              <SidebarGroupLabel className="text-muted-foreground">
+                Manage
+              </SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  <SidebarAdminLauncher pathname={pathname} />
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          </>
+        )}
+
         {/* Group 5: Model (quick switcher, mirrors chat's model store) */}
         <SidebarGroup className="mt-auto">
           <SidebarGroupContent>
@@ -208,7 +227,6 @@ export function AppSidebar() {
               {data.settings.map((item) => (
                 <MenuItem key={item.title} item={item} pathname={pathname} />
               ))}
-              <SidebarAdminLauncher pathname={pathname} />
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

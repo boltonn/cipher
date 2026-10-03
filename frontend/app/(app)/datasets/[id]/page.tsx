@@ -18,9 +18,10 @@ import {
   useDeleteDataset,
 } from "@/features/datasets/api";
 import { DatasetFileBrowser } from "@/features/datasets/components/dataset-file-browser";
+import { DatasetDatabaseUsagePanel } from "@/features/database/components/dataset-database-usage";
 import { DatasetMembers } from "@/features/datasets/components/dataset-members";
 import { LOCKED_DATASET_HINT } from "@/features/datasets/components/dataset-lock";
-import { EditDatasetDialog } from "@/features/datasets/components/edit-dataset-dialog";
+import { DatasetDialog } from "@/features/datasets/components/dataset-dialog";
 import { EnrichmentPipeline } from "@/features/datasets/components/enrichment-pipeline";
 import { FiletypeBreakdownList } from "@/features/datasets/components/filetype-breakdown-list";
 import { LoadHistogramChart } from "@/features/datasets/components/load-histogram-chart";
@@ -189,7 +190,7 @@ function DatasetWorkspace({ dataset }: { dataset: Dataset }) {
             variant="outline"
             size="sm"
             onClick={() => setIsEditOpen(true)}
-            className="h-9 bg-muted/40 border-border text-muted-foreground hover:text-primary text-xs font-medium gap-2"
+            className="h-9 gap-2 border-admin/30 bg-admin/5 text-xs font-medium text-admin hover:bg-admin/10 hover:text-admin"
           >
             <Pencil size={14} />
             Edit
@@ -202,7 +203,7 @@ function DatasetWorkspace({ dataset }: { dataset: Dataset }) {
                 variant="ghost"
                 size="icon"
                 aria-label="Delete dataset"
-                className="h-9 w-9 text-muted-foreground/70 hover:bg-destructive/10 hover:text-destructive"
+                className="h-9 w-9 text-admin/60 hover:bg-destructive/10 hover:text-destructive"
               >
                 <Trash2 size={14} />
               </Button>
@@ -225,7 +226,7 @@ function DatasetWorkspace({ dataset }: { dataset: Dataset }) {
         )}
       </div>
 
-      <EditDatasetDialog
+      <DatasetDialog
         dataset={dataset}
         isOpen={isEditOpen}
         onOpenChange={setIsEditOpen}
@@ -233,7 +234,12 @@ function DatasetWorkspace({ dataset }: { dataset: Dataset }) {
 
       <EnrichmentPipeline datasetId={id} />
 
-      <DatasetMembers datasetId={id} />
+      {isAdmin && (
+        <>
+          <DatasetMembers datasetId={id} />
+          <DatasetDatabaseUsagePanel datasetId={id} />
+        </>
+      )}
 
       {/* Date range + granularity filter */}
       <div className="mt-6 flex items-center justify-between gap-4">

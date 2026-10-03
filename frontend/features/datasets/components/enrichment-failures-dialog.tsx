@@ -1,5 +1,7 @@
 "use client";
 
+import { CopyableId } from "@/components/copyable-id";
+import { Pagination } from "@/components/pagination";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -8,12 +10,27 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { useEnrichmentFailures } from "@/features/datasets/api";
-import { cn, formatCompactNumber } from "@/lib/utils";
+import {
+  useEnrichmentFailures,
+  useRetryFailedEnrichments,
+} from "@/features/datasets/api";
+import type { FailedEnrichment } from "@/features/datasets/types";
+import { useFile } from "@/features/files/api";
+import { FileViewerDialog } from "@/features/files/components/file-viewer-dialog";
+import { cn, formatBytes, formatCompactNumber } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
-import { AlertTriangle, Loader2, Maximize2, Minimize2 } from "lucide-react";
+import {
+  AlertTriangle,
+  Eye,
+  Loader2,
+  Maximize2,
+  Minimize2,
+  RotateCcw,
+} from "lucide-react";
 import { useState } from "react";
+
+const PAGE_SIZE = 25;
+const NO_MESSAGE = "(no message recorded)";
 
 interface EnrichmentFailuresDialogProps {
   datasetId: string;
@@ -30,10 +47,17 @@ export function EnrichmentFailuresDialog({
   onClose,
 }: EnrichmentFailuresDialogProps) {
   const [expanded, setExpanded] = useState(false);
-  const { data, isPending, isError } = useEnrichmentFailures(
+  const [pageState, setPageState] = useState({ enrichmentType, page: 1 });
+  const page = pageState.enrichmentType === enrichmentType ? pageState.page : 1;
+  const [viewingFileId, setViewingFileId] = useState<string | null>(null);
+
+  const { data, isPending, isFetching, isError } = useEnrichmentFailures(
     datasetId,
-    enrichmentType
+    enrichmentType,
+    { limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE }
   );
+  const retryFailed = useRetryFailedEnrichments(datasetId);
+  const { data: viewingFile } = useFile(viewingFileId ?? undefined);
 
   return (
     <Dialog open={!!enrichmentType} onOpenChange={(open) => !open && onClose()}>
@@ -81,16 +105,16 @@ export function EnrichmentFailuresDialog({
           </p>
         )}
 
-        {data && data.items.length === 0 && (
+        {data && data.total === 0 && (
           <p className="py-8 text-xs text-muted-foreground">
             No failed rows found.
           </p>
         )}
 
-        {data && data.items.length > 0 && (
+        {data && data.total > 0 && (
           <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
             {data.reasons.length > 1 && (
-              <div className="flex min-w-0 flex-col gap-1.5 rounded-lg border border-border bg-muted/40 p-3">
+              <div className="flex max-h-32 min-w-0 shrink-0 flex-col gap-1.5 overflow-y-auto rounded-lg border border-border bg-muted/40 p-3">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                   Reasons
                 </p>
@@ -103,55 +127,108 @@ export function EnrichmentFailuresDialog({
                       {formatCompactNumber(reason.count)}×
                     </span>
                     <span className="min-w-0 flex-1 font-mono text-muted-foreground [overflow-wrap:anywhere]">
-                      {reason.errorMessage ?? "(no message recorded)"}
+                      {reason.errorMessage ?? NO_MESSAGE}
                     </span>
                   </div>
                 ))}
               </div>
             )}
 
-            <ScrollArea className="min-h-0 min-w-0 flex-1 pr-3">
-              <div className="flex flex-col gap-2">
-                {data.items.map((item) => (
-                  <div
-                    key={item.id}
-                    className="min-w-0 rounded-lg border border-border bg-muted/30 p-3"
-                  >
-                    <div className="flex items-baseline justify-between gap-3">
-                      <span className="truncate font-mono text-xs text-foreground">
-                        {item.filename}
-                      </span>
-                      <span className="shrink-0 text-[11px] text-muted-foreground">
-                        {formatDistanceToNow(new Date(item.dateUpdated), {
-                          addSuffix: true,
-                        })}
-                      </span>
-                    </div>
-                    <p className="mt-0.5 truncate text-[11px] text-muted-foreground/70">
-                      {item.path}
-                    </p>
-                    <pre className="mt-2 whitespace-pre-wrap rounded bg-background/60 p-2 font-mono text-[11px] text-destructive [overflow-wrap:anywhere]">
-                      {item.errorMessage ?? "(no message recorded)"}
-                    </pre>
-                    {item.retryCount > 0 && (
-                      <p className="mt-1.5 text-[11px] text-muted-foreground">
-                        {item.retryCount} retr{item.retryCount === 1 ? "y" : "ies"}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </ScrollArea>
+            <div
+              className={cn(
+                "flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-y-auto pr-1",
+                isFetching && "opacity-60"
+              )}
+            >
+              {data.items.map((item) => (
+                <FailedEnrichmentRow
+                  key={item.id}
+                  item={item}
+                  onView={() => setViewingFileId(item.enrichableId)}
+                />
+              ))}
+            </div>
 
-            {data.total > data.returned && (
-              <p className="text-[11px] text-muted-foreground">
-                Showing the most recent {formatCompactNumber(data.returned)} of{" "}
-                {formatCompactNumber(data.total)} failures.
-              </p>
-            )}
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={retryFailed.isPending || !enrichmentType}
+                onClick={() =>
+                  enrichmentType && retryFailed.mutate(enrichmentType)
+                }
+                title="Put every failed row back in the queue for this step's next run"
+              >
+                {retryFailed.isPending ? (
+                  <Loader2 className="animate-spin" />
+                ) : (
+                  <RotateCcw />
+                )}
+                Retry all failed
+              </Button>
+              {data.total > PAGE_SIZE && (
+                <Pagination
+                  variant="compact"
+                  showRange
+                  currentPage={page}
+                  totalItems={data.total}
+                  itemsPerPage={PAGE_SIZE}
+                  isLoading={isFetching}
+                  onPageChange={(next) =>
+                    setPageState({ enrichmentType, page: next })
+                  }
+                />
+              )}
+            </div>
           </div>
         )}
       </DialogContent>
+
+      <FileViewerDialog
+        file={viewingFile ? { ...viewingFile, type: "file" } : null}
+        isOpen={!!viewingFileId && !!viewingFile}
+        onOpenChange={(open) => !open && setViewingFileId(null)}
+      />
     </Dialog>
+  );
+}
+
+function FailedEnrichmentRow({
+  item,
+  onView,
+}: {
+  item: FailedEnrichment;
+  onView: () => void;
+}) {
+  return (
+    <div className="min-w-0 shrink-0 rounded-lg border border-border bg-muted/30 p-3">
+      <div className="flex min-w-0 items-center justify-between gap-3">
+        <span className="min-w-0 truncate font-mono text-xs text-foreground">
+          {item.filename}
+        </span>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="text-[11px] text-muted-foreground">
+            {formatDistanceToNow(new Date(item.dateUpdated), {
+              addSuffix: true,
+            })}
+          </span>
+          <Button variant="ghost" size="xs" onClick={onView}>
+            <Eye />
+            View file
+          </Button>
+        </div>
+      </div>
+      <p className="mt-0.5 text-[11px] text-muted-foreground">
+        {item.filetype} · {item.filetypeGroup} · {item.mimeType} ·{" "}
+        {formatBytes(item.size)}
+        {item.retryCount > 0 &&
+          ` · ${item.retryCount} retr${item.retryCount === 1 ? "y" : "ies"}`}
+      </p>
+      <CopyableId id={item.path} label="Path" className="mt-1 w-full" />
+      <CopyableId id={item.enrichableId} label="File ID" className="w-full" />
+      <pre className="mt-2 max-h-40 overflow-y-auto whitespace-pre-wrap rounded bg-background/60 p-2 font-mono text-[11px] text-destructive [overflow-wrap:anywhere]">
+        {item.errorMessage ?? NO_MESSAGE}
+      </pre>
+    </div>
   );
 }

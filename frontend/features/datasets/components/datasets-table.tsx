@@ -6,8 +6,10 @@ import type {
   DataTableFilters,
   DataTableSortOrder,
 } from "@/components/data-table/types";
+import { DatasetAdminActions } from "@/features/datasets/components/dataset-admin-actions";
 import { DatasetLock } from "@/features/datasets/components/dataset-lock";
 import type { DatasetSummary } from "@/features/datasets/types";
+import { useIsAdmin } from "@/features/users/hooks/use-me";
 import { formatBytes, formatCompactNumber } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 
@@ -81,6 +83,15 @@ const columns: DataTableColumn<DatasetSummary>[] = [
   },
 ];
 
+const adminColumn: DataTableColumn<DatasetSummary> = {
+  key: "admin",
+  header: "",
+  type: "text",
+  align: "right",
+  width: "96px",
+  render: (row) => <DatasetAdminActions dataset={row} className="justify-end" />,
+};
+
 interface DatasetsTableProps {
   datasets: DatasetSummary[];
   total: number;
@@ -111,10 +122,11 @@ export function DatasetsTable({
   onFilterChange,
 }: DatasetsTableProps) {
   const router = useRouter();
+  const isAdmin = useIsAdmin();
 
   return (
     <DataTable
-      columns={columns}
+      columns={isAdmin ? [...columns, adminColumn] : columns}
       data={datasets}
       getRowId={(row) => row.id}
       total={total}

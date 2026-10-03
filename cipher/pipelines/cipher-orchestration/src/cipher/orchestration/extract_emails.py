@@ -183,7 +183,8 @@ async def extract_emails_workflow(
             await enrichment_repo.mark_processing(enrichment_ids=[item.enrichment.id for item in batch])
             await session.commit()
 
-            completed, failed = [], []
+            completed: list[str] = []
+            failed: dict[str, str | Exception] = {}
             for item in batch:
                 try:
                     result = await _extract_email(
@@ -197,12 +198,11 @@ async def extract_emails_workflow(
                 except Exception as e:
                     logger.error(f"Email extraction failed for file {item.resource['id']}: {e}")
                     await session.rollback()
-                    failed.append(item.enrichment.id)
+                    failed[item.enrichment.id] = e
 
             if completed:
                 await enrichment_repo.mark_completed_batch(completed)
-            if failed:
-                await enrichment_repo.mark_failed_batch(failed, increment_retry=True)
+            await enrichment_repo.mark_failed(failed)
             await session.commit()
 
             count += len(completed)

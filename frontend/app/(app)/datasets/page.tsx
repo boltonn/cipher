@@ -11,6 +11,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { useDatasetsList } from "@/features/datasets/api";
+import { NewDatasetButton } from "@/features/datasets/components/dataset-admin-actions";
 import { DatasetRequestForm } from "@/features/datasets/components/dataset-create-form";
 import {
   DatasetsContainer,
@@ -110,6 +111,8 @@ export default function DatasetSearchPage() {
                 </Button>
               ))}
             </ButtonGroup>
+
+            <NewDatasetButton />
 
             <Dialog open={createOpen} onOpenChange={setCreateOpen}>
               <DialogTrigger asChild>

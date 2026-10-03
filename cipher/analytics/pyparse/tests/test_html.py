@@ -58,3 +58,8 @@ def test_invisible_padding_is_stripped():
         HtmlParser.to_text("<p>Sale ends\u200c\u00a0\u200c\u00a0\u034f \u00ad\u2007tonight</p>") == "Sale ends tonight"
     )
     assert HtmlParser.to_text("<p>می\u200cخواهم</p>") == "می\u200cخواهم"
+
+
+def test_control_bytes_are_dropped():
+    """Corrupt trailing binary after a body must not make lxml refuse the text rewrite."""
+    assert HtmlParser.to_text("<div><p>Hello</p></div>\x05\x12\x0f<p>tail</p>") == "Hello\n\ntail"

@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cipher.datastores.postgres.tables.dataset import DatasetTable
 from cipher.datastores.postgres.tables.file import FileTable
+from cipher.datastores.postgres.tables.user import UserDatasetAccessTable
 from cipher.schemas.ingestion.dataset import (
     Dataset,
     DatasetCreate,
@@ -118,6 +119,12 @@ class PostgresDatasetRepository:
             .group_by(FileTable.dataset_id)
             .subquery()
         )
+        member_count_expr = (
+            select(func.count())
+            .where(UserDatasetAccessTable.dataset_id == DatasetTable.id)
+            .correlate(DatasetTable)
+            .scalar_subquery()
+        )
         file_count_expr = func.coalesce(file_stats.c.file_count, 0)
         total_size_expr = func.coalesce(file_stats.c.total_size_bytes, 0)
         filetype_count_expr = func.coalesce(file_stats.c.filetype_count, 0)
@@ -150,10 +157,8 @@ class PostgresDatasetRepository:
         total_count = count_result.scalar_one()
 
         data_stmt = select(
-            DatasetTable, file_count_expr, total_size_expr, filetype_count_expr, has_access_expr
-        ).outerjoin(
-            file_stats, DatasetTable.id == file_stats.c.dataset_id
-        )
+            DatasetTable, file_count_expr, total_size_expr, filetype_count_expr, member_count_expr, has_access_expr
+        ).outerjoin(file_stats, DatasetTable.id == file_stats.c.dataset_id)
         if where_clause:
             data_stmt = data_stmt.where(*where_clause)
 
@@ -177,10 +182,11 @@ class PostgresDatasetRepository:
                     "file_count": file_count,
                     "total_size_bytes": total_size_bytes,
                     "filetype_count": filetype_count,
+                    "member_count": member_count,
                     "has_access": has_access,
                 }
             )
-            for dataset_table, file_count, total_size_bytes, filetype_count, has_access in data_result.all()
+            for dataset_table, file_count, total_size_bytes, filetype_count, member_count, has_access in data_result.all()
         ]
 
         total_pages = (total_count + request.limit - 1) // request.limit

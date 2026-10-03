@@ -1,4 +1,4 @@
-from sqlalchemy import asc, desc, distinct, func, select, tuple_
+from sqlalchemy import asc, desc, distinct, func, select, tuple_, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -162,6 +162,16 @@ class PostgresFileRepository:
             source=TagSource.user(user_id),
         )
         return await self.get_file_by_id(file_id=file_id)
+
+    async def set_filetype(self, *, sha256: str, filetype: str, filetype_group: str, mime_type: str) -> list[str]:
+        """Correct the filetype of every copy of this content; returns the corrected file ids."""
+        result = await self.session.execute(
+            update(FileTable)
+            .where(FileTable.sha256 == sha256)
+            .values(filetype=filetype, filetype_group=filetype_group, mime_type=mime_type)
+            .returning(FileTable.id)
+        )
+        return list(result.scalars().all())
 
     async def get_file_by_sha256(self, sha256: str) -> File | None:
         """Retrieve a file by its SHA256 hash."""

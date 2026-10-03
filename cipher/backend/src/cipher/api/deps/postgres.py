@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engin
 
 from cipher.api.settings import Settings, TextRanker
 from cipher.datastores.postgres.repositories.comment import PostgresCommentRepository
+from cipher.datastores.postgres.repositories.database_metrics import PostgresDatabaseMetricsRepository
 from cipher.datastores.postgres.repositories.dataset import PostgresDatasetRepository
 from cipher.datastores.postgres.repositories.enrichment import (
     PostgresEnrichmentRepository,
@@ -151,6 +152,12 @@ async def get_image_repository() -> AsyncGenerator[PostgresImageRepository, None
         yield PostgresImageRepository(session=session)
 
 
+async def get_database_metrics_repository() -> AsyncGenerator[PostgresDatabaseMetricsRepository, None]:
+    """Dependency injector for PostgresDatabaseMetricsRepository."""
+    async with get_session() as session:
+        yield PostgresDatabaseMetricsRepository(session=session)
+
+
 async def get_user_repository() -> AsyncGenerator[PostgresUserRepository, None]:
     """Dependency injector for PostgresUserRepository."""
     async with get_session() as session:
@@ -236,6 +243,7 @@ FileDatastoreDep = Annotated[PostgresFileRepository, Depends(get_file_repository
 ExtractedTextDatastoreDep = Annotated[PostgresExtractedTextRepository, Depends(get_extracted_text_repository)]
 ImageDatastoreDep = Annotated[PostgresImageRepository, Depends(get_image_repository)]
 UserDatastoreDep = Annotated[PostgresUserRepository, Depends(get_user_repository)]
+DatabaseMetricsDatastoreDep = Annotated[PostgresDatabaseMetricsRepository, Depends(get_database_metrics_repository)]
 FaceDatastoreDep = Annotated[PostgresFaceRepository, Depends(get_face_repository)]
 PersonDatastoreDep = Annotated[PostgresPersonRepository, Depends(get_person_repository)]
 CommentDatastoreDep = Annotated[PostgresCommentRepository, Depends(get_comment_repository)]

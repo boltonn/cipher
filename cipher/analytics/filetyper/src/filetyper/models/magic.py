@@ -45,6 +45,8 @@ class MagicNumberFilterTyper:
             ext.lower(): self._build_info(item) for item in full_registry for ext in (item.get("extensions") or [])
         }
 
+        self._name_map = {item["name"]: self._build_info(item) for item in full_registry}
+
         # 3. Pre-map MIME types
         self._mime_type_map = {
             item["mime_type"]: self._build_info(item) for item in full_registry if item.get("mime_type")
@@ -125,6 +127,10 @@ class MagicNumberFilterTyper:
         """Helper to match file extension using the pre-compiled map."""
         ext = ext.lower().lstrip(".")
         return self._extension_map.get(ext)
+
+    def get_filetype_info(self, filetype: str) -> FileTypeInfo | None:
+        """The registry entry for a filetype name (e.g. `wmv`), or None if it isn't registered."""
+        return self._name_map.get(filetype)
 
     def map_mime_type_to_filetype_info(self, mime_type: str) -> FileTypeInfo:
         """Same interface as Magika wrapper."""

@@ -98,6 +98,7 @@ class DatasetSummary(DatasetPublic):
     file_count: int = Field(0, description="Number of files loaded into this dataset")
     total_size_bytes: int = Field(0, description="Total size in bytes of all files in this dataset")
     filetype_count: int = Field(0, description="Number of distinct file types in this dataset")
+    member_count: int = Field(0, description="Users with explicit membership (admins see every dataset regardless)")
 
 
 class DatasetsRequest(BaseModel):

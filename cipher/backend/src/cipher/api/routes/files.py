@@ -2,12 +2,19 @@ from io import BytesIO
 from typing import Annotated
 
 from fastapi import APIRouter, Body, HTTPException, Query, Response
+from filetyper.models.magic import MagicNumberFilterTyper
 from pydantic import Field
 from pyparse.parsers.email import EmlParser
 
 from cipher.api.deps.access import DatasetAccess, DatasetAccessDep
+from cipher.api.deps.authentication import AdminOnly
 from cipher.api.deps.elasticsearch import TextChunkDatastoreDep
-from cipher.api.deps.postgres import ExtractedTextDatastoreDep, FileDatastoreDep, ImageDatastoreDep
+from cipher.api.deps.postgres import (
+    EnrichmentDatastoreDep,
+    ExtractedTextDatastoreDep,
+    FileDatastoreDep,
+    ImageDatastoreDep,
+)
 from cipher.api.utils import download_uri
 from cipher.datastores.postgres.repositories.file import PostgresFileRepository
 from cipher.schemas._base.base import BaseModel
@@ -58,6 +65,44 @@ async def set_file_tags(
     """Set the positive tags of the file's content (every copy shares them); changes are recorded as yours."""
     await get_accessible_file(file_id=id, datastore=datastore, access=access)
     return await datastore.set_tags(file_id=id, tags=data.tags, user_id=access.user.id)
+
+
+_file_typer = MagicNumberFilterTyper()
+
+
+class FiletypeUpdate(BaseModel):
+    """A corrected filetype, by registry name (e.g. `wmv`); group and MIME type follow from the registry."""
+
+    filetype: str
+
+
+@router.patch("/{id}/filetype", summary="Correct a file's filetype", response_model=File, dependencies=[AdminOnly])
+async def set_file_filetype(
+    id: str,
+    data: Annotated[FiletypeUpdate, Body(...)],
+    access: DatasetAccessDep,
+    datastore: FileDatastoreDep,
+    enrichments: EnrichmentDatastoreDep,
+):
+    """Admin: correct a misdetected filetype on every copy of the file's content.
+
+    Unfinished enrichment rows (queued or failed under the wrong type) are dropped, so each
+    step's next run re-queues the file only if it fits the corrected type.
+    """
+    file = await get_accessible_file(file_id=id, datastore=datastore, access=access)
+    info = _file_typer.get_filetype_info(data.filetype)
+    if info is None:
+        raise HTTPException(status_code=400, detail=f"Unknown filetype: {data.filetype}")
+    file_ids = await datastore.set_filetype(
+        sha256=file.sha256,
+        filetype=info["filetype"],
+        filetype_group=info["filetype_group"],
+        mime_type=info["mime_type"],
+    )
+    await datastore.session.commit()
+    await enrichments.delete_unfinished_for_files(file_ids=file_ids)
+    await enrichments.session.commit()
+    return await datastore.get_file_by_id(file_id=id)
 
 
 @router.get("/{id}/view", summary="Download file by ID")

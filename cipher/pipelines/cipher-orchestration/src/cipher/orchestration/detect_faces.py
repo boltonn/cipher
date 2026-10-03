@@ -30,6 +30,7 @@ from cipher.datastores.postgres.repositories import (
     PostgresFaceRepository,
     PostgresImageRepository,
 )
+from cipher.orchestration.image_size import DEFAULT_MIN_IMAGE_SIDE, is_below_min_side
 from cipher.schemas.content.image import ImageCreate
 from cipher.schemas.identity.face import face_annotation_to_face_create
 from cipher.schemas.ingestion.enrichment import EnrichableType, EnrichmentType
@@ -78,8 +79,9 @@ async def _producer(
     session: "AsyncSession",
     batch_size: int,
     dataset_id: str | None,
+    min_image_side: int,
 ):
-    """Producer: fetch pending batches and decode images concurrently."""
+    """Producer: fetch pending batches and decode images concurrently; images under `min_image_side` are skipped."""
     enrichment_repo = PostgresEnrichmentRepository(session=session)
 
     while True:
@@ -101,16 +103,21 @@ async def _producer(
         tasks = [loop.run_in_executor(_EXECUTOR, _sync_load_image, item.resource["uri"]) for item in batch]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        images, items, fetch_failed = [], [], []
+        images, items, skipped = [], [], []
+        fetch_failed: dict[str, str | Exception] = {}
         for item, res in zip(batch, results, strict=True):
             if isinstance(res, Exception):
                 logger.warning(f"Failed to fetch image for file {item.resource['id']}: {res}")
-                fetch_failed.append(item.enrichment.id)
-                continue
-            images.append(res)
-            items.append(item)
+                fetch_failed[item.enrichment.id] = res
+            elif is_below_min_side(res, min_image_side):
+                skipped.append(item.enrichment.id)
+            else:
+                images.append(res)
+                items.append(item)
+        await enrichment_repo.mark_skipped_batch(enrichment_ids=skipped)
+        await session.commit()
 
-        await queue.put((images, items, fetch_failed))
+        await queue.put((images, items, fetch_failed, len(skipped)))
 
 
 async def _consumer(
@@ -136,8 +143,8 @@ async def _consumer(
             queue.task_done()
             break
 
-        images, items, failed = batch_data
-        progress.update(len(failed))
+        images, items, failed, skipped = batch_data
+        progress.update(len(failed) + skipped)
 
         completed, new_faces = [], []
         for item, img in zip(items, images, strict=True):
@@ -162,9 +169,9 @@ async def _consumer(
                 )
                 seen_image_ids.add(image.id)
                 completed.append(item.enrichment.id)
-            except Exception:
+            except Exception as e:
                 logger.exception(f"Face detection failed for file {file_id}")
-                failed.append(item.enrichment.id)
+                failed[item.enrichment.id] = e
             progress.update(1)
 
         if new_faces:
@@ -172,8 +179,7 @@ async def _consumer(
             # Faces resembling one an analyst marked "not a face" (the same cat) are rejected on arrival.
             await face_repo.auto_reject_similar(image_ids=list({face.image_id for face in new_faces}))
         await enrichment_repo.mark_completed_batch(completed)
-        if failed:
-            await enrichment_repo.mark_failed_batch(failed, increment_retry=True)
+        await enrichment_repo.mark_failed(failed)
         await session.commit()
 
         total += len(completed)
@@ -187,6 +193,7 @@ async def detect_faces(
     model: "AsyncInsightFaceModel",
     dataset_id: str | None = None,
     batch_size: int = 25,
+    min_image_side: int = DEFAULT_MIN_IMAGE_SIDE,
 ) -> int:
     """Run face detection over pending files, returning the number processed."""
     enrichment_repo = PostgresEnrichmentRepository(session=session)
@@ -207,7 +214,7 @@ async def detect_faces(
         async with AsyncSession(engine, expire_on_commit=False) as consumer_session:
             with tqdm(total=pending_count, desc="Detecting faces") as progress:
                 _, total = await asyncio.gather(
-                    _producer(queue, producer_session, batch_size, dataset_id),
+                    _producer(queue, producer_session, batch_size, dataset_id, min_image_side),
                     _consumer(queue, consumer_session, model, progress),
                 )
 
@@ -280,11 +287,14 @@ async def detect_faces_workflow(
     model: "AsyncInsightFaceModel",
     dataset_id: str,
     batch_size: int = 25,
+    min_image_side: int = DEFAULT_MIN_IMAGE_SIDE,
 ) -> int:
     """Queue, dedupe, then run face detection for a dataset, returning files processed."""
     await queue_face_detection_enrichments(session=session, dataset_id=dataset_id)
     await dedupe_pending_face_detections(session=session, dataset_id=dataset_id)
-    return await detect_faces(session=session, model=model, dataset_id=dataset_id, batch_size=batch_size)
+    return await detect_faces(
+        session=session, model=model, dataset_id=dataset_id, batch_size=batch_size, min_image_side=min_image_side
+    )
 
 
 async def get_face_detection_stats(

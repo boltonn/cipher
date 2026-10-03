@@ -4,14 +4,14 @@ import { useDatasetUsers } from "@/features/datasets/api";
 import { getInitials } from "@/features/users/utils";
 import { Users } from "lucide-react";
 
-/** Who has access to a dataset; membership is managed by admins under Settings. */
+/** Admin-only: who has access to a dataset (membership is managed on the Admin page). */
 export function DatasetMembers({ datasetId }: { datasetId: string }) {
   const { data: members = [], isPending } = useDatasetUsers(datasetId);
 
   return (
-    <div className="mt-6 rounded-2xl border border-border bg-muted/40 p-4">
+    <div className="mt-6 rounded-2xl border border-admin/25 bg-muted/40 p-4">
       <div className="mb-3 flex items-center gap-2 text-muted-foreground">
-        <Users size={14} className="text-primary" />
+        <Users size={14} className="text-admin" />
         <h2 className="text-[11px] font-semibold uppercase tracking-wide">
           Members
         </h2>

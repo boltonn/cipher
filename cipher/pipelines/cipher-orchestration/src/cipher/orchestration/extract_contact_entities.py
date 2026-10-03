@@ -65,14 +65,14 @@ async def load_vcard_contacts(session: "AsyncSession", dataset_id: str, batch_si
         dataset_id=dataset_id,
         filetype_group_filter="contact",
     ):
-        completed, failed = [], []
+        completed, failed = [], {}
         for item in batch:
             file_id = item.resource["id"]
             try:
                 contacts = VcardParser.parse(Path(item.resource["path"]))
             except Exception as e:
                 logger.error(f"vCard parse failed for file {file_id}: {e}")
-                failed.append(item.enrichment.id)
+                failed[item.enrichment.id] = e
                 continue
             rows = [
                 {**c.model_dump(), "id": str(uuid5(NAMESPACE_URL, f"{file_id}:{i}")), "file_id": file_id}
@@ -86,8 +86,7 @@ async def load_vcard_contacts(session: "AsyncSession", dataset_id: str, batch_si
             count += len(rows)
         if completed:
             await enrichment_repo.mark_completed_batch(completed)
-        if failed:
-            await enrichment_repo.mark_failed_batch(failed, increment_retry=True)
+        await enrichment_repo.mark_failed(failed)
         await session.commit()
     logger.info(f"Loaded {count} contacts from vCard files")
     return count

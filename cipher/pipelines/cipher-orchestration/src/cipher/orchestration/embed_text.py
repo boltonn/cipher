@@ -365,7 +365,7 @@ class _PendingFile:
     extracted: ExtractedText
     total: int
     seen: int = 0
-    failed: bool = False
+    error: Exception | None = None
     chunks: list[TextChunk] = field(default_factory=list)
 
 
@@ -412,7 +412,9 @@ async def _producer(
             extracted = await extracted_text_repo.get_by_file_id(item.resource["id"])
             if extracted is None:
                 logger.error(f"No extracted text yet for file {item.resource['id']}")
-                await enrichment_repo.mark_failed_batch([item.enrichment.id], increment_retry=True)
+                await enrichment_repo.mark_failed(
+                    {item.enrichment.id: "No extracted text yet -- run extract-text first"}
+                )
                 await session.commit()
                 stats["failed"] += 1
                 pbar.update(1)
@@ -429,7 +431,7 @@ async def _producer(
                 spans = await loop.run_in_executor(_EXECUTOR, _spans_for, extracted, chunker, max_pages)
             except Exception as e:
                 logger.error(f"Chunking failed for file {item.resource['id']}: {e}")
-                await enrichment_repo.mark_failed_batch([item.enrichment.id], increment_retry=True)
+                await enrichment_repo.mark_failed({item.enrichment.id: e})
                 await session.commit()
                 stats["failed"] += 1
                 pbar.update(1)
@@ -483,8 +485,7 @@ async def _consumer(
                 logger.error(f"{failed_chunks} of {len(chunks)} chunks failed to index this flush")
         if ready:
             await enrichment_repo.mark_completed_batch([f.item.enrichment.id for f in ready])
-        if failed:
-            await enrichment_repo.mark_failed_batch([f.item.enrichment.id for f in failed], increment_retry=True)
+        await enrichment_repo.mark_failed({f.item.enrichment.id: f.error for f in failed})
         await session.commit()
 
         stats["files"] += len(ready)
@@ -508,7 +509,7 @@ async def _consumer(
             # A failed file's remaining spans still count toward `seen` --
             # skipping them would leave `seen < total` forever, so the file
             # would never flush and its enrichment would stay PROCESSING.
-            if not file_ctx.failed:
+            if file_ctx.error is None:
                 try:
                     chunk = _build_chunk(
                         extracted=file_ctx.extracted,
@@ -522,11 +523,11 @@ async def _consumer(
                     file_ctx.chunks.append(chunk)
                 except Exception as e:
                     logger.error(f"Embedding failed for file {file_ctx.item.resource['id']}: {e}")
-                    file_ctx.failed = True
+                    file_ctx.error = e
 
             file_ctx.seen += 1
             if file_ctx.seen == file_ctx.total:
-                (failed if file_ctx.failed else ready).append(file_ctx)
+                (failed if file_ctx.error else ready).append(file_ctx)
 
         if len(ready) + len(failed) >= commit_batch_size:
             await _flush()

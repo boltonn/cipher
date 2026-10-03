@@ -13,6 +13,7 @@ import type { User } from "@/features/users/types";
 import { apiClient } from "@/lib/api-client";
 import type { PaginatedResponse } from "@/types/common";
 import {
+  keepPreviousData,
   useInfiniteQuery,
   useMutation,
   useQuery,
@@ -187,24 +188,54 @@ export function useRunEnrichment(datasetId: string | undefined) {
   });
 }
 
+/** Put a dataset's failed rows for one analytic back to pending; the step's next run picks them up. */
+export function useRetryFailedEnrichments(datasetId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (enrichmentType: string) => {
+      const { data } = await apiClient.post<{ count: number }>(
+        "/enrichments/retry-failed",
+        { datasetId, enrichmentType }
+      );
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["datasets", datasetId, "enrichment-progress"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["datasets", datasetId, "enrichment-failures"],
+      });
+    },
+  });
+}
+
 /** Failed enrichments for one analytic in a dataset -- grouped reasons plus per-file detail. */
 export function useEnrichmentFailures(
   datasetId: string | undefined,
-  enrichmentType: string | null
+  enrichmentType: string | null,
+  page: { limit: number; offset: number }
 ) {
   return useQuery({
-    queryKey: ["datasets", datasetId, "enrichment-failures", enrichmentType],
+    queryKey: [
+      "datasets",
+      datasetId,
+      "enrichment-failures",
+      enrichmentType,
+      page,
+    ],
     queryFn: async () => {
       const { data } = await apiClient.get<DatasetEnrichmentFailures>(
         "/enrichments/failures",
         {
-          params: { datasetId, enrichmentType },
+          params: { datasetId, enrichmentType, ...page },
           suppressErrorToast: true,
         }
       );
       return data;
     },
     enabled: !!datasetId && !!enrichmentType,
+    placeholderData: keepPreviousData,
     staleTime: 15_000,
   });
 }

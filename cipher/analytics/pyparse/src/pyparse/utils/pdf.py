@@ -19,11 +19,13 @@ from pdfminer.pdftypes import (
     LITERALS_JBIG2_DECODE,
     LITERALS_JPX_DECODE,
 )
-from PIL import Image, ImageChops, ImageOps
+from PIL import Image, ImageChops, ImageFile, ImageOps
 from pyparse.parsers.base import get_file_instance
 from pyparse.schemas.data import Image as ImageSchema
 from pyparse.schemas.enums import FileType
 from pyparse.utils.general import get_hashes
+
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 # TODO: file output should be hash but the have to figure out how to get BMP to work
 

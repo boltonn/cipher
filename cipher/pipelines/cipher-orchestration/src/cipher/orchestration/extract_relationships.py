@@ -226,7 +226,7 @@ async def extract_relationships_workflow(
             await session.commit()
 
             batch_edges: dict[tuple[str, str], _EdgeAgg] = defaultdict(_EdgeAgg)
-            completed, failed = [], []
+            completed, failed = [], {}
             for item in batch:
                 try:
                     extracted = await extracted_text_repo.get_by_file_id(item.resource["id"])
@@ -238,20 +238,19 @@ async def extract_relationships_workflow(
                     completed.append(item.enrichment.id)
                 except Exception as e:
                     logger.error(f"Relationship extraction failed for file {item.resource['id']}: {e}")
-                    failed.append(item.enrichment.id)
+                    failed[item.enrichment.id] = e
 
             try:
                 await _flush_edges(session, dataset_id, batch_edges)
                 seen_pairs.update(batch_edges)
                 if completed:
                     await enrichment_repo.mark_completed_batch(completed)
-                if failed:
-                    await enrichment_repo.mark_failed_batch(failed, increment_retry=True)
+                await enrichment_repo.mark_failed(failed)
                 await session.commit()
             except Exception as e:
                 logger.error(f"Edge flush failed for batch: {e}")
                 await session.rollback()
-                await enrichment_repo.mark_failed_batch(completed + failed, increment_retry=True)
+                await enrichment_repo.mark_failed({**dict.fromkeys(completed, e), **failed})
                 await session.commit()
                 failed_count += len(completed) + len(failed)
                 pbar.update(len(batch))

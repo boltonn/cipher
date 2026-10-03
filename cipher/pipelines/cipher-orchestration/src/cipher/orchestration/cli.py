@@ -66,6 +66,7 @@ from cipher.orchestration.extract_relationships import (
     get_relationship_extraction_stats,
 )
 from cipher.orchestration.extract_selectors import extract_selectors_workflow, get_selector_extraction_stats
+from cipher.orchestration.image_size import DEFAULT_MIN_IMAGE_SIDE
 from cipher.orchestration.ingest import create_dataset, load_files
 from cipher.orchestration.link_face_cooccurrence import (
     get_face_cooccurrence_stats,
@@ -119,6 +120,15 @@ async def _resolve_dataset_id(session, dataset_id: str | None, dataset_name: str
     if not dataset:
         raise typer.BadParameter(f"Dataset not found: {dataset_name}")
     return dataset.id
+
+
+MinImageSideOption = Annotated[
+    int,
+    typer.Option(
+        envvar="MIN_IMAGE_SIDE",
+        help="Skip images whose shorter side is under this many pixels (spacers, tracking pixels)",
+    ),
+]
 
 
 @app.command("create-tables")
@@ -213,6 +223,7 @@ def embed_images_cmd(
     heads_dir: Annotated[
         Path | None, typer.Option(envvar="IMAGE_HEADS_DIR", help="Trained tag heads (from train-image-heads)")
     ] = None,
+    min_image_side: MinImageSideOption = DEFAULT_MIN_IMAGE_SIDE,
 ):
     """Run CLIP image embedding over a dataset's image files.
 
@@ -238,7 +249,7 @@ def embed_images_cmd(
                 unit=WorkUnit.IMAGE,
             ) as run:
                 run.units = await embed_images_workflow(
-                    session=session, model=model, dataset_id=resolved_id, heads=heads
+                    session=session, model=model, dataset_id=resolved_id, heads=heads, min_image_side=min_image_side
                 )
             logger.success(f"Embedded {run.units} images")
 
@@ -347,6 +358,7 @@ def detect_faces_cmd(
     dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
     dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
     device: Annotated[ModelDevice, typer.Option(help="Inference device")] = ModelDevice.CPU,
+    min_image_side: MinImageSideOption = DEFAULT_MIN_IMAGE_SIDE,
 ):
     """Run face detection over a dataset's image files."""
     ensure_stage_env("face-detection")
@@ -364,7 +376,9 @@ def detect_faces_cmd(
                 device=device.value,
                 unit=WorkUnit.IMAGE,
             ) as run:
-                run.units = await detect_faces_workflow(session=session, model=model, dataset_id=resolved_id)
+                run.units = await detect_faces_workflow(
+                    session=session, model=model, dataset_id=resolved_id, min_image_side=min_image_side
+                )
             logger.success(f"Face detection processed {run.units} files")
 
     asyncio.run(_run())
@@ -488,6 +502,7 @@ def ocr_cmd(
     clip_tag: Annotated[list[str] | None, typer.Option(help="Text-bearing CLIP tag, repeatable")] = None,
     clip_negative_tag: Annotated[list[str] | None, typer.Option(help="Competing non-text CLIP tag, repeatable")] = None,
     clip_threshold: Annotated[float, typer.Option(help="Min probability mass on --clip-tag to OCR an image")] = 0.5,
+    min_image_side: MinImageSideOption = DEFAULT_MIN_IMAGE_SIDE,
 ):
     """OCR image-based PDF pages and images into extracted text (run after extract-text).
 
@@ -551,6 +566,7 @@ def ocr_cmd(
                         min_chars=min_chars,
                         force=force,
                         figures=figures,
+                        min_image_side=min_image_side,
                     )
                 logger.success(f"OCR stats: {await get_ocr_stats(session=session, dataset_id=resolved_id)}")
 
@@ -1376,6 +1392,25 @@ def refresh_selectors_cmd(
                 resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
             summary = await refresh_selectors_workflow(session=session, dataset_id=resolved_id)
             typer.echo(json.dumps(summary, indent=2))
+
+    asyncio.run(_run())
+
+
+@app.command("retry-failed")
+def retry_failed_cmd(
+    enrichment_type: Annotated[EnrichmentType, typer.Argument(help="Analytic whose failed rows to retry")],
+    dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
+    dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
+):
+    """Put a dataset's failed rows for one analytic back to pending; re-run that step to process them."""
+
+    async def _run():
+        async with get_session_context() as session:
+            resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
+            count = await PostgresEnrichmentRepository(session=session).retry_failed_enrichments(
+                enrichment_type=enrichment_type, dataset_id=resolved_id
+            )
+            typer.echo(f"{count} failed {enrichment_type.value} rows reset to pending")
 
     asyncio.run(_run())
 

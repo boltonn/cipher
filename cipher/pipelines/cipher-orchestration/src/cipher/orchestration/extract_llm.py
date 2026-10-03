@@ -172,7 +172,7 @@ async def extract_llm_workflow(
                 await enrichment_repo.mark_processing(enrichment_ids=[item.enrichment.id for item in batch])
                 await session.commit()
 
-                completed, failed, files_done = [], [], []
+                completed, failed, files_done = [], {}, []
                 with_events, without_events = [], []
 
                 # 1. resolve each file's text (serial DB reads); short-circuit empties.
@@ -209,7 +209,7 @@ async def extract_llm_workflow(
                     file_id = item.resource["id"]
                     if err is not None:
                         logger.error(f"Combined LLM extraction failed for file {file_id}: {err}")
-                        failed.append(item.enrichment.id)
+                        failed[item.enrichment.id] = err
                         continue
                     try:
                         if do_entities:
@@ -242,15 +242,14 @@ async def extract_llm_workflow(
                     except Exception as exc:  # noqa: BLE001
                         logger.error(f"Persisting combined LLM extraction failed for file {file_id}: {exc}")
                         await session.rollback()
-                        failed.append(item.enrichment.id)
+                        failed[item.enrichment.id] = exc
 
                 await tag_event_files(
                     session, with_events=with_events, without_events=without_events, model=resolved_model
                 )
                 if completed:
                     await enrichment_repo.mark_completed_batch(completed)
-                if failed:
-                    await enrichment_repo.mark_failed_batch(failed, increment_retry=True)
+                await enrichment_repo.mark_failed(failed)
                 if secondary_type and files_done:
                     secondary = await enrichment_repo.get_enrichment_ids_for(files_done, secondary_type)
                     if secondary:

@@ -517,11 +517,12 @@ async def extract_documents_workflow(
             # xberg's batch API needs local paths -- files without one (e.g. not
             # yet downloaded from a remote store) can't be batched and fail fast.
             resolvable = [item for item in batch if item.resource.get("path")]
-            failed = [item.enrichment.id for item in batch if not item.resource.get("path")]
+            failed = {item.enrichment.id: "File has no local path" for item in batch if not item.resource.get("path")}
             completed = []
 
             if resolvable:
                 paths = [item.resource["path"] for item in resolvable]
+                batch_error = "Batch extraction returned no result for this file"
                 try:
                     results = await anyio.to_thread.run_sync(
                         _run_batch,
@@ -534,6 +535,7 @@ async def extract_documents_workflow(
                     )
                 except Exception as e:
                     logger.error(f"Batch extraction failed for {len(paths)} files: {e}")
+                    batch_error = f"Batch extraction failed: {type(e).__name__}: {e}"
                     results = []
 
                 for item, (result, image_pages) in zip(resolvable, results, strict=False):
@@ -557,15 +559,14 @@ async def extract_documents_workflow(
                     except Exception as e:
                         logger.error(f"Extraction failed for file {item.resource['id']}: {e}")
                         await session.rollback()
-                        failed.append(item.enrichment.id)
+                        failed[item.enrichment.id] = e
 
                 # Any resolvable items the batch call itself didn't return a result for
-                failed.extend(item.enrichment.id for item in resolvable[len(results) :])
+                failed |= {item.enrichment.id: batch_error for item in resolvable[len(results) :]}
 
             if completed:
                 await enrichment_repo.mark_completed_batch(completed)
-            if failed:
-                await enrichment_repo.mark_failed_batch(failed, increment_retry=True)
+            await enrichment_repo.mark_failed(failed)
             await session.commit()
 
             count += len(completed)

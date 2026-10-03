@@ -448,7 +448,7 @@ async def extract_selectors_workflow(
             await enrichment_repo.mark_processing(enrichment_ids=[item.enrichment.id for item in batch])
             await session.commit()
 
-            completed, failed = [], []
+            completed, failed = [], {}
             for item in batch:
                 try:
                     mention_count += await _extract_file_selectors(
@@ -464,12 +464,11 @@ async def extract_selectors_workflow(
                     await session.rollback()
                     # a rollback drops uncommitted entities the cache now points at
                     selector_cache.clear()
-                    failed.append(item.enrichment.id)
+                    failed[item.enrichment.id] = e
 
             if completed:
                 await enrichment_repo.mark_completed_batch(completed)
-            if failed:
-                await enrichment_repo.mark_failed_batch(failed, increment_retry=True)
+            await enrichment_repo.mark_failed(failed)
             await session.commit()
 
             count += len(completed)

@@ -89,11 +89,11 @@ async def extract_exif_locations(
                 return_exceptions=True,
             )
 
-            locations, completed, failed = [], [], []
+            locations, completed, failed = [], [], {}
             for item, res in zip(batch, results, strict=True):
                 if isinstance(res, Exception):
                     logger.warning(f"EXIF read failed for file {item.resource['id']}: {res}")
-                    failed.append(item.enrichment.id)
+                    failed[item.enrichment.id] = res
                     continue
                 completed.append(item.enrichment.id)
                 location = exif_location_create(
@@ -105,8 +105,7 @@ async def extract_exif_locations(
             if locations:
                 located += await location_repo.upsert_file_locations(rows=locations)
             await enrichment_repo.mark_completed_batch(completed)
-            if failed:
-                await enrichment_repo.mark_failed_batch(failed, increment_retry=True)
+            await enrichment_repo.mark_failed(failed)
             await session.commit()
 
             processed += len(completed)
