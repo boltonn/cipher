@@ -31,7 +31,21 @@ class Settings(BaseServiceSettings):
         alias="PROMPT_MAX_RETRIES",
     )
     request_timeout: float = Field(
-        default=90.0, gt=0, description="Per-request timeout in seconds", alias="PROMPT_REQUEST_TIMEOUT"
+        default=180.0, gt=0, description="Per-request timeout in seconds", alias="PROMPT_REQUEST_TIMEOUT"
+    )
+    client_retries: int = Field(
+        default=0,
+        ge=0,
+        le=5,
+        description="SDK retries on a timeout / connection error. 0: a timed-out generation would only repeat; "
+        "the enrichment is FAILED and retried on the next run instead",
+        alias="PROMPT_CLIENT_RETRIES",
+    )
+    max_event_tokens: int = Field(
+        default=1536,
+        gt=0,
+        description="Output cap for the events pack; a model stuck repeating itself fails fast instead of timing out",
+        alias="PROMPT_MAX_EVENT_TOKENS",
     )
     max_input_chars: int = Field(
         default=48_000,

@@ -1,16 +1,7 @@
-from enum import StrEnum
-
 from pydantic import BaseModel, Field
 
 from cipher.schemas._base.detection import BoundingBox
 from cipher.schemas.content.document import ExtractedTableInfo
-
-
-class OcrBackend(StrEnum):
-    """Inference runtime. VLLM is the fast path (continuous batching + FastMTP speculative decoding)."""
-
-    VLLM = "vllm"
-    TRANSFORMERS = "transformers"
 
 
 class OcrRegion(BaseModel):

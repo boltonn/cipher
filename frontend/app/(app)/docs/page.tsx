@@ -50,10 +50,10 @@ const PIPELINE = [
   {
     num: "02",
     title: "Extract",
-    services: ["pyxberg", "pyparse", "pyocr"],
+    services: ["pyxberg", "pyparse", "pyvllm"],
     ml: true,
     description:
-      "The extractor is chosen per filetype group -- pyxberg (Kreuzberg) for documents, with EasyOCR on image-based PDF pages; pyparse for email, contacts, and calendar files (email attachments become child files). pyocr is an optional GPU pass that re-OCRs scanned pages and standalone images.",
+      "The extractor is chosen per filetype group -- pyxberg (Kreuzberg) for documents, pyparse for email, contacts, and calendar files (email attachments become child files). Image-based PDF pages and text-bearing images are then read by the OCR model (jina-ocr-v1) that pyvllm serves.",
   },
   {
     num: "03",
@@ -109,7 +109,7 @@ const FILETYPES: {
     icon: <FileText size={16} />,
     description: "Office files, PDFs, and plain text -- extracted, OCR'd where pages are scanned, chunked, and embedded for keyword and semantic search.",
     extensions: [".pdf", ".docx", ".xlsx", ".pptx", ".txt", ".rtf", ".html"],
-    handler: "pyxberg (+ pyocr) → clir",
+    handler: "pyxberg (+ pyvllm OCR) → clir",
   },
   {
     name: "Emails",
@@ -182,10 +182,10 @@ const ANALYTICS: {
     links: { code: "#" },
   },
   {
-    name: "pyocr",
+    name: "pyvllm",
     role: "AI/ML",
-    description: "Optional, stronger OCR for scanned PDF pages and standalone images, run as a GPU service. Replaces the EasyOCR text and re-queues embedding. Weights are non-commercial (CC BY-NC).",
-    tech: "jina-ocr-v1 on vLLM",
+    description: "Every local model on one vLLM install: the LLM behind chat and pyprompt, and the OCR model that reads image-based PDF pages and text-bearing images (started by the ocr step). OCR weights are non-commercial (CC BY-NC).",
+    tech: "vLLM · Qwen3.8-27B · jina-ocr-v1",
     commands: ["ocr"],
     links: { model: "#", code: "#" },
   },
@@ -700,8 +700,8 @@ const OPTIONAL_ANALYTICS: {
   {
     stage: "Extract",
     nodes: [
-      { title: "pyxberg · pyparse", subtitle: "text + EasyOCR", variant: "ml" },
-      { title: "pyocr", subtitle: "better OCR", variant: "ml" },
+      { title: "pyxberg · pyparse", subtitle: "text", variant: "ml" },
+      { title: "pyvllm", subtitle: "OCR", variant: "ml" },
     ],
   },
   {

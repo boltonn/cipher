@@ -48,7 +48,7 @@ if TYPE_CHECKING:
 DEFAULT_CHUNK_SIZE = 256
 # xberg's per-page `is_blank` is exact (any text layer at all is "not blank"), so a scan
 # carrying only a Bates stamp or page number would slip through; count it as image-based
-# when its text layer has fewer word characters than this (matches pyocr's rule).
+# when its text layer has fewer word characters than this (matches pyvllm.ocr's rule).
 IMAGE_PAGE_MIN_CHARS = 20
 _WORD_CHAR_RE = re.compile(r"\w", re.UNICODE)
 

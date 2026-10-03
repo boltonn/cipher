@@ -1,4 +1,4 @@
-from pyocr.parse import parse_page
+from pyvllm.ocr.parse import parse_page
 
 # Shapes observed from jina-ocr-v1 on real pages.
 TABLE_OUTPUT = """## Release History:

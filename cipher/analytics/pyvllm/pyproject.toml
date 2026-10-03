@@ -1,0 +1,40 @@
+[project]
+name = "pyvllm"
+description = "Local model serving on vLLM (one install for every model: the LLM and jina-ocr-v1) plus the OCR client."
+keywords = ["vllm", "llm", "ocr", "multilingual", "cipher"]
+version = "0.0.1"
+readme = "README.md"
+requires-python = ">=3.12"
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python",
+]
+dependencies = [
+  "cipher-schemas",
+  "httpx",
+  "loguru",
+  "pillow",
+  "pillow-heif",
+  "pydantic>=2",
+  "pypdfium2",
+  "typer",
+]
+
+[tool.uv.sources]
+cipher-schemas = { workspace = true }
+
+[build-system]
+requires = [ "hatchling" ]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pyvllm"]
+
+# vLLM itself pins its own torch, so it is not a dependency here -- it would force the
+# workspace lock onto its torch. `make install` puts it in this analytic's own .venv-vllm.
+[project.scripts]
+pyvllm = "pyvllm.cli:app"
+
+# Loaded by every vLLM process started from .venv-vllm: registers jina-ocr-v1's architecture.
+[project.entry-points."vllm.general_plugins"]
+jina_ocr = "pyvllm.plugins:register_jina_ocr"

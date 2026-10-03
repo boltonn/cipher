@@ -308,7 +308,7 @@ def extract_text_cmd(
         OcrBackend,
         typer.Option(
             help="Inline OCR for image-based PDF pages. Default none: they are recorded and `cipher ocr` reads them. "
-            "easyocr is the fallback for a machine that can't run the pyocr engine"
+            "easyocr is the fallback for a machine that can't run the ocr model (pyvllm)"
         ),
     ] = OcrBackend.NONE,
     ocr_language: Annotated[
@@ -373,8 +373,8 @@ def ocr_cmd(
     service_url: Annotated[
         list[str] | None,
         typer.Option(
-            help="pyocr service URL, repeatable -- one per GPU (`make start-vllm-all`). "
-            "Default: the engine on :8010, started for this run if it isn't already up"
+            help="OCR model URL, repeatable -- one per GPU. "
+            "Default: pyvllm's `ocr` model on :8010, started for this run if it isn't already up"
         ),
     ] = None,
     concurrency: Annotated[
@@ -397,8 +397,8 @@ def ocr_cmd(
 ):
     """OCR image-based PDF pages and images into extracted text (run after extract-text).
 
-    The pyocr engine runs locally: one already listening is reused, otherwise it is
-    started for this run and stopped afterwards. Images pass a text gate first --
+    The OCR model (pyvllm's `ocr`, jina-ocr-v1) runs locally: one already serving is
+    reused, otherwise it is started for this run and stopped afterwards. Images pass a text gate first --
     zero-shot CLIP tags scored against the embeddings `embed-images` already stored,
     kept as each file's `has_text` tag score -- so only likely text-bearing images
     (screenshots, scans, receipts, signs...) are sent to the model.
@@ -406,8 +406,8 @@ def ocr_cmd(
     ensure_stage_env("ocr")
     from contextlib import AsyncExitStack
 
-    from pyocr.client import OcrClient
-    from pyocr.launcher import local_service
+    from pyvllm.ocr.client import OcrClient
+    from pyvllm.server import serving
 
     from cipher.orchestration.ocr import (
         DEFAULT_CLIP_NEGATIVE_TAGS,
@@ -434,7 +434,7 @@ def ocr_cmd(
 
     async def _run():
         async with AsyncExitStack() as stack:
-            urls = service_url or [await stack.enter_async_context(local_service())]
+            urls = service_url or [(await stack.enter_async_context(serving("ocr"))).base_url]
             client = OcrClient(base_urls=urls)
             stack.push_async_callback(client.aclose)
             async with get_session_context() as session:

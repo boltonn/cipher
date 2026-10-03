@@ -38,9 +38,9 @@ analytics/     # ML analytics services (each independently deployable)
   face/        # Face Recognition using InsightFace
   filetyper/   # File type detection (Google Magika + heuristics)
   pykreuzberg/ # Rust-based text extraction & OCR
-  pyocr/       # Multilingual page OCR (jina-ocr-v1 on vLLM) for image-based PDF pages + images
   pyparse/     # Email/document parsing (.eml, .msg, VCF, DOCX, PDF, etc.)
   setfitcv/    # Image embedding via CLIP
+  pyvllm/      # Local models on one vLLM install (LLM: Qwen3.8-27B; OCR: jina-ocr-v1) + the OCR client
 backend/       # FastAPI REST API (entry: cipher-serve)
 packages/
   cipher-orchestration # Combining analytics applied to data ingestion into a datastore with CLI utilities

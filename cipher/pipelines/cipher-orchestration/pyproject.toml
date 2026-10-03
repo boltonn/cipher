@@ -23,7 +23,7 @@ dependencies = [
 [project.optional-dependencies]
 staging = ["filetyper"]
 text-extraction = ["pyxberg", "pyparse[email]"]
-ocr = ["pyocr", "pyxberg", "setfitcv"]
+ocr = ["pyvllm", "pyxberg", "setfitcv"]
 text-embedding = ["clir"]
 image-embedding = ["setfitcv"]
 exif-location = ["setfitcv"]
@@ -53,7 +53,7 @@ pyxberg = { workspace = true }
 pyparse = { workspace = true }
 pyselectors = { workspace = true }
 pyprompt = { workspace = true }
-pyocr = { workspace = true }
+pyvllm = { workspace = true }
 pygliner = { workspace = true }
 nerd = { workspace = true }
 

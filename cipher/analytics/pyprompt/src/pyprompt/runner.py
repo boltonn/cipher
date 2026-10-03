@@ -59,7 +59,9 @@ class PromptRunner:
         self._settings = settings
         llm = settings.llm
         client_kwargs = llm.openai_client_kwargs()
-        self._client = AsyncOpenAI(timeout=settings.request_timeout, **client_kwargs)
+        self._client = AsyncOpenAI(
+            timeout=settings.request_timeout, max_retries=settings.client_retries, **client_kwargs
+        )
         self._model = llm.model
         logger.info(
             f"✅ pyprompt runner ready (provider={llm.provider}, model={self._model}, "
@@ -108,7 +110,13 @@ class PromptRunner:
         if prompt:
             user = render_custom(prompt, clipped)
 
-        raw = await self._structured(system=system, user=user, model_cls=LlmEventOutput, model=model)
+        raw = await self._structured(
+            system=system,
+            user=user,
+            model_cls=LlmEventOutput,
+            model=model,
+            max_tokens=self._settings.max_event_tokens,
+        )
         return EventExtraction(events=[_coerce_event(e) for e in raw.events])
 
     async def extract_all(
@@ -191,25 +199,39 @@ class PromptRunner:
             raise StructuredOutputError(f"Custom prompt did not return valid JSON: {exc}") from exc
 
     # ---- internals ------------------------------------------------------- #
-    async def _structured[M: BaseModel](self, *, system: str, user: str, model_cls: type[M], model: str | None) -> M:
-        """Call the model with a Pydantic `response_format`, retrying on a schema miss."""
+    async def _structured[M: BaseModel](
+        self, *, system: str, user: str, model_cls: type[M], model: str | None, max_tokens: int | None = None
+    ) -> M:
+        """Call the model with `model_cls`'s JSON Schema as the response format, retrying on a schema miss.
+
+        The schema is sent non-strict: strict mode makes every optional field
+        required, and a guided-decoding server (vLLM) then lets a model that
+        wants to stop pad with whitespace until it times out. Output past
+        `max_tokens` raises `StructuredOutputError` without a retry -- a
+        truncated answer is a runaway, and asking again only repeats it.
+        """
         messages = _messages(system, user)
+        response_format = {
+            "type": "json_schema",
+            "json_schema": {"name": model_cls.__name__, "schema": model_cls.model_json_schema(), "strict": False},
+        }
         last_error = ""
         for attempt in range(self._settings.max_retries + 1):
-            completion = await self._client.chat.completions.parse(
+            completion = await self._client.chat.completions.create(
                 model=model or self._model,
                 messages=messages,
                 temperature=self._settings.temperature,
-                response_format=model_cls,
+                response_format=response_format,
+                max_tokens=max_tokens,
             )
-            message = completion.choices[0].message
-            if message.refusal:
-                last_error = f"model refused: {message.refusal}"
-            elif message.parsed is not None:
-                return message.parsed
+            choice = completion.choices[0]
+            if choice.finish_reason == "length":
+                raise StructuredOutputError(f"Output hit the {max_tokens}-token cap (runaway generation)")
+            if choice.message.refusal:
+                last_error = f"model refused: {choice.message.refusal}"
             else:
                 try:
-                    return model_cls.model_validate_json(message.content or "")
+                    return model_cls.model_validate_json(choice.message.content or "")
                 except ValidationError as exc:
                     last_error = str(exc)
 

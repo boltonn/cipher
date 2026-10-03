@@ -33,7 +33,7 @@ AVAILABLE_MODELS: tuple[ModelOption, ...] = (
         has_key=False,
     ),
     ModelOption(id="google:gemini-2.5-pro", provider=LLMProvider.GOOGLE, label="Gemini 2.5 Pro", has_key=False),
-    ModelOption(id="local:gemma-3n-E2B-it", provider=LLMProvider.LOCAL, label="Gemma 3n E2B (local)", has_key=True),
+    ModelOption(id="local:Qwen/Qwen3.8-27B", provider=LLMProvider.LOCAL, label="Qwen3.8 27B (local)", has_key=True),
 )
 
 

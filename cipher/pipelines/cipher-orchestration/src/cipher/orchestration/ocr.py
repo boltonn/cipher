@@ -1,4 +1,4 @@
-"""OCR workflow: image-based PDF pages and images -> `ExtractedText`, via the pyocr service.
+"""OCR workflow: image-based PDF pages and images -> `ExtractedText`, via pyvllm's `ocr` model.
 
 Runs after `extract-text`. PDFs keep their xberg extraction for pages with a real
 text layer; only pages pdfium finds (near) empty go to the model, and the result
@@ -20,9 +20,9 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from loguru import logger
-from pyocr.capabilities import IMAGE_FILETYPES, PDF_FILETYPES, SUPPORTED_FILETYPES
-from pyocr.pages import DEFAULT_MIN_CHARS, scanned_pages
-from pyocr.schemas import OcrRequest, OcrResponse
+from pyvllm.ocr.capabilities import IMAGE_FILETYPES, PDF_FILETYPES, SUPPORTED_FILETYPES
+from pyvllm.ocr.pages import DEFAULT_MIN_CHARS, scanned_pages
+from pyvllm.ocr.schemas import OcrRequest, OcrResponse
 from tqdm import tqdm
 
 from cipher.datastores.postgres.repositories import (
@@ -43,7 +43,7 @@ from cipher.schemas.content.extraction import (
 from cipher.schemas.ingestion.enrichment import EnrichableType, EnrichmentType
 
 if TYPE_CHECKING:
-    from pyocr.client import OcrClient
+    from pyvllm.ocr.client import OcrClient
     from setfitcv.model import CLIP
     from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -227,7 +227,7 @@ def build_ocr_extracted_text(
         file_id=file_resource["id"],
         content=content,
         content_format=ExtractionContentFormat.MARKDOWN,
-        extractor=TextExtractor.PYOCR,
+        extractor=TextExtractor.PYVLLM,
         metadata=metadata,
         prechunked=spans or None,
     )
@@ -319,8 +319,8 @@ async def dedupe_pending_ocr(session: "AsyncSession", dataset_id: str) -> tuple[
             file_id=item.resource["id"],
             sha256=item.resource["sha256"],
         )
-        # only reuse a pyocr result -- an xberg-inline (EasyOCR) one is what this pass replaces
-        if duplicate is None or duplicate.extractor != TextExtractor.PYOCR:
+        # only reuse a model-OCR result -- an xberg-inline (EasyOCR) one is what this pass replaces
+        if duplicate is None or duplicate.extractor != TextExtractor.PYVLLM:
             continue
         existing = await extracted_text_repo.get_by_file_id(item.resource["id"])
         stale += await _write(session, _copy_for(duplicate, item.resource, existing), existing)
@@ -349,7 +349,7 @@ async def ocr_workflow(
     for the first and copy its result.
     """
     if not await client.health():
-        raise RuntimeError("pyocr service is not reachable -- start it with `make start-vllm` in analytics/pyocr")
+        raise RuntimeError("the ocr model is not reachable -- `pyvllm up ocr` (analytics/pyvllm), or let `cipher ocr` start it")
     await queue_ocr_enrichments(session=session, dataset_id=dataset_id, filetypes=filetypes, clip_filter=clip_filter)
     deduped, stale = await dedupe_pending_ocr(session=session, dataset_id=dataset_id)
 

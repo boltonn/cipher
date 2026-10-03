@@ -22,7 +22,7 @@ class TextExtractor(StrEnum):
 
     KREUZBERG = "kreuzberg"
     PYPARSE = "pyparse"
-    PYOCR = "pyocr"
+    PYVLLM = "pyvllm"
 
 
 class PrechunkedSpan(BaseModel):

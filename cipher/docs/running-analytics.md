@@ -33,7 +33,7 @@ removes another's packages.
 |---|---|---|
 | `staging` | `load-files` | filetyper (magika) |
 | `text-extraction` | `extract-text` | pyxberg (kreuzberg; EasyOCR only as the fallback OCR), pyparse[email] |
-| `ocr` | `ocr` | pyocr client, pyxberg, setfitcv (CLIP filter) |
+| `ocr` | `ocr` | pyvllm (OCR client + model launcher), pyxberg, setfitcv (CLIP filter) |
 | `text-embedding` | `embed-text` | clir |
 | `image-embedding` / `exif-location` | `embed-images` / `extract-locations` | setfitcv |
 | `face-detection` | `detect-faces` | face[cuda] (InsightFace) |
@@ -51,8 +51,8 @@ the extras in `pipelines/cipher-orchestration/pyproject.toml`.
 |---|---|---|
 | everything | Postgres (ParadeDB image: pgvector + pg_search + PostGIS) | `.env` `POSTGRES__*`; `cipher create-tables` on a fresh DB |
 | `embed-text`/`reset-text` only if `RETRIEVAL__BACKEND=elasticsearch` | Elasticsearch | `.env` `ELASTICSEARCH__*`. The default postgres backend never opens ES. |
-| `ocr` | pyocr engine (jina-ocr-v1 on vLLM), local | Nothing to start: `cipher ocr` launches it from `analytics/pyocr/.venv-vllm` (`make install-vllm` once) and stops it afterwards. To keep one up, or one per GPU: `make start-vllm` (:8010) / `make start-vllm-all` + `--service-url` |
-| `extract-llm`, `extract-entities --extractor llm`, `extract-events --llm` | LLM endpoint | `.env` `LLM__PROVIDER/MODEL/API_KEY` (or `LOCAL_LLM_BASE_URL`) |
+| `ocr` | pyvllm's `ocr` model (jina-ocr-v1 on vLLM), local, GPU 0 | Nothing to start: `cipher ocr` launches it (`make install` + `make download` in `analytics/pyvllm` once) and stops it afterwards. To keep it up: `pyvllm up ocr`; more GPUs: one server each + repeat `--service-url` |
+| chat, `extract-llm`, `extract-entities --extractor llm`, `extract-events --llm` | LLM endpoint | Local: pyvllm's `llm` model (Qwen3.8-27B on GPU 1, :8008) -- `pyvllm up llm` in `analytics/pyvllm`, kept running. `.env` `LLM__PROVIDER=local`, `LLM__MODEL=Qwen/Qwen3.8-27B`, `LLM__API_KEY` = `VLLM_API_KEY`. Hosted providers work the same way via `LLM__*`. |
 | models | local checkpoints | `$TEXT_EMBEDDING_MODEL_DIR`, `$IMAGE_EMBEDDING_MODEL_DIR`, `$FACE_MODEL_DIR`, `$EASYOCR_MODEL_DIR`, `$GLINER_MODEL_DIR`, `$NERD_MODEL_DIR` |
 
 `make start` (the API) isn't needed to run the pipeline. You need it to review the
@@ -108,7 +108,7 @@ cipher estimate --dataset-name rag --device cuda        # optional: ETA per anal
 | # | Command | Notes |
 |---|---|---|
 | 2a | `cipher extract-text --dataset-name rag` | Parses emails (pyparse; attachments become child files), then documents (xberg). For every PDF it records its **image-based pages** (`metadata.image_pages`, read from xberg's per-page output) and leaves them for 2b. Keep `--chunk-size` the same as in 2c. |
-| 2b | `cipher ocr --dataset-name rag` (after 3a) | Reads the image-based pages and text-bearing images with pyocr, merging page by page into the extracted text. Images pass a **gate** first: zero-shot CLIP tags over the embeddings from 3a, kept as each file's `has_text` **tag score**; under `--clip-threshold` (0.5) an image is not OCR'd (`--all-images` turns the gate off). A page that makes the model loop is cut back to one copy of the repeated text and counted in the run summary. |
+| 2b | `cipher ocr --dataset-name rag` (after 3a) | Reads the image-based pages and text-bearing images with pyvllm's `ocr` model, merging page by page into the extracted text. Images pass a **gate** first: zero-shot CLIP tags over the embeddings from 3a, kept as each file's `has_text` **tag score**; under `--clip-threshold` (0.5) an image is not OCR'd (`--all-images` turns the gate off). A page that makes the model loop is cut back to one copy of the repeated text and counted in the run summary. |
 | 2c | `cipher embed-text --dataset-name rag --model-dir $TEXT_EMBEDDING_MODEL_DIR --device cuda` | Writes the chunks that power keyword, semantic and entity search. `--max-pages N` limits very long documents. |
 
 ## 3. Image track
@@ -193,7 +193,7 @@ cipher stats --dataset-name $D
 | Situation | Run |
 |---|---|
 | OCR added after the fact, or re-done | `ocr` → `embed-text` (OCR re-queues the files it rewrote); mentions extracted before it need `reset-entities` + step 4 |
-| No GPU / pyocr engine not installed | `extract-text --ocr-backend easyocr` OCRs image-based pages inline (English by default, `--ocr-language`; much weaker on poor scans) and skip `ocr` |
+| No GPU / pyvllm not installed | `extract-text --ocr-backend easyocr` OCRs image-based pages inline (English by default, `--ocr-language`; much weaker on poor scans) and skip `ocr` |
 | Changed chunk size or embedding model | `reset-text` → `extract-text` → (`ocr`) → `embed-text` (then re-run mentions: offsets moved) |
 | Re-extract entities/selectors from scratch | `reset-entities` → step 4 → step 5 (manual entities are kept) |
 | Re-extract events | `reset-events` → `extract-events` → `resolve-event-links` (manual/verified events are kept) |

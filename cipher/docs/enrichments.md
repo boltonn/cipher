@@ -89,15 +89,16 @@ them from `cipher rates` output as runs accumulate.
 
 ## OCR
 
-Two tiers, so a dataset is searchable without a GPU service and the heavy model is
-only spent where it's needed.
+`extract-text` finds the pages that need OCR; `cipher ocr` reads them with the model.
+EasyOCR inline is kept only as the fallback for a machine without pyvllm.
 
-**1. Inline, during `extract-text` (default, offline).** Every PDF's image-based pages
-are recorded as `DocumentMetadata.image_pages` -- always, whatever OCR runs. They come
+**1. During `extract-text`: find the image-based pages (and, as a fallback, EasyOCR them).**
+Every PDF's image-based pages are recorded as `DocumentMetadata.image_pages` -- always,
+whatever OCR runs. They come
 from xberg's own no-OCR per-page output: a page is image-based when xberg marks it
 `is_blank`, or when its text layer has < 20 word chars (`is_blank` is exact, so a scan
-carrying only a Bates stamp would otherwise slip through). PDFs with any are then
-re-extracted OCRing *just those pages* with EasyOCR (`force_ocr_pages`; xberg's automatic
+carrying only a Bates stamp would otherwise slip through). With `--ocr-backend easyocr` (default
+`none`), PDFs with any are then re-extracted OCRing *just those pages* with EasyOCR (`force_ocr_pages`; xberg's automatic
 OCR decides per document and would re-read a mixed PDF's text-layer pages too) and records
 `ocr_pages` / `ocr_model = "easyocr"`. Weights load from `--ocr-model-dir` /
 `EASYOCR_MODEL_DIR` (`~/models/docling/EasyOcr`), so nothing is downloaded.
@@ -105,28 +106,29 @@ OCR decides per document and would re-read a mixed PDF's text-layer pages too) a
 `--ocr-language` is repeatable (EasyOCR codes: `en`, `fr`, …). The file viewer's text
 tab flags image-based pages and which OCR produced them.
 
-**2. `cipher ocr` (re-run with something better).** Multilingual OCR for image-based
-PDF pages and images (incl. HEIF), via the `pyocr` analytic (jina-ocr-v1 on vLLM;
-`make start-vllm` in `analytics/pyocr`). It replaces the EasyOCR text page-by-page
-(only pyocr output is reused across duplicates). Run after `extract-text` (and
-`embed-images` if filtering), before `embed-text` -- or later, then re-run `embed-text`:
+**2. `cipher ocr` (the default OCR).** Multilingual OCR for image-based PDF pages and
+images (incl. HEIF), via pyvllm's `ocr` model (jina-ocr-v1 on vLLM, started for the run
+if it isn't already up). It merges page-by-page into the extracted text, replacing any
+EasyOCR text (only model output is reused across duplicates). Run after `extract-text`
+and `embed-images` (the image gate reads their embeddings), before `embed-text` -- or
+later, then re-run `embed-text`:
 
 ```bash
-cipher ocr --dataset-name X                                  # every PDF + supported image
+cipher ocr --dataset-name X                                  # image-based PDF pages + gated images
 cipher ocr --dataset-name X --filetype pdf --filetype heif   # restrict by filetype
-cipher ocr --dataset-name X --clip-model-dir ~/models/transformers/clip-vit-base-patch16
+cipher ocr --dataset-name X --all-images                     # no image gate
 ```
 
 - **Which pages:** pdfium reads each PDF page's text layer; pages with < 20 word chars
   (`--min-chars`) are *image-based* and go to the model, the rest keep xberg's text
   (`--force` OCRs everything). Every image/TIFF frame is OCR'd.
-- **CLIP tag filter (opt-in):** zero-shot over the image embeddings `embed-images`
-  already stored -- `--clip-tag` (text-bearing: screenshot, scanned document, receipt…)
+- **Image gate (default; CLIP model from `IMAGE_EMBEDDING_MODEL_DIR`):** zero-shot over
+  the image embeddings `embed-images` already stored, saved as the `has_text` tag score -- `--clip-tag` (text-bearing: screenshot, scanned document, receipt…)
   vs `--clip-negative-tag` (people, landscape…); an image is queued when ≥
   `--clip-threshold` of the probability mass is on the text-bearing tags. Filtered-out
   images stay unqueued, so a later unfiltered run still reaches them.
 - **Output (one `ExtractedText` per file):** PDF pages are merged into the
-  existing row page-by-page; images get a new row. `extractor=pyocr`,
+  existing row page-by-page; images get a new row. `extractor=pyvllm`,
   `metadata.ocr_pages` / `ocr_model` record provenance, HTML tables become
   `ExtractedTableInfo`, located figures become `DocumentStructureNode(node_type="figure")`
   with a normalized `BoundingBox` and a model-written caption (kept out of `content`).

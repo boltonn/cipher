@@ -198,7 +198,13 @@ the chat agent.
   when it found at least one event, in `negative_tags` when it found none.
   `SKIPPED` files stay unlabelled. These are the training set for a classifier
   over the stored embeddings that can later replace the zero-shot gate; an
-  analyst corrects a label with `PATCH /files/{id}/tag`.
+  analyst corrects a label with `PATCH /files/{id}/tag`, and marking a file's
+  last event invalid (one at a time, or in bulk from the events table via
+  `POST /events/mark-invalid`) moves its `event` tag to `negative_tags`.
+- **Recall over precision** — the default `--gate-threshold` (0.4) is set so
+  the gate keeps almost every real event; the junk that gets through is cheap
+  to bulk-mark invalid. On a 404-email rag sample (hand-judged) it passed ~70%
+  of emails and kept ~46 of 48 real events.
 - **What counts** — an event is something a person in the correspondence takes
   part in (travels, stays, meets, attends, receives). Marketing, product
   announcements, and advertised webinars or conferences are not events, and
