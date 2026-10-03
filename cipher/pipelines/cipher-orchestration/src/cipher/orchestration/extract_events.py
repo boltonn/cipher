@@ -80,6 +80,7 @@ _LLM_EXTRACTOR = "llm"
 _EMAIL_FILETYPE_GROUP = "email"
 _DOCUMENT_FILETYPE_GROUP = "document"
 _CALENDAR_MIME = "text/calendar"
+_CALENDAR_FILETYPE = "ics"
 
 # The filetype groups the LLM event pass scans, in order.
 TEXT_EVENT_GROUPS_EMAIL: tuple[str, ...] = (_EMAIL_FILETYPE_GROUP,)
@@ -279,18 +280,18 @@ async def extract_events_workflow(
     dataset_id: str,
     batch_size: int = 50,
 ) -> int:
-    """Parse a dataset's `.ics` files into events. Returns files processed."""
-    await queue_event_extraction_enrichments(session=session, dataset_id=dataset_id)
+    """Parse a dataset's `.ics` files into events. Returns files processed.
+
+    Only claims calendar files' rows: email / document rows of the same enrichment type
+    belong to the LLM pass and stay pending for it.
+    """
+    calendar_files = await queue_event_extraction_enrichments(session=session, dataset_id=dataset_id)
 
     enrichment_repo = PostgresEnrichmentRepository(session=session)
     event_repo = PostgresEventRepository(session=session)
     location_repo = PostgresLocationRepository(session=session)
 
-    total = await enrichment_repo.count_pending(
-        enrichment_type=EnrichmentType.EVENT_EXTRACTION,
-        enrichable_type=EnrichableType.FILE,
-        dataset_id=dataset_id,
-    )
+    total = calendar_files
     count = failed_count = event_count = 0
 
     with tqdm(total=total, desc="Extracting events", unit=" file") as pbar:
@@ -300,6 +301,7 @@ async def extract_events_workflow(
                 enrichable_type=EnrichableType.FILE,
                 batch_size=batch_size,
                 dataset_id=dataset_id,
+                filetype_filter=_CALENDAR_FILETYPE,
             )
             if not batch:
                 break
@@ -309,9 +311,6 @@ async def extract_events_workflow(
 
             completed, failed = [], {}
             for item in batch:
-                if item.resource.get("mime_type") != _CALENDAR_MIME:
-                    completed.append(item.enrichment.id)
-                    continue
                 try:
                     event_count += await _extract_calendar_file(
                         file_resource=item.resource, event_repo=event_repo, location_repo=location_repo
