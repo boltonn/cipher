@@ -80,7 +80,7 @@ from cipher.orchestration.resolve_entities import resolve_entities_workflow
 from cipher.orchestration.resolve_event_links import resolve_event_links_workflow
 from cipher.orchestration.resolve_locations import resolve_locations_workflow
 from cipher.orchestration.run_recorder import record_run
-from cipher.orchestration.schema import create_tables
+from cipher.orchestration.schema import create_tables, stamp_head
 from cipher.orchestration.session import get_elasticsearch_client_context, get_session_context
 from cipher.orchestration.sync_chunk_entities import sync_chunk_entities_workflow
 from cipher.schemas._base.common import ModelDevice
@@ -122,7 +122,12 @@ async def _resolve_dataset_id(session, dataset_id: str | None, dataset_name: str
 
 
 @app.command("create-tables")
-def create_tables_cmd():
+def create_tables_cmd(
+    stamp_head_: Annotated[
+        bool,
+        typer.Option("--stamp-head", help="Mark an empty database just built here as at the latest migration"),
+    ] = False,
+):
     """Create all Postgres tables (idempotent; safe to run every time)."""
 
     async def _run():
@@ -131,6 +136,9 @@ def create_tables_cmd():
             logger.success("Tables ready")
 
     asyncio.run(_run())
+    if stamp_head_:
+        stamp_head()
+        logger.success("Stamped at the latest migration")
 
 
 @app.command("backfill-exif-locations")

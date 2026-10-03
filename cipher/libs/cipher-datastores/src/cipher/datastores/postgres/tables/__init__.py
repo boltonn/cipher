@@ -34,6 +34,7 @@ from cipher.datastores.postgres.tables.event import EventTable
 from cipher.datastores.postgres.tables.event_participant import EventParticipantTable
 from cipher.datastores.postgres.tables.event_place import EventPlaceTable
 from cipher.datastores.postgres.tables.tag import TagTable
+from cipher.datastores.postgres.tables.comment import CommentTable
 
 __all__ = [
     "FileTable",
@@ -64,4 +65,5 @@ __all__ = [
     "EventParticipantTable",
     "EventPlaceTable",
     "TagTable",
+    "CommentTable",
 ]
