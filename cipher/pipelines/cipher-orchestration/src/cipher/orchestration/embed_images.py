@@ -103,7 +103,7 @@ async def _producer(
                 metadata_list.append(res[1])
                 items.append(item)
 
-        await enrichment_repo.mark_skipped_batch(enrichment_ids=skipped)
+        await enrichment_repo.mark_skipped(dict.fromkeys(skipped, f"image under {min_image_side}px"))
         await enrichment_repo.mark_failed(failed)
         await session.commit()
 

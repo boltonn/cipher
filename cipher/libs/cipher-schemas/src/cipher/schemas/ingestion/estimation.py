@@ -26,6 +26,7 @@ class WorkUnit(StrEnum):
     """The thing an enrichment's runtime scales linearly with."""
 
     IMAGE = "image"
+    FACE = "face"
     TEXT_FILE = "text_file"
     LLM_FILE = "llm_file"
     CONTACT_FILE = "contact_file"

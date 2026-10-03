@@ -4,7 +4,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from loguru import logger
 
 from cipher.api.deps.access import DatasetAccessDep, DatasetIdQueryDep
-from cipher.api.deps.postgres import EnrichmentDatastoreDep, get_session
+from cipher.api.deps.postgres import EnrichmentDatastoreDep, EnrichmentRunDatastoreDep, get_session
 from cipher.schemas._base.base import BaseModel
 from cipher.schemas.graph.event import EVENT_FILE_TAG
 from cipher.schemas.ingestion.enrichment import (
@@ -116,6 +116,11 @@ def _to_progress(
     )
 
 
+# Dataset-wide passes with no per-file rows: their progress is their latest recorded run.
+_RUN_TRACKED = (EnrichmentType.FACE_MATCHING, EnrichmentType.FACE_CLUSTERING)
+_RUN_STATUS = {"completed": ProcessingStatus.COMPLETED, "failed": ProcessingStatus.FAILED}
+
+
 async def _event_stages(datastore, dataset_id: str) -> list[EnrichmentStageProgress]:
     """Event extraction's passes: `.ics` parsing, then (for email / document text) the gate and the LLM read."""
     rows = await datastore.gated_stage_counts(
@@ -128,7 +133,7 @@ async def _event_stages(datastore, dataset_id: str) -> list[EnrichmentStageProgr
     def count(*, calendar: bool, status: ProcessingStatus | None = None, scored: bool | None = None) -> int:
         return sum(
             n
-            for cal, row_status, has, n in rows
+            for cal, row_status, has, _, n in rows
             if cal == calendar and status in (None, row_status) and scored in (None, has)
         )
 
@@ -146,6 +151,11 @@ async def _event_stages(datastore, dataset_id: str) -> list[EnrichmentStageProgr
     text_total = count(calendar=False)
     gate_skipped = count(calendar=False, status=ProcessingStatus.SKIPPED)
     if gate_scored := count(calendar=False, scored=True):
+        reasons: dict[str, int] = {}
+        for cal, row_status, _, reason, n in rows:
+            if not cal and row_status == ProcessingStatus.SKIPPED:
+                key = reason or "no reason recorded"
+                reasons[key] = reasons.get(key, 0) + n
         stages.append(
             EnrichmentStageProgress(
                 name="gate",
@@ -153,6 +163,7 @@ async def _event_stages(datastore, dataset_id: str) -> list[EnrichmentStageProgr
                 total=text_total,
                 completed=gate_scored,
                 skipped=gate_skipped,
+                skip_reasons=reasons,
             )
         )
     if text_total:
@@ -168,10 +179,35 @@ async def _event_stages(datastore, dataset_id: str) -> list[EnrichmentStageProgr
     return stages
 
 
-async def _with_stages(datastore, progress: DatasetEnrichmentProgress) -> DatasetEnrichmentProgress:
-    if progress.enrichment_type == EnrichmentType.EVENT_EXTRACTION and progress.total:
-        progress.stages = await _event_stages(datastore, progress.dataset_id)
+def _from_run(dataset_id: str, enrichment_type: EnrichmentType, run) -> DatasetEnrichmentProgress:
+    """Progress of a dataset-wide pass from its latest run: done (with the units it covered), failed, or running."""
+    status = _RUN_STATUS.get(run.status, ProcessingStatus.PROCESSING)
+    units = run.unit_count if status == ProcessingStatus.COMPLETED else 1
+    progress = _to_progress(dataset_id, enrichment_type, {status: units} if units else {})
+    progress.progress = 1.0 if status == ProcessingStatus.COMPLETED else 0.0
+    progress.date_last_run = run.date_started
     return progress
+
+
+async def _dataset_progress(
+    datastore, run_datastore, dataset_id: str, types: list[EnrichmentType]
+) -> list[DatasetEnrichmentProgress]:
+    stats = await datastore.get_enrichment_stats(dataset_id=dataset_id)
+    reasons = await datastore.get_skip_reasons(dataset_id=dataset_id)
+    runs = await run_datastore.latest_for_dataset(
+        dataset_id=dataset_id, enrichment_types=[t for t in types if t in _RUN_TRACKED]
+    )
+    items = []
+    for enrichment_type in types:
+        if stats.get(enrichment_type):
+            progress = _to_progress(dataset_id, enrichment_type, stats[enrichment_type])
+            progress.skip_reasons = reasons.get(enrichment_type, {})
+            if enrichment_type == EnrichmentType.EVENT_EXTRACTION:
+                progress.stages = await _event_stages(datastore, dataset_id)
+            items.append(progress)
+        elif run := runs.get(enrichment_type):
+            items.append(_from_run(dataset_id, enrichment_type, run))
+    return items
 
 
 @router.get(
@@ -181,15 +217,13 @@ async def _with_stages(datastore, progress: DatasetEnrichmentProgress) -> Datase
 )
 async def get_enrichment_progress(
     datastore: EnrichmentDatastoreDep,
+    run_datastore: EnrichmentRunDatastoreDep,
     enrichment_type: Annotated[EnrichmentType, Query(alias="enrichmentType")],
     dataset_id: DatasetIdQueryDep,
 ):
     """Get enrichment progress for a given dataset and enrichment type."""
-    stats = await datastore.get_enrichment_stats(
-        dataset_id=dataset_id,
-        enrichment_type=enrichment_type,
-    )
-    return await _with_stages(datastore, _to_progress(dataset_id, enrichment_type, stats.get(enrichment_type, {})))
+    items = await _dataset_progress(datastore, run_datastore, dataset_id, [enrichment_type])
+    return items[0] if items else _to_progress(dataset_id, enrichment_type, {})
 
 
 @router.get(
@@ -197,11 +231,14 @@ async def get_enrichment_progress(
     response_model=list[DatasetEnrichmentProgress],
     response_model_by_alias=True,
 )
-async def get_dataset_enrichment_progress(datastore: EnrichmentDatastoreDep, dataset_id: DatasetIdQueryDep):
+async def get_dataset_enrichment_progress(
+    datastore: EnrichmentDatastoreDep, run_datastore: EnrichmentRunDatastoreDep, dataset_id: DatasetIdQueryDep
+):
     """Progress for every analytic that has run against `dataset_id`, in pipeline order (others appended)."""
     stats = await datastore.get_enrichment_stats(dataset_id=dataset_id)
-    ordered = [*PIPELINE_ORDER, *(t for t in stats if t not in PIPELINE_ORDER)]
-    return [await _with_stages(datastore, _to_progress(dataset_id, t, stats[t])) for t in ordered if stats.get(t)]
+    return await _dataset_progress(
+        datastore, run_datastore, dataset_id, [*PIPELINE_ORDER, *(t for t in stats if t not in PIPELINE_ORDER)]
+    )
 
 
 @router.get(

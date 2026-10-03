@@ -517,25 +517,29 @@ def event_gate_score(label_scores: dict[str, float]) -> float:
     return label_scores.get(_GATE_POSITIVE_LABEL, 0.0)
 
 
-def gate_rejects(
+def gate_skip_reason(
     score: float,
     metadata: dict | None,
     *,
     threshold: float,
     skip_categories: frozenset[EmailCategory] = DEFAULT_GATE_SKIP_CATEGORIES,
     skip_states: frozenset[EmailState] = DEFAULT_GATE_SKIP_STATES,
-) -> bool:
-    """Whether the gate keeps a text from the LLM: a low score, or a client category / state to skip."""
+) -> str | None:
+    """Why the gate keeps a text from the LLM (stored on the skipped row), or None when it passes.
+
+    The mail client's verdict (state, then category) is reported ahead of a low score.
+    """
+    if metadata and "email_client" in metadata:
+        if (state := metadata.get("state")) in skip_states:
+            return f"mail state: {state}"
+        categories = metadata.get("categories") or EmailCategory.for_email(
+            EmailClient(metadata["email_client"]), metadata.get("labels") or []
+        )
+        if skipped := sorted(skip_categories.intersection(categories)):
+            return f"mail category: {skipped[0]}"
     if score < threshold:
-        return True
-    if not metadata or "email_client" not in metadata:
-        return False
-    if metadata.get("state") in skip_states:
-        return True
-    categories = metadata.get("categories") or EmailCategory.for_email(
-        EmailClient(metadata["email_client"]), metadata.get("labels") or []
-    )
-    return bool(skip_categories.intersection(categories))
+        return f"gate score below {threshold:.2f}"
+    return None
 
 
 def _in_gate_sample(file_id: str, sample_rate: float) -> bool:
@@ -609,12 +613,12 @@ async def gate_text_events_workflow(
             )
         )
     ).all()
-    copies = [
-        e
+    copies = {
+        e: reason
         for e, file_id, score, metadata in already_scored
-        if gate_rejects(score, metadata, **rule) and not _in_gate_sample(file_id, sample_rate)
-    ]
-    await enrichment_repo.mark_skipped_batch(copies)
+        if (reason := gate_skip_reason(score, metadata, **rule)) and not _in_gate_sample(file_id, sample_rate)
+    }
+    await enrichment_repo.mark_skipped(copies)
     redecided = len(copies)
     skipped = 0
 
@@ -629,12 +633,12 @@ async def gate_text_events_workflow(
                 scores={file_id: score for (_, file_id, _, _), score in zip(rows, scores, strict=True)},
                 model=model,
             )
-            rejected = [
-                enrichment_id
+            rejected = {
+                enrichment_id: reason
                 for (enrichment_id, file_id, _, metadata), score in zip(rows, scores, strict=True)
-                if gate_rejects(score, metadata, **rule) and not _in_gate_sample(file_id, sample_rate)
-            ]
-            await enrichment_repo.mark_skipped_batch(rejected)
+                if (reason := gate_skip_reason(score, metadata, **rule)) and not _in_gate_sample(file_id, sample_rate)
+            }
+            await enrichment_repo.mark_skipped(rejected)
             await session.commit()
 
             gated += len(rows)
@@ -689,7 +693,7 @@ async def get_event_gate_report(
         ("gated", "passed", "skipped", "passed_read", "passed_with_events", "rejected_read", "rejected_with_events"), 0
     )
     for score, status, has_event, metadata in rows:
-        passed = not gate_rejects(
+        passed = not gate_skip_reason(
             score, metadata, threshold=threshold, skip_categories=skip_categories, skip_states=skip_states
         )
         read = status == ProcessingStatus.COMPLETED

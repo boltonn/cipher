@@ -111,3 +111,18 @@ class PostgresEnrichmentRunRepository:
         """Most recent runs first -- for `cipher rates` / an ops view."""
         stmt = select(EnrichmentRunTable).order_by(EnrichmentRunTable.date_started.desc()).limit(limit)
         return list((await self.session.execute(stmt)).scalars().all())
+
+    async def latest_for_dataset(
+        self, *, dataset_id: str, enrichment_types: list[EnrichmentType]
+    ) -> dict[EnrichmentType, EnrichmentRunTable]:
+        """The most recent run of each of these analytics against a dataset."""
+        stmt = (
+            select(EnrichmentRunTable)
+            .where(
+                EnrichmentRunTable.dataset_id == dataset_id,
+                EnrichmentRunTable.enrichment_type.in_([t.value for t in enrichment_types]),
+            )
+            .order_by(EnrichmentRunTable.enrichment_type, EnrichmentRunTable.date_started.desc())
+            .distinct(EnrichmentRunTable.enrichment_type)
+        )
+        return {EnrichmentType(row.enrichment_type): row for row in (await self.session.execute(stmt)).scalars()}

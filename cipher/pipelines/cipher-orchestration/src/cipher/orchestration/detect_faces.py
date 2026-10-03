@@ -114,7 +114,7 @@ async def _producer(
             else:
                 images.append(res)
                 items.append(item)
-        await enrichment_repo.mark_skipped_batch(enrichment_ids=skipped)
+        await enrichment_repo.mark_skipped(dict.fromkeys(skipped, f"image under {min_image_side}px"))
         await session.commit()
 
         await queue.put((images, items, fetch_failed, len(skipped)))

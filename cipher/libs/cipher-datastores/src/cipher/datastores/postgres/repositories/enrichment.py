@@ -2,7 +2,7 @@ from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
 from loguru import logger
-from sqlalchemy import delete, func, literal, or_, select, update
+from sqlalchemy import case, delete, func, literal, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cipher.datastores.postgres.tables.enrichment import EnrichmentTable
@@ -174,15 +174,17 @@ class PostgresEnrichmentRepository:
         )
         await self.session.execute(statement)
 
-    async def mark_skipped_batch(self, enrichment_ids: list[str]) -> None:
-        """Mark enrichments SKIPPED: a gate decided the expensive pass is not worth running."""
-        if not enrichment_ids:
-            return
-        await self.session.execute(
-            update(EnrichmentTable)
-            .where(EnrichmentTable.id.in_(enrichment_ids))
-            .values(status=ProcessingStatus.SKIPPED, date_updated=datetime.now(UTC))
-        )
+    async def mark_skipped(self, reasons: dict[str, str]) -> None:
+        """Mark enrichments SKIPPED, each with why (kept in `error_message`, shown as the skip breakdown)."""
+        by_reason: dict[str, list[str]] = {}
+        for enrichment_id, reason in reasons.items():
+            by_reason.setdefault(reason, []).append(enrichment_id)
+        for reason, enrichment_ids in by_reason.items():
+            await self.session.execute(
+                update(EnrichmentTable)
+                .where(EnrichmentTable.id.in_(enrichment_ids))
+                .values(status=ProcessingStatus.SKIPPED, error_message=reason, date_updated=datetime.now(UTC))
+            )
 
     async def mark_failed(self, failures: dict[str, str | BaseException], increment_retry: bool = True) -> None:
         """Mark enrichments FAILED, each with why -- an exception or a message, shown in the failures dialog."""
@@ -241,21 +243,43 @@ class PostgresEnrichmentRepository:
 
     async def gated_stage_counts(
         self, *, dataset_id: str, enrichment_type: EnrichmentType, scored_tag: str, calendar_filetype: str | None = None
-    ) -> list[tuple[bool, ProcessingStatus, bool, int]]:
-        """`(is_calendar_file, status, has_gate_score, count)` for a gated analytic's file rows in one dataset."""
+    ) -> list[tuple[bool, ProcessingStatus, bool, str | None, int]]:
+        """`(is_calendar_file, status, has_gate_score, skip_reason, count)` for a gated analytic's rows in a dataset."""
         is_calendar = (FileTable.filetype == calendar_filetype) if calendar_filetype else literal(False)
         scored = FileTable.tag_scores.has_key(scored_tag)
+        reason = case((EnrichmentTable.status == ProcessingStatus.SKIPPED, EnrichmentTable.error_message), else_=None)
         rows = await self.session.execute(
-            select(is_calendar, EnrichmentTable.status, scored, func.count())
+            select(is_calendar, EnrichmentTable.status, scored, reason, func.count())
             .join(FileTable, EnrichmentTable.enrichable_id == FileTable.id)
             .where(
                 EnrichmentTable.enrichable_type == EnrichableType.FILE,
                 EnrichmentTable.enrichment_type == enrichment_type,
                 FileTable.dataset_id == dataset_id,
             )
-            .group_by(is_calendar, EnrichmentTable.status, scored)
+            .group_by(is_calendar, EnrichmentTable.status, scored, reason)
         )
-        return [(bool(cal), ProcessingStatus(status), bool(has), n) for cal, status, has, n in rows.all()]
+        return [(bool(cal), ProcessingStatus(st), bool(has), why, n) for cal, st, has, why, n in rows.all()]
+
+    async def get_skip_reasons(self, *, dataset_id: str) -> dict[EnrichmentType, dict[str, int]]:
+        """Per analytic, why its skipped rows in a dataset were skipped -> count."""
+        rows = await self.session.execute(
+            select(
+                EnrichmentTable.enrichment_type,
+                func.coalesce(EnrichmentTable.error_message, "no reason recorded"),
+                func.count(),
+            )
+            .join(FileTable, EnrichmentTable.enrichable_id == FileTable.id)
+            .where(
+                EnrichmentTable.enrichable_type == EnrichableType.FILE,
+                EnrichmentTable.status == ProcessingStatus.SKIPPED,
+                FileTable.dataset_id == dataset_id,
+            )
+            .group_by(EnrichmentTable.enrichment_type, EnrichmentTable.error_message)
+        )
+        reasons: dict[EnrichmentType, dict[str, int]] = defaultdict(dict)
+        for enrichment_type, reason, n in rows.all():
+            reasons[EnrichmentType(enrichment_type)][reason] = n
+        return reasons
 
     async def get_enrichment_stats(
         self,

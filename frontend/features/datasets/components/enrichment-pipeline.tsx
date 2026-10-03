@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/tooltip";
 import { EnrichmentFailuresDialog } from "@/features/datasets/components/enrichment-failures-dialog";
 import { EnrichmentStages } from "@/features/datasets/components/enrichment-stages";
+import { SkipReasons } from "@/features/datasets/components/skip-reasons";
 import { EnrichmentRequestDialog } from "@/features/datasets/components/enrichment-request-dialog";
 import { EstimateBadge } from "@/features/datasets/components/estimate-badge";
 import { useDatasetRequestConfig } from "@/features/datasets/hooks/use-request-dataset";
@@ -361,10 +362,10 @@ export function EnrichmentPipeline({ datasetId }: { datasetId: string }) {
                     <TooltipContent className="text-xs">
                       <p>{formatCompactNumber(progress.completed)} done</p>
                       {skipped > 0 && (
-                        <p>
-                          {formatCompactNumber(skipped)} skipped: deliberately not processed
-                          (filtered out by a gate, or nothing to read)
-                        </p>
+                        <>
+                          <p>{formatCompactNumber(skipped)} skipped (deliberately not processed):</p>
+                          <SkipReasons reasons={progress.skipReasons} />
+                        </>
                       )}
                       {failed > 0 && <p>{formatCompactNumber(failed)} failed</p>}
                       {queued > 0 && <p>{formatCompactNumber(queued)} queued</p>}
@@ -372,6 +373,9 @@ export function EnrichmentPipeline({ datasetId }: { datasetId: string }) {
                   </Tooltip>
                   <p className="mt-1 flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground">
                     <span>{formatCompactNumber(progress.completed)} done</span>
+                    {progress.dateLastRun && (
+                      <span>· last run {new Date(progress.dateLastRun).toLocaleString()}</span>
+                    )}
                     {skipped > 0 && (
                       <span>· {formatCompactNumber(skipped)} skipped</span>
                     )}

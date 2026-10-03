@@ -170,6 +170,7 @@ class EnrichmentStageProgress(BaseModel):
     completed: int
     skipped: int = Field(default=0, description="Filtered out by this pass")
     failed: int = Field(default=0)
+    skip_reasons: dict[str, int] = Field(default_factory=dict, description="Why rows were filtered out -> count")
 
 
 class DatasetEnrichmentProgress(BaseModel):
@@ -183,6 +184,10 @@ class DatasetEnrichmentProgress(BaseModel):
     progress: float
     stages: list[EnrichmentStageProgress] = Field(
         default_factory=list, description="Per-pass progress when the analytic runs in passes"
+    )
+    skip_reasons: dict[str, int] = Field(default_factory=dict, description="Why rows were skipped -> count")
+    date_last_run: datetime | None = Field(
+        default=None, description="For dataset-wide passes without per-file rows: when the latest run started"
     )
 
 

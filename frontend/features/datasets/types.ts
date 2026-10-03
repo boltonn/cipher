@@ -110,6 +110,10 @@ export interface EnrichmentProgress {
   progress: number;
   /** Per-pass progress when the analytic runs in passes (event extraction: calendar, gate, LLM). */
   stages: EnrichmentStageProgress[];
+  /** Why rows were skipped -> count. */
+  skipReasons: Record<string, number>;
+  /** Dataset-wide passes with no per-file rows (face matching / clustering): when the latest run started. */
+  dateLastRun: string | null;
 }
 
 /** One pass of a multi-pass analytic (see backend `EnrichmentStageProgress`). */
@@ -121,6 +125,8 @@ export interface EnrichmentStageProgress {
   /** Filtered out by this pass. */
   skipped: number;
   failed: number;
+  /** Why rows were filtered out -> count. */
+  skipReasons: Record<string, number>;
 }
 
 /** A distinct failure message and how many failed rows share it. */

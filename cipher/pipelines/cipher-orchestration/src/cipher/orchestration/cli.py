@@ -824,14 +824,21 @@ def match_faces_cmd(
             if reset:
                 counts = await reset_face_matches(session=session, dataset_id=resolved_id)
             else:
-                counts = await match_faces_workflow(
-                    session=session,
+                async with record_run(
+                    enrichment_type=EnrichmentType.FACE_MATCHING,
                     dataset_id=resolved_id,
-                    min_similarity=similarity,
-                    verified_only=verified_only,
-                    per_face_limit=per_face_limit,
-                    rebuild_cooccurrence=not no_cooccurrence,
-                )
+                    unit=WorkUnit.FACE,
+                    params={"similarity": similarity, "verified_only": verified_only},
+                ) as run:
+                    counts = await match_faces_workflow(
+                        session=session,
+                        dataset_id=resolved_id,
+                        min_similarity=similarity,
+                        verified_only=verified_only,
+                        per_face_limit=per_face_limit,
+                        rebuild_cooccurrence=not no_cooccurrence,
+                    )
+                    run.units = counts.get("faces_touched", 0)
             typer.echo(json.dumps(counts, indent=2))
 
     asyncio.run(_run())
@@ -905,17 +912,24 @@ def cluster_faces_cmd(
             resolved_id = (
                 await _resolve_dataset_id(session, dataset_id, dataset_name) if (dataset_id or dataset_name) else None
             )
-            counts = await cluster_faces_workflow(
-                session=session,
+            async with record_run(
+                enrichment_type=EnrichmentType.FACE_CLUSTERING,
                 dataset_id=resolved_id,
-                similarity=similarity,
-                k=k,
-                min_images=min_images,
-                min_faces=min_faces,
-                max_faces=max_faces,
-                merge_into_existing=not no_merge,
-                rebuild_cooccurrence=not no_cooccurrence,
-            )
+                unit=WorkUnit.FACE,
+                params={"similarity": similarity, "min_images": min_images, "min_faces": min_faces},
+            ) as run:
+                counts = await cluster_faces_workflow(
+                    session=session,
+                    dataset_id=resolved_id,
+                    similarity=similarity,
+                    k=k,
+                    min_images=min_images,
+                    min_faces=min_faces,
+                    max_faces=max_faces,
+                    merge_into_existing=not no_merge,
+                    rebuild_cooccurrence=not no_cooccurrence,
+                )
+                run.units = counts.get("faces_assigned", 0)
             typer.echo(json.dumps(counts, indent=2))
 
     asyncio.run(_run())
