@@ -69,10 +69,10 @@ def test_resolve_rate_is_measured_only():
 
 
 def test_resolve_rate_concurrency_speeds_up_llm_only():
-    llm = _measured(EnrichmentType.ENTITY_EXTRACTION, RunDevice.NA, 3.0)
-    base = resolve_rate(enrichment_type=EnrichmentType.ENTITY_EXTRACTION, device=RunDevice.NA, measured=llm)
+    llm = _measured(EnrichmentType.EVENT_EXTRACTION, RunDevice.NA, 3.0)
+    base = resolve_rate(enrichment_type=EnrichmentType.EVENT_EXTRACTION, device=RunDevice.NA, measured=llm)
     fast = resolve_rate(
-        enrichment_type=EnrichmentType.ENTITY_EXTRACTION, device=RunDevice.NA, measured=llm, params={"concurrency": 4}
+        enrichment_type=EnrichmentType.EVENT_EXTRACTION, device=RunDevice.NA, measured=llm, params={"concurrency": 4}
     )
     assert fast.seconds_per_unit < base.seconds_per_unit
 
