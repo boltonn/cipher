@@ -7,9 +7,14 @@ from cipher.schemas._base.base import BaseModel
 
 
 class CommentableType(StrEnum):
+    """What a comment is on.
+
+    `entity` covers every entity type (person, organization, location, selector, ...); person
+    and location records share their entity's id, so a person has one thread, not two.
+    """
+
     DATASET = "dataset"
     IMAGE = "image"
-    PERSON = "person"
     FILE = "file"
     ENTITY = "entity"
 

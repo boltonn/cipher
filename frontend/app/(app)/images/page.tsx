@@ -3,15 +3,19 @@
 import { PageError, PageLoading } from "@/components/page-loading";
 import { PageHeader } from "@/components/page-header";
 import { PaginationModeToggle } from "@/components/pagination-mode-toggle";
+import { ImageAnnotateBar } from "@/features/images/components/image-annotate-bar";
 import { ImageSelectionBar } from "@/features/images/components/image-selection-bar";
 import { ImageSearchBar } from "@/features/images/components/image-search-bar";
 import { ImagesContainerInfinite } from "@/features/images/components/images-container-infinite";
 import { ImagesContainerPaginated } from "@/features/images/components/images-container-paginated";
+import { useImageAnnotation } from "@/features/images/hooks/use-image-annotation";
 import { useSearchController } from "@/features/images/hooks/use-search-controller";
+import { tagFilterEntries } from "@/features/tags/tag-filter";
+import { Button } from "@/components/ui/button";
 import { useGridSelection } from "@/hooks/use-grid-selection";
 import { PaginationModeType } from "@/types/common";
 import { useQueryClient } from "@tanstack/react-query";
-import { ImageIcon, Search, X } from "lucide-react";
+import { ImageIcon, PenLine, Search, X } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 
@@ -38,6 +42,7 @@ function ImageSearchPageInner() {
     currentPage,
     isSimilarityMode,
     queryLabel,
+    textQuery,
   } = useSearchController(paginationMode);
 
   const queryClient = useQueryClient();
@@ -67,15 +72,29 @@ function ImageSearchPageInner() {
     () => [...new Set(loadedImages.map((image) => image.id))],
     [loadedImages]
   );
+  const tagFilters = useMemo(() => tagFilterEntries(filters), [filters]);
+  const reviewTags = useMemo(() => tagFilters.map((entry) => entry.tag), [tagFilters]);
+  const singleTagFilter = tagFilters.length === 1 ? tagFilters[0] : undefined;
+
+  // Annotate mode: card clicks stage positive / negative labels for one tag, saved in one go.
+  const annotation = useImageAnnotation();
+  const [isAnnotating, setIsAnnotating] = useState(false);
+  const startAnnotating = () => {
+    const suggested = singleTagFilter?.tag ?? textQuery?.trim();
+    if (!annotation.tag && suggested) annotation.setTag(suggested);
+    selection.clear();
+    setIsAnnotating(true);
+  };
+
   const knownTags = useMemo(
     () =>
       [
         ...new Set([
-          ...(filters.tags ?? []),
+          ...reviewTags,
           ...loadedImages.flatMap((image) => image.tags),
         ]),
       ].sort(),
-    [filters.tags, loadedImages]
+    [reviewTags, loadedImages]
   );
 
   useEffect(() => {
@@ -111,11 +130,23 @@ function ImageSearchPageInner() {
           )
         }
         actions={
-          <PaginationModeToggle
-            mode={paginationMode}
-            onToggle={() => setPaginationMode((p) => (p === "infinite" ? "normal" : "infinite"))}
-            accentClassName="hover:text-primary"
-          />
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant={isAnnotating ? "default" : "outline"}
+              className="h-8 gap-1.5 text-xs"
+              onClick={isAnnotating ? undefined : startAnnotating}
+              aria-pressed={isAnnotating}
+            >
+              <PenLine size={13} />
+              {isAnnotating ? "Annotating" : "Annotate"}
+            </Button>
+            <PaginationModeToggle
+              mode={paginationMode}
+              onToggle={() => setPaginationMode((p) => (p === "infinite" ? "normal" : "infinite"))}
+              accentClassName="hover:text-primary"
+            />
+          </div>
         }
       />
 
@@ -147,8 +178,9 @@ function ImageSearchPageInner() {
           <ImagesContainerInfinite
             data={data}
             onSimilar={actions.handleSimilar}
-            selection={selection}
-            reviewTags={filters.tags}
+            selection={isAnnotating ? undefined : selection}
+            annotation={isAnnotating && annotation.tag ? annotation : undefined}
+            reviewTags={reviewTags}
             fetchNextPage={fetchNextPage}
             hasNextPage={hasNextPage}
             isFetchingNextPage={isFetchingNextPage}
@@ -159,8 +191,9 @@ function ImageSearchPageInner() {
           <ImagesContainerPaginated
             data={paginatedData}
             onSimilar={actions.handleSimilar}
-            selection={selection}
-            reviewTags={filters.tags}
+            selection={isAnnotating ? undefined : selection}
+            annotation={isAnnotating && annotation.tag ? annotation : undefined}
+            reviewTags={reviewTags}
             currentPage={currentPage}
             onPageChange={actions.handlePageChange}
             isLoading={isFetching}
@@ -169,13 +202,21 @@ function ImageSearchPageInner() {
             onToggleFilters={() => setIsFiltersOpen(true)}
           />
         )}
-        <ImageSelectionBar
-          selection={selection}
-          loadedIds={loadedIds}
-          reviewTag={filters.tags?.length === 1 ? filters.tags[0] : undefined}
-          reviewTagState={filters.tagState}
-          knownTags={knownTags}
-        />
+        {isAnnotating ? (
+          <ImageAnnotateBar
+            annotation={annotation}
+            loadedImages={loadedImages}
+            onExit={() => setIsAnnotating(false)}
+          />
+        ) : (
+          <ImageSelectionBar
+            selection={selection}
+            loadedIds={loadedIds}
+            reviewTag={singleTagFilter?.tag}
+            reviewTagState={singleTagFilter?.state}
+            knownTags={knownTags}
+          />
+        )}
       </main>
     </div>
   );

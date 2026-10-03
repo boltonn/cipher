@@ -766,6 +766,9 @@ gliner = [
 image-embedding = [
     { name = "setfitcv" },
 ]
+image-heads = [
+    { name = "setfitcv", extra = ["train"] },
+]
 ner = [
     { name = "nerd" },
     { name = "pygliner" },
@@ -815,10 +818,11 @@ requires-dist = [
     { name = "setfitcv", marker = "extra == 'exif-location'", editable = "analytics/setfitcv" },
     { name = "setfitcv", marker = "extra == 'image-embedding'", editable = "analytics/setfitcv" },
     { name = "setfitcv", marker = "extra == 'ocr'", editable = "analytics/setfitcv" },
+    { name = "setfitcv", extras = ["train"], marker = "extra == 'image-heads'", editable = "analytics/setfitcv" },
     { name = "tqdm" },
     { name = "typer" },
 ]
-provides-extras = ["staging", "text-extraction", "ocr", "text-embedding", "image-embedding", "exif-location", "face-detection", "contact-extraction", "event-extraction", "gliner", "nerd", "cli", "ner"]
+provides-extras = ["staging", "text-extraction", "ocr", "text-embedding", "image-embedding", "image-heads", "exif-location", "face-detection", "contact-extraction", "event-extraction", "gliner", "nerd", "cli", "ner"]
 
 [[package]]
 name = "cipher-places"
@@ -4786,8 +4790,10 @@ source = { editable = "analytics/setfitcv" }
 dependencies = [
     { name = "chardet" },
     { name = "loguru" },
+    { name = "numpy" },
     { name = "pillow" },
     { name = "pillow-heif" },
+    { name = "safetensors" },
     { name = "torch" },
     { name = "torchvision" },
     { name = "transformers" },
@@ -4802,22 +4808,28 @@ cuda = [
 fastapi = [
     { name = "cipher-utils", extra = ["fastapi"] },
 ]
+train = [
+    { name = "scikit-learn" },
+]
 
 [package.metadata]
 requires-dist = [
     { name = "chardet" },
     { name = "cipher-utils", extras = ["fastapi"], marker = "extra == 'fastapi'", editable = "libs/cipher-utils" },
     { name = "loguru" },
+    { name = "numpy" },
     { name = "nvidia-cublas-cu12", marker = "extra == 'cuda'" },
     { name = "nvidia-cuda-runtime-cu12", marker = "extra == 'cuda'" },
     { name = "nvidia-cudnn-cu12", marker = "extra == 'cuda'" },
     { name = "pillow" },
     { name = "pillow-heif" },
+    { name = "safetensors" },
+    { name = "scikit-learn", marker = "extra == 'train'" },
     { name = "torch" },
     { name = "torchvision" },
     { name = "transformers" },
 ]
-provides-extras = ["fastapi", "cuda"]
+provides-extras = ["fastapi", "train", "cuda"]
 
 [[package]]
 name = "setuptools"

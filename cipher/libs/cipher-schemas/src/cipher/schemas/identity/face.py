@@ -250,6 +250,7 @@ class BaseFaceSearchParameters(PageParams):
     """Base parameters for face search."""
 
     image_id: str | None = Field(default=None, description="Filter to faces in this image")
+    datasets: list[str] | None = Field(default=None, description="Filter to faces in images from these datasets")
     person_id: str | None = Field(default=None, description="Filter to faces of this person")
     unassigned_only: bool = Field(default=False, description="Only return faces with no person assigned")
     representative_only: bool = Field(default=False, description="Only return representative faces")

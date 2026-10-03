@@ -6,6 +6,7 @@ import type {
   DataTableFilters,
   DataTableSortOrder,
 } from "@/components/data-table/types";
+import { DatasetLock } from "@/features/datasets/components/dataset-lock";
 import type { DatasetSummary } from "@/features/datasets/types";
 import { formatBytes, formatCompactNumber } from "@/lib/utils";
 import { useRouter } from "next/navigation";
@@ -25,6 +26,12 @@ const columns: DataTableColumn<DatasetSummary>[] = [
     sortable: true,
     filterable: true,
     width: "2fr",
+    render: (row) => (
+      <span className="flex items-center gap-1.5">
+        <span className="truncate">{row.name}</span>
+        {!row.hasAccess && <DatasetLock />}
+      </span>
+    ),
   },
   { key: "description", header: "Description", type: "text", width: "3fr" },
   {
@@ -123,7 +130,7 @@ export function DatasetsTable({
       onLimitChange={onLimitChange}
       onSortChange={onSortChange}
       onFilterChange={onFilterChange}
-      onRowClick={(row) => router.push(`/datasets/${row.id}`)}
+      onRowClick={(row) => row.hasAccess && router.push(`/datasets/${row.id}`)}
       emptyMessage="No datasets found"
     />
   );

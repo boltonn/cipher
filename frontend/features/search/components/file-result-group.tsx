@@ -89,7 +89,7 @@ export function FileResultGroup({ group, isSelected, onSelect, searchMode, query
             {(topChunk.score * 100).toFixed(1)}%
           </div>
         )}
-        {topChunk.tags.map((tag) => (
+        {group.tags.map((tag) => (
           <span
             key={tag}
             className="rounded border border-primary/20 bg-primary/20 px-1.5 py-0.5 text-[11px] text-primary"

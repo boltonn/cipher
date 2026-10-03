@@ -3,6 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from loguru import logger
 
+from cipher.api.deps.access import DatasetAccessDep, DatasetIdQueryDep
 from cipher.api.deps.postgres import EnrichmentDatastoreDep, get_session
 from cipher.schemas._base.base import BaseModel
 from cipher.schemas.ingestion.enrichment import (
@@ -80,8 +81,11 @@ async def _run_enrichment(enrichment_type: EnrichmentType, dataset_id: str) -> N
 
 
 @router.post("/run", status_code=202)
-async def run_enrichment(request: EnrichmentRunRequest, background_tasks: BackgroundTasks) -> dict[str, str]:
+async def run_enrichment(
+    request: EnrichmentRunRequest, access: DatasetAccessDep, background_tasks: BackgroundTasks
+) -> dict[str, str]:
     """Trigger a model-free enrichment for a dataset; it runs in the background."""
+    access.require(request.dataset_id)
     if request.enrichment_type not in _RUNNABLE:
         raise HTTPException(
             status_code=400,
@@ -116,7 +120,7 @@ def _to_progress(
 async def get_enrichment_progress(
     datastore: EnrichmentDatastoreDep,
     enrichment_type: Annotated[EnrichmentType, Query(alias="enrichmentType")],
-    dataset_id: Annotated[str, Query(alias="datasetId")],
+    dataset_id: DatasetIdQueryDep,
 ):
     """Get enrichment progress for a given dataset and enrichment type."""
     stats = await datastore.get_enrichment_stats(
@@ -132,7 +136,7 @@ async def get_enrichment_progress(
     response_model_by_alias=True,
 )
 async def get_dataset_enrichment_progress(
-    datastore: EnrichmentDatastoreDep, dataset_id: Annotated[str, Query(alias="datasetId")]
+    datastore: EnrichmentDatastoreDep, dataset_id: DatasetIdQueryDep
 ):
     """Progress for every analytic that has run against `dataset_id`, in pipeline order."""
     stats = await datastore.get_enrichment_stats(dataset_id=dataset_id)
@@ -150,7 +154,7 @@ async def get_dataset_enrichment_progress(
 )
 async def get_enrichment_failures(
     datastore: EnrichmentDatastoreDep,
-    dataset_id: Annotated[str, Query(alias="datasetId")],
+    dataset_id: DatasetIdQueryDep,
     enrichment_type: Annotated[EnrichmentType, Query(alias="enrichmentType")],
     limit: int = 200,
     offset: int = 0,

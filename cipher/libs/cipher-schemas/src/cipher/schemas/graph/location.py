@@ -43,7 +43,10 @@ class LocationBase(BaseModel):
     city: str | None = Field(default=None)
     admin_area: str | None = Field(default=None, description="State/province/region")
     country: str | None = Field(default=None)
-    tags: list[str] = Field(default_factory=list, description="User-applied labels")
+    tags: list[str] = Field(
+        default_factory=list,
+        description="Mirror of the location entity's tags (set them on the entity -- they carry provenance there)",
+    )
     attributes: dict[str, str] = Field(default_factory=dict, description="Raw source key/values")
 
     source: LocationSource = Field(
@@ -81,7 +84,6 @@ class LocationUpdate(BaseModel):
     city: str | None = Field(default=None)
     admin_area: str | None = Field(default=None)
     country: str | None = Field(default=None)
-    tags: list[str] | None = Field(default=None)
     attributes: dict[str, str] | None = Field(default=None)
     source: LocationSource | None = Field(default=None)
     source_id: str | None = Field(default=None)

@@ -17,6 +17,8 @@ dependencies = [
   "loguru",
   "pillow",
   "pillow-heif",
+  "numpy",
+  "safetensors",
 ]
 
 [tool.uv.sources]
@@ -28,6 +30,7 @@ build-backend = "hatchling.build"
 
 [project.optional-dependencies]
 fastapi = [ "cipher-utils[fastapi]" ]
+train = [ "scikit-learn" ]
 cuda = [
   "nvidia-cudnn-cu12",
   "nvidia-cublas-cu12",

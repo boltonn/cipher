@@ -3,6 +3,7 @@
 from clir.api.deps import TextEmbeddingModelDep
 from fastapi import APIRouter, HTTPException
 
+from cipher.api.deps.access import DatasetAccess, DatasetAccessDep
 from cipher.api.deps.elasticsearch import TextChunkDatastoreDep
 from cipher.schemas.content.document import ScoredDocumentTextChunk
 from cipher.schemas.content.search import (
@@ -19,9 +20,9 @@ router = APIRouter(
 )
 
 
-def _scoped_to_documents(filters: ChunkFilters) -> ChunkFilters:
+def _scoped_to_documents(filters: ChunkFilters, access: DatasetAccess) -> ChunkFilters:
     """Force filetype_group=document regardless of what the caller passed -- this router only ever searches documents."""
-    return filters.model_copy(update={"filetype_group": "document"})
+    return access.scoped(filters).model_copy(update={"filetype_group": "document"})
 
 
 @router.get(
@@ -29,10 +30,10 @@ def _scoped_to_documents(filters: ChunkFilters) -> ChunkFilters:
     summary="Get a document chunk by its ID",
     response_model=ScoredDocumentTextChunk,
 )
-async def get_chunk_by_id(id: str, datastore: TextChunkDatastoreDep):
+async def get_chunk_by_id(id: str, access: DatasetAccessDep, datastore: TextChunkDatastoreDep):
     """Get a single document chunk by its Elasticsearch document ID."""
     chunk = await datastore.get_by_id(id)
-    if chunk is None or chunk.filetype_group != "document":
+    if chunk is None or chunk.filetype_group != "document" or not access.allows(chunk.dataset_id):
         raise HTTPException(status_code=404, detail=f"Document chunk not found: {id}")
     return chunk
 
@@ -42,9 +43,9 @@ async def get_chunk_by_id(id: str, datastore: TextChunkDatastoreDep):
     summary="BM25 full-text search over document content",
     response_model_by_alias=True,
 )
-async def search_text(params: ChunkTextSearchRequest, datastore: TextChunkDatastoreDep):
+async def search_text(params: ChunkTextSearchRequest, access: DatasetAccessDep, datastore: TextChunkDatastoreDep):
     """Search document chunks by keyword."""
-    params.filters = _scoped_to_documents(params.filters)
+    params.filters = _scoped_to_documents(params.filters, access)
     return await datastore.search_text(request=params)
 
 
@@ -55,6 +56,7 @@ async def search_text(params: ChunkTextSearchRequest, datastore: TextChunkDatast
 )
 async def search_semantic(
     params: ChunkTextSearchRequest,
+    access: DatasetAccessDep,
     datastore: TextChunkDatastoreDep,
     model: TextEmbeddingModelDep,
 ):
@@ -66,7 +68,7 @@ async def search_semantic(
     request = ChunkSemanticSearchRequest.model_validate(
         {**params.model_dump(exclude={"query"}, exclude_none=True), "embedding": embedding}
     )
-    request.filters = _scoped_to_documents(request.filters)
+    request.filters = _scoped_to_documents(request.filters, access)
     return await datastore.search_semantic(request=request)
 
 
@@ -77,6 +79,7 @@ async def search_semantic(
 )
 async def search_hybrid(
     params: ChunkTextSearchRequest,
+    access: DatasetAccessDep,
     datastore: TextChunkDatastoreDep,
     model: TextEmbeddingModelDep,
 ):
@@ -88,7 +91,7 @@ async def search_hybrid(
     request = ChunkHybridSearchRequest.model_validate(
         {**params.model_dump(exclude_none=True), "embedding": embedding}
     )
-    request.filters = _scoped_to_documents(request.filters)
+    request.filters = _scoped_to_documents(request.filters, access)
     return await datastore.search_hybrid(request=request)
 
 
@@ -97,8 +100,11 @@ async def search_hybrid(
     summary="Delete a document chunk",
     response_model=bool,
 )
-async def delete_chunk(id: str, datastore: TextChunkDatastoreDep):
+async def delete_chunk(id: str, access: DatasetAccessDep, datastore: TextChunkDatastoreDep):
     """Delete a document chunk by its Elasticsearch document ID."""
+    chunk = await datastore.get_by_id(id)
+    if chunk is not None:
+        access.require(chunk.dataset_id)
     deleted = await datastore.delete(id)
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Document chunk not found: {id}")

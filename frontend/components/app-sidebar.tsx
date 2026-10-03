@@ -1,5 +1,6 @@
 "use client";
 
+import { SidebarAdminLauncher } from "@/components/sidebar-admin-launcher";
 import { SidebarModelSwitcher } from "@/components/sidebar-model-switcher";
 import {
   Sidebar,
@@ -207,6 +208,7 @@ export function AppSidebar() {
               {data.settings.map((item) => (
                 <MenuItem key={item.title} item={item} pathname={pathname} />
               ))}
+              <SidebarAdminLauncher pathname={pathname} />
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

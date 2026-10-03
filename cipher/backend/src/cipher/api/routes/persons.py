@@ -8,6 +8,7 @@ from filetyper.models.magic import MagicNumberFilterTyper
 from loguru import logger
 from PIL import Image as PILImage
 
+from cipher.api.deps.authentication import CurrentUserDep
 from cipher.api.deps.postgres import (
     CommentDatastoreDep,
     DatasetDatastoreDep,
@@ -45,6 +46,7 @@ from cipher.schemas.identity.person import (
 from cipher.schemas.ingestion.dataset import DatasetCreate
 from cipher.schemas.ingestion.file import FileCreate
 from cipher.schemas.interaction.comment import CommentableType
+from cipher.schemas.interaction.tag import TagSource
 from cipher.utils.io import HashType, compute_hash
 
 # Same floor the rest of the app treats as "this counts as a match" (the
@@ -85,18 +87,19 @@ async def _get_or_create_reference_dataset(dataset_datastore: DatasetDatastoreDe
 @router.post("", summary="Create a new person", response_model=Person, response_model_by_alias=True)
 async def create_person(
     person: PersonCreate,
+    user: CurrentUserDep,
     datastore: PersonDatastoreDep,
     entity_datastore: EntityDatastoreDep,
 ) -> Person:
-    """Create a new person.
+    """Create a new person; its tags are recorded as yours.
 
     Persons created through the app are always verified -- there is no
     manual toggle, since a human explicitly chose to create them.
     """
     person = person.model_copy(update={"is_verified": True})
-    created = await datastore.add_person(person)
+    created = await datastore.add_person(person, source=TagSource.user(user.id))
     await entity_datastore.upsert_person_entity(created)
-    return created
+    return await datastore.get_person_by_id(person_id=created.id)
 
 
 @router.get("/{id}", summary="Get person by ID", response_model=Person, response_model_by_alias=True)
@@ -480,15 +483,16 @@ async def merge_person(
 async def update_person(
     id: str,
     data: PersonUpdate,
+    user: CurrentUserDep,
     datastore: PersonDatastoreDep,
     entity_datastore: EntityDatastoreDep,
 ):
-    """Update a person by their ID."""
-    person = await datastore.update_person(person_id=id, data=data)
+    """Update a person by their ID; a tag list edit is recorded as yours."""
+    person = await datastore.update_person(person_id=id, data=data, user_id=user.id)
     if person is None:
         raise HTTPException(status_code=404, detail=f"Person not found: {id}")
     await entity_datastore.upsert_person_entity(person)
-    return person
+    return await datastore.get_person_by_id(person_id=id)
 
 
 @router.delete("/{id}", summary="Delete person by ID")
@@ -503,15 +507,14 @@ async def delete_person(
     Faces are unlinked and pending face matches dropped; confirmed / rejected
     match decisions are kept (the id still groups the faces they were about);
     mentions/relationships on the bridge entity unresolve/cascade the same way
-    they would for any entity. Comments on either the person or the bridge
-    entity (``entity.id == person.id``) reference it polymorphically, so both
-    are purged explicitly first.
+    they would for any entity. Comments on the bridge entity (``entity.id ==
+    person.id``) reference it polymorphically, so they are purged explicitly.
     """
     deleted = await datastore.delete_person(person_id=id)
     if deleted:
         deleted_comments = await comment_datastore.delete_by_commentable(
-            commentable_type=CommentableType.PERSON, commentable_id=id
-        ) + await comment_datastore.delete_by_commentable(commentable_type=CommentableType.ENTITY, commentable_id=id)
+            commentable_type=CommentableType.ENTITY, commentable_id=id
+        )
         await entity_datastore.delete_person_entity(person_id=id)
         logger.info(f"Purged {deleted_comments} comments for person {id} before delete")
     return deleted

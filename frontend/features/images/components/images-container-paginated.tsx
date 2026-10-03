@@ -11,6 +11,7 @@ import type {
   PaginatedImageSimilarityResponse,
 } from "../types";
 import type { GridSelection } from "@/hooks/use-grid-selection";
+import type { ImageAnnotation } from "../hooks/use-image-annotation";
 import { ImageCard } from "./image-card";
 import { ImageViewerDialog } from "./image-viewer-dialog";
 
@@ -19,6 +20,8 @@ interface ImagesContainerPaginatedProps {
   onSimilar: (id: string) => void;
   /** Enables multi-select checkboxes on the cards. */
   selection?: GridSelection;
+  /** Annotate mode: card clicks label the annotation's tag instead of selecting / expanding. */
+  annotation?: ImageAnnotation;
   /** Tags the grid is filtered to, so cards can show their rejected / predicted state. */
   reviewTags?: string[];
   currentPage: number;
@@ -33,6 +36,7 @@ export function ImagesContainerPaginated({
   data,
   onSimilar,
   selection,
+  annotation,
   reviewTags,
   currentPage,
   onPageChange,
@@ -118,6 +122,13 @@ export function ImagesContainerPaginated({
                   range
                 ))
             }
+            annotation={
+              annotation && {
+                label: annotation.labelFor(image),
+                isStaged: annotation.isStaged(image.id),
+              }
+            }
+            onAnnotate={(target, range) => annotation?.cycle(target, images, range)}
           />
         ))}
       </div>

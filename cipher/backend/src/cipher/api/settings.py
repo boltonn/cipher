@@ -46,6 +46,9 @@ class Settings(BaseServiceSettings):
     postgres: PostgresConfig | None = Field(None, description="Postgres configuration object")
     retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig, description="Chunk-search backend selection")
     mode: DevelopmentMode = Field(DevelopmentMode.DEV, description="Development mode")
+    access_cache_seconds: float = Field(
+        30, description="How long a user and their dataset memberships are cached per process (0 disables)"
+    )
     person_reference_dir: Path = Field(
         ...,
         description="Local directory where uploaded person reference photos are stored",

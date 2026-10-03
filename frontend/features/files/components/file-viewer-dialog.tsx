@@ -35,6 +35,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { filesService, useFile, useFileText } from "../api";
 import type { FileBrowserItem, FileLocationTarget } from "../types";
+import { FileTagsEditor } from "./file-tags-editor";
 import { FileMetadataPanel } from "./file-metadata-panel";
 import { FileViewerContent, useFileViewerData } from "./file-viewer-content";
 
@@ -150,7 +151,10 @@ export function FileViewerDialog({
                 </TabsList>
 
                 <TabsContent value="details" className="mt-4">
-                  <FileMetadataPanel file={file} />
+                  <div className="space-y-4">
+                    <FileMetadataPanel file={file} />
+                    {file.id && <FileTagsEditor fileId={file.id} />}
+                  </div>
                 </TabsContent>
 
                 <TabsContent value="text" className="mt-4">

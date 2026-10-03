@@ -11,8 +11,10 @@ import {
   Search,
   Settings,
   Share2,
+  ShieldCheck,
   Smile,
   User,
+  Users,
   Waypoints,
 } from "lucide-react";
 
@@ -33,6 +35,8 @@ export interface NavItem {
  *  - `explore`    — the knowledge graph and its derived layers, as analytical
  *                   surfaces you read and annotate.
  *  - `media`      — raw visual assets you browse directly.
+ *  - `admin`      — admin-only management pages, reached from the sidebar's
+ *                   admin launcher (rendered only for admins).
  */
 export const NAV = {
   home: {
@@ -108,6 +112,22 @@ export const NAV = {
       url: "/faces",
       icon: Smile,
       blurb: "Detected faces awaiting review or matched to a person.",
+    },
+  ] as NavItem[],
+
+  adminHome: {
+    title: "Admin",
+    url: "/admin",
+    icon: ShieldCheck,
+    blurb: "Admin-only management.",
+  } as NavItem,
+
+  admin: [
+    {
+      title: "Users",
+      url: "/admin/users",
+      icon: Users,
+      blurb: "Who can sign in, who is an admin, and which datasets each user can access.",
     },
   ] as NavItem[],
 

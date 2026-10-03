@@ -493,7 +493,7 @@ export default function PersonDetailPage({
             wrapper, or the heading shows twice. */}
           <section id="comments" className="scroll-mt-20">
             <div className="rounded-2xl border border-border bg-muted/40 p-5 backdrop-blur-2xl">
-              <CommentSection commentableType="person" commentableId={id} />
+              <CommentSection commentableType="entity" commentableId={id} />
             </div>
           </section>
         </div>

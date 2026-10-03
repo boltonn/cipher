@@ -2,6 +2,7 @@ from sqlalchemy import asc, delete, desc, exists, func, literal, or_, select, up
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cipher.datastores.postgres.repositories._merge import repoint_entity_references
+from cipher.datastores.postgres.repositories.tag import PostgresTagRepository
 from cipher.datastores.postgres.tables.entity import EntityTable
 from cipher.datastores.postgres.tables.face import FaceTable
 from cipher.datastores.postgres.tables.face_match import FaceMatchTable
@@ -22,6 +23,7 @@ from cipher.schemas.identity.person import (
     PersonSource,
     PersonUpdate,
 )
+from cipher.schemas.interaction.tag import TagSource, TagTargetType
 
 
 class PostgresPersonRepository:
@@ -40,13 +42,23 @@ class PostgresPersonRepository:
         result = await self.session.execute(select(func.count(PersonTable.id)))
         return result.scalar_one()
 
-    async def add_person(self, person: PersonCreate) -> Person:
-        """Create a new person."""
-        person_table = PersonTable(**person.model_dump())
+    async def add_person(self, person: PersonCreate, *, source: TagSource | None = None) -> Person:
+        """Create a new person; its `tags` are recorded as `source`'s on the person's entity (same id).
+
+        `person.tags` mirrors the entity's tags once `upsert_person_entity` creates the bridge.
+        """
+        person_table = PersonTable(**person.model_dump(exclude={"tags"}))
         self.session.add(person_table)
         await self.session.commit()
         await self.session.refresh(person_table)
-        return Person.model_validate(person_table)
+        created = Person.model_validate(person_table)
+        if person.tags:
+            if source is None:
+                raise ValueError("Person tags need a source (who or what tagged them)")
+            await PostgresTagRepository(self.session).set_tags(
+                target_type=TagTargetType.ENTITY, target_id=created.id, tags=person.tags, source=source
+            )
+        return created
 
     async def get_person_by_id(self, person_id: str) -> Person | None:
         """Retrieve a person by ID."""
@@ -54,9 +66,13 @@ class PostgresPersonRepository:
         person_table = result.scalar_one_or_none()
         return Person.model_validate(person_table) if person_table else None
 
-    async def update_person(self, person_id: str, data: PersonUpdate) -> Person | None:
-        """Update a person by ID."""
-        update_dict = data.model_dump(exclude_unset=True, by_alias=False)
+    async def update_person(self, person_id: str, data: PersonUpdate, *, user_id: str) -> Person | None:
+        """Update a person by ID; a `tags` list is recorded as `user_id`'s edit on the person's entity."""
+        if data.tags is not None:
+            await PostgresTagRepository(self.session).set_tags(
+                target_type=TagTargetType.ENTITY, target_id=person_id, tags=data.tags, source=TagSource.user(user_id)
+            )
+        update_dict = data.model_dump(exclude_unset=True, exclude={"tags"}, by_alias=False)
         stmt = update(PersonTable).where(PersonTable.id == person_id).values(**update_dict).returning(PersonTable)
         result = await self.session.execute(stmt)
         person_table = result.scalar_one_or_none()
@@ -162,7 +178,6 @@ class PostgresPersonRepository:
         )
         if target.name:
             merged_aliases = [a for a in merged_aliases if a != target.name]
-        merged_tags = list(dict.fromkeys([*target.tags, *source.tags]))
         merged_notes = "\n\n".join(n for n in [target.notes, source.notes] if n) or None
 
         await self.session.execute(
@@ -171,7 +186,6 @@ class PostgresPersonRepository:
             .values(
                 name=target.name or source.name,
                 aliases=merged_aliases,
-                tags=merged_tags,
                 notes=merged_notes,
                 date_of_birth=target.date_of_birth or source.date_of_birth,
                 sex=target.sex or source.sex,

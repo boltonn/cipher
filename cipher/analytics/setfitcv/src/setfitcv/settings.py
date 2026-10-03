@@ -24,5 +24,13 @@ class Settings(BaseServiceSettings):
     device: ModelDevice | None = Field(
         default=None, description="Device to use for the model", alias="IMAGE_EMBEDDING_MODE_DEVICE"
     )
+    heads_dir: Path | None = Field(
+        default=None, description="Trained tag heads (`heads.safetensors` + `heads.json`)", alias="IMAGE_HEADS_DIR"
+    )
+    classify: bool = Field(
+        default=False,
+        description="Score every image with the tag heads during inference (needs IMAGE_HEADS_DIR)",
+        alias="IMAGE_CLASSIFY",
+    )
 
     model_config = SettingsConfigDict(env_file=".env", protected_namespaces=[])

@@ -1,9 +1,8 @@
 from io import BytesIO
 from typing import Annotated
 
-import numpy as np
 from loguru import logger
-from PIL import Image, ImageOps
+from PIL import Image
 
 from cipher.utils.fastapi.health import ServiceHealthStatus, service_health
 from cipher.utils.fastapi.info import ServiceInfo, get_package_info
@@ -13,7 +12,7 @@ from cipher.utils.fastapi.middleware import (
     validation_exception_handler,
 )
 from setfitcv.api.deps import ImageEmbeddingModelDep, model_lifespan
-from setfitcv.schemas import ClipTextRequest
+from setfitcv.schemas import ClipTextRequest, EmbeddingsClassifyRequest, ImageInference
 from setfitcv.settings import Settings
 from setfitcv.utils import ImageMetadataExtractor
 
@@ -22,7 +21,7 @@ service_info = get_package_info("setfitcv")
 
 try:
     import uvicorn
-    from fastapi import Depends, FastAPI, UploadFile
+    from fastapi import FastAPI, HTTPException, Query, UploadFile
     from fastapi.exceptions import RequestValidationError
     from fastapi.middleware.cors import CORSMiddleware
     from starlette.middleware.base import BaseHTTPMiddleware
@@ -64,28 +63,43 @@ async def info() -> ServiceInfo:
 
 
 @app.post("/infer/text")
-async def infer_text(
-    request: ClipTextRequest,
-    model: Annotated[ImageEmbeddingModelDep, Depends()],
-):
+async def infer_text(request: ClipTextRequest, model: ImageEmbeddingModelDep) -> list[float]:
     """Infer embedding for a single text query."""
-    embedding = model.embed_txt(text=request.text, normalized=request.normalized)
-    embedding = np.squeeze(embedding)
-    return embedding.tolist()
+    return await model.infer_text(text=request.text)
 
 
 @app.post("/infer/image")
 async def infer_image(
     img: UploadFile,
-    model: Annotated[ImageEmbeddingModelDep, Depends()],
-):
-    """Infer embedding for a single image."""
-    img = await img.read()
-    img = Image.open(BytesIO(img)).convert("RGB")
-    img = ImageOps.exif_transpose(img)
-    embedding = await model.infer(image=img, normalized=True)
-    embedding = np.squeeze(embedding)
-    return embedding.tolist()
+    model: ImageEmbeddingModelDep,
+    classify: Annotated[bool | None, Query(description="Include tag head scores; defaults to IMAGE_CLASSIFY")] = None,
+) -> ImageInference:
+    """Infer the embedding for a single image, plus tag head scores when classification is on."""
+    image_bytes = await img.read()
+    use_heads = model.heads is not None if classify is None else classify
+    if use_heads:
+        if model.heads is None:
+            raise HTTPException(status_code=400, detail="Classification is off (set IMAGE_CLASSIFY and IMAGE_HEADS_DIR)")
+        embedding, tag_scores = await model.infer_image_with_tags(image_bytes)
+        return ImageInference(embedding=embedding, tag_scores=tag_scores, heads_version=model.heads.version)
+    return ImageInference(embedding=await model.infer_image(image_bytes))
+
+
+@app.post("/classify/embeddings")
+async def classify_embeddings(request: EmbeddingsClassifyRequest, model: ImageEmbeddingModelDep) -> list[dict[str, float]]:
+    """Score already-computed (normalized) CLIP embeddings with the tag heads -- CPU only, no images."""
+    if model.heads is None:
+        raise HTTPException(status_code=400, detail="Classification is off (set IMAGE_CLASSIFY and IMAGE_HEADS_DIR)")
+    return model.classify_embeddings(request.embeddings)
+
+
+@app.get("/heads")
+async def heads_info(model: ImageEmbeddingModelDep) -> dict:
+    """The loaded tag heads: tags, version, embedding model and per-tag training metrics (empty when off)."""
+    if model.heads is None:
+        return {"enabled": False}
+    heads = model.heads
+    return {"enabled": True, "version": heads.version, "embeddingModel": heads.embedding_model, "metrics": heads.metrics}
 
 
 @app.post("/exif")

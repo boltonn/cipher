@@ -12,6 +12,7 @@ from sqlalchemy import and_, delete, literal, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cipher.datastores.postgres.repositories.entity_name_key import refresh_entity_name_keys
+from cipher.datastores.postgres.repositories.tag import PostgresTagRepository
 from cipher.datastores.postgres.tables.comment import CommentTable
 from cipher.datastores.postgres.tables.entity import EntityTable
 from cipher.datastores.postgres.tables.entity_match import EntityMatchTable
@@ -22,6 +23,7 @@ from cipher.datastores.postgres.tables.mention import MentionTable
 from cipher.datastores.postgres.tables.person import PersonTable
 from cipher.schemas.graph.entity_match import EntityMatchStatus
 from cipher.schemas.interaction.comment import CommentableType
+from cipher.schemas.interaction.tag import TagTargetType
 
 
 async def _repoint_edge_table(session: AsyncSession, table, *, source_id: str, target_id: str) -> int:
@@ -110,7 +112,7 @@ async def repoint_entity_references(session: AsyncSession, *, source_id: str, ta
             update(CommentTable)
             .where(
                 CommentTable.commentable_id == source_id,
-                CommentTable.commentable_type.in_([CommentableType.PERSON, CommentableType.ENTITY]),
+                CommentTable.commentable_type == CommentableType.ENTITY,
             )
             .values(commentable_id=target_id)
         )
@@ -123,7 +125,16 @@ async def repoint_entity_references(session: AsyncSession, *, source_id: str, ta
         "entity_matches": entity_matches,
         "event_participants": event_participants,
         "comments": comments,
+        "tags": await _repoint_tags(session, source_id=source_id, target_id=target_id),
     }
+
+
+async def _repoint_tags(session: AsyncSession, *, source_id: str, target_id: str) -> int:
+    """Move the source's tag assignments onto the target and rebuild its tag columns (person mirror included)."""
+    tags = PostgresTagRepository(session)
+    moved = len(await tags.list_for_target(target_type=TagTargetType.ENTITY, target_id=source_id))
+    await tags.retarget(target_type=TagTargetType.ENTITY, source_id=source_id, target_id=target_id)
+    return moved
 
 
 def _collides(existing, *, column: str, target_id: str, key_cols: tuple[str, ...], extra: tuple = ()):

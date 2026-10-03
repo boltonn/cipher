@@ -1,6 +1,7 @@
 import type { FileRecord } from "@/features/files/types";
 import {
   BaseImageSearchParameters,
+  ImageAnnotateRequest,
   ImagePublic,
   ImageSimilaritySearchParameters,
   ImageTagRequest,
@@ -80,6 +81,12 @@ export const imagesService = {
   tag: (payload: ImageTagRequest) =>
     apiClient
       .post<ImageTagResult>(`${imagesBaseURL}/tag`, payload)
+      .then((res) => res.data),
+
+  // POST /images/annotate - one tag's positive / negative / cleared labels in one transaction
+  annotate: (payload: ImageAnnotateRequest) =>
+    apiClient
+      .post<ImageTagResult>(`${imagesBaseURL}/annotate`, payload)
       .then((res) => res.data),
 
   // GET /files/{id}/image -- a 404 just means this file has no Image record yet
@@ -163,5 +170,21 @@ export function useTagImages(onSuccess?: () => void) {
       onSuccess?.();
     },
     onError: () => toast.error("Couldn't update tags"),
+  });
+}
+
+/** Save a bulk annotation pass (see `useImageAnnotation`). */
+export function useAnnotateImages(onSuccess?: () => void) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: ImageAnnotateRequest) => imagesService.annotate(payload),
+    onSuccess: ({ updated }, { tag }) => {
+      queryClient.invalidateQueries({ queryKey: ["images"] });
+      toast.success(
+        `Saved “${tag}” on ${updated.toLocaleString()} image${updated === 1 ? "" : "s"}`
+      );
+      onSuccess?.();
+    },
+    onError: () => toast.error("Couldn't save labels"),
   });
 }

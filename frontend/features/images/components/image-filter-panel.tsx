@@ -1,27 +1,18 @@
 "use client";
 
 import { DateRangePicker } from "@/components/date-range-picker";
-import { TagsInput } from "@/components/tags-input";
-import { Button } from "@/components/ui/button";
-import { ButtonGroup } from "@/components/ui/button-group";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { DatasetMultiSelectCombobox } from "@/features/datasets/components/dataset-multi-select-combobox";
 import { useImageFiletypes } from "@/features/images/api";
 import { ImageFilters } from "@/features/images/hooks/use-search-controller";
-import type { TagStateType } from "@/features/images/types";
+import { TagFilterCombobox } from "@/features/tags/components/tag-filter-combobox";
+import { hasTagFilters } from "@/features/tags/tag-filter";
 import { cn } from "@/lib/utils";
 import { Filter, X } from "lucide-react";
 import React, { useState } from "react";
 
 const DEFAULT_MIN_TAG_SCORE = 0.5;
-
-/** Which tag store the Tags filter reads; `predicted` is model output awaiting review. */
-const TAG_STATES: { value: TagStateType; label: string }[] = [
-  { value: "positive", label: "Tagged" },
-  { value: "predicted", label: "Predicted" },
-  { value: "negative", label: "Rejected" },
-];
 
 export function hasActiveImageFilters(params: ImageFilters): boolean {
   return !!(
@@ -29,7 +20,7 @@ export function hasActiveImageFilters(params: ImageFilters): boolean {
     params.dateTo ||
     params.datasets?.length ||
     params.filetypes?.length ||
-    params.tags?.length ||
+    hasTagFilters(params) ||
     (params.minSimilarity ?? 0) > 0
   );
 }
@@ -60,7 +51,6 @@ export const ImageFilterPanel: React.FC<ImageFilterPanelProps> = ({
     setPrevMinTagScore(params.minTagScore);
     setLocalTagScore(params.minTagScore ?? DEFAULT_MIN_TAG_SCORE);
   }
-  const tagState = params.tagState ?? "positive";
   if (params.minSimilarity !== prevMinSimilarity) {
     setPrevMinSimilarity(params.minSimilarity);
     setLocalSimilarity(params.minSimilarity ?? 0);
@@ -171,30 +161,12 @@ export const ImageFilterPanel: React.FC<ImageFilterPanelProps> = ({
           <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
             Tags
           </span>
-          <TagsInput
-            value={params.tags ?? []}
-            onChange={(tags) => updateParam("tags", tags.length ? tags : undefined)}
-            placeholder="Add a tag..."
+          <TagFilterCombobox
+            value={params}
+            onChange={(tagFilters) => setParams((prev) => ({ ...prev, ...tagFilters }))}
+            allowPredicted
           />
-          <ButtonGroup>
-            {TAG_STATES.map((state) => (
-              <Button
-                key={state.value}
-                size="sm"
-                variant={tagState === state.value ? "default" : "outline"}
-                className={cn(
-                  "h-7 text-[11px]",
-                  state.value === "predicted" &&
-                    tagState === "predicted" &&
-                    "bg-annotation text-annotation-foreground hover:bg-annotation/90"
-                )}
-                onClick={() => updateParam("tagState", state.value)}
-              >
-                {state.label}
-              </Button>
-            ))}
-          </ButtonGroup>
-          {tagState === "predicted" && (
+          {!!params.predictedTags?.length && (
             <div className="flex flex-col gap-1">
               <div className="flex items-center justify-between">
                 <Label

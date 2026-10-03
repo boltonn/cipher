@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Query
 from loguru import logger
 from pyselectors.normalize import normalize_selector
 
+from cipher.api.deps.access import DatasetAccessDep
 from cipher.api.deps.authentication import CurrentUserDep
 from cipher.api.deps.postgres import (
     CommentDatastoreDep,
@@ -81,6 +82,7 @@ from cipher.schemas.graph.ontology import (
 from cipher.schemas.graph.organization import OrganizationStructure, OrganizationUpdate
 from cipher.schemas.graph.selector import SelectorEvidence, SelectorLinkRequest, SelectorRegion, SelectorUpdate
 from cipher.schemas.interaction.comment import CommentableType
+from cipher.schemas.interaction.tag import TagSource
 
 router = APIRouter(prefix="/entities", tags=["entities"])
 
@@ -101,9 +103,9 @@ def _normalize_selector_value(
 
 
 @router.post("", summary="Create an entity node", response_model=Entity, **_BY_ALIAS)
-async def create_entity(entity: EntityCreate, datastore: EntityDatastoreDep) -> Entity:
-    """Manually create an entity node (detail rows are attached separately)."""
-    return await datastore.create_entity(entity)
+async def create_entity(entity: EntityCreate, user: CurrentUserDep, datastore: EntityDatastoreDep) -> Entity:
+    """Manually create an entity node (detail rows are attached separately); its tags are yours."""
+    return await datastore.create_entity(entity, source=TagSource.user(user.id))
 
 
 @router.get("", summary="List/filter entities", response_model=PaginatedEntitiesResponse, **_BY_ALIAS)
@@ -301,9 +303,11 @@ async def get_entity(entity_id: str, datastore: EntityDatastoreDep) -> Entity:
 
 
 @router.patch("/{entity_id}", summary="Update an entity", response_model=Entity, **_BY_ALIAS)
-async def update_entity(entity_id: str, data: EntityUpdate, datastore: EntityDatastoreDep) -> Entity:
-    """Patch an entity node."""
-    entity = await datastore.update_entity(entity_id, data)
+async def update_entity(
+    entity_id: str, data: EntityUpdate, user: CurrentUserDep, datastore: EntityDatastoreDep
+) -> Entity:
+    """Patch an entity node; a tag list edit is recorded as yours."""
+    entity = await datastore.update_entity(entity_id, data, user_id=user.id)
     if entity is None:
         raise EntityNotFoundError("Entity", entity_id)
     return entity
@@ -392,12 +396,18 @@ async def delete_entity(
 
 
 @router.get("/{entity_id}/profile", summary="Entity dossier", response_model=EntityProfile, **_BY_ALIAS)
-async def get_entity_profile(entity_id: str, datastore: EntityDatastoreDep) -> EntityProfile:
-    """Aggregate view: attributes, selectors, mention counts, related entities, linked faces."""
+async def get_entity_profile(entity_id: str, access: DatasetAccessDep, datastore: EntityDatastoreDep) -> EntityProfile:
+    """Aggregate view: attributes, selectors, mention counts, related entities, linked faces.
+
+    The entity graph is open to everyone; the sample mentions quote file text, so only
+    those from your datasets are included.
+    """
     profile = await datastore.get_profile(entity_id)
     if profile is None:
         raise EntityNotFoundError("Entity", entity_id)
-    return profile
+    return profile.model_copy(
+        update={"top_mentions": [m for m in profile.top_mentions if access.allows(m.dataset_id)]}
+    )
 
 
 @router.post("/{entity_id}/promote", summary="Promote a provisional entity", response_model=Entity, **_BY_ALIAS)
@@ -665,6 +675,7 @@ async def detach_selector(entity_id: str, selector_id: str, graph: GraphDatastor
 )
 async def list_entity_mentions(
     entity_id: str,
+    access: DatasetAccessDep,
     datastore: MentionDatastoreDep,
     mentioned_type: Annotated[MentionedType | None, Query()] = None,
     provenance: Annotated[MentionProvenance | None, Query()] = None,
@@ -672,16 +683,18 @@ async def list_entity_mentions(
     limit: Annotated[int, Query(ge=1, le=200)] = 25,
     page: Annotated[int, Query(ge=1)] = 1,
 ) -> PaginatedMentionsResponse:
-    """List the evidence spans that mention this entity, optionally one evidence class."""
+    """List the evidence spans that mention this entity in your datasets, optionally one evidence class."""
     return await datastore.list_mentions(
-        MentionSearchParameters(
+        access.scoped(
+            MentionSearchParameters(
             entity_id=entity_id,
             mentioned_type=mentioned_type,
             provenance=provenance,
             file_id=file_id,
-            resolved=True,
-            limit=limit,
-            page=page,
+                resolved=True,
+                limit=limit,
+                page=page,
+            )
         )
     )
 

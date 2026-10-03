@@ -74,6 +74,8 @@ def _build_chunk_filters(filters: ChunkFilters) -> list[dict]:
     clauses: list[dict] = []
     if filters.dataset_id is not None:
         clauses.append({"term": {"dataset_id": filters.dataset_id}})
+    if filters.dataset_ids is not None:
+        clauses.append({"terms": {"dataset_id": filters.dataset_ids}})
     if filters.file_id is not None:
         clauses.append(_file_id_clause(filters.file_id))
     if filters.tags:

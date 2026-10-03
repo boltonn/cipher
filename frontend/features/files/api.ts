@@ -6,11 +6,22 @@ import type {
   FileText,
 } from "@/features/files/types";
 import { apiClient, baseURL } from "@/lib/api-client";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 
 export const filesService = {
   getById: async (id: string): Promise<FileRecord> => {
     const { data } = await apiClient.get<FileRecord>(`/files/${id}`);
+    return data;
+  },
+  setTags: async (id: string, tags: string[]): Promise<FileRecord> => {
+    const { data } = await apiClient.put<FileRecord>(`/files/${id}/tags`, {
+      tags,
+    });
     return data;
   },
   browseDataset: async (
@@ -40,6 +51,15 @@ export const filesService = {
     return data;
   },
 };
+
+/** Set a file's tags; the cached file record is replaced with the server's. */
+export function useSetFileTags(fileId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (tags: string[]) => filesService.setTags(fileId, tags),
+    onSuccess: (file) => queryClient.setQueryData(["files", fileId], file),
+  });
+}
 
 export function useFile(fileId: string | undefined) {
   return useQuery({

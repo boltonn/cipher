@@ -32,9 +32,10 @@ from cipher.datastores.postgres.repositories.image import PostgresImageRepositor
 from cipher.datastores.postgres.repositories.location import PostgresLocationRepository
 from cipher.datastores.postgres.repositories.mention import PostgresMentionRepository
 from cipher.datastores.postgres.repositories.person import PostgresPersonRepository
+from cipher.datastores.postgres.repositories.tag import PostgresTagRepository
 from cipher.datastores.postgres.repositories.user import PostgresUserRepository
 from cipher.datastores.postgres.tables.base import Base
-from cipher.schemas._base.common import SortOrder, TagState
+from cipher.schemas._base.common import SortOrder
 from cipher.schemas.content.image import Image, ImageSimilaritySearchParameters, ImageSortField
 from cipher.schemas.identity.face import Face, FaceSimilaritySearchParameters, FaceSortField
 from cipher.schemas.identity.face_match import FaceMatch
@@ -222,6 +223,12 @@ async def get_event_repository() -> AsyncGenerator[PostgresEventRepository, None
         yield PostgresEventRepository(session=session)
 
 
+async def get_tag_repository() -> AsyncGenerator[PostgresTagRepository, None]:
+    """Dependency injector for PostgresTagRepository."""
+    async with get_session() as session:
+        yield PostgresTagRepository(session=session)
+
+
 DatasetDatastoreDep = Annotated[PostgresDatasetRepository, Depends(get_dataset_repository)]
 EnrichmentDatastoreDep = Annotated[PostgresEnrichmentRepository, Depends(get_enrichment_repository)]
 EnrichmentRunDatastoreDep = Annotated[PostgresEnrichmentRunRepository, Depends(get_enrichment_run_repository)]
@@ -242,21 +249,23 @@ RelationshipCandidateDatastoreDep = Annotated[
 ]
 EntityMatchDatastoreDep = Annotated[PostgresEntityMatchRepository, Depends(get_entity_match_repository)]
 EventDatastoreDep = Annotated[PostgresEventRepository, Depends(get_event_repository)]
+TagDatastoreDep = Annotated[PostgresTagRepository, Depends(get_tag_repository)]
 
 
 def image_similarity_params_form(
     page: Annotated[int, Form(ge=1)],
     limit: Annotated[int, Form(ge=1, le=100)] = 10,
-    sort_by: Annotated[str, Form()] = ImageSortField.SIMILARITY,
-    sort_order: Annotated[SortOrder, Form()] = SortOrder.DESC,
-    min_similarity: Annotated[float | None, Form(ge=0.0, le=1.0)] = None,
-    date_from: Annotated[str | None, Form()] = None,
-    date_to: Annotated[str | None, Form()] = None,
+    sort_by: Annotated[str, Form(alias="sortBy")] = ImageSortField.SIMILARITY,
+    sort_order: Annotated[SortOrder, Form(alias="sortOrder")] = SortOrder.DESC,
+    min_similarity: Annotated[float | None, Form(alias="minSimilarity", ge=0.0, le=1.0)] = None,
+    date_from: Annotated[str | None, Form(alias="dateFrom")] = None,
+    date_to: Annotated[str | None, Form(alias="dateTo")] = None,
     datasets: Annotated[list[str] | None, Form()] = None,
     filetypes: Annotated[list[str] | None, Form()] = None,
     tags: Annotated[list[str] | None, Form()] = None,
-    tag_state: Annotated[TagState, Form()] = TagState.POSITIVE,
-    min_tag_score: Annotated[float, Form(ge=0.0, le=1.0)] = 0.5,
+    negative_tags: Annotated[list[str] | None, Form(alias="negativeTags")] = None,
+    predicted_tags: Annotated[list[str] | None, Form(alias="predictedTags")] = None,
+    min_tag_score: Annotated[float, Form(alias="minTagScore", ge=0.0, le=1.0)] = 0.5,
 ):
     """Dependency injector for ImageSimilaritySearchParameters from form data.
 
@@ -276,7 +285,8 @@ def image_similarity_params_form(
             "datasets": datasets,
             "filetypes": filetypes,
             "tags": tags,
-            "tag_state": tag_state,
+            "negative_tags": negative_tags,
+            "predicted_tags": predicted_tags,
             "min_tag_score": min_tag_score,
         }
     )
@@ -290,9 +300,9 @@ ImageSimilaritySearchFormParametersDep = Annotated[
 def face_similarity_params_form(
     page: Annotated[int, Form(ge=1)],
     limit: Annotated[int, Form(ge=1, le=100)] = 10,
-    sort_by: Annotated[str, Form()] = FaceSortField.SIMILARITY,
-    sort_order: Annotated[SortOrder, Form()] = SortOrder.DESC,
-    min_similarity: Annotated[float | None, Form(ge=0.0, le=1.0)] = None,
+    sort_by: Annotated[str, Form(alias="sortBy")] = FaceSortField.SIMILARITY,
+    sort_order: Annotated[SortOrder, Form(alias="sortOrder")] = SortOrder.DESC,
+    min_similarity: Annotated[float | None, Form(alias="minSimilarity", ge=0.0, le=1.0)] = None,
 ):
     """Dependency injector for FaceSimilaritySearchParameters from form data.
 
@@ -369,6 +379,7 @@ __all__ = [
     "RelationshipCandidateDatastoreDep",
     "EntityMatchDatastoreDep",
     "EventDatastoreDep",
+    "TagDatastoreDep",
     "FaceSimilaritySearchFormParametersDep",
     "postgres_lifespan",
 ]

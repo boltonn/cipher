@@ -99,6 +99,8 @@ export interface FileSearchResultRaw {
   matchCount: number;
   /** Matching chunks, in reading order. */
   chunks: SearchChunkRaw[];
+  /** The file content's current tags (read live -- a chunk's own `tags` is an indexing-time copy). */
+  tags: string[];
 }
 
 export type PaginatedFileSearchResponse = PaginatedResponse<FileSearchResultRaw> & {
@@ -145,6 +147,8 @@ export interface GroupedFileResult {
   topChunkId: string;
   /** Total matching chunks in this file; may exceed `chunks.length` if capped server-side. */
   matchCount: number;
+  /** The file content's current tags. */
+  tags: string[];
 }
 
 /** Selecting a search result always includes its matched `chunkId`; `chunkId` stays optional for a plain file-browser-style selection with no match to highlight. */

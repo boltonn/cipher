@@ -552,7 +552,20 @@ class PostgresFaceRepository:
                     ),
                 )
             )
+        if request.datasets:
+            filters.append(
+                exists(
+                    select(literal(1))
+                    .select_from(FileTable)
+                    .where(FileTable.sha256 == FaceTable.image_id, FileTable.dataset_id.in_(request.datasets))
+                )
+            )
         return filters
+
+    async def get_image_ids(self, face_ids: list[str]) -> list[str]:
+        """Distinct source images (sha256) of these faces."""
+        result = await self.session.execute(select(FaceTable.image_id).where(FaceTable.id.in_(face_ids)).distinct())
+        return list(result.scalars().all())
 
     async def search_faces(self, request: BaseFaceSearchParameters) -> PaginatedFacesResponse:
         """Query faces with filtering, pagination, and sorting."""

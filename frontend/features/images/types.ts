@@ -9,9 +9,6 @@ const ImageSortField = {
 export type ImageSortFieldType =
   (typeof ImageSortField)[keyof typeof ImageSortField];
 
-/** Which tag store a tag filter reads: analyst labels, or unlabelled model predictions. */
-export type TagStateType = "positive" | "negative" | "predicted";
-
 /** `positive` -> `tags`, `negative` -> `negativeTags`; omitted clears the label. */
 export type ModelTagType = "positive" | "negative";
 
@@ -19,6 +16,15 @@ export interface ImageTagRequest {
   imageIds: string[];
   tag: string;
   type?: ModelTagType;
+}
+
+/** One tag's labels for many images, saved in one call. */
+export interface ImageAnnotateRequest {
+  tag: string;
+  positive: string[];
+  negative: string[];
+  /** Images to unlabel. */
+  cleared: string[];
 }
 
 export interface ImageTagResult {
@@ -30,8 +36,12 @@ export interface BaseImageSearchParameters {
   dateTo?: string;
   datasets?: string[];
   filetypes?: string[];
+  /** Labelled with any of these. */
   tags?: string[];
-  tagState?: TagStateType;
+  /** Labelled as not any of these. */
+  negativeTags?: string[];
+  /** Unlabelled, and a model scored at least `minTagScore` on any of these. */
+  predictedTags?: string[];
   minTagScore?: number;
   sortBy?: ImageSortFieldType;
   sortOrder?: SortOrderType;

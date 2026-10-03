@@ -1,4 +1,5 @@
-export type CommentableType = "dataset" | "image" | "person" | "file" | "entity";
+/** `entity` covers every entity type (person, organization, location, ...) -- a person shares its entity's id. */
+export type CommentableType = "dataset" | "image" | "file" | "entity";
 
 export interface Comment {
   id: string;

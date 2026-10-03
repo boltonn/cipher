@@ -11,7 +11,7 @@ import {
   PromptInputTools,
   type PromptInputMessage,
 } from "@/components/ai-elements/prompt-input";
-import { DatasetSelect } from "@/features/datasets/components/dataset-select";
+import { DatasetMultiSelectCombobox } from "@/features/datasets/components/dataset-multi-select-combobox";
 import type { ChatStatus, UIMessage } from "ai";
 import { Trash2Icon } from "lucide-react";
 import { useState } from "react";
@@ -20,8 +20,8 @@ import { ModelConfigPopover } from "./model-config-popover";
 interface ChatInputProps {
   status: ChatStatus;
   messages: UIMessage[];
-  datasetId?: string;
-  onDatasetIdChange: (datasetId: string | undefined) => void;
+  datasetIds: string[];
+  onDatasetIdsChange: (datasetIds: string[]) => void;
   onSubmit: (message: PromptInputMessage) => void;
   onStop: () => void;
   onClear: () => void;
@@ -30,8 +30,8 @@ interface ChatInputProps {
 export function ChatInput({
   status,
   messages,
-  datasetId,
-  onDatasetIdChange,
+  datasetIds,
+  onDatasetIdsChange,
   onSubmit,
   onStop,
   onClear,
@@ -56,7 +56,14 @@ export function ChatInput({
       <PromptInputFooter>
         <PromptInputTools>
           <ModelConfigPopover />
-          <DatasetSelect datasetId={datasetId} onChange={onDatasetIdChange} className="h-7 w-44" />
+          <DatasetMultiSelectCombobox
+            compact
+            value={datasetIds}
+            onChange={onDatasetIdsChange}
+            placeholder="All my datasets"
+            className="w-44"
+            triggerClassName="h-7"
+          />
           {messages.length > 0 && (
             <ConversationDownload
               messages={messages}

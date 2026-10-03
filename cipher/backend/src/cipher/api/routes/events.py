@@ -12,6 +12,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query, Response
 
+from cipher.api.deps.authentication import CurrentUserDep
 from cipher.api.deps.postgres import EventDatastoreDep
 from cipher.schemas._base.exceptions import EntityNotFoundError
 from cipher.schemas.graph.event import (
@@ -25,6 +26,7 @@ from cipher.schemas.graph.event import (
 )
 from cipher.schemas.graph.event_participant import EventParticipant, EventParticipantCreate
 from cipher.schemas.graph.event_place import EventPlace, EventPlaceCreate
+from cipher.schemas.interaction.tag import TagSource
 
 router = APIRouter(prefix="/events", tags=["events"])
 
@@ -73,15 +75,17 @@ async def tag_values(
 
 
 @router.post("", summary="Create an event", response_model=Event, **_BY_ALIAS)
-async def create_event(payload: EventCreate, datastore: EventDatastoreDep) -> Event:
-    """Record an event (analyst-authored, or written by an extraction pass)."""
-    return await datastore.add_event(payload)
+async def create_event(payload: EventCreate, user: CurrentUserDep, datastore: EventDatastoreDep) -> Event:
+    """Record an event (analyst-authored, or written by an extraction pass); its tags are the user's."""
+    return await datastore.add_event(payload, source=TagSource.user(user.id))
 
 
 @router.post("/mark-invalid", summary="Mark events invalid", status_code=204)
-async def mark_events_invalid(payload: EventIdsRequest, datastore: EventDatastoreDep) -> Response:
-    """Delete events that are not real; a source file left with none is tagged `event` negative."""
-    await datastore.delete_events(payload.event_ids)
+async def mark_events_invalid(
+    payload: EventIdsRequest, user: CurrentUserDep, datastore: EventDatastoreDep
+) -> Response:
+    """Delete events that are not real; a source file left with none is tagged `event` negative by you."""
+    await datastore.delete_events(payload.event_ids, user_id=user.id)
     return Response(status_code=204)
 
 
@@ -95,18 +99,20 @@ async def get_event(event_id: str, datastore: EventDatastoreDep) -> EventWithLin
 
 
 @router.patch("/{event_id}", summary="Update an event", response_model=Event, **_BY_ALIAS)
-async def update_event(event_id: str, data: EventUpdate, datastore: EventDatastoreDep) -> Event:
-    """Patch an event's fields (time, status, details, verification)."""
-    event = await datastore.update_event(event_id, data)
+async def update_event(
+    event_id: str, data: EventUpdate, user: CurrentUserDep, datastore: EventDatastoreDep
+) -> Event:
+    """Patch an event's fields (time, status, details, verification, tags)."""
+    event = await datastore.update_event(event_id, data, user_id=user.id)
     if event is None:
         raise EntityNotFoundError("Event", event_id)
     return event
 
 
 @router.delete("/{event_id}", summary="Delete an event", status_code=204)
-async def delete_event(event_id: str, datastore: EventDatastoreDep) -> Response:
+async def delete_event(event_id: str, user: CurrentUserDep, datastore: EventDatastoreDep) -> Response:
     """Delete an event and its participant/place rows."""
-    if not await datastore.delete_event(event_id):
+    if not await datastore.delete_event(event_id, user_id=user.id):
         raise EntityNotFoundError("Event", event_id)
     return Response(status_code=204)
 

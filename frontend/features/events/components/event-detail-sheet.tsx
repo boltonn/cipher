@@ -3,7 +3,7 @@
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { CopyableId } from "@/components/copyable-id";
 import { DatePicker } from "@/components/date-picker";
-import { TagsInput } from "@/components/tags-input";
+import { ProvenanceTagsInput } from "@/features/tags/components/provenance-tags-input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -598,7 +598,8 @@ function EventEditForm({
         )}
 
         <LabeledField label="Tags">
-          <TagsInput
+          <ProvenanceTagsInput
+            target={{ targetType: "event", targetId: event.id }}
             value={tags}
             onChange={setTags}
             placeholder="Add a tag…"

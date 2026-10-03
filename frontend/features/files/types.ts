@@ -18,6 +18,10 @@ export interface FileRecord {
   size: number;
   dateCreated?: string;
   dateLastUpdated?: string;
+  /** Positive tags on the file's content (shared by every copy of the same bytes). */
+  tags: string[];
+  negativeTags: string[];
+  tagScores: Record<string, number>;
 }
 
 /** Reconstructed extracted text for a file, from its indexed search chunks. */

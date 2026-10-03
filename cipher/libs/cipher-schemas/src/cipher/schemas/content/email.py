@@ -232,6 +232,9 @@ class EmailCountRequest(CorrespondenceFilters):
     """
 
     dataset_id: str | None = None
+    dataset_ids: list[str] | None = Field(
+        default=None, description="Restrict to any of these datasets (set server-side to the caller's access)"
+    )
     group_by: EmailCountGroupBy = EmailCountGroupBy.CORRESPONDENT
     limit: int = Field(default=20, ge=1, le=500)
 

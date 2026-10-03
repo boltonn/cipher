@@ -20,6 +20,10 @@ export interface Dataset {
   description: string;
   dateCreated: string;
   dateLastUpdated: string;
+  /** Listed (locked) for users who aren't members. */
+  isDiscoverable: boolean;
+  /** Whether you can open, triage and search it; false = discoverable only (locked). */
+  hasAccess: boolean;
 }
 
 export interface DatasetSummary extends Dataset {
@@ -38,6 +42,7 @@ export type DatasetCreate = z.infer<typeof DatasetCreateSchema>;
 export const DatasetUpdateSchema = z.object({
   name: z.string().min(1, "Name is required").optional(),
   description: z.string().optional(),
+  isDiscoverable: z.boolean().optional(),
 });
 
 export type DatasetUpdate = z.infer<typeof DatasetUpdateSchema>;

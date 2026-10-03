@@ -3,6 +3,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
 
+from cipher.api.deps.access import DatasetAccessDep, DatasetIdDep
+from cipher.api.deps.authentication import AdminOnly
 from cipher.api.deps.elasticsearch import TextChunkDatastoreDep
 from cipher.api.deps.postgres import (
     CommentDatastoreDep,
@@ -10,11 +12,13 @@ from cipher.api.deps.postgres import (
     EnrichmentDatastoreDep,
     EnrichmentRunDatastoreDep,
     FileDatastoreDep,
+    UserDatastoreDep,
 )
 from cipher.api.services.enrichment_estimator import build_dataset_estimates
 from cipher.schemas.ingestion.dataset import (
     Dataset,
     DatasetCreate,
+    DatasetPublic,
     DatasetsRequest,
     DatasetStagingSummary,
     DatasetStatsRequest,
@@ -24,6 +28,7 @@ from cipher.schemas.ingestion.dataset import (
 )
 from cipher.schemas.ingestion.estimation import DatasetEnrichmentEstimates, RunDevice
 from cipher.schemas.ingestion.file import FileBrowserRequest, FileBrowserResponse
+from cipher.schemas.ingestion.user import User
 from cipher.schemas.interaction.comment import CommentableType
 
 router = APIRouter(
@@ -38,26 +43,27 @@ router = APIRouter(
     summary="Create a new dataset",
     response_model=Dataset,
     response_model_by_alias=True,
+    dependencies=[AdminOnly],
 )
-async def create_dataset(
-    dataset: DatasetCreate, datastore: DatasetDatastoreDep
-) -> Dataset:
-    """Create a new dataset."""
+async def create_dataset(dataset: DatasetCreate, datastore: DatasetDatastoreDep) -> Dataset:
+    """Admin: create a new dataset (everyone else files a dataset request)."""
     return await datastore.add_dataset(dataset)
 
 
 @router.get(
     "/{id}",
     summary="Get dataset by ID",
-    response_model=Dataset,
+    response_model=DatasetPublic,
     response_model_by_alias=True,
 )
-async def get_dataset_by_id(id: str, datastore: DatasetDatastoreDep):
-    """Get a single dataset by its ID."""
+async def get_dataset_by_id(id: str, access: DatasetAccessDep, datastore: DatasetDatastoreDep) -> DatasetPublic:
+    """A dataset you're a member of, or a discoverable one (with `hasAccess=false`, nothing else opens)."""
     dataset = await datastore.get_dataset_by_id(dataset_id=id)
-    if dataset is None:
+    has_access = access.allows(id)
+    if dataset is None or not (has_access or dataset.is_discoverable):
+        access.require(id)
         raise HTTPException(status_code=404, detail=f"Dataset not found: {id}")
-    return dataset
+    return DatasetPublic(**dataset.model_dump(), has_access=has_access)
 
 
 @router.get(
@@ -67,10 +73,21 @@ async def get_dataset_by_id(id: str, datastore: DatasetDatastoreDep):
     response_model_by_alias=True,
 )
 async def get_datasets(
-    params: Annotated[DatasetsRequest, Depends()], datastore: DatasetDatastoreDep
+    params: Annotated[DatasetsRequest, Depends()], access: DatasetAccessDep, datastore: DatasetDatastoreDep
 ):
-    """Get all datasets, optionally filtered by a search query, with pagination."""
-    return await datastore.get_datasets(request=params)
+    """Datasets you're a member of plus discoverable ones (`hasAccess` tells them apart), paginated."""
+    return await datastore.get_datasets(request=params, accessible_ids=access.dataset_ids)
+
+
+@router.get(
+    "/{id}/users",
+    summary="List a dataset's members",
+    response_model=list[User],
+    response_model_by_alias=True,
+)
+async def get_dataset_users(id: DatasetIdDep, user_datastore: UserDatastoreDep) -> list[User]:
+    """Users with explicit membership in a dataset (admins can see it too, without being listed)."""
+    return await user_datastore.get_dataset_users(dataset_id=id)
 
 
 @router.get(
@@ -80,7 +97,7 @@ async def get_datasets(
     response_model_by_alias=True,
 )
 async def get_dataset_stats(
-    id: str,
+    id: DatasetIdDep,
     params: Annotated[DatasetStatsRequest, Depends()],
     datastore: DatasetDatastoreDep,
 ):
@@ -96,7 +113,7 @@ async def get_dataset_stats(
     response_model=DatasetStagingSummary,
     response_model_by_alias=True,
 )
-async def get_dataset_staging(id: str, datastore: DatasetDatastoreDep):
+async def get_dataset_staging(id: DatasetIdDep, datastore: DatasetDatastoreDep):
     """Staging status + per-`filetype_group` counts/sizes -- the basis for enrichment estimates."""
     if await datastore.get_dataset_by_id(dataset_id=id) is None:
         raise HTTPException(status_code=404, detail=f"Dataset not found: {id}")
@@ -110,7 +127,7 @@ async def get_dataset_staging(id: str, datastore: DatasetDatastoreDep):
     response_model_by_alias=True,
 )
 async def get_dataset_enrichment_estimates(
-    id: str,
+    id: DatasetIdDep,
     dataset_datastore: DatasetDatastoreDep,
     file_datastore: FileDatastoreDep,
     enrichment_datastore: EnrichmentDatastoreDep,
@@ -140,7 +157,7 @@ async def get_dataset_enrichment_estimates(
     response_model_by_alias=True,
 )
 async def browse_dataset_files(
-    id: str,
+    id: DatasetIdDep,
     params: Annotated[FileBrowserRequest, Depends()],
     dataset_datastore: DatasetDatastoreDep,
     file_datastore: FileDatastoreDep,
@@ -156,6 +173,7 @@ async def browse_dataset_files(
     summary="Delete dataset by ID",
     response_model=bool,
     response_model_by_alias=True,
+    dependencies=[AdminOnly],
 )
 async def delete_dataset(
     id: str,
@@ -164,7 +182,7 @@ async def delete_dataset(
     comment_datastore: CommentDatastoreDep,
     text_chunk_datastore: TextChunkDatastoreDep,
 ) -> bool:
-    """Delete a dataset and everything scoped to it.
+    """Admin: delete a dataset and everything scoped to it.
 
     Most child records (files, extracted text, images, faces) cascade via
     FK when the dataset row goes. Enrichment and comment rows don't -- both
@@ -185,10 +203,8 @@ async def delete_dataset(
     return await datastore.delete_dataset(dataset_id=id)
 
 
-@router.put("/{id}", summary="Add or update a dataset", response_model=Dataset)
-async def update_dataset(
-    id: str, data: DatasetUpdate, datastore: DatasetDatastoreDep
-) -> Dataset:
-    """Add or update a dataset."""
+@router.put("/{id}", summary="Add or update a dataset", response_model=Dataset, dependencies=[AdminOnly])
+async def update_dataset(id: str, data: DatasetUpdate, datastore: DatasetDatastoreDep) -> Dataset:
+    """Admin: add or update a dataset."""
     logger.info(f"Updating dataset {id} with data: {data}")
     return await datastore.update_dataset(dataset_id=id, data=data)

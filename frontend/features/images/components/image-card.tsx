@@ -1,6 +1,6 @@
 "use client";
 
-import { TagsInput } from "@/components/tags-input";
+import { ProvenanceTagsInput } from "@/features/tags/components/provenance-tags-input";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -23,6 +23,7 @@ import {
 import Image from "next/image";
 import { useState } from "react";
 import { imagesService, useUpdateImageTags } from "../api";
+import type { AnnotationLabel } from "../hooks/use-image-annotation";
 import { ImagePublic, ImageSimilarityResult } from "../types";
 
 interface ImageCardProps {
@@ -35,6 +36,9 @@ interface ImageCardProps {
   /** Something in the grid is selected: a click toggles selection instead of expanding. */
   isSelectionActive?: boolean;
   onToggleSelect?: (image: ImagePublic, range: boolean) => void;
+  /** Annotate mode: the card's label for the tag being annotated; a click cycles it via `onAnnotate`. */
+  annotation?: { label: AnnotationLabel; isStaged: boolean };
+  onAnnotate?: (image: ImagePublic, range: boolean) => void;
 }
 
 export const ImageCard: React.FC<ImageCardProps> = ({
@@ -45,10 +49,13 @@ export const ImageCard: React.FC<ImageCardProps> = ({
   isSelected,
   isSelectionActive,
   onToggleSelect,
+  annotation,
+  onAnnotate,
 }) => {
   const [copied, setCopied] = useState(false);
   const activate = (range: boolean) => {
-    if (onToggleSelect && (isSelectionActive || range))
+    if (annotation && onAnnotate) onAnnotate(image, range);
+    else if (onToggleSelect && (isSelectionActive || range))
       onToggleSelect(image, range);
     else onExpand?.(image);
   };
@@ -81,14 +88,17 @@ export const ImageCard: React.FC<ImageCardProps> = ({
       <div
         className={cn(
           "group relative rounded-xl overflow-hidden bg-muted/40 border border-border/50 transition-all duration-300 hover:border-primary/40 hover:bg-muted/60",
-          isSelected && "border-primary ring-2 ring-primary/40"
+          isSelected && "border-primary ring-2 ring-primary/40",
+          annotation?.label === "positive" && "border-primary ring-2 ring-primary/60",
+          annotation?.label === "negative" && "border-destructive ring-2 ring-destructive/60"
         )}
       >
         {/* Flush Image Container */}
         <div
           role="button"
           tabIndex={0}
-          aria-pressed={isSelectionActive ? !!isSelected : undefined}
+          aria-pressed={isSelectionActive && !annotation ? !!isSelected : undefined}
+          aria-label={annotation ? `Label: ${annotation.label ?? "none"} (click to change)` : undefined}
           className="aspect-4/5 relative w-full bg-background cursor-pointer"
           onClick={(e) => activate(e.shiftKey)}
           onKeyDown={(e) => {
@@ -108,7 +118,9 @@ export const ImageCard: React.FC<ImageCardProps> = ({
             sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
           />
 
-          {onToggleSelect && (
+          {annotation && <AnnotationMark {...annotation} />}
+
+          {onToggleSelect && !annotation && (
             <button
               type="button"
               aria-label={isSelected ? "Deselect image" : "Select image"}
@@ -220,6 +232,25 @@ export const ImageCard: React.FC<ImageCardProps> = ({
   );
 };
 
+/** Annotate mode's per-card label: solid when saved, dashed outline while it's an unsaved change. */
+const AnnotationMark = ({ label, isStaged }: { label: AnnotationLabel; isStaged: boolean }) => (
+  <span
+    className={cn(
+      "absolute top-2 right-2 z-10 flex size-7 items-center justify-center rounded-full border-2 shadow",
+      label === "positive" && "bg-primary border-primary text-primary-foreground",
+      label === "negative" && "bg-destructive border-destructive text-white",
+      label === null && "bg-background/70 border-border text-muted-foreground",
+      isStaged && "outline-2 outline-offset-2 outline-dashed outline-foreground/60"
+    )}
+  >
+    {label === "positive" ? (
+      <Check size={15} strokeWidth={3} />
+    ) : label === "negative" ? (
+      <Ban size={15} strokeWidth={3} />
+    ) : null}
+  </span>
+);
+
 const NavAction = ({
   icon,
   label,
@@ -291,7 +322,8 @@ const TagPopoverAction = ({ image }: { image: ImagePublic }) => {
         className="w-64 p-3 bg-popover border-border"
         onClick={(e) => e.stopPropagation()}
       >
-        <TagsInput
+        <ProvenanceTagsInput
+          target={{ targetType: "content", targetId: image.id }}
           value={image.tags}
           onChange={(tags) => updateTags.mutate({ id: image.id, tags })}
           placeholder="Add a tag..."

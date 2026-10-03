@@ -24,6 +24,9 @@ class DatasetSortField(StrEnum):
 class DatasetBase(BaseModel):
     name: str = Field(max_length=255, description="Name of the dataset")
     description: str | None = Field(None, description="Description of the dataset")
+    is_discoverable: bool = Field(
+        default=False, description="Listed (locked) for users who aren't members, so they know it exists"
+    )
 
 
 class DatasetCreate(DatasetBase):
@@ -48,6 +51,7 @@ class DatasetCreate(DatasetBase):
 class DatasetUpdate(BaseModel):
     name: str | None = Field(None, description="Name of the dataset")
     description: str | None = Field(None, description="Description of the dataset")
+    is_discoverable: bool | None = Field(default=None, description="Listed (locked) for non-members")
 
     @computed_field
     @property
@@ -80,7 +84,15 @@ class Dataset(DatasetBase):
     }
 
 
-class DatasetSummary(Dataset):
+class DatasetPublic(Dataset):
+    """A dataset as the current user sees it."""
+
+    has_access: bool = Field(
+        default=True, description="Whether the current user can open, triage and search it (false: discoverable only)"
+    )
+
+
+class DatasetSummary(DatasetPublic):
     """A dataset enriched with aggregate stats over its files."""
 
     file_count: int = Field(0, description="Number of files loaded into this dataset")

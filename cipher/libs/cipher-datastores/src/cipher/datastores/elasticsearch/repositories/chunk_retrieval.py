@@ -23,6 +23,7 @@ from cipher.datastores.elasticsearch.repositories.text_chunk import (
 )
 from cipher.datastores.postgres.repositories.chunk_retrieval import PostgresChunkRetrievalRepository
 from cipher.datastores.postgres.repositories.mention import PostgresMentionRepository
+from cipher.datastores.postgres.repositories.tag import PostgresTagRepository
 from cipher.datastores.postgres.tables.chunk import CHUNK_EMBEDDING_DIMENSION
 from cipher.schemas._base.common import PaginatedResponse
 from cipher.schemas.content.results import FileSearchResult  # noqa: F401  (documents search() payload)
@@ -126,9 +127,14 @@ class ElasticsearchChunkRetrievalRepository(ChunkRetrievalRepository):
                 expanded |= {n.id for n in graph.nodes}
             graph_ids = list(expanded)[: self.graph_expand_entity_cap]
 
+        clauses = []
+        if f.tags:
+            # The index's own `tags` are copied at embed time; resolve current content tags via Postgres.
+            clauses.append({"terms": {"sha256": await PostgresTagRepository(self.session).tagged_content(f.tags)}})
+
         requested = bool(f.entity_ids or f.entity_types or f.selector_types or f.selector_subtypes or graph_ids)
         if not requested:
-            return None, False
+            return ({"bool": {"filter": clauses}} if clauses else None), False
 
         chunk_ids = await self.mentions.chunk_ids_for_filter(
             dataset_id=f.dataset_id,
@@ -139,7 +145,8 @@ class ElasticsearchChunkRetrievalRepository(ChunkRetrievalRepository):
             graph_entity_ids=graph_ids,
             limit=self.graph_expand_entity_cap,
         )
-        return {"terms": {"_id": chunk_ids}}, True  # `chunk_ids == []` is valid ES DSL and matches nothing
+        clauses.append({"terms": {"_id": chunk_ids}})  # `chunk_ids == []` is valid ES DSL and matches nothing
+        return {"bool": {"filter": clauses}}, True
 
     async def search(self, query: RetrievalQuery) -> PaginatedResponse:
         """Rank chunks (keyword / semantic / hybrid / browse), filter, group by file."""
@@ -160,21 +167,34 @@ class ElasticsearchChunkRetrievalRepository(ChunkRetrievalRepository):
         # in and always match nothing. Strip them; `extra_filter` is how this adapter
         # applies them (resolved live via Postgres, above).
         clean_filters = query.filters.model_copy(
-            update={"entity_ids": None, "entity_types": None, "selector_types": None, "selector_subtypes": None}
+            update={
+                "entity_ids": None,
+                "entity_types": None,
+                "selector_types": None,
+                "selector_subtypes": None,
+                "tags": None,
+            }
         )
         common = dict(filters=clean_filters, page=query.page, limit=query.limit, sort_order=query.sort_order)
         if mode == RetrievalMode.SEMANTIC and has_vec:
             req = ChunkSemanticSearchRequest(
                 embedding=query.embedding, min_similarity=query.min_similarity, **common
             )
-            return await self.es.search_semantic(req, extra_filter=extra_filter)
+            return await self._with_tags(await self.es.search_semantic(req, extra_filter=extra_filter))
         if mode == RetrievalMode.HYBRID and has_vec:
             req = ChunkHybridSearchRequest(
                 query=query.text or "", embedding=query.embedding, min_similarity=query.min_similarity, **common
             )
-            return await self.es.search_hybrid(req, extra_filter=extra_filter)
+            return await self._with_tags(await self.es.search_hybrid(req, extra_filter=extra_filter))
         req = ChunkTextSearchRequest(query=query.text or "", min_similarity=query.min_similarity, **common)
-        return await self.es.search_text(req, extra_filter=extra_filter)
+        return await self._with_tags(await self.es.search_text(req, extra_filter=extra_filter))
+
+    async def _with_tags(self, page: PaginatedResponse) -> PaginatedResponse:
+        """Replace each result's indexed tags with the file content's current ones from Postgres."""
+        tags = await PostgresTagRepository(self.session).file_tags([r.file_id for r in page.data])
+        for result in page.data:
+            result.tags = tags.get(result.file_id, [])
+        return page
 
     # ---- legacy request-model shims (so existing /search routes are untouched) ----
 

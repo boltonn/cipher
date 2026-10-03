@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { TagsInput } from "@/components/tags-input";
+import { ProvenanceTagsInput } from "@/features/tags/components/provenance-tags-input";
 import { EntityPicker } from "@/features/entities/components/entity-picker";
 import {
   useEntity,
@@ -151,7 +151,11 @@ function EditEntityForm({
         </FieldRow>
 
         <FieldRow label="Tags">
-          <TagsInput value={tags} onChange={setTags} />
+          <ProvenanceTagsInput
+            target={{ targetType: "entity", targetId: entity.id }}
+            value={tags}
+            onChange={setTags}
+          />
         </FieldRow>
 
         <FieldRow label="Notes">

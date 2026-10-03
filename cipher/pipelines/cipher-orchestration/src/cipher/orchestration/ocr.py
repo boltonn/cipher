@@ -84,17 +84,19 @@ class ClipTagFilter:
     tag_embeddings: np.ndarray
     positive_count: int
     threshold: float
+    model_name: str
 
     @classmethod
     def from_model(
-        cls, model: "CLIP", tags: list[str], negative_tags: list[str], threshold: float = 0.5
+        cls, model: "CLIP", model_name: str, tags: list[str], negative_tags: list[str], threshold: float = 0.5
     ) -> "ClipTagFilter":
-        """Embed the tag prompts once with the CLIP text tower."""
+        """Embed the tag prompts once with the CLIP text tower; `model_name` is recorded on the scores."""
         input_ids = model.preprocess_txt([*tags, *negative_tags])["input_ids"]
         return cls(
             tag_embeddings=np.asarray(model.embed_txt_batch(input_ids), dtype=np.float32),
             positive_count=len(tags),
             threshold=threshold,
+            model_name=model_name,
         )
 
     def score(self, embedding: list[float]) -> float:
@@ -138,7 +140,9 @@ async def queue_ocr_enrichments(
         if unembedded := sum(c["sha256"] not in embeddings for c in images):
             logger.warning(f"{unembedded} images have no CLIP embedding -- run `embed-images` first; skipping them")
         scores = {c["id"]: clip_filter.score(embeddings[c["sha256"]]) for c in images if c["sha256"] in embeddings}
-        await PostgresFileRepository(session=session).set_tag_scores(tag=HAS_TEXT_TAG, scores=scores)
+        await PostgresFileRepository(session=session).set_tag_scores(
+            tag=HAS_TEXT_TAG, scores=scores, model=clip_filter.model_name
+        )
         kept = [c for c in images if scores.get(c["id"], 0.0) >= clip_filter.threshold]
         logger.info(f"CLIP text gate kept {len(kept)} of {len(images)} images")
         images = kept

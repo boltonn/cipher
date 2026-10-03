@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { TagsInput } from "@/components/tags-input";
+import { ProvenanceTagsInput } from "@/features/tags/components/provenance-tags-input";
 import { useUpdatePerson } from "@/features/persons/hooks/use-persons";
 import { Person, SexType } from "@/features/persons/types";
 import { Loader2 } from "lucide-react";
@@ -121,7 +121,12 @@ function EditPersonForm({ person, onDone }: { person: Person; onDone: () => void
 
         <div className="space-y-1.5">
           <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Tags</Label>
-          <TagsInput value={tags} onChange={setTags} />
+          {/* A person's tags live on its entity (same id). */}
+          <ProvenanceTagsInput
+            target={{ targetType: "entity", targetId: person.id }}
+            value={tags}
+            onChange={setTags}
+          />
         </div>
 
         <div className="flex items-center justify-between">

@@ -2,6 +2,16 @@
 
 import { SelectionBar } from "@/components/selection-bar";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Autocomplete,
   AutocompleteContent,
   AutocompleteInput,
@@ -14,7 +24,9 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { useTagImages } from "@/features/images/api";
-import type { ModelTagType, TagStateType } from "@/features/images/types";
+import type { ModelTagType } from "@/features/images/types";
+import { tagService } from "@/features/tags/api";
+import type { TagFilterState } from "@/features/tags/types";
 import type { GridSelection } from "@/hooks/use-grid-selection";
 import { Check, Loader2, Tag, X } from "lucide-react";
 import { useState } from "react";
@@ -25,7 +37,7 @@ interface ImageSelectionBarProps {
   loadedIds: string[];
   /** The tag the grid is filtered to, if exactly one: offers one-click accept / reject for it. */
   reviewTag?: string;
-  reviewTagState?: TagStateType;
+  reviewTagState?: TagFilterState;
   /** Tags already in use on the loaded images, suggested so the same tag is reused. */
   knownTags: string[];
 }
@@ -46,9 +58,24 @@ export function ImageSelectionBar({
     setDraft("");
   });
 
+  const [pendingClear, setPendingClear] = useState<{
+    tag: string;
+    authors: string[];
+  } | null>(null);
+
   const imageIds = [...selection.selectedIds];
   const label = (tag: string, type?: ModelTagType) => {
     if (tag.trim()) tagImages.mutate({ imageIds, tag: tag.trim(), type });
+  };
+  // Clearing removes the tag for everyone -- ask first if other people labelled any of these.
+  const clear = async (tag: string) => {
+    const authors = await tagService.labelAuthors({
+      targetType: "content",
+      targetIds: imageIds,
+      tag: tag.trim(),
+    });
+    if (authors.length > 0) setPendingClear({ tag: tag.trim(), authors });
+    else label(tag);
   };
   const suggestions = knownTags.filter((tag) =>
     tag.toLowerCase().includes(draft.trim().toLowerCase())
@@ -109,7 +136,7 @@ export function ImageSelectionBar({
               variant="outline"
               className="h-7 flex-1 text-[11px]"
               disabled={!draft.trim() || tagImages.isPending}
-              onClick={() => label(draft)}
+              onClick={() => clear(draft)}
             >
               Remove tag
             </Button>
@@ -139,6 +166,31 @@ export function ImageSelectionBar({
           Reject “{reviewTag}”
         </Button>
       )}
+      <AlertDialog
+        open={pendingClear !== null}
+        onOpenChange={(open) => !open && setPendingClear(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove “{pendingClear?.tag}”?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingClear?.authors.join(", ")} also labelled some of these
+              images. Removing it takes it off for everyone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep it</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (pendingClear) label(pendingClear.tag);
+                setPendingClear(null);
+              }}
+            >
+              Remove for everyone
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </SelectionBar>
   );
 }

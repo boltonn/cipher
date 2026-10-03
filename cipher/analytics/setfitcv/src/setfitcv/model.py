@@ -1,5 +1,6 @@
 import gc
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import torch
 from loguru import logger
@@ -8,6 +9,9 @@ from transformers import CLIPImageProcessor, CLIPModel, CLIPTokenizer
 from transformers.modeling_outputs import BaseModelOutputWithPooling
 
 from cipher.schemas._base.common import ModelDevice
+
+if TYPE_CHECKING:
+    from setfitcv.heads import TagHeads
 
 
 class CLIP:
@@ -76,6 +80,16 @@ class CLIP:
             if normalized:
                 embeddings = torch.nn.functional.normalize(embeddings, dim=1)
         return embeddings.cpu().tolist()
+
+    def embed_and_score_imgs_batch(
+        self, pixel_values: torch.Tensor, heads: "TagHeads"
+    ) -> tuple[list[list[float]], list[dict[str, float]]]:
+        """Normalized embeddings plus every tag head's score, in one GPU pass (heads add one matmul)."""
+        inputs = {"pixel_values": pixel_values.to(self.device)}
+        with torch.inference_mode():
+            embeddings = torch.nn.functional.normalize(_projected(self.model.get_image_features(**inputs)), dim=1)
+            scores = heads.score_tensor(embeddings)
+        return embeddings.cpu().tolist(), heads.as_dicts(scores.cpu().numpy())
 
 
 def _projected(features: torch.Tensor | BaseModelOutputWithPooling) -> torch.Tensor:

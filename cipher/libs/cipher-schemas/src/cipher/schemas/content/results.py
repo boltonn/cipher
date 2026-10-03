@@ -28,6 +28,9 @@ class FileSearchResult(BaseModel):
     top_chunk_id: str = Field(description="id of the best-matching chunk within `chunks`")
     match_count: int = Field(description="Total matching chunks in this file, may exceed len(chunks) if capped")
     chunks: list[ScoredTextChunk] = Field(description="Matching chunks, in reading order, capped per file")
+    tags: list[str] = Field(
+        default_factory=list, description="The file content's current positive tags (read live, not from the index)"
+    )
 
 
 class PaginatedFileSearchResponse(PaginatedResponse):

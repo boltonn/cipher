@@ -24,6 +24,7 @@ from cipher.datastores.postgres.repositories.mention import (
     PostgresMentionRepository,
     correspondence_predicates,
 )
+from cipher.datastores.postgres.repositories.tag import PostgresTagRepository
 from cipher.datastores.postgres.utils import normalize_name
 from cipher.schemas._base.common import PaginatedResponse
 from cipher.schemas.content.document import ScoredDocumentTextChunk
@@ -288,6 +289,9 @@ class PostgresChunkRetrievalRepository(ChunkRetrievalRepository):
         if f.dataset_id:
             parts.append("c.dataset_id = :dataset_id")
             p["dataset_id"] = f.dataset_id
+        if f.dataset_ids is not None:
+            parts.append("c.dataset_id = ANY(cast(:dataset_ids AS text[]))")
+            p["dataset_ids"] = f.dataset_ids
         if f.filetype_group:
             parts.append("c.filetype_group = :ftg")
             p["ftg"] = f.filetype_group
@@ -306,15 +310,22 @@ class PostgresChunkRetrievalRepository(ChunkRetrievalRepository):
             parts.append("c.file_id = ANY(cast(:expand_files AS text[]))")
         return " AND ".join(parts)
 
-    def _mention_sql(self, q: RetrievalQuery, p: dict) -> list[str]:
+    def _file_sql(self, q: RetrievalQuery, p: dict) -> list[str]:
+        """Filters on the chunk's file -- `filetype` and the content's tags live on `file`, not `chunk`."""
         f = q.filters
         out: list[str] = []
         if f.filetype:
-            # `filetype` (pdf/docx/eml/...) lives on `file`, not `chunk`; join in Stage B.
             p["ftype"] = f.filetype
             out.append("EXISTS (SELECT 1 FROM file fl WHERE fl.id = c.file_id AND fl.filetype = :ftype)")
-        # NOTE: ChunkFilters.tags is unsupported here -- tags are a file/dataset
-        # attribute, not stored per chunk in the `chunk` table (unlike the ES doc).
+        if f.tags:
+            # GIN-indexed `file.tags`: tags are on the content, so every copy of a file carries them.
+            p["tags"] = list(f.tags)
+            out.append("EXISTS (SELECT 1 FROM file fl WHERE fl.id = c.file_id AND fl.tags ?| cast(:tags as text[]))")
+        return out
+
+    def _mention_sql(self, q: RetrievalQuery, p: dict) -> list[str]:
+        f = q.filters
+        out: list[str] = self._file_sql(q, p)
         if f.entity_ids:
             p["entity_ids"] = list(f.entity_ids)
             out.append(
@@ -479,7 +490,7 @@ class PostgresChunkRetrievalRepository(ChunkRetrievalRepository):
                     selector_subtypes=f.selector_subtypes,
                     limit=self.graph_expand_entity_cap,
                 )
-            browse_where = scope
+            browse_where = " AND ".join([scope, *self._file_sql(query, p)])
             if browse_ids is not None:
                 p["browse_ids"] = browse_ids
                 browse_where += " AND c.id = ANY(cast(:browse_ids as text[]))"
@@ -602,6 +613,9 @@ class PostgresChunkRetrievalRepository(ChunkRetrievalRepository):
                     chunks=scored,
                 )
             )
+        tags = await PostgresTagRepository(self.session).file_tags([r.file_id for r in results])
+        for result in results:
+            result.tags = tags.get(result.file_id, [])
         return PaginatedFileSearchResponse(
             total=total, total_is_exact=total_is_exact, page=query.page, limit=query.limit, data=results
         )

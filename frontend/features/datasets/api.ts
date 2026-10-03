@@ -9,6 +9,7 @@ import type {
   EnrichmentProgress,
 } from "@/features/datasets/types";
 import type { DatasetEnrichmentEstimates } from "@/features/datasets/request-types";
+import type { User } from "@/features/users/types";
 import { apiClient } from "@/lib/api-client";
 import type { PaginatedResponse } from "@/types/common";
 import {
@@ -63,6 +64,10 @@ const datasetService = {
   delete: async (id: string): Promise<void> => {
     await apiClient.delete(`/datasets/${id}`);
   },
+  getUsers: async (id: string): Promise<User[]> => {
+    const { data } = await apiClient.get<User[]>(`/datasets/${id}/users`);
+    return data;
+  },
 };
 
 /** Infinite-scroll variant, used by the dataset multi-select combobox. */
@@ -93,6 +98,16 @@ export function useDataset(id: string | undefined) {
   return useQuery({
     queryKey: ["datasets", id],
     queryFn: () => datasetService.getById(id as string),
+    enabled: !!id,
+    staleTime: 60_000,
+  });
+}
+
+/** Users with explicit membership in a dataset (admins can see it without being listed). */
+export function useDatasetUsers(id: string | undefined) {
+  return useQuery({
+    queryKey: ["datasets", id, "users"],
+    queryFn: () => datasetService.getUsers(id as string),
     enabled: !!id,
     staleTime: 60_000,
   });

@@ -12,6 +12,7 @@ from clir.api.deps import TextEmbeddingModelDep
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import text as sa_text
 
+from cipher.api.deps.access import DatasetAccessDep
 from cipher.api.deps.elasticsearch import TextChunkDatastoreDep
 from cipher.api.deps.postgres import get_session
 from cipher.api.services.search import search_chunks
@@ -86,13 +87,14 @@ async def search_config() -> RetrievalConfigInfo:
     summary="BM25 full-text search across documents and emails",
     response_model_by_alias=True,
 )
-async def search_text(params: ChunkTextSearchRequest, datastore: TextChunkDatastoreDep):
+async def search_text(params: ChunkTextSearchRequest, access: DatasetAccessDep, datastore: TextChunkDatastoreDep):
     """Search chunk text/title by keyword.
 
     BM25 only ever matches chunks containing a query term, so `has_more`
     naturally goes false once nothing left matches -- no similarity
     threshold needed the way semantic/hybrid search requires one.
     """
+    params.filters = access.scoped(params.filters)
     return await datastore.search_text(request=params)
 
 
@@ -103,6 +105,7 @@ async def search_text(params: ChunkTextSearchRequest, datastore: TextChunkDatast
 )
 async def search_semantic(
     params: ChunkTextSearchRequest,
+    access: DatasetAccessDep,
     datastore: TextChunkDatastoreDep,
     model: TextEmbeddingModelDep,
 ):
@@ -113,6 +116,7 @@ async def search_semantic(
     regardless of relevance, so without a threshold `has_more` would stay
     true well past the point where results still match the query.
     """
+    params.filters = access.scoped(params.filters)
     if not params.query.strip():
         return await datastore.search_text(request=params)  # nothing to embed: browse
     embedding = await model.infer(text=params.query, task="retrieval")
@@ -132,10 +136,12 @@ async def search_semantic(
 )
 async def search_hybrid(
     params: ChunkTextSearchRequest,
+    access: DatasetAccessDep,
     datastore: TextChunkDatastoreDep,
     model: TextEmbeddingModelDep,
 ):
     """Embed a query string and run hybrid RRF search -- no pre-computed embedding needed."""
+    params.filters = access.scoped(params.filters)
     if not params.query.strip():
         return await datastore.search_text(request=params)  # nothing to embed: browse
     try:

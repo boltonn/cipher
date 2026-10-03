@@ -2,6 +2,7 @@ from clir.api.deps import TextEmbeddingModelDep
 from fastapi import APIRouter, HTTPException, UploadFile
 from pyparse.parsers.email import EmlParser
 
+from cipher.api.deps.access import DatasetAccess, DatasetAccessDep
 from cipher.api.deps.elasticsearch import TextChunkDatastoreDep
 from cipher.schemas.content.email import ScoredEmailTextChunk
 from cipher.schemas.content.search import (
@@ -18,9 +19,9 @@ router = APIRouter(
 )
 
 
-def _scoped_to_emails(filters: ChunkFilters) -> ChunkFilters:
+def _scoped_to_emails(filters: ChunkFilters, access: DatasetAccess) -> ChunkFilters:
     """Force filetype_group=email regardless of what the caller passed -- this router only ever searches emails."""
-    return filters.model_copy(update={"filetype_group": "email"})
+    return access.scoped(filters).model_copy(update={"filetype_group": "email"})
 
 
 @router.post(
@@ -42,10 +43,10 @@ async def parse_email(
     summary="Get an email chunk by its ID",
     response_model=ScoredEmailTextChunk,
 )
-async def get_chunk_by_id(id: str, datastore: TextChunkDatastoreDep):
+async def get_chunk_by_id(id: str, access: DatasetAccessDep, datastore: TextChunkDatastoreDep):
     """Get a single email chunk by its Elasticsearch document ID."""
     chunk = await datastore.get_by_id(id)
-    if chunk is None or chunk.filetype_group != "email":
+    if chunk is None or chunk.filetype_group != "email" or not access.allows(chunk.dataset_id):
         raise HTTPException(status_code=404, detail=f"Email chunk not found: {id}")
     return chunk
 
@@ -55,9 +56,9 @@ async def get_chunk_by_id(id: str, datastore: TextChunkDatastoreDep):
     summary="BM25 full-text search over email content",
     response_model_by_alias=True,
 )
-async def search_text(params: ChunkTextSearchRequest, datastore: TextChunkDatastoreDep):
+async def search_text(params: ChunkTextSearchRequest, access: DatasetAccessDep, datastore: TextChunkDatastoreDep):
     """Search email chunks by keyword."""
-    params.filters = _scoped_to_emails(params.filters)
+    params.filters = _scoped_to_emails(params.filters, access)
     return await datastore.search_text(request=params)
 
 
@@ -68,6 +69,7 @@ async def search_text(params: ChunkTextSearchRequest, datastore: TextChunkDatast
 )
 async def search_semantic(
     params: ChunkTextSearchRequest,
+    access: DatasetAccessDep,
     datastore: TextChunkDatastoreDep,
     model: TextEmbeddingModelDep,
 ):
@@ -79,7 +81,7 @@ async def search_semantic(
     request = ChunkSemanticSearchRequest.model_validate(
         {**params.model_dump(exclude={"query"}, exclude_none=True), "embedding": embedding}
     )
-    request.filters = _scoped_to_emails(request.filters)
+    request.filters = _scoped_to_emails(request.filters, access)
     return await datastore.search_semantic(request=request)
 
 
@@ -90,6 +92,7 @@ async def search_semantic(
 )
 async def search_hybrid(
     params: ChunkTextSearchRequest,
+    access: DatasetAccessDep,
     datastore: TextChunkDatastoreDep,
     model: TextEmbeddingModelDep,
 ):
@@ -101,7 +104,7 @@ async def search_hybrid(
     request = ChunkHybridSearchRequest.model_validate(
         {**params.model_dump(exclude_none=True), "embedding": embedding}
     )
-    request.filters = _scoped_to_emails(request.filters)
+    request.filters = _scoped_to_emails(request.filters, access)
     return await datastore.search_hybrid(request=request)
 
 
@@ -110,8 +113,11 @@ async def search_hybrid(
     summary="Delete an email chunk",
     response_model=bool,
 )
-async def delete_chunk(id: str, datastore: TextChunkDatastoreDep):
+async def delete_chunk(id: str, access: DatasetAccessDep, datastore: TextChunkDatastoreDep):
     """Delete an email chunk by its Elasticsearch document ID."""
+    chunk = await datastore.get_by_id(id)
+    if chunk is not None:
+        access.require(chunk.dataset_id)
     deleted = await datastore.delete(id)
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Email chunk not found: {id}")

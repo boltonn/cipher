@@ -1,8 +1,9 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 from pyselectors.normalize import normalize_selector
 
+from cipher.api.deps.access import DatasetAccessDep, DatasetIdQueryDep, MentionDep, require_mention
 from cipher.api.deps.authentication import CurrentUserDep
 from cipher.api.deps.postgres import (
     EntityDatastoreDep,
@@ -31,6 +32,7 @@ from cipher.schemas.graph.mention import (
 from cipher.schemas.graph.ontology import EntitySource, EntityType, SelectorType, guess_actor_type
 from cipher.schemas.graph.organization import OrganizationCreate
 from cipher.schemas.graph.selector import SelectorCreate
+from cipher.schemas.interaction.tag import TagSource
 
 router = APIRouter(prefix="/mentions", tags=["mentions"])
 
@@ -62,18 +64,19 @@ def _trimmed_span(*, surface_text: str, start_offset: int | None, end_offset: in
 
 @router.get("", summary="List mentions", response_model=PaginatedMentionsResponse, **_BY_ALIAS)
 async def list_mentions(
-    params: Annotated[MentionSearchParameters, Query()], datastore: MentionDatastoreDep
+    params: Annotated[MentionSearchParameters, Query()], access: DatasetAccessDep, datastore: MentionDatastoreDep
 ) -> PaginatedMentionsResponse:
-    """List mentions, filtered by file, dataset, resolution state, or evidence type."""
-    return await datastore.list_mentions(params)
+    """List mentions in your datasets, filtered by file, dataset, resolution state, or evidence type."""
+    return await datastore.list_mentions(access.scoped(params))
 
 
 @router.post("", summary="Create a mention", response_model=Mention, **_BY_ALIAS)
-async def create_mention(mention: MentionCreate, datastore: MentionDatastoreDep, user: CurrentUserDep) -> Mention:
+async def create_mention(mention: MentionCreate, access: DatasetAccessDep, datastore: MentionDatastoreDep) -> Mention:
     """Record an analyst-authored mention span, keyed into its name group / selector value.
 
     Whitespace at the span's edges is trimmed, and mentions the span overlaps are replaced.
     """
+    access.require(mention.dataset_id)
     is_selector = mention.selector_type is not None or mention.entity_type == EntityType.SELECTOR
     mention = mention.model_copy(
         update=_trimmed_span(
@@ -88,7 +91,7 @@ async def create_mention(mention: MentionCreate, datastore: MentionDatastoreDep,
             "extractor": mention.extractor or MANUAL_EXTRACTOR,
         }
     )
-    return await datastore.add_mention(mention, reviewed_by=user.id)
+    return await datastore.add_mention(mention, reviewed_by=access.user.id)
 
 
 @router.get(
@@ -99,7 +102,7 @@ async def create_mention(mention: MentionCreate, datastore: MentionDatastoreDep,
 )
 async def list_unresolved_names(
     datastore: MentionDatastoreDep,
-    dataset_id: Annotated[str, Query(alias="datasetId")],
+    dataset_id: DatasetIdQueryDep,
     matches: EntityMatchDatastoreDep,
     q: Annotated[str | None, Query(description="Filter by name substring")] = None,
     has_resolution: Annotated[
@@ -142,7 +145,7 @@ async def resolve_name_group(
     mentions: MentionDatastoreDep,
     entities: EntityDatastoreDep,
     graph: GraphDatastoreDep,
-    user: CurrentUserDep,
+    access: DatasetAccessDep,
 ) -> ResolveNameGroupResult:
     """Attach every unresolved `name` mention of one value to an entity, then link header selectors.
 
@@ -150,6 +153,7 @@ async def resolve_name_group(
     entity of `entity_type` is used. After attaching, `has_selector` edges are
     (re)built so the actor is linked to the addresses it appeared next to.
     """
+    access.require(body.dataset_id)
     entity_id = body.entity_id
     if entity_id is None:
         created = await entities.create_entity(
@@ -170,18 +174,18 @@ async def resolve_name_group(
 
 
 @router.post("/dismiss-names", summary="Discard a name group")
-async def dismiss_name_group(body: DismissNameGroupRequest, mentions: MentionDatastoreDep) -> dict:
+async def dismiss_name_group(
+    body: DismissNameGroupRequest, access: DatasetAccessDep, mentions: MentionDatastoreDep
+) -> dict:
     """Delete every unresolved `name` mention of one value -- 'this isn't an entity'."""
+    access.require(body.dataset_id)
     deleted = await mentions.delete_names(dataset_id=body.dataset_id, normalized_value=body.normalized_value)
     return {"deleted": deleted}
 
 
 @router.get("/{mention_id}", summary="Get a mention", response_model=Mention, **_BY_ALIAS)
-async def get_mention(mention_id: str, datastore: MentionDatastoreDep) -> Mention:
+async def get_mention(mention: MentionDep) -> Mention:
     """Fetch a single mention."""
-    mention = await datastore.get_mention(mention_id)
-    if mention is None:
-        raise EntityNotFoundError("Mention", mention_id)
     return mention
 
 
@@ -192,17 +196,13 @@ async def get_mention(mention_id: str, datastore: MentionDatastoreDep) -> Mentio
     **_BY_ALIAS,
 )
 async def get_mention_resolution(
-    mention_id: str, mentions: MentionDatastoreDep, matches: EntityMatchDatastoreDep
+    mention_id: str, mention: MentionDep, matches: EntityMatchDatastoreDep
 ) -> MentionResolution:
     """The scored candidates + per-feature explanation for a mention's name group.
 
     Covers the negative case too: an empty `candidates` list means nothing blocked,
     or nothing cleared the review floor.
     """
-    mention = await mentions.get_mention(mention_id)
-    if mention is None:
-        raise EntityNotFoundError("Mention", mention_id)
-
     candidates: list[EntityMatchRef] = []
     resolved_by = None
     if mention.normalized_value:
@@ -236,7 +236,7 @@ async def get_mention_resolution(
 
 @router.patch("/{mention_id}", summary="Update a mention", response_model=Mention, **_BY_ALIAS)
 async def update_mention(
-    mention_id: str, data: MentionUpdate, datastore: MentionDatastoreDep, user: CurrentUserDep
+    mention_id: str, current: MentionDep, data: MentionUpdate, datastore: MentionDatastoreDep, user: CurrentUserDep
 ) -> Mention:
     """Relabel or correct a mention (predicted type, span, surface text, or resolved entity).
 
@@ -250,9 +250,6 @@ async def update_mention(
         for field, value in trimmed.items():
             setattr(data, field, value)
     if data.surface_text is not None and "normalized_value" not in data.model_fields_set:
-        current = await datastore.get_mention(mention_id)
-        if current is None:
-            raise EntityNotFoundError("Mention", mention_id)
         data.normalized_value = _normalized_value(
             surface_text=data.surface_text, selector_type=data.selector_type or current.selector_type
         )
@@ -262,7 +259,7 @@ async def update_mention(
     return mention
 
 
-@router.delete("/{mention_id}", summary="Delete a mention")
+@router.delete("/{mention_id}", summary="Delete a mention", dependencies=[Depends(require_mention)])
 async def delete_mention(mention_id: str, datastore: MentionDatastoreDep, user: CurrentUserDep) -> dict:
     """Delete a mention span."""
     deleted = await datastore.delete_mention(mention_id, reviewed_by=user.id)
@@ -271,7 +268,13 @@ async def delete_mention(mention_id: str, datastore: MentionDatastoreDep, user: 
     return {"deleted": True}
 
 
-@router.post("/{mention_id}/resolve", summary="Resolve a mention", response_model=Mention, **_BY_ALIAS)
+@router.post(
+    "/{mention_id}/resolve",
+    summary="Resolve a mention",
+    response_model=Mention,
+    dependencies=[Depends(require_mention)],
+    **_BY_ALIAS,
+)
 async def resolve_mention(
     mention_id: str,
     body: MentionResolve,
@@ -280,10 +283,6 @@ async def resolve_mention(
     user: CurrentUserDep,
 ) -> Mention:
     """Attach an unresolved mention to an existing entity, or create a new entity and attach it."""
-    mention = await mentions.get_mention(mention_id)
-    if mention is None:
-        raise EntityNotFoundError("Mention", mention_id)
-
     entity_id = body.entity_id
     if entity_id is None:
         if not body.new_entity:
@@ -297,7 +296,7 @@ async def resolve_mention(
             if new_entity.entity_type != EntityType.LOCATION:
                 detail_payload["entityId"] = ""
             detail = detail_model.model_validate(detail_payload)
-        created = await entities.create_entity(new_entity, detail=detail)
+        created = await entities.create_entity(new_entity, detail=detail, source=TagSource.user(user.id))
         entity_id = created.id
 
     await mentions.attach_to_entity(mention_id, entity_id)

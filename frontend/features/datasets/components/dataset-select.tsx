@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useDataset, useDatasets } from "@/features/datasets/api";
+import { DatasetLock } from "@/features/datasets/components/dataset-lock";
 import { useDebounce } from "@/hooks/use-debounce";
 import { cn } from "@/lib/utils";
 import { Check, ChevronsUpDown, Database, X } from "lucide-react";
@@ -83,10 +84,12 @@ export function DatasetSelect({ datasetId, onChange, className }: DatasetSelectP
                     onChange(dataset.id === datasetId ? undefined : dataset.id);
                     setOpen(false);
                   }}
+                  disabled={!dataset.hasAccess}
                   className="gap-2 text-xs"
                 >
                   <Check className={cn("h-3 w-3 shrink-0", dataset.id === datasetId ? "opacity-100" : "opacity-0")} />
                   <span className="flex-1 truncate">{dataset.name}</span>
+                  {!dataset.hasAccess && <DatasetLock />}
                 </CommandItem>
               ))}
             </CommandGroup>

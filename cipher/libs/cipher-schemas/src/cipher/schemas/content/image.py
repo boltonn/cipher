@@ -6,7 +6,7 @@ import numpy as np
 from pydantic import BeforeValidator, Field, StringConstraints, field_serializer
 
 from cipher.schemas._base.base import BaseModel
-from cipher.schemas._base.common import ModelTagType, PageParams, PaginatedResponse, TagState
+from cipher.schemas._base.common import ModelTagType, PageParams, PaginatedResponse
 
 IMAGE_EMBEDDING_DIMENSION = 512
 
@@ -89,6 +89,15 @@ class ImageTagRequest(BaseModel):
     type: ModelTagType | None = Field(default=None)
 
 
+class ImageAnnotateRequest(BaseModel):
+    """Save a batch of labels for one tag at once -- positive, negative, and cleared images."""
+
+    tag: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+    positive: list[str] = Field(default_factory=list, max_length=10_000)
+    negative: list[str] = Field(default_factory=list, max_length=10_000)
+    cleared: list[str] = Field(default_factory=list, max_length=10_000, description="Images to unlabel")
+
+
 class ImageTagResult(BaseModel):
     """Outcome of a bulk tag call."""
 
@@ -161,14 +170,12 @@ class BaseImageSearchParameters(PageParams):
     date_to: datetime | None = Field(None, description="Filter images before this date")
     datasets: list[str] | None = Field(None, description="Dataset IDs to filter")
     filetypes: list[str] | None = Field(None, description="File types to filter")
-    tags: list[str] | None = Field(None, description="Tags to filter (any of)")
-    tag_state: TagState = Field(
-        default=TagState.POSITIVE,
-        description="Which store `tags` matches: positive labels, negative labels, or unlabelled predictions",
+    tags: list[str] | None = Field(default=None, description="Labelled with any of these tags")
+    negative_tags: list[str] | None = Field(default=None, description="Labelled as not any of these tags")
+    predicted_tags: list[str] | None = Field(
+        default=None, description="Unlabelled for, and scored at least `min_tag_score` on, any of these tags"
     )
-    min_tag_score: float = Field(
-        default=0.5, ge=0, le=1, description="Score a predicted tag must reach (`tag_state=predicted` only)"
-    )
+    min_tag_score: float = Field(default=0.5, ge=0, le=1, description="Score a predicted tag must reach")
     limit: int = Field(10, description="Number of results to return", ge=1, le=100)
     sort_by: ImageSortField = Field(ImageSortField.DATE_TAKEN, description="Sort field")
 

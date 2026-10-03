@@ -25,12 +25,14 @@ from cipher.api.agent import (
     can_build,
     resolve_llm_settings,
 )
+from cipher.api.deps.access import DatasetAccessDep
 from cipher.api.deps.elasticsearch import TextChunkDatastoreDep
 from cipher.api.deps.postgres import (
     DatasetDatastoreDep,
     EntityDatastoreDep,
     EntityMatchDatastoreDep,
     ExtractedTextDatastoreDep,
+    FileDatastoreDep,
     GraphDatastoreDep,
     MentionDatastoreDep,
     PersonDatastoreDep,
@@ -112,6 +114,7 @@ class _TracebackVercelAIAdapter(VercelAIAdapter[ChatDeps, str]):
 @router.post("/")
 async def chat(
     request: Request,
+    access: DatasetAccessDep,
     chunks: TextChunkDatastoreDep,
     embedding_model: TextEmbeddingModelDep,
     persons: PersonDatastoreDep,
@@ -121,16 +124,22 @@ async def chat(
     mentions: MentionDatastoreDep,
     graph: GraphDatastoreDep,
     extracted_text: ExtractedTextDatastoreDep,
+    files: FileDatastoreDep,
     x_api_key: str | None = Header(default=None),
 ) -> Response:
     """Stream a chat response, letting the agent call its tools to ground and cite its answer.
 
-    The request body is the raw Vercel AI SDK payload (`model`, `datasetId`,
+    The request body is the raw Vercel AI SDK payload (`model`, `datasetIds`,
     messages). The server uses its own configured key (`LLM__*`) by default;
     `x_api_key`, when sent, overrides it for this request only.
+
+    `datasetIds` scopes the conversation; each must be one you can access (403 otherwise),
+    and none means all of yours. The agent only ever sees content from that scope.
     """
     raw_body = await request.body()
     body = json.loads(raw_body)
+    selected = body.get("datasetIds") or ([body["datasetId"]] if body.get("datasetId") else None)
+    chat_access = access.narrow(selected)
 
     llm_settings = resolve_llm_settings(settings.llm, body.get("model"))
     if x_api_key and x_api_key.strip():
@@ -143,6 +152,7 @@ async def chat(
     model = build_model(llm_settings)
 
     deps = ChatDeps(
+        access=chat_access,
         chunks=chunks,
         embedding_model=embedding_model,
         persons=persons,
@@ -152,7 +162,7 @@ async def chat(
         mentions=mentions,
         graph=graph,
         extracted_text=extracted_text,
-        dataset_id=body.get("datasetId"),
+        files=files,
     )
 
     run_input = VercelAIAdapter.build_run_input(raw_body)

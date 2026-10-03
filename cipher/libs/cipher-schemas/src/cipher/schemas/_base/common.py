@@ -36,18 +36,6 @@ class ModelTagType(StrEnum):
     POSITIVE = "positive"
 
 
-class TagState(StrEnum):
-    """Which of an object's tag stores a tag filter reads.
-
-    `positive` / `negative` are the analyst's labels (`tags` / `negative_tags`);
-    `predicted` is a tag a model scored (`tag_scores`) that has no label yet.
-    """
-
-    POSITIVE = "positive"
-    NEGATIVE = "negative"
-    PREDICTED = "predicted"
-
-
 class PaginatedResponse(BaseModel):
     """Paginated records response schema."""
 
@@ -108,6 +96,12 @@ class PhoneNumber(BaseModel):
 
 class TranslationUpdate(BaseModel):
     translation: str = Field(..., min_length=1, description="The translated text content")
+
+
+class TagsUpdate(BaseModel):
+    """The complete list of positive tags -- additions and removals are recorded as the caller's."""
+
+    tags: list[str] = Field(default_factory=list)
 
 
 class TagRequest(BaseModel):

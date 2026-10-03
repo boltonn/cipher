@@ -1,13 +1,15 @@
 from datetime import datetime
 
-from sqlalchemy import asc, delete, desc, exists, func, select, text, update
+from sqlalchemy import asc, delete, desc, exists, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cipher.datastores.postgres.repositories.tag import PostgresTagRepository
 from cipher.datastores.postgres.tables.event import EventTable
 from cipher.datastores.postgres.tables.event_participant import EventParticipantTable
 from cipher.datastores.postgres.tables.event_place import EventPlaceTable
+from cipher.datastores.postgres.tables.file import FileTable
 from cipher.datastores.postgres.utils import strip_null_bytes
-from cipher.schemas._base.common import SortOrder
+from cipher.schemas._base.common import ModelTagType, SortOrder
 from cipher.schemas.graph.event import (
     EVENT_FILE_TAG,
     Event,
@@ -20,6 +22,7 @@ from cipher.schemas.graph.event import (
 )
 from cipher.schemas.graph.event_participant import EventParticipant, EventParticipantCreate
 from cipher.schemas.graph.event_place import EventPlace, EventPlaceCreate
+from cipher.schemas.interaction.tag import TagSource, TagTargetType
 
 _SORT_COLUMN = {
     EventSortField.DATE_START: EventTable.date_start,
@@ -44,12 +47,19 @@ class PostgresEventRepository:
         result = await self.session.execute(select(func.count(EventTable.id)))
         return result.scalar_one()
 
-    async def add_event(self, payload: EventCreate) -> Event:
-        """Insert a single event row."""
-        row = EventTable(**strip_null_bytes(payload.model_dump(by_alias=False)))
+    async def add_event(self, payload: EventCreate, *, source: TagSource | None = None) -> Event:
+        """Insert a single event row; any `tags` are recorded as `source`'s decision (required with tags)."""
+        row = EventTable(**strip_null_bytes(payload.model_dump(by_alias=False, exclude={"tags"})))
         self.session.add(row)
         await self.session.commit()
         await self.session.refresh(row)
+        if payload.tags:
+            if source is None:
+                raise ValueError("Event tags need a source (who or what tagged them)")
+            await PostgresTagRepository(self.session).set_tags(
+                target_type=TagTargetType.EVENT, target_id=row.id, tags=payload.tags, source=source
+            )
+            return await self.get_event(row.id)
         return Event.model_validate(row)
 
     async def get_event(self, event_id: str) -> Event | None:
@@ -142,38 +152,52 @@ class PostgresEventRepository:
         rows = (await self.session.execute(stmt)).scalars().all()
         return [Event.model_validate(r) for r in rows]
 
-    async def update_event(self, event_id: str, data: EventUpdate) -> Event | None:
-        """Patch an event row."""
-        patch = strip_null_bytes(data.model_dump(exclude_unset=True, by_alias=False))
+    async def update_event(self, event_id: str, data: EventUpdate, *, user_id: str) -> Event | None:
+        """Patch an event row; a `tags` list is recorded as `user_id`'s edit."""
+        patch = strip_null_bytes(data.model_dump(exclude_unset=True, exclude={"tags"}, by_alias=False))
         if patch:
             await self.session.execute(update(EventTable).where(EventTable.id == event_id).values(**patch))
             await self.session.commit()
+        if data.tags is not None and await self.get_event(event_id) is not None:
+            await PostgresTagRepository(self.session).set_tags(
+                target_type=TagTargetType.EVENT, target_id=event_id, tags=data.tags, source=TagSource.user(user_id)
+            )
         return await self.get_event(event_id)
 
-    async def delete_event(self, event_id: str) -> bool:
+    async def delete_event(self, event_id: str, *, user_id: str) -> bool:
         """Delete an event row (participant/place rows cascade)."""
-        return bool(await self.delete_events([event_id]))
+        return bool(await self.delete_events([event_id], user_id=user_id))
 
-    async def delete_events(self, event_ids: list[str]) -> int:
+    async def delete_events(self, event_ids: list[str], *, user_id: str) -> int:
         """Mark events invalid: delete them (participant/place rows cascade). Returns rows deleted.
 
-        A source file tagged `event` that is left with no events moves to
-        `negative_tags` -- the analyst's verdict replaces the extractor's label.
+        A source file tagged `event` that is left with no events gets a negative `event`
+        label from `user_id` -- the analyst's verdict, newer than the extractor's, wins.
         """
         deleted = await self.session.execute(
-            delete(EventTable).where(EventTable.id.in_(event_ids)).returning(EventTable.file_id)
+            delete(EventTable).where(EventTable.id.in_(event_ids)).returning(EventTable.id, EventTable.file_id)
         )
-        file_ids = deleted.scalars().all()
-        await self.session.execute(
-            text(
-                "UPDATE file SET tags = tags - :tag, negative_tags = negative_tags || to_jsonb(cast(:tag as text)) "
-                "WHERE id = ANY(:file_ids) AND tags ? :tag "
-                "AND NOT EXISTS (SELECT 1 FROM event WHERE event.file_id = file.id)"
-            ),
-            {"tag": EVENT_FILE_TAG, "file_ids": [file_id for file_id in set(file_ids) if file_id]},
+        rows = deleted.tuples().all()
+        tag_repo = PostgresTagRepository(self.session)
+        await tag_repo.delete_for_targets(target_type=TagTargetType.EVENT, target_ids=[event_id for event_id, _ in rows])
+        emptied = await self.session.execute(
+            select(FileTable.sha256)
+            .where(
+                FileTable.id.in_({file_id for _, file_id in rows if file_id}),
+                FileTable.tags.has_key(EVENT_FILE_TAG),
+                ~select(EventTable.id).where(EventTable.file_id == FileTable.id).exists(),
+            )
+            .distinct()
+        )
+        await tag_repo.label(
+            target_type=TagTargetType.CONTENT,
+            target_ids=list(emptied.scalars().all()),
+            tag=EVENT_FILE_TAG,
+            label=ModelTagType.NEGATIVE,
+            source=TagSource.user(user_id),
         )
         await self.session.commit()
-        return len(file_ids)
+        return len(rows)
 
     async def delete_extracted_by_dataset_id(self, dataset_id: str) -> int:
         """Delete a dataset's extraction-built events, keeping manual + analyst-verified rows.

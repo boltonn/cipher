@@ -6,14 +6,18 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, UploadFi
 from PIL import Image as PILImage
 from pydantic import Field
 
+from cipher.api.deps.access import DatasetAccess, DatasetAccessDep, require_content_access
 from cipher.api.deps.authentication import CurrentUserDep
 from cipher.api.deps.postgres import (
     FaceDatastoreDep,
     FaceMatchDatastoreDep,
     FaceSimilaritySearchFormParametersDep,
+    FileDatastoreDep,
     GraphDatastoreDep,
 )
 from cipher.api.utils import download_uri
+from cipher.datastores.postgres.repositories.face import PostgresFaceRepository
+from cipher.datastores.postgres.repositories.file import PostgresFileRepository
 from cipher.schemas._base.base import BaseModel
 from cipher.schemas._base.exceptions import ValidationError
 from cipher.schemas.identity.face import (
@@ -83,6 +87,29 @@ class FaceMatchResolution(BaseModel):
     review_note: str | None = None
 
 
+async def _require_faces(
+    *,
+    face_ids: list[str],
+    access: DatasetAccess,
+    datastore: PostgresFaceRepository,
+    file_datastore: PostgresFileRepository,
+) -> None:
+    """403 unless every face's source image is in a dataset the user can see."""
+    if access.dataset_ids is not None:
+        image_ids = await datastore.get_image_ids(face_ids)
+        await require_content_access(sha256s=image_ids, access=access, file_datastore=file_datastore)
+
+
+async def require_face(
+    id: str, access: DatasetAccessDep, datastore: FaceDatastoreDep, file_datastore: FileDatastoreDep
+) -> None:
+    """Route dependency: the `{id}` face must be visible to the user."""
+    await _require_faces(face_ids=[id], access=access, datastore=datastore, file_datastore=file_datastore)
+
+
+FaceAccess = Depends(require_face)
+
+
 @router.get(
     "/matches",
     summary="List candidate face-to-person matches",
@@ -128,14 +155,19 @@ async def resolve_face_match(
     response_model_by_alias=True,
 )
 async def reject_faces(
-    body: FaceRejection, user: CurrentUserDep, datastore: FaceDatastoreDep, graph_datastore: GraphDatastoreDep
+    body: FaceRejection,
+    access: DatasetAccessDep,
+    datastore: FaceDatastoreDep,
+    file_datastore: FileDatastoreDep,
+    graph_datastore: GraphDatastoreDep,
 ):
     """Mark detector false positives (e.g. a cat) so they drop out of search, matching and the graph.
 
     The rejected faces also become negative exemplars: unassigned faces at least
     `min_similarity` similar are auto-rejected too, and so are future detections.
     """
-    updated = await datastore.reject_faces(body.face_ids, reviewed_by=user.id)
+    await _require_faces(face_ids=body.face_ids, access=access, datastore=datastore, file_datastore=file_datastore)
+    updated = await datastore.reject_faces(body.face_ids, reviewed_by=access.user.id)
     auto_rejected_ids = []
     if body.reject_similar:
         auto_rejected_ids = await datastore.auto_reject_similar(
@@ -151,13 +183,16 @@ async def reject_faces(
     response_model=FaceRejectionResult,
     response_model_by_alias=True,
 )
-async def unreject_faces(body: FaceRejection, datastore: FaceDatastoreDep):
+async def unreject_faces(
+    body: FaceRejection, access: DatasetAccessDep, datastore: FaceDatastoreDep, file_datastore: FileDatastoreDep
+):
     """Restore faces; automatic rejections no remaining exemplar supports are released too."""
+    await _require_faces(face_ids=body.face_ids, access=access, datastore=datastore, file_datastore=file_datastore)
     updated = await datastore.unreject_faces(body.face_ids, min_similarity=body.min_similarity)
     return FaceRejectionResult(updated=updated)
 
 
-@router.get("/{id}", summary="Get face by ID", response_model=Face)
+@router.get("/{id}", summary="Get face by ID", response_model=Face, dependencies=[FaceAccess])
 async def get_face_by_id(id: str, datastore: FaceDatastoreDep):
     """Get a single face by its ID."""
     face = await datastore.get_face_by_id(face_id=id)
@@ -166,7 +201,7 @@ async def get_face_by_id(id: str, datastore: FaceDatastoreDep):
     return face
 
 
-@router.get("/{id}/view", summary="Download the source image a face was detected in")
+@router.get("/{id}/view", summary="Download the source image a face was detected in", dependencies=[FaceAccess])
 async def download_face_source_image(id: str, datastore: FaceDatastoreDep):
     """Download the source image a face was detected in."""
     uri_info = await datastore.get_face_uri(face_id=id)
@@ -176,7 +211,7 @@ async def download_face_source_image(id: str, datastore: FaceDatastoreDep):
     return Response(content=file_bytes, media_type=uri_info.mime_type)
 
 
-@router.get("/{id}/thumbnail", summary="Small JPEG crop of just the face")
+@router.get("/{id}/thumbnail", summary="Small JPEG crop of just the face", dependencies=[FaceAccess])
 async def get_face_thumbnail(id: str, datastore: FaceDatastoreDep):
     """Padded, downscaled crop of the face region.
 
@@ -207,8 +242,9 @@ async def get_face_thumbnail(id: str, datastore: FaceDatastoreDep):
     response_model=PaginatedFacesResponse,
     response_model_by_alias=True,
 )
-async def get_faces(params: BaseFaceSearchParameters, datastore: FaceDatastoreDep):
+async def get_faces(params: BaseFaceSearchParameters, access: DatasetAccessDep, datastore: FaceDatastoreDep):
     """Get all faces, optionally filtered by image/person/quality, with pagination."""
+    params.datasets = access.scope(params.datasets)
     return await datastore.search_faces(request=params)
 
 
@@ -217,15 +253,18 @@ async def get_faces(params: BaseFaceSearchParameters, datastore: FaceDatastoreDe
     summary="Find faces similar to an existing face by ID",
     response_model=PaginatedFaceSimilarityResponse,
     response_model_by_alias=True,
+    dependencies=[FaceAccess],
 )
 async def similarity_search_faces_by_id(
     id: str,
     # Query() (not Depends()) so list-valued filters (person_ids) are parsed from
     # repeated query params -- Depends() silently drops them.
     params: Annotated[FaceSimilaritySearchParameters, Query()],
+    access: DatasetAccessDep,
     datastore: FaceDatastoreDep,
 ):
     """Find faces similar to an existing face, e.g. to propose identity clusters."""
+    params.datasets = access.scope(params.datasets)
     request = FaceIdKnnSearchRequest(face_id=id, **params.model_dump())
     return await datastore.search_similar_faces(request=request)
 
@@ -267,8 +306,11 @@ async def detect_faces_in_upload(file: UploadFile, model: FaceModelDep):
     response_model=PaginatedFaceSimilarityResponse,
     response_model_by_alias=True,
 )
-async def similarity_search_faces_by_embedding(request: FaceSimilaritySearchRequest, datastore: FaceDatastoreDep):
+async def similarity_search_faces_by_embedding(
+    request: FaceSimilaritySearchRequest, access: DatasetAccessDep, datastore: FaceDatastoreDep
+):
     """Find faces similar to an embedding, e.g. one chosen from /faces/detect."""
+    request.datasets = access.scope(request.datasets)
     return await datastore.search_similar_faces(request=request)
 
 
@@ -281,10 +323,12 @@ async def similarity_search_faces_by_embedding(request: FaceSimilaritySearchRequ
 async def similarity_search_faces_by_upload(
     file: UploadFile,
     params: FaceSimilaritySearchFormParametersDep,
+    access: DatasetAccessDep,
     datastore: FaceDatastoreDep,
     model: FaceModelDep,
 ):
     """Detect the most prominent face in an uploaded photo and find similar faces."""
+    params.datasets = access.scope(params.datasets)
     img_bytes = await file.read()
     img = PILImage.open(BytesIO(img_bytes)).convert("RGB")
     annotations = await model.infer_async(img)
@@ -298,7 +342,9 @@ async def similarity_search_faces_by_upload(
     return await datastore.search_similar_faces(request=request)
 
 
-@router.patch("/{id}/assign", summary="Assign (or unassign) a face to a person", response_model=Face)
+@router.patch(
+    "/{id}/assign", summary="Assign (or unassign) a face to a person", response_model=Face, dependencies=[FaceAccess]
+)
 async def assign_face(
     id: str,
     assignment: FaceAssignment,
@@ -321,6 +367,7 @@ async def assign_face(
     "/{id}/representative",
     summary="Mark or unmark a face as representative/primary for its person",
     response_model=Face,
+    dependencies=[FaceAccess],
 )
 async def set_face_representative(id: str, data: FaceRepresentativeUpdate, datastore: FaceDatastoreDep):
     """Curate which of a person's assigned faces are used as reference faces."""
@@ -333,7 +380,7 @@ async def set_face_representative(id: str, data: FaceRepresentativeUpdate, datas
     return face
 
 
-@router.delete("/{id}", summary="Delete face by ID")
+@router.delete("/{id}", summary="Delete face by ID", dependencies=[FaceAccess])
 async def delete_face(id: str, datastore: FaceDatastoreDep, graph_datastore: GraphDatastoreDep) -> bool:
     """Delete a face by its ID."""
     face = await datastore.get_face_by_id(face_id=id)

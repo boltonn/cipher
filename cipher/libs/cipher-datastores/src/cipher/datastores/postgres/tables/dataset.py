@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from sqlalchemy import DateTime, String
+from sqlalchemy import Boolean, DateTime, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from cipher.datastores.postgres.tables.base import Base
@@ -23,6 +23,7 @@ class DatasetTable(Base):
     date_created: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     date_last_updated: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     date_staged: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_discoverable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
 
     # Relationships
     files: Mapped[list["FileTable"]] = relationship(back_populates="dataset", cascade="all, delete-orphan")

@@ -42,6 +42,8 @@
   --color-annotation: var(--annotation);
   --color-annotation-foreground: var(--annotation-foreground);
   --color-highlight: var(--highlight);
+  --color-admin: var(--admin);
+  --color-admin-foreground: var(--admin-foreground);
   --color-highlight-foreground: var(--highlight-foreground);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -71,6 +73,11 @@
      as its own kind of mark. Used at low alpha as a translucent wash. */
   --highlight: oklch(0.9 0.11 205);
   --highlight-foreground: oklch(0.32 0.06 220);
+  /* Admin-only surfaces (the sidebar admin launcher, /admin pages) -- rose, kept
+     distinct from --primary (indigo), --annotation (amber, AI/ML) and
+     --destructive (red) so elevated controls never pass for everyday UI. */
+  --admin: oklch(0.6 0.21 350);
+  --admin-foreground: oklch(0.98 0.01 350);
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -130,6 +137,8 @@
   --destructive: oklch(0.704 0.191 22.216);
   --highlight: oklch(0.72 0.13 205);
   --highlight-foreground: oklch(0.96 0.02 220);
+  --admin: oklch(0.7 0.18 350);
+  --admin-foreground: oklch(0.2 0.03 350);
   --border: rgba(255, 255, 255, 0.16);
   --input: rgba(255, 255, 255, 0.22);
   --ring: oklch(0.59 0.20 277);

@@ -189,6 +189,9 @@ class MentionSearchParameters(PageParams):
     entity_id: str | None = Field(default=None)
     file_id: str | None = Field(default=None)
     dataset_id: str | None = Field(default=None)
+    dataset_ids: list[str] | None = Field(
+        default=None, description="Restrict to any of these datasets (set server-side to the caller's access)"
+    )
     mentioned_type: MentionedType | None = Field(default=None)
     provenance: MentionProvenance | None = Field(
         default=None, description="Filter by evidence class (text / email_header / metadata / image / pattern)"

@@ -18,15 +18,19 @@ import {
   useDeleteDataset,
 } from "@/features/datasets/api";
 import { DatasetFileBrowser } from "@/features/datasets/components/dataset-file-browser";
+import { DatasetMembers } from "@/features/datasets/components/dataset-members";
+import { LOCKED_DATASET_HINT } from "@/features/datasets/components/dataset-lock";
 import { EditDatasetDialog } from "@/features/datasets/components/edit-dataset-dialog";
 import { EnrichmentPipeline } from "@/features/datasets/components/enrichment-pipeline";
 import { FiletypeBreakdownList } from "@/features/datasets/components/filetype-breakdown-list";
 import { LoadHistogramChart } from "@/features/datasets/components/load-histogram-chart";
 import { DatasetEntityBreakdown } from "@/features/entities/components/dataset-entity-breakdown";
 import type {
+  Dataset,
   HistogramGranularityType,
   LoadHistogramBucket,
 } from "@/features/datasets/types";
+import { useIsAdmin } from "@/features/users/hooks/use-me";
 import { formatBytes, formatCompactNumber } from "@/lib/utils";
 import { AnimatePresence, motion } from "motion/react";
 import {
@@ -36,6 +40,7 @@ import {
   Fingerprint,
   FolderOpen,
   HardDrive,
+  Lock,
   PieChart,
   Pencil,
   Trash2,
@@ -65,7 +70,45 @@ export default function DatasetDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
+  const { data: dataset, isPending } = useDataset(id);
+
+  if (isPending) {
+    return <PageLoading icon={Database} label="Loading dataset…" />;
+  }
+  if (!dataset?.hasAccess) {
+    return <DatasetUnavailable dataset={dataset} />;
+  }
+  return <DatasetWorkspace dataset={dataset} />;
+}
+
+/** A dataset you can't open: discoverable but locked, or hidden from you entirely. */
+function DatasetUnavailable({ dataset }: { dataset?: Dataset }) {
+  return (
+    <div className="max-w-xl mx-auto px-6 pt-24 text-center">
+      <Lock className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+      <h1 className="text-lg font-semibold text-foreground">
+        {dataset?.name ?? "Dataset unavailable"}
+      </h1>
+      {dataset?.description && (
+        <p className="mt-1 text-sm text-muted-foreground">{dataset.description}</p>
+      )}
+      <p className="mt-4 text-sm text-muted-foreground">
+        {dataset ? LOCKED_DATASET_HINT : "It doesn't exist or you don't have access to it."}
+      </p>
+      <Link
+        href="/datasets"
+        className="mt-6 inline-block text-xs font-medium text-primary hover:underline"
+      >
+        Back to datasets
+      </Link>
+    </div>
+  );
+}
+
+function DatasetWorkspace({ dataset }: { dataset: Dataset }) {
+  const id = dataset.id;
   const router = useRouter();
+  const isAdmin = useIsAdmin();
 
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [range, setRange] = useState<{ from?: string; to?: string }>({});
@@ -75,7 +118,6 @@ export default function DatasetDetailPage({
   const [filetype, setFiletype] = useState<string | undefined>();
   const [filetypeGroup, setFiletypeGroup] = useState<string | undefined>();
 
-  const { data: dataset, isPending: datasetPending } = useDataset(id);
   const deleteDataset = useDeleteDataset(() => router.push("/datasets"));
   const { data: stats, isPending: statsPending } = useDatasetStats(id, {
     dateFrom: range.from,
@@ -114,10 +156,6 @@ export default function DatasetDetailPage({
     setRange({});
   };
 
-  if (datasetPending || !dataset) {
-    return <PageLoading icon={Database} label="Loading dataset…" />;
-  }
-
   return (
     <div className="max-w-400 mx-auto px-6 relative pb-20 pt-5">
       <PageHeader>
@@ -145,6 +183,7 @@ export default function DatasetDetailPage({
             {dataset.description || "No description"}
           </p>
         </div>
+        {isAdmin && (
         <div className="flex items-center gap-1 shrink-0">
           <Button
             variant="outline"
@@ -183,6 +222,7 @@ export default function DatasetDetailPage({
             onConfirm={() => deleteDataset.mutate(id)}
           />
         </div>
+        )}
       </div>
 
       <EditDatasetDialog
@@ -192,6 +232,8 @@ export default function DatasetDetailPage({
       />
 
       <EnrichmentPipeline datasetId={id} />
+
+      <DatasetMembers datasetId={id} />
 
       {/* Date range + granularity filter */}
       <div className="mt-6 flex items-center justify-between gap-4">

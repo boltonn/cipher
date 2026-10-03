@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useUpdateDataset } from "@/features/datasets/api";
 import { Dataset, DatasetUpdateSchema } from "@/features/datasets/types";
@@ -46,6 +47,7 @@ type DatasetFieldErrors = { name?: string[]; description?: string[] };
 function EditDatasetForm({ dataset, onDone }: { dataset: Dataset; onDone: () => void }) {
   const [name, setName] = useState(dataset.name);
   const [description, setDescription] = useState(dataset.description ?? "");
+  const [isDiscoverable, setIsDiscoverable] = useState(dataset.isDiscoverable);
   const [fieldErrors, setFieldErrors] = useState<DatasetFieldErrors>({});
 
   const updateDataset = useUpdateDataset(dataset.id, onDone);
@@ -54,6 +56,7 @@ function EditDatasetForm({ dataset, onDone }: { dataset: Dataset; onDone: () => 
     const result = DatasetUpdateSchema.safeParse({
       name: name.trim(),
       description: description.trim() || undefined,
+      isDiscoverable,
     });
     if (!result.success) {
       setFieldErrors(result.error.flatten().fieldErrors as DatasetFieldErrors);
@@ -94,6 +97,22 @@ function EditDatasetForm({ dataset, onDone }: { dataset: Dataset; onDone: () => 
             className="bg-muted/40 border-border text-sm min-h-24"
           />
           <FieldError errors={fieldErrors.description?.map((message) => ({ message }))} />
+        </Field>
+
+        <Field orientation="horizontal" className="items-center justify-between">
+          <div>
+            <FieldLabel htmlFor="edit-dataset-discoverable" className={FIELD_LABEL}>
+              Discoverable
+            </FieldLabel>
+            <p className="text-xs text-muted-foreground">
+              Non-members see it listed with a lock, but can&apos;t open, triage or search it.
+            </p>
+          </div>
+          <Switch
+            id="edit-dataset-discoverable"
+            checked={isDiscoverable}
+            onCheckedChange={setIsDiscoverable}
+          />
         </Field>
 
         {updateDataset.isError && (

@@ -9,6 +9,7 @@ from cipher.datastores.postgres.repositories.entity_name_key import (
     refresh_entity_name_keys,
 )
 from cipher.datastores.postgres.repositories.mention import provenance_case
+from cipher.datastores.postgres.repositories.tag import PostgresTagRepository
 from cipher.datastores.postgres.tables.entity import EntityTable, is_canonical_entity
 from cipher.datastores.postgres.tables.entity_match import EntityMatchTable
 from cipher.datastores.postgres.tables.entity_relationship import EntityRelationshipTable
@@ -62,6 +63,7 @@ from cipher.schemas.graph.organization import (
 )
 from cipher.schemas.graph.selector import Selector, SelectorCreate, SelectorUpdate
 from cipher.schemas.identity.person import Person, PersonSource
+from cipher.schemas.interaction.tag import TagSource, TagTargetType
 
 _DETAIL_TABLE = {
     EntityType.ORGANIZATION: OrganizationTable,
@@ -129,10 +131,16 @@ class PostgresEntityRepository:
         self,
         entity: EntityCreate,
         detail: OrganizationCreate | LocationCreate | SelectorCreate | None = None,
+        *,
+        source: TagSource | None = None,
     ) -> Entity:
-        """Create an entity node plus its type-specific detail row in one transaction."""
-        values = strip_null_bytes(entity.model_dump(by_alias=False))
+        """Create an entity node plus its type-specific detail row in one transaction.
+
+        Its `tags` (and a location detail's) are recorded as `source`'s decision -- required when there are any.
+        """
+        values = strip_null_bytes(entity.model_dump(by_alias=False, exclude={"tags"}))
         values["display_name_normalized"] = normalize_name(entity.display_name)
+        tags = list(entity.tags or [])
 
         row = EntityTable(**values)
         self.session.add(row)
@@ -149,6 +157,7 @@ class PostgresEntityRepository:
         detail_table = _DETAIL_TABLE.get(entity.entity_type)
         if detail is not None and detail_table is not None:
             detail_values = strip_null_bytes(detail.model_dump(by_alias=False))
+            tags += detail_values.pop("tags", None) or []
             if entity.entity_type == EntityType.LOCATION:
                 # Location detail is bridged by shared id (like person), not an
                 # entity_id FK: the detail row *is* the entity node's geo half.
@@ -170,6 +179,13 @@ class PostgresEntityRepository:
 
         result = Entity.model_validate(row)
         await self.session.commit()
+        if tags:
+            if source is None:
+                raise ValueError("Entity tags need a source (who or what tagged them)")
+            await PostgresTagRepository(self.session).set_tags(
+                target_type=TagTargetType.ENTITY, target_id=result.id, tags=tags, source=source
+            )
+            return await self.get_entity(result.id)
         return result
 
     async def upsert_person_entity(self, person: Person, *, source: EntitySource = EntitySource.MANUAL) -> Entity:
@@ -218,15 +234,14 @@ class PostgresEntityRepository:
             display_name=row.display_name,
             aliases=row.aliases or [],
         )
-        entity = Entity.model_validate(row)
+        # The bridge carries the person's tag assignments (recorded against the shared id).
+        await PostgresTagRepository(self.session).refresh(target_type=TagTargetType.ENTITY, target_ids=[row.id])
         await self.session.commit()
-        return entity
+        return await self.get_entity(row.id)
 
     async def delete_person_entity(self, person_id: str) -> bool:
-        """Drop the bridge node for a person (mentions/edges null out per their FKs)."""
-        result = await self.session.execute(delete(EntityTable).where(EntityTable.id == person_id))
-        await self.session.commit()
-        return bool(result.rowcount)
+        """Drop the bridge node for a person (mentions/edges null out per their FKs) and its tags."""
+        return await self.delete_entity(person_id)
 
     async def get_entity(self, entity_id: str) -> Entity | None:
         """Retrieve an entity node by ID (with its selector type/subtype, when it is a selector)."""
@@ -238,9 +253,13 @@ class PostgresEntityRepository:
         row = result.first()
         return _entity_with_selector(row) if row else None
 
-    async def update_entity(self, entity_id: str, data: EntityUpdate) -> Entity | None:
-        """Patch an entity node."""
-        patch = data.model_dump(exclude_unset=True, by_alias=False)
+    async def update_entity(self, entity_id: str, data: EntityUpdate, *, user_id: str) -> Entity | None:
+        """Patch an entity node; a `tags` list is recorded as `user_id`'s edit."""
+        if data.tags is not None and await self.get_entity(entity_id) is not None:
+            await PostgresTagRepository(self.session).set_tags(
+                target_type=TagTargetType.ENTITY, target_id=entity_id, tags=data.tags, source=TagSource.user(user_id)
+            )
+        patch = data.model_dump(exclude_unset=True, exclude={"tags"}, by_alias=False)
         if "display_name" in patch and patch["display_name"] is not None:
             patch["display_name_normalized"] = normalize_name(patch["display_name"])
         if not patch:
@@ -268,8 +287,11 @@ class PostgresEntityRepository:
         await self.session.commit()
 
     async def delete_entity(self, entity_id: str) -> bool:
-        """Delete an entity node (detail rows, mentions, and edges cascade or null out)."""
+        """Delete an entity node (detail rows, mentions, and edges cascade or null out) and its tags."""
         result = await self.session.execute(delete(EntityTable).where(EntityTable.id == entity_id))
+        await PostgresTagRepository(self.session).delete_for_targets(
+            target_type=TagTargetType.ENTITY, target_ids=[entity_id]
+        )
         await self.session.commit()
         return bool(result.rowcount)
 

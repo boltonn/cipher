@@ -6,6 +6,7 @@ here rather than by ``GET /datasets/{id}``.
 
 from fastapi import APIRouter, HTTPException
 
+from cipher.api.deps.access import DatasetAccessDep
 from cipher.api.deps.authentication import CurrentUserDep
 from cipher.api.deps.github import GithubClientDep, OptionalGithubClientDep
 from cipher.api.deps.postgres import (
@@ -153,7 +154,7 @@ def _render_enrichment_body(
 )
 async def create_enrichment_request(
     request: EnrichmentRequest,
-    user: CurrentUserDep,
+    access: DatasetAccessDep,
     client: OptionalGithubClientDep,
     dataset_datastore: DatasetDatastoreDep,
     file_datastore: FileDatastoreDep,
@@ -161,6 +162,8 @@ async def create_enrichment_request(
     run_datastore: EnrichmentRunDatastoreDep,
 ) -> EnrichmentRequestResult:
     """Render the request as a GitHub issue; file it when GitHub is configured, else return it to copy."""
+    access.require(request.dataset_id)
+    user = access.user
     dataset = await dataset_datastore.get_dataset_by_id(dataset_id=request.dataset_id)
     if dataset is None:
         raise HTTPException(status_code=404, detail=f"Dataset not found: {request.dataset_id}")

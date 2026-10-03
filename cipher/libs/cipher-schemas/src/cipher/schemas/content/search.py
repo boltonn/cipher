@@ -77,7 +77,7 @@ class TextChunk(BaseModel):
         list[str],
         Field(
             default_factory=list,
-            description="Optional tags for categorization or filtering",
+            description="Tags copied in at indexing time (may be stale) -- read `FileSearchResult.tags` for current ones",
         ),
     ]
     keywords: Annotated[
@@ -170,6 +170,9 @@ class ChunkFilters(CorrespondenceFilters):
     """Reusable filter set for the unified document+email chunk search index."""
 
     dataset_id: str | None = None
+    dataset_ids: list[str] | None = Field(
+        default=None, description="Restrict to any of these datasets (set server-side to the caller's access)"
+    )
     file_id: str | None = None
     tags: list[str] | None = None
     filetype_group: Literal["document", "email"] | None = Field(

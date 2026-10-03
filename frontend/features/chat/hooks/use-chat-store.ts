@@ -5,10 +5,11 @@ import { persist } from "zustand/middleware";
 interface ChatStore {
   keys: Record<string, string>;
   model: string;
-  datasetId?: string;
+  /** Datasets the conversation is scoped to; empty = all the user can access. */
+  datasetIds: string[];
   setKey: (provider: string, key: string) => void;
   setModel: (model: string) => void;
-  setDatasetId: (datasetId: string | undefined) => void;
+  setDatasetIds: (datasetIds: string[]) => void;
 }
 
 // The server holds a key for this one out of the box (LLM__* env vars); other
@@ -20,21 +21,26 @@ export const useChatStore = create<ChatStore>()(
     (set) => ({
       keys: {},
       model: DEFAULT_MODEL,
-      datasetId: undefined,
+      datasetIds: [],
       setKey: (provider, key) =>
         set((s) => ({ keys: { ...s.keys, [provider]: key } })),
       setModel: (model) => set({ model }),
-      setDatasetId: (datasetId) => set({ datasetId }),
+      setDatasetIds: (datasetIds) => set({ datasetIds }),
     }),
     {
       name: "chat-config",
-      version: 1,
+      version: 2,
       // v0 shipped a hardcoded OpenAI default that has no server key; move those
       // installs (that never explicitly picked it) onto the server-backed default.
       migrate: (persisted, version) => {
-        const state = persisted as ChatStore;
+        const state = persisted as ChatStore & { datasetId?: string };
         if (version === 0 && state?.model === "openai:gpt-4o-mini") {
-          return { ...state, model: DEFAULT_MODEL };
+          state.model = DEFAULT_MODEL;
+        }
+        // v1 scoped chat to a single `datasetId`; v2 scopes to a list.
+        if (version < 2) {
+          const { datasetId, ...rest } = state;
+          return { ...rest, datasetIds: datasetId ? [datasetId] : [] };
         }
         return state;
       },

@@ -41,8 +41,7 @@ type ImageSearchKeyPaginated = [
 
 /** Predictions are reviewed most-confident first; everything else keeps the default sort. */
 const withSort = (filters: ImageFilters): ImageFilters =>
-  filters.tagState === "predicted" && filters.tags?.length
-    ? { ...filters, sortBy: "tagScore" }
+  filters.predictedTags?.length ? { ...filters, sortBy: "tagScore" }
     : filters;
 
 export const useSearchController = (mode: PaginationModeType = "infinite") => {
@@ -205,5 +204,6 @@ export const useSearchController = (mode: PaginationModeType = "infinite") => {
     mode,
     isSimilarityMode,
     queryLabel,
+    textQuery: text,
   };
 };

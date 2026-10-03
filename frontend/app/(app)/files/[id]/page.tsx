@@ -3,9 +3,17 @@
 import { PageHeader } from "@/components/page-header";
 import { PageError, PageLoading } from "@/components/page-loading";
 import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import { CommentSection } from "@/features/comments/components/comment-section";
 import { EntityMentionText } from "@/features/entities/components/entity-mention-text";
 import { useFile } from "@/features/files/api";
-import { ArrowLeft, FileText, Loader2 } from "lucide-react";
+import { ArrowLeft, FileText, Loader2, MessageSquare } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { use } from "react";
 
@@ -16,18 +24,29 @@ import { use } from "react";
  * `?focus=<char offset>` param scrolls the matching mention into view on load,
  * `?from=` is an optional back link.
  */
-export default function FilePage({ params }: { params: Promise<{ id: string }> }) {
+export default function FilePage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
   const { id } = use(params);
   const router = useRouter();
   const search = useSearchParams();
   const focusParam = search.get("focus");
-  const focusOffset = focusParam != null && focusParam !== "" ? Number(focusParam) : undefined;
+  const focusOffset =
+    focusParam != null && focusParam !== "" ? Number(focusParam) : undefined;
   const backHref = search.get("from") ?? undefined;
 
   const { data: file, isPending, isError, refetch } = useFile(id);
 
   if (isPending) {
-    return <PageLoading icon={FileText} label="Loading file…" onRetry={() => refetch()} />;
+    return (
+      <PageLoading
+        icon={FileText}
+        label="Loading file…"
+        onRetry={() => refetch()}
+      />
+    );
   }
 
   if (isError || !file) {
@@ -48,22 +67,52 @@ export default function FilePage({ params }: { params: Promise<{ id: string }> }
         icon={<FileText size={10} className="text-primary/50" />}
         value={file.filename}
         actions={
-          backHref ? (
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 gap-2 text-xs"
-              onClick={() => {
-                // Prefer real back nav -- it restores the caller's scroll and
-                // in-memory state (tab, month, filters). Fall back to the
-                // `from` href only when there is no history (deep link / new tab).
-                if (typeof window !== "undefined" && window.history.length > 1) router.back();
-                else router.push(backHref);
-              }}
-            >
-              <ArrowLeft size={13} /> Back
-            </Button>
-          ) : undefined
+          <div className="flex items-center gap-2">
+            <Sheet>
+              <SheetTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-2 text-xs"
+                >
+                  <MessageSquare size={13} /> Comments
+                </Button>
+              </SheetTrigger>
+              <SheetContent className="w-full overflow-y-auto sm:max-w-md">
+                <SheetHeader>
+                  <SheetTitle className="truncate text-sm">
+                    {file.filename}
+                  </SheetTitle>
+                </SheetHeader>
+                <div className="px-4 pb-4">
+                  <CommentSection
+                    commentableType="file"
+                    commentableId={file.id}
+                  />
+                </div>
+              </SheetContent>
+            </Sheet>
+            {backHref && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 gap-2 text-xs"
+                onClick={() => {
+                  // Prefer real back nav -- it restores the caller's scroll and
+                  // in-memory state (tab, month, filters). Fall back to the
+                  // `from` href only when there is no history (deep link / new tab).
+                  if (
+                    typeof window !== "undefined" &&
+                    window.history.length > 1
+                  )
+                    router.back();
+                  else router.push(backHref);
+                }}
+              >
+                <ArrowLeft size={13} /> Back
+              </Button>
+            )}
+          </div>
         }
       />
 

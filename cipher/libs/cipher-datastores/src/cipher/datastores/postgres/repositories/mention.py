@@ -435,6 +435,8 @@ class PostgresMentionRepository:
             where.append(MentionTable.file_id == request.file_id)
         if request.dataset_id:
             where.append(MentionTable.dataset_id == request.dataset_id)
+        if request.dataset_ids is not None:
+            where.append(MentionTable.dataset_id.in_(request.dataset_ids))
         if request.mentioned_type:
             where.append(MentionTable.mentioned_type == request.mentioned_type)
         if request.provenance:
@@ -742,6 +744,9 @@ class PostgresMentionRepository:
         if request.dataset_id:
             params["dataset_id"] = request.dataset_id
             where.append("f.dataset_id = :dataset_id")
+        if request.dataset_ids is not None:
+            params["dataset_ids"] = list(request.dataset_ids)
+            where.append("f.dataset_id = ANY(cast(:dataset_ids AS text[]))")
         emails_cte = (
             "emails AS (SELECT f.id AS file_id, coalesce(et.metadata->>'message_id', f.sha256) AS message_key, "
             f"{CONTENT_DATE_SQL} AS date_sent FROM file f JOIN extracted_text et ON et.file_id = f.id "

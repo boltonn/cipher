@@ -199,13 +199,25 @@ def embed_images_cmd(
     dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
     dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
     device: Annotated[ModelDevice, typer.Option(help="Inference device")] = ModelDevice.CPU,
+    classify: Annotated[
+        bool, typer.Option(help="Also score every image with the tag heads, in the same GPU pass")
+    ] = False,
+    heads_dir: Annotated[
+        Path | None, typer.Option(envvar="IMAGE_HEADS_DIR", help="Trained tag heads (from train-image-heads)")
+    ] = None,
 ):
     """Run CLIP image embedding over a dataset's image files.
 
-    Independent of `detect-faces` -- either can run first.
+    Independent of `detect-faces` -- either can run first. With `--classify`, the tag heads
+    in `--heads-dir` score each batch as it is embedded (one extra matmul on the GPU).
     """
     ensure_stage_env("image-embedding")
+    from setfitcv.heads import TagHeads
     from setfitcv.model import CLIP
+
+    if classify and heads_dir is None:
+        raise typer.BadParameter("--classify needs --heads-dir (or IMAGE_HEADS_DIR)")
+    heads = TagHeads.load(heads_dir) if classify else None
 
     async def _run():
         async with get_session_context() as session:
@@ -217,8 +229,82 @@ def embed_images_cmd(
                 device=device.value,
                 unit=WorkUnit.IMAGE,
             ) as run:
-                run.units = await embed_images_workflow(session=session, model=model, dataset_id=resolved_id)
+                run.units = await embed_images_workflow(
+                    session=session, model=model, dataset_id=resolved_id, heads=heads
+                )
             logger.success(f"Embedded {run.units} images")
+
+    asyncio.run(_run())
+
+
+@app.command("train-image-heads")
+def train_image_heads_cmd(
+    heads_dir: Annotated[Path, typer.Option(envvar="IMAGE_HEADS_DIR", help="Where to save the trained heads")],
+    embedding_model: Annotated[
+        str, typer.Option(help="CLIP model the stored embeddings came from (its directory name)")
+    ],
+    tag: Annotated[list[str] | None, typer.Option(help="Tag to train, repeatable; default every labelled tag")] = None,
+    min_positives: Annotated[int, typer.Option(help="Skip tags with fewer positive labels")] = 8,
+    unlabeled_per_positive: Annotated[
+        int, typer.Option(help="Random unlabelled images drawn as weak negatives, per positive")
+    ] = 3,
+    unlabeled_weight: Annotated[float, typer.Option(help="Sample weight of those weak negatives")] = 0.3,
+):
+    """Train one lightweight classifier per tag on the image embeddings already in Postgres.
+
+    Positives are images labelled with the tag, hard negatives those labelled "not" it, plus
+    down-weighted random unlabelled images. CPU-only (scikit-learn); writes `heads.safetensors`
+    + `heads.json`, overwriting the previous bank. Run `score-image-heads` afterwards.
+    """
+    ensure_stage_env("image-heads")
+    from setfitcv.train import TrainingConfig
+
+    from cipher.orchestration.image_heads import train_image_heads_workflow
+
+    async def _run():
+        async with get_session_context() as session:
+            await train_image_heads_workflow(
+                session,
+                embedding_model=embedding_model,
+                heads_dir=heads_dir,
+                tags=tag or None,
+                unlabeled_per_positive=unlabeled_per_positive,
+                config=TrainingConfig(min_positives=min_positives, unlabeled_weight=unlabeled_weight),
+            )
+
+    asyncio.run(_run())
+
+
+@app.command("score-image-heads")
+def score_image_heads_cmd(
+    heads_dir: Annotated[Path, typer.Option(envvar="IMAGE_HEADS_DIR", help="Trained tag heads")],
+    dataset_name: Annotated[str | None, typer.Option(help="Only this dataset's images")] = None,
+    dataset_id: Annotated[str | None, typer.Option(help="Only this dataset's images")] = None,
+    tag: Annotated[list[str] | None, typer.Option(help="Only these heads, repeatable")] = None,
+    min_score: Annotated[float, typer.Option(help="Don't store scores below this")] = 0.2,
+):
+    """Score embedded images with the tag heads and store the results as model tag scores.
+
+    Works from stored embeddings (CPU matmul, no images read). Replaces any earlier heads
+    version's scores, so retrain -> rescore keeps exactly one current score per image and tag.
+    Scores show up in the image grid's *Predicted* view for review.
+    """
+    ensure_stage_env("image-heads")
+    from setfitcv.heads import TagHeads
+
+    from cipher.orchestration.image_heads import score_image_heads_workflow
+
+    heads = TagHeads.load(heads_dir)
+    if tag:
+        heads = heads.select(tag)
+
+    async def _run():
+        async with get_session_context() as session:
+            resolved_id = (
+                await _resolve_dataset_id(session, dataset_id, dataset_name) if dataset_id or dataset_name else None
+            )
+            count = await score_image_heads_workflow(session, heads=heads, dataset_id=resolved_id, min_score=min_score)
+            logger.success(f"Scored {count} images with {len(heads.tags)} heads ({heads.version})")
 
     asyncio.run(_run())
 
@@ -427,6 +513,7 @@ def ocr_cmd(
 
         clip_filter = ClipTagFilter.from_model(
             model=CLIP(model_dir=clip_model_dir, device="cpu", warmup=False),
+            model_name=f"clip:{Path(clip_model_dir).name}",
             tags=clip_tag or list(DEFAULT_CLIP_TAGS),
             negative_tags=clip_negative_tag or list(DEFAULT_CLIP_NEGATIVE_TAGS),
             threshold=clip_threshold,
@@ -885,6 +972,7 @@ def extract_events_cmd(
                             threshold=gate_threshold,
                             sample_rate=gate_sample_rate,
                             filetype_groups=groups,
+                            model=f"gliner:{Path(gliner_model_dir).name}",
                         )
                         gliner.unload()
                     text_count = await extract_text_events_workflow(

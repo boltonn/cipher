@@ -37,7 +37,7 @@ from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from loguru import logger
-from sqlalchemy import func, select, text
+from sqlalchemy import Float, func, select, text
 from tqdm import tqdm
 
 from cipher.datastores.postgres.repositories import (
@@ -67,6 +67,7 @@ from cipher.schemas.graph.event_place import EventPlaceCreate, EventPlaceRole
 from cipher.schemas.graph.location import LocationCreate
 from cipher.schemas.graph.ontology import LocationSource
 from cipher.schemas.ingestion.enrichment import EnrichableType, EnrichmentType, ProcessingStatus
+from cipher.schemas.interaction.tag import TagSource
 from cipher.utils.io import fetch_bytes_from_uri
 
 if TYPE_CHECKING:
@@ -526,12 +527,15 @@ async def gate_text_events_workflow(
     sample_rate: float = DEFAULT_GATE_SAMPLE_RATE,
     filetype_groups: tuple[str, ...] = TEXT_EVENT_GROUPS_EMAIL,
     batch_size: int = 64,
+    model: str,
 ) -> int:
     """Score every pending, ungated text file and skip the ones unlikely to hold an event.
 
     Returns files skipped. `score_texts` maps texts to scores (0-1), stored as the
-    file's `tag_scores["event"]`. Files scoring under `threshold` are marked
-    SKIPPED unless they fall in the `sample_rate` slice kept for measuring the gate.
+    file content's `tag_scores["event"]` and attributed to `model`. Files scoring under
+    `threshold` are marked SKIPPED unless they fall in the `sample_rate` slice kept for
+    measuring the gate. Tags follow content, so a copy of an already-scored file reuses
+    that score instead of being re-read.
     """
     await queue_text_event_extraction_enrichments(
         session=session, dataset_id=dataset_id, filetype_groups=filetype_groups
@@ -552,14 +556,33 @@ async def gate_text_events_workflow(
             FileTable.mime_type != _CALENDAR_MIME,
         )
     )
+    already_scored = (
+        await session.execute(
+            select(EnrichmentTable.id, FileTable.id, FileTable.tag_scores[EVENT_FILE_TAG].astext.cast(Float))
+            .join(FileTable, EnrichmentTable.enrichable_id == FileTable.id)
+            .where(
+                EnrichmentTable.enrichable_type == EnrichableType.FILE,
+                EnrichmentTable.enrichment_type == EnrichmentType.EVENT_EXTRACTION,
+                EnrichmentTable.status == ProcessingStatus.PENDING,
+                FileTable.tag_scores.has_key(EVENT_FILE_TAG),
+                FileTable.dataset_id == dataset_id,
+            )
+        )
+    ).all()
+    copies = [e for e, file_id, score in already_scored if score < threshold and not _in_gate_sample(file_id, sample_rate)]
+    await enrichment_repo.mark_skipped_batch(copies)
+    skipped = len(copies)
+
     total = (await session.execute(select(func.count()).select_from(pending.subquery()))).scalar_one()
-    gated = skipped = 0
+    gated = 0
 
     with tqdm(total=total, desc="Gating events", unit=" file") as pbar:
         while rows := (await session.execute(pending.limit(batch_size))).all():
             scores = await asyncio.to_thread(score_texts, [content for _, _, content in rows])
             await file_repo.set_tag_scores(
-                tag=EVENT_FILE_TAG, scores={file_id: score for (_, file_id, _), score in zip(rows, scores, strict=True)}
+                tag=EVENT_FILE_TAG,
+                scores={file_id: score for (_, file_id, _), score in zip(rows, scores, strict=True)},
+                model=model,
             )
             rejected = [
                 enrichment_id
@@ -578,11 +601,15 @@ async def gate_text_events_workflow(
     return skipped
 
 
-async def tag_event_files(session: "AsyncSession", *, with_events: list[str], without_events: list[str]) -> None:
-    """Label files the LLM read: `event` positive when it found one, negative when it did not."""
+async def tag_event_files(
+    session: "AsyncSession", *, with_events: list[str], without_events: list[str], model: str
+) -> None:
+    """Label files the LLM read: `event` positive when it found one, negative when it did not (as `model`)."""
     file_repo = PostgresFileRepository(session=session)
-    await file_repo.tag_files(file_ids=with_events, tag=EVENT_FILE_TAG, tag_type=ModelTagType.POSITIVE)
-    await file_repo.tag_files(file_ids=without_events, tag=EVENT_FILE_TAG, tag_type=ModelTagType.NEGATIVE)
+    for file_ids, label in ((with_events, ModelTagType.POSITIVE), (without_events, ModelTagType.NEGATIVE)):
+        await file_repo.tag_files(
+            file_ids=file_ids, tag=EVENT_FILE_TAG, label=label, source=TagSource.model(model)
+        )
 
 
 async def get_event_gate_report(session: "AsyncSession", dataset_id: str, *, threshold: float) -> dict:
@@ -778,7 +805,9 @@ async def extract_text_events_workflow(
                         await session.rollback()
                         failed.append(item.enrichment.id)
 
-                await tag_event_files(session, with_events=with_events, without_events=without_events)
+                await tag_event_files(
+                    session, with_events=with_events, without_events=without_events, model=resolved_model
+                )
                 if completed:
                     await enrichment_repo.mark_completed_batch(completed)
                 if failed:

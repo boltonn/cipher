@@ -75,6 +75,7 @@ async def search_passages(
     date_from: date | None = None,
     date_to: date | None = None,
     filetype_group: Literal["document", "email"] | None = None,
+    tags: list[str] | None = None,
     limit: int = 8,
 ) -> list[dict]:
     """Find document and email passages, ranked by text and/or narrowed by entities and email metadata.
@@ -105,18 +106,24 @@ async def search_passages(
       sent or a document authored.
     - `filetype_group` -- "email" or "document" only.
 
+    Tag filter:
+    - `tags` -- only files an analyst or model labelled with any of these tags (e.g. "event").
+
     For counting ("who does X email most", "how many emails per month") use
     `count_emails` / `top_connections` instead -- this returns passages, not totals.
     """
-    filters = ChunkFilters(
-        dataset_id=ctx.deps.dataset_id,
-        selector_types=[selector_type] if selector_type else None,
-        sent_from=await _entity_refs(ctx, sent_from),
-        sent_to=await _entity_refs(ctx, sent_to),
-        participants=await _entity_refs(ctx, participants),
-        date_from=date_from,
-        date_to=date_to,
-        filetype_group=filetype_group,
+    filters = ctx.deps.access.scoped(
+        ChunkFilters(
+            dataset_id=ctx.deps.dataset_id,
+            selector_types=[selector_type] if selector_type else None,
+            sent_from=await _entity_refs(ctx, sent_from),
+            sent_to=await _entity_refs(ctx, sent_to),
+            participants=await _entity_refs(ctx, participants),
+            date_from=date_from,
+            date_to=date_to,
+            filetype_group=filetype_group,
+            tags=tags or None,
+        )
     )
     graph_expand = None
     if entity_ids:
@@ -179,15 +186,17 @@ async def count_emails(
     once even if it appears in several mailboxes.
     """
     counts = await ctx.deps.mentions.count_emails(
-        EmailCountRequest(
-            dataset_id=ctx.deps.dataset_id,
-            sent_from=await _entity_refs(ctx, sent_from),
-            sent_to=await _entity_refs(ctx, sent_to),
-            participants=await _entity_refs(ctx, participants),
-            date_from=date_from,
-            date_to=date_to,
-            group_by=group_by,
-            limit=max(1, min(limit, 100)),
+        ctx.deps.access.scoped(
+            EmailCountRequest(
+                dataset_id=ctx.deps.dataset_id,
+                sent_from=await _entity_refs(ctx, sent_from),
+                sent_to=await _entity_refs(ctx, sent_to),
+                participants=await _entity_refs(ctx, participants),
+                date_from=date_from,
+                date_to=date_to,
+                group_by=group_by,
+                limit=max(1, min(limit, 100)),
+            )
         )
     )
     out: dict = {
@@ -219,13 +228,15 @@ async def find_person(ctx: RunContext[ChatDeps], name: str, limit: int = 5) -> l
 
 
 async def list_datasets(ctx: RunContext[ChatDeps]) -> list[dict]:
-    """List the datasets available in this workspace, each linking to its page.
+    """List the datasets this conversation can read, each linking to its page.
 
-    Use when the user asks what data exists, or to help them pick a dataset to
-    scope the conversation to.
+    Use when the user asks what data exists. Only the datasets the chat is scoped to
+    are listed; the user picks them in the chat's dataset selector.
     """
-    result = await ctx.deps.datasets.get_datasets(DatasetsRequest(limit=100))
-    return [dataset_citation(d) for d in result.data]
+    result = await ctx.deps.datasets.get_datasets(
+        DatasetsRequest(limit=100), accessible_ids=ctx.deps.access.dataset_ids
+    )
+    return [dataset_citation(d) for d in result.data if d.has_access]
 
 
 async def find_entity(
@@ -388,7 +399,8 @@ async def entity_profile(ctx: RunContext[ChatDeps], entity_id: str) -> dict:
     profile = await ctx.deps.entities.get_profile(entity_id)
     if profile is None:
         raise ModelRetry(f"No entity found with id {entity_id!r}. Use `find_entity` to look one up.")
-    return to_jsonable_python(profile, by_alias=True)
+    top_mentions = [m for m in profile.top_mentions if ctx.deps.access.allows(m.dataset_id)]
+    return to_jsonable_python(profile.model_copy(update={"top_mentions": top_mentions}), by_alias=True)
 
 
 async def entity_mentions(ctx: RunContext[ChatDeps], entity_id: str, limit: int = 10) -> list[dict]:
@@ -398,7 +410,7 @@ async def entity_mentions(ctx: RunContext[ChatDeps], entity_id: str, limit: int 
     open.
     """
     result = await ctx.deps.mentions.list_mentions(
-        MentionSearchParameters(entity_id=entity_id, resolved=True, limit=limit)
+        ctx.deps.access.scoped(MentionSearchParameters(entity_id=entity_id, resolved=True, limit=limit))
     )
     return [c for m in result.data if (c := mention_citation(m)) is not None]
 
@@ -472,8 +484,8 @@ async def explain_entity_resolution(ctx: RunContext[ChatDeps], mention_id: str) 
     `candidates` list means nothing blocked or nothing cleared the review floor.
     """
     mention = await ctx.deps.mentions.get_mention(mention_id)
-    if mention is None:
-        raise ModelRetry(f"No mention {mention_id!r}.")
+    if mention is None or not ctx.deps.access.allows(mention.dataset_id):
+        raise ModelRetry(f"No mention {mention_id!r} in the datasets this chat can read.")
     candidates = []
     if mention.normalized_value:
         rows = await ctx.deps.entity_matches.list_for_name_group(
@@ -499,6 +511,9 @@ async def read_file(
     Use after a search or a mention citation to see the full surrounding context
     rather than only the retrieved snippet. Long reads are truncated.
     """
+    file = await ctx.deps.files.get_file_by_id(file_id=file_id)
+    if file is None or not ctx.deps.access.allows(file.dataset_id):
+        raise ModelRetry(f"No file {file_id!r} in the datasets this chat can read.")
     extracted = await ctx.deps.extracted_text.get_by_file_id(file_id)
     if extracted is None:
         raise ModelRetry(f"No extracted text for file {file_id!r} -- it may not be a text document.")

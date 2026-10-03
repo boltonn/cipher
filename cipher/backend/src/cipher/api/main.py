@@ -15,6 +15,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from cipher.api.deps.elasticsearch import elasticsearch_lifespan
 from cipher.api.deps.postgres import postgres_lifespan
 from cipher.api.routes import (
+    admin,
     chat,
     comments,
     dataset_requests,
@@ -31,6 +32,7 @@ from cipher.api.routes import (
     mentions,
     persons,
     search,
+    tags,
     users,
 )
 from cipher.api.settings import RetrievalBackend, Settings
@@ -119,6 +121,8 @@ app.include_router(locations.router)
 app.include_router(search.router)
 # app.include_router(messages.router)
 app.include_router(users.router)
+app.include_router(admin.router)
+app.include_router(tags.router)
 app.include_router(faces.router)
 app.include_router(persons.router)
 app.include_router(entities.router)

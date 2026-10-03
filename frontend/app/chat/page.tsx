@@ -45,7 +45,7 @@ function splitErrorTrace(message: string): { summary: string; trace?: string } {
 }
 
 export default function ChatPage() {
-  const { keys, model: storedModel, datasetId, setDatasetId } = useChatStore();
+  const { keys, model: storedModel, datasetIds, setDatasetIds } = useChatStore();
   const { labelFor, effectiveModel } = useModelOptions();
   const model = effectiveModel(storedModel);
   const isStoreHydrated = useChatStoreHydrated(); // Reusable hydration state
@@ -119,7 +119,7 @@ export default function ChatPage() {
     headers: outgoingApiKey ? { "x-api-key": outgoingApiKey } : undefined,
     body: {
       model: model,
-      datasetId: datasetId,
+      datasetIds,
     },
   });
 
@@ -169,7 +169,7 @@ export default function ChatPage() {
           <span className="flex items-center gap-1.5 font-mono text-xs text-primary/80">
             <MessageSquareIcon className="h-3 w-3" />
             {labelFor(model)}
-            {datasetId && (
+            {datasetIds.length > 0 && (
               <span className="text-muted-foreground">· scoped</span>
             )}
           </span>
@@ -280,8 +280,8 @@ export default function ChatPage() {
           onStop={stop}
           onClear={handleClear}
           messages={messages}
-          datasetId={datasetId}
-          onDatasetIdChange={setDatasetId}
+          datasetIds={datasetIds}
+          onDatasetIdsChange={setDatasetIds}
         />
       </div>
     </div>

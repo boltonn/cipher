@@ -16,11 +16,13 @@ from cipher.datastores.postgres.repositories import (
     PostgresLocationRepository,
 )
 from cipher.orchestration.exif_location import exif_location_create
+from cipher.orchestration.image_heads import DEFAULT_MIN_STORED_SCORE, write_head_scores
 from cipher.schemas.content.image import ImageCreate
 from cipher.schemas.ingestion.enrichment import EnrichableType, EnrichmentType
 from cipher.utils.io import fetch_bytes_from_uri
 
 if TYPE_CHECKING:
+    from setfitcv.heads import TagHeads
     from setfitcv.model import CLIP
 
 _EXECUTOR = ThreadPoolExecutor(max_workers=10)
@@ -102,22 +104,31 @@ async def _consumer(
     model: "CLIP",
     commit_batch_size: int,
     stats: dict,
+    heads: "TagHeads | None" = None,
 ):
-    """Consumer: run inference and commit results."""
+    """Consumer: run inference (plus tag heads, in the same GPU pass, when given) and commit results."""
     pending_imgs, pending_locs, pending_data = [], [], []
+    pending_scores: dict[str, dict[str, float]] = {}
 
     while True:
         batch_data = await queue.get()
         if batch_data is None:
             if pending_imgs:
-                await _flush_to_db(session, pending_imgs, pending_locs, pending_data)
+                await _flush_to_db(session, pending_imgs, pending_locs, pending_data, heads, pending_scores)
             queue.task_done()
             break
 
         tensors, metas, items, fails = batch_data
 
         start_inf = perf_counter()
-        embeddings = await asyncio.to_thread(model.embed_imgs_batch, tensors)
+        if heads is None:
+            embeddings = await asyncio.to_thread(model.embed_imgs_batch, tensors)
+        else:
+            embeddings, scores = await asyncio.to_thread(model.embed_and_score_imgs_batch, tensors, heads)
+            for item, row in zip(items, scores, strict=True):
+                pending_scores[item.resource["sha256"]] = {
+                    t: s for t, s in row.items() if s >= DEFAULT_MIN_STORED_SCORE
+                }
         inf_ms = int((perf_counter() - start_inf) * 1000)
 
         for item, meta, emb in zip(items, metas, embeddings, strict=True):
@@ -139,18 +150,19 @@ async def _consumer(
         stats["count"] += len(items)
 
         if len(pending_imgs) >= commit_batch_size:
-            await _flush_to_db(session, pending_imgs, pending_locs, pending_data)
+            await _flush_to_db(session, pending_imgs, pending_locs, pending_data, heads, pending_scores)
             pending_imgs.clear()
             pending_locs.clear()
             pending_data.clear()
+            pending_scores.clear()
             gc.collect()
 
         queue.task_done()
         logger.info(f"Batch: {len(items)} images in {inf_ms}ms (Total: {stats['count']})")
 
 
-async def _flush_to_db(session: "AsyncSession", images, locations, data):
-    """Write embeddings, EXIF locations, and enrichment status to DB."""
+async def _flush_to_db(session: "AsyncSession", images, locations, data, heads=None, scores=None):
+    """Write embeddings, EXIF locations, enrichment status and (when heads ran) tag head scores to DB."""
     img_repo = PostgresImageRepository(session)
     loc_repo = PostgresLocationRepository(session)
     enr_repo = PostgresEnrichmentRepository(session)
@@ -169,6 +181,9 @@ async def _flush_to_db(session: "AsyncSession", images, locations, data):
     if fails:
         await enr_repo.mark_failed_batch(enrichment_ids=fails, increment_retry=True)
     await session.commit()
+    if heads is not None and scores:
+        image_ids = list(scores)
+        await write_head_scores(session, heads=heads, image_ids=image_ids, scores=[scores[i] for i in image_ids])
 
 
 async def embed_images(
@@ -177,8 +192,16 @@ async def embed_images(
     batch_size: int = 32,
     commit_batch_size: int = 128,
     dataset_id: str | None = None,
+    heads: "TagHeads | None" = None,
 ) -> int:
-    """Run image embedding pipeline, returning the number of images processed."""
+    """Run image embedding pipeline, returning the number of images processed.
+
+    With `heads`, every image is also scored by the tag heads in the same GPU pass.
+    """
+    if heads is not None and heads.embedding_model != model.model_dir.name:
+        raise ValueError(
+            f"Tag heads were trained on {heads.embedding_model!r} embeddings, not {model.model_dir.name!r}"
+        )
     stats = {"count": 0}
     start_time = perf_counter()
     queue = asyncio.Queue(maxsize=4)
@@ -191,7 +214,7 @@ async def embed_images(
         async with AsyncSession(engine, expire_on_commit=False) as consumer_session:
             await asyncio.gather(
                 _producer(queue, producer_session, batch_size, dataset_id, model.img_preprocessor),
-                _consumer(queue, consumer_session, model, commit_batch_size, stats),
+                _consumer(queue, consumer_session, model, commit_batch_size, stats, heads),
             )
 
     total_time = int((perf_counter() - start_time) * 1000)
@@ -301,8 +324,9 @@ async def embed_images_workflow(
     dataset_id: str,
     batch_size: int = 32,
     commit_batch_size: int = 128,
+    heads: "TagHeads | None" = None,
 ) -> int:
-    """Queue, dedupe, then embed a dataset's images. Returns images run through CLIP."""
+    """Queue, dedupe, then embed (and optionally tag-score) a dataset's images. Returns images run through CLIP."""
     await queue_image_enrichments(session=session, dataset_id=dataset_id)
     await dedupe_pending_embeddings(session=session, dataset_id=dataset_id)
     return await embed_images(
@@ -311,4 +335,5 @@ async def embed_images_workflow(
         batch_size=batch_size,
         commit_batch_size=commit_batch_size,
         dataset_id=dataset_id,
+        heads=heads,
     )

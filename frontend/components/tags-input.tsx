@@ -6,7 +6,22 @@ import {
   AutocompleteInput,
   AutocompleteItem,
 } from "@/components/ui/autocomplete";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { X } from "lucide-react";
 import { useState } from "react";
@@ -24,6 +39,10 @@ interface TagsInputProps {
   suggestions?: string[];
   onQueryChange?: (query: string) => void;
   isLoadingSuggestions?: boolean;
+  /** Who/what set a tag, shown on hover; `isModel` paints the chip in the AI/ML annotation color. */
+  describeTag?: (tag: string) => { label: string; isModel?: boolean } | undefined;
+  /** A message when removing `tag` needs confirming (e.g. another user added it); undefined removes at once. */
+  confirmRemove?: (tag: string) => string | undefined;
 }
 
 /**
@@ -40,8 +59,14 @@ export function TagsInput({
   suggestions,
   onQueryChange,
   isLoadingSuggestions,
+  describeTag,
+  confirmRemove,
 }: TagsInputProps) {
   const [draft, setDraft] = useState("");
+  const [pendingRemoval, setPendingRemoval] = useState<{
+    tag: string;
+    message: string;
+  } | null>(null);
   const suggesting = !!onQueryChange;
 
   const add = (raw: string) => {
@@ -51,7 +76,12 @@ export function TagsInput({
     onQueryChange?.("");
   };
 
-  const removeTag = (tag: string) => onChange(value.filter((t) => t !== tag));
+  const removeNow = (tag: string) => onChange(value.filter((t) => t !== tag));
+  const removeTag = (tag: string) => {
+    const message = confirmRemove?.(tag);
+    if (message) setPendingRemoval({ tag, message });
+    else removeNow(tag);
+  };
 
   const options = (suggestions ?? []).filter((s) => !value.includes(s));
 
@@ -59,22 +89,38 @@ export function TagsInput({
     <div className={cn("space-y-1.5", className)}>
       {value.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
-          {value.map((tag) => (
-            <Badge
-              key={tag}
-              className="h-6 animate-in gap-1 rounded-full border-none bg-primary/10 px-2.5 pr-1.5 text-xs font-medium text-primary fade-in zoom-in-95"
-            >
-              {tag}
-              <button
-                type="button"
-                onClick={() => removeTag(tag)}
-                className="rounded-full p-0.5 text-primary/60 hover:bg-primary/20 hover:text-primary"
-                aria-label={`Remove ${tag}`}
+          {value.map((tag) => {
+            const about = describeTag?.(tag);
+            const chip = (
+              <Badge
+                key={tag}
+                className={cn(
+                  "h-6 animate-in gap-1 rounded-full border-none px-2.5 pr-1.5 text-xs font-medium fade-in zoom-in-95",
+                  about?.isModel
+                    ? "bg-annotation/15 text-annotation"
+                    : "bg-primary/10 text-primary"
+                )}
               >
-                <X size={11} />
-              </button>
-            </Badge>
-          ))}
+                {tag}
+                <button
+                  type="button"
+                  onClick={() => removeTag(tag)}
+                  className="rounded-full p-0.5 opacity-60 hover:bg-current/10 hover:opacity-100"
+                  aria-label={`Remove ${tag}`}
+                >
+                  <X size={11} />
+                </button>
+              </Badge>
+            );
+            return about ? (
+              <Tooltip key={tag}>
+                <TooltipTrigger asChild>{chip}</TooltipTrigger>
+                <TooltipContent>{about.label}</TooltipContent>
+              </Tooltip>
+            ) : (
+              chip
+            );
+          })}
         </div>
       )}
       <Autocomplete>
@@ -106,6 +152,28 @@ export function TagsInput({
           </AutocompleteContent>
         )}
       </Autocomplete>
+      <AlertDialog
+        open={pendingRemoval !== null}
+        onOpenChange={(open) => !open && setPendingRemoval(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove “{pendingRemoval?.tag}”?</AlertDialogTitle>
+            <AlertDialogDescription>{pendingRemoval?.message}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep it</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (pendingRemoval) removeNow(pendingRemoval.tag);
+                setPendingRemoval(null);
+              }}
+            >
+              Remove for everyone
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

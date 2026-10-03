@@ -1,7 +1,8 @@
+from collections.abc import Collection
 from datetime import UTC, datetime
 
 from loguru import logger
-from sqlalchemy import asc, delete, desc, func, or_, select, update
+from sqlalchemy import asc, delete, desc, func, literal, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cipher.datastores.postgres.tables.dataset import DatasetTable
@@ -91,12 +92,16 @@ class PostgresDatasetRepository:
 
         return Dataset.model_validate(dataset_table) if dataset_table else None
 
-    async def get_datasets(self, request: DatasetsRequest | dict | None = None) -> PaginatedDatasetsResponse:
+    async def get_datasets(
+        self, request: DatasetsRequest | dict | None = None, *, accessible_ids: Collection[str] | None = None
+    ) -> PaginatedDatasetsResponse:
         """Query datasets with filtering, pagination, and sorting.
 
         Each row is enriched with file_count/total_size_bytes/filetype_count
         aggregated from `file`, via a LEFT JOIN so empty datasets still
         appear (with zero stats) rather than being dropped by an inner join.
+        `accessible_ids` (None = everything, e.g. an admin) are the caller's datasets: the listing
+        is those plus any discoverable ones, each flagged with `has_access`.
         """
         if isinstance(request, dict):
             request = DatasetsRequest(**request)
@@ -118,6 +123,10 @@ class PostgresDatasetRepository:
         filetype_count_expr = func.coalesce(file_stats.c.filetype_count, 0)
 
         where_clause = []
+        has_access_expr = literal(True)
+        if accessible_ids is not None:
+            has_access_expr = DatasetTable.id.in_(list(accessible_ids))
+            where_clause.append(or_(has_access_expr, DatasetTable.is_discoverable.is_(True)))
         if request.query:
             where_clause.append(
                 or_(
@@ -140,7 +149,9 @@ class PostgresDatasetRepository:
         count_result = await self.session.execute(count_stmt)
         total_count = count_result.scalar_one()
 
-        data_stmt = select(DatasetTable, file_count_expr, total_size_expr, filetype_count_expr).outerjoin(
+        data_stmt = select(
+            DatasetTable, file_count_expr, total_size_expr, filetype_count_expr, has_access_expr
+        ).outerjoin(
             file_stats, DatasetTable.id == file_stats.c.dataset_id
         )
         if where_clause:
@@ -166,9 +177,10 @@ class PostgresDatasetRepository:
                     "file_count": file_count,
                     "total_size_bytes": total_size_bytes,
                     "filetype_count": filetype_count,
+                    "has_access": has_access,
                 }
             )
-            for dataset_table, file_count, total_size_bytes, filetype_count in data_result.all()
+            for dataset_table, file_count, total_size_bytes, filetype_count, has_access in data_result.all()
         ]
 
         total_pages = (total_count + request.limit - 1) // request.limit

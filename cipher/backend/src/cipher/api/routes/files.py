@@ -5,11 +5,13 @@ from fastapi import APIRouter, Body, HTTPException, Query, Response
 from pydantic import Field
 from pyparse.parsers.email import EmlParser
 
+from cipher.api.deps.access import DatasetAccess, DatasetAccessDep
 from cipher.api.deps.elasticsearch import TextChunkDatastoreDep
 from cipher.api.deps.postgres import ExtractedTextDatastoreDep, FileDatastoreDep, ImageDatastoreDep
 from cipher.api.utils import download_uri
+from cipher.datastores.postgres.repositories.file import PostgresFileRepository
 from cipher.schemas._base.base import BaseModel
-from cipher.schemas._base.common import TagRequest
+from cipher.schemas._base.common import TagRequest, TagsUpdate
 from cipher.schemas.content.document import DocumentMetadata
 from cipher.schemas.content.email import EmailBase
 from cipher.schemas.content.image import ImagePublic
@@ -22,29 +24,47 @@ router = APIRouter(
 )
 
 
-@router.get("/{id}", summary="Get file by ID", response_model=File)
-async def get_file(id: str, datastore: FileDatastoreDep):
-    """Get a single file by its ID."""
-    file = await datastore.get_file_by_id(file_id=id)
+async def get_accessible_file(*, file_id: str, datastore: PostgresFileRepository, access: DatasetAccess) -> File:
+    """The file, if it exists (404) and is in a dataset the user can see (403)."""
+    file = await datastore.get_file_by_id(file_id=file_id)
     if file is None:
-        raise HTTPException(status_code=404, detail=f"File not found: {id}")
+        raise HTTPException(status_code=404, detail=f"File not found: {file_id}")
+    access.require(file.dataset_id)
     return file
 
 
+@router.get("/{id}", summary="Get file by ID", response_model=File)
+async def get_file(id: str, access: DatasetAccessDep, datastore: FileDatastoreDep):
+    """Get a single file by its ID."""
+    return await get_accessible_file(file_id=id, datastore=datastore, access=access)
+
+
 @router.patch("/{id}/tag", summary="Toggle a positive or negative tag on a file", response_model=File)
-async def toggle_file_tag(id: str, tag_data: Annotated[TagRequest, Body(...)], datastore: FileDatastoreDep):
+async def toggle_file_tag(
+    id: str, tag_data: Annotated[TagRequest, Body(...)], access: DatasetAccessDep, datastore: FileDatastoreDep
+):
     """Toggle a tag: `positive` goes in `tags`, `negative` in `negativeTags`; a tag is in at most one."""
-    file = await datastore.toggle_tag(file_id=id, tag=tag_data.tag, tag_type=tag_data.type)
+    await get_accessible_file(file_id=id, datastore=datastore, access=access)
+    file = await datastore.toggle_tag(file_id=id, tag=tag_data.tag, tag_type=tag_data.type, user_id=access.user.id)
     if file is None:
         raise HTTPException(status_code=404, detail="File not found")
     return file
 
 
+@router.put("/{id}/tags", summary="Set a file's tags", response_model=File)
+async def set_file_tags(
+    id: str, data: Annotated[TagsUpdate, Body(...)], access: DatasetAccessDep, datastore: FileDatastoreDep
+):
+    """Set the positive tags of the file's content (every copy shares them); changes are recorded as yours."""
+    await get_accessible_file(file_id=id, datastore=datastore, access=access)
+    return await datastore.set_tags(file_id=id, tags=data.tags, user_id=access.user.id)
+
+
 @router.get("/{id}/view", summary="Download file by ID")
-async def download_file_by_id(id: str, datastore: FileDatastoreDep):
+async def download_file_by_id(id: str, access: DatasetAccessDep, datastore: FileDatastoreDep):
     """Download a single file's raw bytes by its ID."""
-    file = await datastore.get_file_by_id(file_id=id)
-    if file is None or file.uri is None:
+    file = await get_accessible_file(file_id=id, datastore=datastore, access=access)
+    if file.uri is None:
         raise HTTPException(status_code=404, detail=f"File not found: {id}")
     file_bytes = download_uri(file.uri)
     return Response(
@@ -57,6 +77,7 @@ async def download_file_by_id(id: str, datastore: FileDatastoreDep):
 @router.get("/{id}/preview", summary="Browser-displayable JPEG for an image file")
 async def preview_image_file(
     id: str,
+    access: DatasetAccessDep,
     datastore: FileDatastoreDep,
     max_dim: int = Query(default=1600, ge=64, le=4096, alias="max"),
 ):
@@ -74,8 +95,8 @@ async def preview_image_file(
     except ImportError:  # pragma: no cover - HEIC just won't decode
         pass
 
-    file = await datastore.get_file_by_id(file_id=id)
-    if file is None or file.uri is None:
+    file = await get_accessible_file(file_id=id, datastore=datastore, access=access)
+    if file.uri is None:
         raise HTTPException(status_code=404, detail=f"File not found: {id}")
     if file.filetype_group != "image":
         raise HTTPException(status_code=415, detail=f"Not an image file: {file.filetype}")
@@ -101,10 +122,10 @@ async def preview_image_file(
     summary="Parse an ingested email file by ID",
     response_model=EmailBase,
 )
-async def get_file_email(id: str, datastore: FileDatastoreDep):
+async def get_file_email(id: str, access: DatasetAccessDep, datastore: FileDatastoreDep):
     """Parse a stored email file on demand and return its structured representation for display."""
-    file = await datastore.get_file_by_id(file_id=id)
-    if file is None or file.uri is None:
+    file = await get_accessible_file(file_id=id, datastore=datastore, access=access)
+    if file.uri is None:
         raise HTTPException(status_code=404, detail=f"File not found: {id}")
     if file.filetype != "eml":
         raise HTTPException(status_code=400, detail=f"Unsupported email filetype: {file.filetype}")
@@ -116,8 +137,11 @@ async def get_file_email(id: str, datastore: FileDatastoreDep):
     summary="Get the Image record for a file, if the images pipeline has processed it",
     response_model=ImagePublic,
 )
-async def get_file_image(id: str, image_datastore: ImageDatastoreDep):
+async def get_file_image(
+    id: str, access: DatasetAccessDep, datastore: FileDatastoreDep, image_datastore: ImageDatastoreDep
+):
     """Look up the Image entity (EXIF metadata, embedding-backed similarity) for a file."""
+    await get_accessible_file(file_id=id, datastore=datastore, access=access)
     image = await image_datastore.get_image_by_file_id(file_id=id)
     if image is None:
         raise HTTPException(status_code=404, detail=f"No image record found for file: {id}")
@@ -142,6 +166,8 @@ class FileText(BaseModel):
 )
 async def get_file_text(
     id: str,
+    access: DatasetAccessDep,
+    datastore: FileDatastoreDep,
     extracted_text_datastore: ExtractedTextDatastoreDep,
     chunk_datastore: TextChunkDatastoreDep,
 ):
@@ -152,6 +178,7 @@ async def get_file_text(
     string, so any reconstruction would break highlighting (and would drop
     content wherever a chunk is missing from the index).
     """
+    await get_accessible_file(file_id=id, datastore=datastore, access=access)
     extracted = await extracted_text_datastore.get_by_file_id(file_id=id)
     if extracted is None:
         raise HTTPException(status_code=404, detail=f"No extracted text found for file: {id}")
@@ -198,12 +225,15 @@ class FileTables(BaseModel):
     summary="Get a file's structured table data",
     response_model=FileTables,
 )
-async def get_file_table(id: str, extracted_text_datastore: ExtractedTextDatastoreDep):
+async def get_file_table(
+    id: str, access: DatasetAccessDep, datastore: FileDatastoreDep, extracted_text_datastore: ExtractedTextDatastoreDep
+):
     """Return structured tables extracted from a file (csv/tsv/json/jsonl/xlsx/...), if any.
 
     Each sheet is capped at `MAX_TABLE_ROWS`; `truncated`/`total_rows` tell the
     client when it's only seeing a prefix of the full table.
     """
+    await get_accessible_file(file_id=id, datastore=datastore, access=access)
     extracted = await extracted_text_datastore.get_by_file_id(file_id=id)
     tables = extracted.metadata.tables if extracted and isinstance(extracted.metadata, DocumentMetadata) else None
     if not tables:

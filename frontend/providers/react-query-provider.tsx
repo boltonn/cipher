@@ -1,9 +1,17 @@
 "use client";
 
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  MutationCache,
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query";
 
 function makeQueryClient() {
-  return new QueryClient({
+  const queryClient: QueryClient = new QueryClient({
+    // Any write may change a tag (and who set it); refresh the open "who tagged this" views.
+    mutationCache: new MutationCache({
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: ["tags"] }),
+    }),
     defaultOptions: {
       queries: {
         refetchOnWindowFocus: false,
@@ -12,6 +20,7 @@ function makeQueryClient() {
       },
     },
   });
+  return queryClient;
 }
 
 let browserQueryClient: QueryClient | undefined;

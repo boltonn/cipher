@@ -116,8 +116,12 @@ def build_agent(*, filter_tools: bool = False) -> Agent[ChatDeps, str]:
     # messages, which Mistral's chat template (local vLLM) rejects.
     @agent.instructions
     def _instructions(ctx: RunContext[ChatDeps]) -> str:
-        scope = f"dataset {ctx.deps.dataset_id}" if ctx.deps.dataset_id else "all datasets (none selected)"
-        return f"{INSTRUCTIONS}\nToday is {date.today().isoformat()}. Tools are scoped to {scope}."
+        ids = ctx.deps.access.dataset_ids
+        scope = "every dataset" if ids is None else f"dataset(s) {', '.join(sorted(ids)) or '(none)'}"
+        return (
+            f"{INSTRUCTIONS}\nToday is {date.today().isoformat()}. Passages, files, mentions and email counts "
+            f"come only from {scope}; nothing outside them exists for this conversation."
+        )
 
     # Tools share ChatDeps' repositories (one DB session each), and an AsyncSession can't
     # run two queries at once -- so when the model asks for several calls in one turn,

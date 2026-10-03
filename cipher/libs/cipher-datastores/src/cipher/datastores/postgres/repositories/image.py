@@ -1,11 +1,14 @@
 import numpy as np
-from sqlalchemy import Float, and_, asc, delete, desc, exists, func, literal, or_, select, text
+from sqlalchemy import Float, and_, asc, delete, desc, exists, func, literal, or_, select, tablesample, text
 from sqlalchemy.dialects.postgresql import array, insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
+from cipher.datastores.postgres.repositories.tag import PostgresTagRepository
 from cipher.datastores.postgres.tables.file import FileTable
-from cipher.datastores.postgres.tables.image import ImageTable
-from cipher.schemas._base.common import ModelTagType, SortOrder, TagState, UriResponse
+from cipher.datastores.postgres.tables.image import IMAGE_EMBEDDING_DIMENSION, ImageTable
+from cipher.datastores.postgres.tables.tag import TagTable
+from cipher.schemas._base.common import ModelTagType, SortOrder, UriResponse
 from cipher.schemas.content.image import (
     BaseImageSearchParameters,
     Image,
@@ -20,6 +23,7 @@ from cipher.schemas.content.image import (
     PaginatedImagesResponse,
 )
 from cipher.schemas.ingestion.file import File
+from cipher.schemas.interaction.tag import TagSource, TagTargetType
 
 
 def _upsert_set(excluded) -> dict:
@@ -45,20 +49,22 @@ def _tag_score(tag: str):
     return ImageTable.tag_scores[tag].astext.cast(Float)
 
 
-def _tags_expr(tags: list[str], tag_state: TagState, min_tag_score: float):
-    """Build an "image carries any of `tags`" filter against the store `tag_state` names.
+def _predicted_expr(tags: list[str], min_tag_score: float):
+    """Build an "image has an unlabelled prediction for any of `tags`" filter.
 
-    Labels use JSONB `?|`, which the GIN indexes on `tags` / `negative_tags` serve.
-    A predicted tag is one scored at least `min_tag_score` that has no label yet.
+    The scores come from `tag`, an index range scan on `ix_tag_score`; the label checks use
+    the GIN indexes on `tags` / `negative_tags`.
     """
-    if tag_state == TagState.POSITIVE:
-        return ImageTable.tags.has_any(array(tags))
-    if tag_state == TagState.NEGATIVE:
-        return ImageTable.negative_tags.has_any(array(tags))
     return or_(
         *(
             and_(
-                _tag_score(tag) >= min_tag_score,
+                ImageTable.id.in_(
+                    select(TagTable.target_id).where(
+                        TagTable.target_type == TagTargetType.CONTENT,
+                        TagTable.tag == tag,
+                        TagTable.score >= min_tag_score,
+                    )
+                ),
                 ~ImageTable.tags.has_key(tag),
                 ~ImageTable.negative_tags.has_key(tag),
             )
@@ -92,7 +98,11 @@ def _search_filters(request: BaseImageSearchParameters) -> list:
     if request.date_to:
         filters.append(ImageTable.date_taken <= request.date_to)
     if request.tags:
-        filters.append(_tags_expr(request.tags, request.tag_state, request.min_tag_score))
+        filters.append(ImageTable.tags.has_any(array(request.tags)))
+    if request.negative_tags:
+        filters.append(ImageTable.negative_tags.has_any(array(request.negative_tags)))
+    if request.predicted_tags:
+        filters.append(_predicted_expr(request.predicted_tags, request.min_tag_score))
     return filters
 
 
@@ -183,49 +193,65 @@ class PostgresImageRepository:
         image_table, file_id = row
         return Image.model_validate({**image_table.__dict__, "file_id": file_id})
 
-    async def update_image(self, image_id: str, data: ImageUpdate) -> Image | None:
-        """Partially update image content (e.g. tags) -- applies to every file that shares it."""
+    async def update_image(self, image_id: str, data: ImageUpdate, *, user_id: str) -> Image | None:
+        """Partially update image content -- applies to every file that shares it.
+
+        A `tags` list sets the positive labels as `user_id` (recording only what changed).
+        """
         result = await self.session.execute(select(ImageTable).where(ImageTable.id == image_id))
         image_table = result.scalar_one_or_none()
         if image_table is None:
             return None
 
-        for field, value in data.model_dump(exclude_unset=True).items():
+        for field, value in data.model_dump(exclude_unset=True, exclude={"tags"}).items():
             setattr(image_table, field, value)
-        if data.tags:
-            image_table.negative_tags = [tag for tag in image_table.negative_tags if tag not in data.tags]
-
         await self.session.commit()
-        await self.session.refresh(image_table)
+        if data.tags is not None:
+            await PostgresTagRepository(self.session).set_tags(
+                target_type=TagTargetType.CONTENT,
+                target_id=image_id,
+                tags=data.tags,
+                source=TagSource.user(user_id),
+            )
         return await self.get_image_by_id(image_id)
 
-    async def tag_images(self, *, image_ids: list[str], tag: str, tag_type: ModelTagType | None) -> ImageTagResult:
-        """Label images with `tag`: positive -> `tags`, negative -> `negative_tags`, None clears both.
-
-        The tag always leaves the list it isn't going into, so it sits in at most one.
-        """
-        put, drop = "({col} - :tag) || to_jsonb(cast(:tag as text))", "{col} - :tag"
-        tags = (put if tag_type == ModelTagType.POSITIVE else drop).format(col="tags")
-        negative_tags = (put if tag_type == ModelTagType.NEGATIVE else drop).format(col="negative_tags")
-        result = await self.session.execute(
-            text(f"UPDATE image SET tags = {tags}, negative_tags = {negative_tags} WHERE id = ANY(:image_ids)"),
-            {"tag": tag, "image_ids": image_ids},
+    async def tag_images(
+        self, *, image_ids: list[str], tag: str, tag_type: ModelTagType | None, user_id: str
+    ) -> ImageTagResult:
+        """Label images with `tag` as `user_id`: positive or negative (the latest label wins), None clears it."""
+        existing = await self.session.execute(select(ImageTable.id).where(ImageTable.id.in_(image_ids)))
+        found = list(existing.scalars().all())
+        await PostgresTagRepository(self.session).label(
+            target_type=TagTargetType.CONTENT,
+            target_ids=found,
+            tag=tag,
+            label=tag_type,
+            source=TagSource.user(user_id),
         )
-        await self.session.commit()
-        return ImageTagResult(updated=result.rowcount)
+        return ImageTagResult(updated=len(found))
 
-    async def set_tag_scores(self, *, tag: str, scores: dict[str, float]) -> None:
-        """Record a model's confidence that `tag` applies, keyed by image id."""
-        if not scores:
-            return
-        await self.session.execute(
-            text(
-                "UPDATE image SET tag_scores = tag_scores || jsonb_build_object(cast(:tag as text), cast(:score as float)) "
-                "WHERE id = :id"
-            ),
-            [{"tag": tag, "id": image_id, "score": score} for image_id, score in scores.items()],
-        )
+    async def annotate_images(
+        self, *, tag: str, positive: list[str], negative: list[str], cleared: list[str], user_id: str
+    ) -> ImageTagResult:
+        """Save one tag's labels for a batch of images as `user_id` in a single transaction."""
+        tag_repo = PostgresTagRepository(self.session)
+        for label, image_ids in ((ModelTagType.POSITIVE, positive), (ModelTagType.NEGATIVE, negative), (None, cleared)):
+            await tag_repo.label(
+                target_type=TagTargetType.CONTENT,
+                target_ids=image_ids,
+                tag=tag,
+                label=label,
+                source=TagSource.user(user_id),
+                commit=False,
+            )
         await self.session.commit()
+        return ImageTagResult(updated=len({*positive, *negative, *cleared}))
+
+    async def set_tag_scores(self, *, tag: str, scores: dict[str, float], model: str) -> None:
+        """Record `model`'s confidence that `tag` applies, keyed by image id (sha256)."""
+        await PostgresTagRepository(self.session).score(
+            target_type=TagTargetType.CONTENT, tag=tag, scores=scores, model=model
+        )
 
     async def get_image_uri(self, image_id: str) -> UriResponse | None:
         """Retrieve a URI to download this image's content from (any file with it will do)."""
@@ -313,6 +339,86 @@ class PostgresImageRepository:
         )
         return {image_id: np.asarray(embedding).tolist() for image_id, embedding in result.all()}
 
+    async def labelled_embeddings(
+        self, *, tags: list[str] | None, embedding_model: str
+    ) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+        """Per tag: (positive, hard-negative) embeddings of images labelled with it, from one embedding model.
+
+        `tags=None` means every tag with at least one label. GIN-indexed on `tags` / `negative_tags`.
+        """
+        label_filter = (
+            or_(ImageTable.tags.has_any(array(tags)), ImageTable.negative_tags.has_any(array(tags)))
+            if tags
+            else or_(
+                func.jsonb_array_length(ImageTable.tags) > 0, func.jsonb_array_length(ImageTable.negative_tags) > 0
+            )
+        )
+        rows = await self.session.execute(
+            select(ImageTable.tags, ImageTable.negative_tags, ImageTable.embedding).where(
+                label_filter, ImageTable.embedding.is_not(None), ImageTable.embedding_model == embedding_model
+            )
+        )
+        positives: dict[str, list] = {}
+        negatives: dict[str, list] = {}
+        for row_tags, row_negative_tags, embedding in rows.all():
+            for tag in row_tags:
+                positives.setdefault(tag, []).append(embedding)
+            for tag in row_negative_tags:
+                negatives.setdefault(tag, []).append(embedding)
+        wanted = tags or sorted(positives.keys() | negatives.keys())
+        dim = IMAGE_EMBEDDING_DIMENSION
+        return {
+            tag: (
+                np.asarray(positives.get(tag, []), dtype=np.float32).reshape(-1, dim),
+                np.asarray(negatives.get(tag, []), dtype=np.float32).reshape(-1, dim),
+            )
+            for tag in wanted
+        }
+
+    async def sample_unlabeled_embeddings(self, *, tags: list[str], embedding_model: str, limit: int) -> np.ndarray:
+        """Up to `limit` random embeddings of images labelled with none of `tags` (weak negatives).
+
+        Uses `TABLESAMPLE` sized from the table's row count, so it reads a fraction of the table, not all of it.
+        """
+        if limit <= 0:
+            return np.empty((0, IMAGE_EMBEDDING_DIMENSION), dtype=np.float32)
+        total = await self.session.scalar(select(func.count()).select_from(ImageTable)) or 1
+        percent = min(100.0, 300.0 * limit / total)
+        sampled = aliased(ImageTable, tablesample(ImageTable, func.bernoulli(percent)))
+        rows = await self.session.execute(
+            select(sampled.embedding)
+            .where(
+                sampled.embedding.is_not(None),
+                sampled.embedding_model == embedding_model,
+                ~sampled.tags.has_any(array(tags)),
+                ~sampled.negative_tags.has_any(array(tags)),
+            )
+            .limit(limit)
+        )
+        return np.asarray([e for (e,) in rows.all()], dtype=np.float32).reshape(-1, IMAGE_EMBEDDING_DIMENSION)
+
+    async def embedding_batches(self, *, embedding_model: str, dataset_id: str | None = None, batch_size: int = 4096):
+        """Yield `(image_ids, [N, D] embeddings)` batches in id order (keyset paging, no OFFSET)."""
+        after = ""
+        while True:
+            stmt = (
+                select(ImageTable.id, ImageTable.embedding)
+                .where(
+                    ImageTable.id > after,
+                    ImageTable.embedding.is_not(None),
+                    ImageTable.embedding_model == embedding_model,
+                )
+                .order_by(ImageTable.id)
+                .limit(batch_size)
+            )
+            if dataset_id:
+                stmt = stmt.where(_file_scoped_expr([dataset_id], None))
+            rows = (await self.session.execute(stmt)).all()
+            if not rows:
+                return
+            yield [r[0] for r in rows], np.asarray([r[1] for r in rows], dtype=np.float32)
+            after = rows[-1][0]
+
     async def search_images(self, request: BaseImageSearchParameters) -> PaginatedImagesResponse:
         """Retrieve images with general filtering and sorting, one row per distinct image.
 
@@ -327,9 +433,9 @@ class PostgresImageRepository:
         count_query = select(func.count()).select_from(ImageTable).where(*filters)
         total_count = (await self.session.execute(count_query)).scalar_one()
 
-        # `tag_score` ranks by the first filtered tag's score, so predictions are reviewed in confidence order.
-        is_score_sort = request.sort_by == ImageSortField.TAG_SCORE and request.tags
-        sort_column = _tag_score(request.tags[0]) if is_score_sort else ImageTable.date_taken
+        # `tag_score` ranks by the first predicted tag's score, so predictions are reviewed in confidence order.
+        is_score_sort = request.sort_by == ImageSortField.TAG_SCORE and request.predicted_tags
+        sort_column = _tag_score(request.predicted_tags[0]) if is_score_sort else ImageTable.date_taken
         direction = sort_column.desc() if request.sort_order == SortOrder.DESC else sort_column.asc()
         # ImageTable.id is unique -- append it so offset pagination is
         # deterministic even when the sort key is null or shared.

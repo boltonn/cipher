@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useDataset, useDatasets } from "@/features/datasets/api";
+import { DatasetLock } from "@/features/datasets/components/dataset-lock";
 import { useDebounce } from "@/hooks/use-debounce";
 import { cn } from "@/lib/utils";
 import { Check, ChevronsUpDown, Database, X } from "lucide-react";
@@ -22,6 +23,9 @@ interface DatasetMultiSelectComboboxProps {
   onChange: (datasetIds: string[]) => void;
   placeholder?: string;
   className?: string;
+  /** Trigger only, no chips of the selection below it (for tight toolbars). */
+  compact?: boolean;
+  triggerClassName?: string;
 }
 
 /** Multi-select dataset filter: type-ahead search backed by the real /datasets endpoint. */
@@ -30,6 +34,8 @@ export function DatasetMultiSelectCombobox({
   onChange,
   placeholder = "Filter by dataset...",
   className,
+  compact = false,
+  triggerClassName,
 }: DatasetMultiSelectComboboxProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -53,7 +59,10 @@ export function DatasetMultiSelectCombobox({
             variant="outline"
             role="combobox"
             aria-expanded={open}
-            className="w-full justify-between bg-muted/40 border-border hover:bg-muted/60 text-xs h-9"
+            className={cn(
+              "w-full justify-between bg-muted/40 border-border hover:bg-muted/60 text-xs h-9",
+              triggerClassName
+            )}
           >
             <span className="flex items-center gap-2 truncate text-muted-foreground">
               <Database size={14} className="text-muted-foreground shrink-0" />
@@ -80,7 +89,8 @@ export function DatasetMultiSelectCombobox({
                     key={dataset.id}
                     value={dataset.id}
                     onSelect={() => toggle(dataset.id)}
-                    className="text-xs gap-2"
+                    disabled={!dataset.hasAccess}
+                  className="text-xs gap-2"
                   >
                     <Check
                       className={cn(
@@ -89,6 +99,7 @@ export function DatasetMultiSelectCombobox({
                       )}
                     />
                     <span className="truncate flex-1">{dataset.name}</span>
+                  {!dataset.hasAccess && <DatasetLock />}
                   </CommandItem>
                 ))}
               </CommandGroup>
@@ -97,7 +108,7 @@ export function DatasetMultiSelectCombobox({
         </PopoverContent>
       </Popover>
 
-      {value.length > 0 && (
+      {!compact && value.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {value.map((datasetId) => (
             <SelectedDatasetChip key={datasetId} datasetId={datasetId} onRemove={() => toggle(datasetId)} />

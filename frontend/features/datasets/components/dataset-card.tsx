@@ -1,6 +1,7 @@
 "use client";
 
-import { formatBytes, formatCompactNumber } from "@/lib/utils";
+import { DatasetLock } from "@/features/datasets/components/dataset-lock";
+import { cn, formatBytes, formatCompactNumber } from "@/lib/utils";
 import type { DatasetSummary } from "@/features/datasets/types";
 import { Database, Files, HardDrive, Tags } from "lucide-react";
 import Link from "next/link";
@@ -10,17 +11,33 @@ interface DatasetCardProps {
 }
 
 export function DatasetCard({ dataset }: DatasetCardProps) {
+  const className =
+    "group flex flex-col rounded-xl bg-muted/40 border border-border/50 p-5 transition-all duration-300";
+  const body = <DatasetCardBody dataset={dataset} />;
+
+  if (!dataset.hasAccess) {
+    return <div className={cn(className, "opacity-70")}>{body}</div>;
+  }
   return (
     <Link
       href={`/datasets/${dataset.id}`}
-      className="group flex flex-col rounded-xl bg-muted/40 border border-border/50 p-5 transition-all duration-300 hover:border-primary/40 hover:bg-muted/60"
+      className={cn(className, "hover:border-primary/40 hover:bg-muted/60")}
     >
+      {body}
+    </Link>
+  );
+}
+
+function DatasetCardBody({ dataset }: DatasetCardProps) {
+  return (
+    <>
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="flex items-center gap-2 min-w-0">
           <Database size={14} className="text-primary shrink-0" />
           <h3 className="font-mono text-sm text-foreground truncate group-hover:text-primary transition-colors">
             {dataset.name}
           </h3>
+          {!dataset.hasAccess && <DatasetLock />}
         </div>
       </div>
 
@@ -37,7 +54,7 @@ export function DatasetCard({ dataset }: DatasetCardProps) {
       <div className="mt-3 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
         Updated {new Date(dataset.dateLastUpdated).toLocaleDateString()}
       </div>
-    </Link>
+    </>
   );
 }
 

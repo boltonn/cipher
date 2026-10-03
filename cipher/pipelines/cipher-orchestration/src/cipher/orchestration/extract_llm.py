@@ -244,7 +244,9 @@ async def extract_llm_workflow(
                         await session.rollback()
                         failed.append(item.enrichment.id)
 
-                await tag_event_files(session, with_events=with_events, without_events=without_events)
+                await tag_event_files(
+                    session, with_events=with_events, without_events=without_events, model=resolved_model
+                )
                 if completed:
                     await enrichment_repo.mark_completed_batch(completed)
                 if failed:

@@ -40,6 +40,7 @@ export function toGroupedFileResult(raw: FileSearchResultRaw): GroupedFileResult
     topScore: raw.topScore,
     topChunkId: raw.topChunkId,
     matchCount: raw.matchCount,
+    tags: raw.tags ?? [],
   };
 }
 

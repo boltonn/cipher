@@ -42,19 +42,16 @@ export const facesService = {
 
   // POST /faces/search/image - find faces similar to an uploaded photo
   //
-  // Multipart form fields don't go through the JSON camelCase-alias layer,
-  // so keys must match the backend's Form() parameter names (snake_case)
-  // directly rather than the camelCase param object keys.
   searchByUpload: (file: File, params: FaceSimilaritySearchParameters) => {
     const formData = new FormData();
     formData.append("file", file);
     if (params.page != null) formData.append("page", params.page.toString());
     if (params.limit != null) formData.append("limit", params.limit.toString());
-    if (params.sortBy != null) formData.append("sort_by", params.sortBy);
+    if (params.sortBy != null) formData.append("sortBy", params.sortBy);
     if (params.sortOrder != null)
-      formData.append("sort_order", params.sortOrder);
+      formData.append("sortOrder", params.sortOrder);
     if (params.minSimilarity != null)
-      formData.append("min_similarity", params.minSimilarity.toString());
+      formData.append("minSimilarity", params.minSimilarity.toString());
     return apiClient
       .post<PaginatedFaceSimilarityResponse>(
         `${facesBaseURL}/search/image`,

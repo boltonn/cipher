@@ -14,3 +14,15 @@ class ClipTextRequest(BaseModel):
             ]
         }
     }
+
+
+class ImageInference(BaseModel):
+    """An image embedding, plus tag head scores when classification is on."""
+
+    embedding: list[float]
+    tag_scores: dict[str, float] | None = Field(None, serialization_alias="tagScores")
+    heads_version: str | None = Field(None, serialization_alias="headsVersion")
+
+
+class EmbeddingsClassifyRequest(BaseModel):
+    embeddings: list[list[float]] = Field(..., min_length=1, description="Normalized CLIP image embeddings")

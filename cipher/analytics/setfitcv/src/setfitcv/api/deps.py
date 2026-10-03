@@ -3,12 +3,14 @@ from io import BytesIO
 from pathlib import Path
 from typing import Annotated
 
+import numpy as np
 import torch
 from fastapi import Depends, FastAPI, Request
 from loguru import logger
 from PIL import Image, ImageOps
 
 from cipher.utils.fastapi.batch import batch
+from setfitcv.heads import TagHeads
 from setfitcv.model import CLIP
 from setfitcv.settings import Settings
 
@@ -16,8 +18,11 @@ settings = Settings()
 
 
 class AsyncImageEmbeddingModel:
-    def __init__(self, model_dir: Path | str, device: str | None = None):
+    def __init__(self, model_dir: Path | str, device: str | None = None, heads_dir: Path | None = None):
         self._model = CLIP(model_dir=Path(model_dir), device=device)
+        self.heads = TagHeads.load(heads_dir) if heads_dir else None
+        if self.heads is not None:
+            logger.info(f"Loaded {len(self.heads.tags)} tag heads ({self.heads.version})")
 
     def unload(self) -> None:
         """Release the underlying CLIP model."""
@@ -39,6 +44,27 @@ class AsyncImageEmbeddingModel:
     async def _handle_text_batch(self, tensor_list: list[torch.Tensor]):
         batched_tensors = torch.cat(tensor_list, dim=0)
         return self._model.embed_txt_batch(batched_tensors)
+
+    @batch(
+        max_batch_size=settings.max_batch_size,
+        batch_wait_timeout_s=settings.batch_timeout,
+    )
+    async def _handle_image_score_batch(self, tensor_list: list[torch.Tensor]):
+        embeddings, scores = self._model.embed_and_score_imgs_batch(torch.cat(tensor_list, dim=0), self.heads)
+        return list(zip(embeddings, scores, strict=True))
+
+    async def infer_image_with_tags(self, image_bytes: bytes) -> tuple[list[float], dict[str, float]]:
+        """The image embedding plus every tag head's score, from one batched GPU pass."""
+        if self.heads is None:
+            raise ValueError("No tag heads loaded (set IMAGE_HEADS_DIR)")
+        img = ImageOps.exif_transpose(Image.open(BytesIO(image_bytes)).convert("RGB"))
+        return await self._handle_image_score_batch(self._model.preprocess_imgs([img]))
+
+    def classify_embeddings(self, embeddings: list[list[float]]) -> list[dict[str, float]]:
+        """Score stored embeddings with the tag heads (CPU; no image needed)."""
+        if self.heads is None:
+            raise ValueError("No tag heads loaded (set IMAGE_HEADS_DIR)")
+        return self.heads.as_dicts(self.heads.score(np.asarray(embeddings, dtype=np.float32)))
 
     async def infer_image(self, image_bytes: bytes) -> list[float]:
         """Infer the image embedding for a single image byte input."""
@@ -65,7 +91,11 @@ class AsyncImageEmbeddingModel:
 @asynccontextmanager
 async def model_lifespan(app: FastAPI):
     """Fastapi lifespan context manager to load and cleanup the model."""
-    model = AsyncImageEmbeddingModel(model_dir=settings.model_dir, device=settings.device)
+    model = AsyncImageEmbeddingModel(
+        model_dir=settings.model_dir,
+        device=settings.device,
+        heads_dir=settings.heads_dir if settings.classify else None,
+    )
     app.state.image_model = model
     logger.info("✅ Image embedding model loaded.")
     yield
