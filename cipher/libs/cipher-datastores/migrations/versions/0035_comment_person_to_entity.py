@@ -20,8 +20,16 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    """Re-point person comments at the person's bridge entity (same id)."""
-    op.execute("UPDATE comment SET commentable_type = 'ENTITY' WHERE commentable_type = 'PERSON'")
+    """Re-point person comments at the person's bridge entity (same id); a no-op without a `comment` table."""
+    op.execute(
+        """
+        DO $$ BEGIN
+            IF to_regclass('comment') IS NOT NULL THEN
+                UPDATE comment SET commentable_type = 'ENTITY' WHERE commentable_type = 'PERSON';
+            END IF;
+        END $$
+        """
+    )
 
 
 def downgrade() -> None:
