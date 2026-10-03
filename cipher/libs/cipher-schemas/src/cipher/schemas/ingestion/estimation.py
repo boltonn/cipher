@@ -119,8 +119,8 @@ _UNIT: dict[EnrichmentType, WorkUnit] = {
     EnrichmentType.IMAGE_EMBEDDING: WorkUnit.IMAGE,
     EnrichmentType.EXIF_LOCATION: WorkUnit.IMAGE,
     EnrichmentType.FACE_DETECTION: WorkUnit.IMAGE,
-    EnrichmentType.FACE_MATCHING: WorkUnit.IMAGE,
-    EnrichmentType.FACE_CLUSTERING: WorkUnit.IMAGE,
+    EnrichmentType.FACE_MATCHING: WorkUnit.FACE,
+    EnrichmentType.FACE_CLUSTERING: WorkUnit.FACE,
     EnrichmentType.TEXT_EXTRACTION: WorkUnit.TEXT_FILE,
     EnrichmentType.OCR: WorkUnit.FILE,
     EnrichmentType.TEXT_EMBEDDING: WorkUnit.TEXT_FILE,
@@ -190,6 +190,11 @@ class DatasetEnrichmentEstimates(BaseModel):
     accelerator: RunDevice
     date_generated: datetime
     items: list[EnrichmentEstimate]
+
+
+def work_unit(enrichment_type: EnrichmentType) -> WorkUnit:
+    """What an analytic's measured rate is per (runs recorded in another unit aren't comparable)."""
+    return _UNIT.get(enrichment_type, WorkUnit.FILE)
 
 
 def estimate_workload(

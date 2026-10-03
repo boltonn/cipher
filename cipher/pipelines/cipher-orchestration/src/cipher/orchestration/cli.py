@@ -1002,7 +1002,8 @@ def extract_events_cmd(
                 enrichment_type=EnrichmentType.EVENT_EXTRACTION,
                 dataset_id=resolved_id,
                 device="na",
-                unit=WorkUnit.LLM_FILE,
+                # An LLM run's rate is per file the LLM reads; a calendar-only run's isn't comparable.
+                unit=WorkUnit.LLM_FILE if llm or llm_only else WorkUnit.FILE,
                 params={
                     "llm": llm or llm_only,
                     "docs": docs,
@@ -1014,7 +1015,8 @@ def extract_events_cmd(
                 if not llm_only:
                     ics_count = await extract_events_workflow(session=session, dataset_id=resolved_id)
                     logger.success(f"Extracted events for {ics_count} calendar files")
-                    run.units += ics_count
+                    if not (llm or llm_only):
+                        run.units += ics_count
                 if llm or llm_only:
                     groups = TEXT_EVENT_GROUPS_ALL if docs else TEXT_EVENT_GROUPS_EMAIL
                     if use_gate:

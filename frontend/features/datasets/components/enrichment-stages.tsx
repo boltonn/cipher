@@ -5,7 +5,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { SkipReasons } from "@/features/datasets/components/skip-reasons";
+import { ProgressTooltipBody } from "@/features/datasets/components/progress-tooltip-body";
 import type { EnrichmentStageProgress } from "@/features/datasets/types";
 import { formatCompactNumber } from "@/lib/utils";
 import { Check } from "lucide-react";
@@ -75,21 +75,17 @@ export function EnrichmentStages({
                 </div>
               </TooltipTrigger>
               <TooltipContent className="max-w-xs text-xs">
-                <p className="font-medium">{stage.label}</p>
-                <p>
-                  {formatCompactNumber(stage.completed)} of {formatCompactNumber(stage.total)}{" "}
-                  processed{isDone ? " (finished)" : ""}
-                </p>
-                {stage.skipped > 0 && (
-                  <>
-                    <p className="mt-1">
-                      {formatCompactNumber(passedOn)} passed on,{" "}
-                      {formatCompactNumber(stage.skipped)} skipped:
-                    </p>
-                    <SkipReasons reasons={stage.skipReasons} />
-                  </>
-                )}
-                {stage.failed > 0 && <p>{formatCompactNumber(stage.failed)} failed</p>}
+                <ProgressTooltipBody
+                  title={stage.label}
+                  lines={[
+                    `${formatCompactNumber(stage.completed)} of ${formatCompactNumber(stage.total)} processed${isDone ? " (finished)" : ""}`,
+                    ...(stage.skipped > 0
+                      ? [`${formatCompactNumber(passedOn)} passed on, ${formatCompactNumber(stage.skipped)} skipped`]
+                      : []),
+                    ...(stage.failed > 0 ? [`${formatCompactNumber(stage.failed)} failed`] : []),
+                  ]}
+                  skipReasons={stage.skipReasons}
+                />
               </TooltipContent>
             </Tooltip>
           </li>

@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cipher.datastores.postgres.tables.enrichment_run import EnrichmentRunTable
 from cipher.schemas.ingestion.enrichment import EnrichmentType
-from cipher.schemas.ingestion.estimation import RateStat, RunDevice
+from cipher.schemas.ingestion.estimation import RateStat, RunDevice, work_unit
 
 
 class PostgresEnrichmentRunRepository:
@@ -67,14 +67,15 @@ class PostgresEnrichmentRunRepository:
     async def get_rates(self, *, min_samples: int = 1) -> dict[tuple[EnrichmentType, RunDevice], RateStat]:
         """Median / p25 / p75 seconds-per-unit per (enrichment_type, device).
 
-        Only `completed` runs with a positive unit count contribute. Groups with
-        fewer than `min_samples` runs are dropped.
+        Only `completed` runs with a positive unit count, recorded in the analytic's own
+        work unit, contribute. Groups with fewer than `min_samples` runs are dropped.
         """
         per_unit = EnrichmentRunTable.duration_seconds / func.nullif(EnrichmentRunTable.unit_count, 0)
         stmt = (
             select(
                 EnrichmentRunTable.enrichment_type,
                 EnrichmentRunTable.device,
+                EnrichmentRunTable.unit,
                 func.percentile_cont(0.5).within_group(per_unit).label("p50"),
                 func.percentile_cont(0.25).within_group(per_unit).label("p25"),
                 func.percentile_cont(0.75).within_group(per_unit).label("p75"),
@@ -85,17 +86,19 @@ class PostgresEnrichmentRunRepository:
                 EnrichmentRunTable.unit_count > 0,
                 EnrichmentRunTable.duration_seconds.is_not(None),
             )
-            .group_by(EnrichmentRunTable.enrichment_type, EnrichmentRunTable.device)
+            .group_by(EnrichmentRunTable.enrichment_type, EnrichmentRunTable.device, EnrichmentRunTable.unit)
         )
 
         rates: dict[tuple[EnrichmentType, RunDevice], RateStat] = {}
-        for enrichment_type, device, p50, p25, p75, n in (await self.session.execute(stmt)).all():
+        for enrichment_type, device, unit, p50, p25, p75, n in (await self.session.execute(stmt)).all():
             if n < min_samples or p50 is None:
                 continue
             try:
                 etype = EnrichmentType(enrichment_type)
                 rdev = RunDevice(device)
             except ValueError:
+                continue
+            if unit != work_unit(etype):
                 continue
             rates[(etype, rdev)] = RateStat(
                 enrichment_type=etype,

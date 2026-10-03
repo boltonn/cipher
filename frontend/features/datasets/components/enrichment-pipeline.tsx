@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/tooltip";
 import { EnrichmentFailuresDialog } from "@/features/datasets/components/enrichment-failures-dialog";
 import { EnrichmentStages } from "@/features/datasets/components/enrichment-stages";
-import { SkipReasons } from "@/features/datasets/components/skip-reasons";
+import { ProgressTooltipBody } from "@/features/datasets/components/progress-tooltip-body";
 import { EnrichmentRequestDialog } from "@/features/datasets/components/enrichment-request-dialog";
 import { EstimateBadge } from "@/features/datasets/components/estimate-badge";
 import { useDatasetRequestConfig } from "@/features/datasets/hooks/use-request-dataset";
@@ -360,15 +360,18 @@ export function EnrichmentPipeline({ datasetId }: { datasetId: string }) {
                       </div>
                     </TooltipTrigger>
                     <TooltipContent className="text-xs">
-                      <p>{formatCompactNumber(progress.completed)} done</p>
-                      {skipped > 0 && (
-                        <>
-                          <p>{formatCompactNumber(skipped)} skipped (deliberately not processed):</p>
-                          <SkipReasons reasons={progress.skipReasons} />
-                        </>
-                      )}
-                      {failed > 0 && <p>{formatCompactNumber(failed)} failed</p>}
-                      {queued > 0 && <p>{formatCompactNumber(queued)} queued</p>}
+                      <ProgressTooltipBody
+                        title={meta.label}
+                        lines={[
+                          `${formatCompactNumber(progress.completed)} done`,
+                          ...(skipped > 0
+                            ? [`${formatCompactNumber(skipped)} skipped (deliberately not processed)`]
+                            : []),
+                          ...(failed > 0 ? [`${formatCompactNumber(failed)} failed`] : []),
+                          ...(queued > 0 ? [`${formatCompactNumber(queued)} queued`] : []),
+                        ]}
+                        skipReasons={progress.skipReasons}
+                      />
                     </TooltipContent>
                   </Tooltip>
                   <p className="mt-1 flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground">
