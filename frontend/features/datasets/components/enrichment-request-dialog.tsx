@@ -19,7 +19,7 @@ import {
 } from "@/features/datasets/hooks/use-request-dataset";
 import {
   enrichmentRequestSchema,
-  formatDuration,
+  sumEstimates,
   type EnrichmentEstimate,
 } from "@/features/datasets/request-types";
 import { ArrowUpRight, Check, Copy, Loader2 } from "lucide-react";
@@ -83,7 +83,6 @@ function EnrichmentRequestForm({
   const result = requestEnrichment.data;
   const canFile = !!config?.configured;
 
-  const total = selected.reduce((sum, it) => sum + (it.estimateSeconds ?? 0), 0);
 
   const handleSubmit = () => {
     const parsed = enrichmentRequestSchema.safeParse({
@@ -177,7 +176,9 @@ function EnrichmentRequestForm({
           ))}
           <li className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
             <span className="text-muted-foreground">Total (sequential)</span>
-            <span className="font-medium tabular-nums">{formatDuration(total)}</span>
+            <span className="font-medium tabular-nums">
+              {sumEstimates(selected.map((it) => ({ ...it, progress: 0 })))}
+            </span>
           </li>
         </ul>
 

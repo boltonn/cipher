@@ -17,7 +17,7 @@ import { EnrichmentRequestDialog } from "@/features/datasets/components/enrichme
 import { EstimateBadge } from "@/features/datasets/components/estimate-badge";
 import { useDatasetRequestConfig } from "@/features/datasets/hooks/use-request-dataset";
 import {
-  formatDuration,
+  sumEstimates,
   type EnrichmentEstimate,
   type RunDevice,
 } from "@/features/datasets/request-types";
@@ -236,10 +236,7 @@ export function EnrichmentPipeline({ datasetId }: { datasetId: string }) {
   const selectedEstimates = estimates.items.filter((it) =>
     selected.has(it.enrichmentType)
   );
-  const selectedSeconds = selectedEstimates.reduce(
-    (sum, it) => sum + (it.estimateSeconds ?? 0),
-    0
-  );
+  const selectedTotal = sumEstimates(selectedEstimates);
   const applicableCount = rows.filter((r) => isApplicable(r) || r.progress).length;
   const summary = `${doneTypes.size} of ${applicableCount} done`;
 
@@ -366,7 +363,7 @@ export function EnrichmentPipeline({ datasetId }: { datasetId: string }) {
         {selected.size > 0 ? (
           <span className="text-annotation">
             <span className="font-medium tabular-nums">
-              {formatDuration(selectedSeconds)}
+              {selectedTotal}
             </span>{" "}
             for {selected.size} selected{" "}
             <span className="text-annotation/60">(sequential)</span>

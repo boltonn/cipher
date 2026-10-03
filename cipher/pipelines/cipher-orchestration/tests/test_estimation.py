@@ -47,56 +47,66 @@ def test_max_pages_caps_byte_count():
     ).byte_count
 
 
-def test_resolve_rate_prefers_measured_once_enough_samples():
-    key = (EnrichmentType.IMAGE_EMBEDDING, RunDevice.CPU)
-    thin = {key: RateStat(
-        enrichment_type=key[0], device=key[1], seconds_per_unit=0.2, low_per_unit=0.1, high_per_unit=0.4,
-        sample_size=MIN_SAMPLES_FOR_MEASURED - 1,
-    )}
-    assert resolve_rate(enrichment_type=key[0], device=key[1], measured=thin).source == "seed"
-
-    thick = {key: RateStat(
-        enrichment_type=key[0], device=key[1], seconds_per_unit=0.2, low_per_unit=0.1, high_per_unit=0.4,
+def _measured(enrichment_type: EnrichmentType, device: RunDevice, seconds_per_unit: float = 0.2) -> dict:
+    stat = RateStat(
+        enrichment_type=enrichment_type,
+        device=device,
+        seconds_per_unit=seconds_per_unit,
+        low_per_unit=seconds_per_unit / 2,
+        high_per_unit=seconds_per_unit * 2,
         sample_size=MIN_SAMPLES_FOR_MEASURED,
-    )}
-    resolved = resolve_rate(enrichment_type=key[0], device=key[1], measured=thick)
-    assert resolved.source == "measured" and resolved.seconds_per_unit == 0.2
+    )
+    return {(enrichment_type, device): stat}
+
+
+def test_resolve_rate_is_measured_only():
+    assert resolve_rate(enrichment_type=EnrichmentType.IMAGE_EMBEDDING, device=RunDevice.CPU, measured={}) is None
+    measured = _measured(EnrichmentType.IMAGE_EMBEDDING, RunDevice.CPU)
+    resolved = resolve_rate(enrichment_type=EnrichmentType.IMAGE_EMBEDDING, device=RunDevice.CPU, measured=measured)
+    assert resolved.seconds_per_unit == 0.2
+    # a rate measured on another device doesn't count
+    assert resolve_rate(enrichment_type=EnrichmentType.IMAGE_EMBEDDING, device=RunDevice.CUDA, measured=measured) is None
 
 
 def test_resolve_rate_concurrency_speeds_up_llm_only():
-    base = resolve_rate(enrichment_type=EnrichmentType.ENTITY_EXTRACTION, device=RunDevice.NA, measured={})
+    llm = _measured(EnrichmentType.ENTITY_EXTRACTION, RunDevice.NA, 3.0)
+    base = resolve_rate(enrichment_type=EnrichmentType.ENTITY_EXTRACTION, device=RunDevice.NA, measured=llm)
     fast = resolve_rate(
-        enrichment_type=EnrichmentType.ENTITY_EXTRACTION, device=RunDevice.NA, measured={}, params={"concurrency": 4}
+        enrichment_type=EnrichmentType.ENTITY_EXTRACTION, device=RunDevice.NA, measured=llm, params={"concurrency": 4}
     )
     assert fast.seconds_per_unit < base.seconds_per_unit
 
-    # non-LLM units ignore concurrency
-    img_base = resolve_rate(enrichment_type=EnrichmentType.IMAGE_EMBEDDING, device=RunDevice.CPU, measured={})
+    img = _measured(EnrichmentType.IMAGE_EMBEDDING, RunDevice.CPU)
+    img_base = resolve_rate(enrichment_type=EnrichmentType.IMAGE_EMBEDDING, device=RunDevice.CPU, measured=img)
     img_conc = resolve_rate(
-        enrichment_type=EnrichmentType.IMAGE_EMBEDDING, device=RunDevice.CPU, measured={}, params={"concurrency": 4}
+        enrichment_type=EnrichmentType.IMAGE_EMBEDDING, device=RunDevice.CPU, measured=img, params={"concurrency": 4}
     )
     assert img_base.seconds_per_unit == img_conc.seconds_per_unit
 
 
 def test_estimate_enrichment_states():
-    zero = estimate_enrichment(
-        workload=estimate_workload(enrichment_type=EnrichmentType.IMAGE_EMBEDDING, inventory={}),
-        rate=resolve_rate(enrichment_type=EnrichmentType.IMAGE_EMBEDDING, device=RunDevice.CPU, measured={}),
-    )
-    assert zero.confidence is EstimateConfidence.NONE and zero.estimate_seconds is None
+    workload = estimate_workload(enrichment_type=EnrichmentType.IMAGE_EMBEDDING, inventory=INVENTORY)
+    unknown = estimate_enrichment(workload=workload, rate=None)
+    assert unknown.confidence is EstimateConfidence.NONE and unknown.estimate_seconds is None
 
-    seeded = estimate_enrichment(
-        workload=estimate_workload(enrichment_type=EnrichmentType.IMAGE_EMBEDDING, inventory=INVENTORY),
-        rate=resolve_rate(enrichment_type=EnrichmentType.IMAGE_EMBEDDING, device=RunDevice.CPU, measured={}),
+    rate = resolve_rate(
+        enrichment_type=EnrichmentType.IMAGE_EMBEDDING,
+        device=RunDevice.CPU,
+        measured=_measured(EnrichmentType.IMAGE_EMBEDDING, RunDevice.CPU),
     )
-    assert seeded.confidence is EstimateConfidence.SEEDED
-    assert seeded.low_seconds <= seeded.estimate_seconds <= seeded.high_seconds
+    full = estimate_enrichment(workload=workload, rate=rate)
+    assert full.confidence is EstimateConfidence.MEASURED
+    assert full.low_seconds <= full.estimate_seconds <= full.high_seconds
+    assert full.estimate_seconds == 1000 * 0.2
+
+    half = estimate_enrichment(workload=workload, rate=rate, progress=0.5)
+    assert half.estimate_seconds == full.estimate_seconds / 2  # only the undone share remains
 
 
 def test_prerequisites_surface_on_estimate():
     est = estimate_enrichment(
         workload=estimate_workload(enrichment_type=EnrichmentType.TEXT_EMBEDDING, inventory=INVENTORY),
-        rate=resolve_rate(enrichment_type=EnrichmentType.TEXT_EMBEDDING, device=RunDevice.CPU, measured={}),
+        rate=None,
     )
     assert EnrichmentType.TEXT_EXTRACTION in est.prerequisites
 
@@ -104,7 +114,11 @@ def test_prerequisites_surface_on_estimate():
 def test_total_is_sequential_sum():
     a = estimate_enrichment(
         workload=estimate_workload(enrichment_type=EnrichmentType.IMAGE_EMBEDDING, inventory=INVENTORY),
-        rate=resolve_rate(enrichment_type=EnrichmentType.IMAGE_EMBEDDING, device=RunDevice.CPU, measured={}),
+        rate=resolve_rate(
+            enrichment_type=EnrichmentType.IMAGE_EMBEDDING,
+            device=RunDevice.CPU,
+            measured=_measured(EnrichmentType.IMAGE_EMBEDDING, RunDevice.CPU),
+        ),
     )
     b = estimate_enrichment(
         workload=estimate_workload(enrichment_type=EnrichmentType.FACE_MATCHING, inventory=INVENTORY),

@@ -2,19 +2,19 @@
 
 The staging milestone (files loaded + typed, so `filetype_group` / `size` are
 known) fixes the file inventory. Given that inventory and a per-enrichment
-throughput rate -- measured from prior `enrichment_run` rows on the same device
-class, or a seeded default until enough runs accumulate -- these pure functions
-produce a rough estimate per enrichment so a triager can decide what is worth
-running when filing a dataset request.
+throughput rate measured from prior `enrichment_run` rows on the same device
+class, these pure functions estimate the remaining time per enrichment so a
+triager can decide what is worth running. No run history means no estimate --
+nothing is guessed.
 
 Flow: `estimate_workload` (inventory -> eligible unit count) then `resolve_rate`
-(measured-or-seed seconds/unit) then `estimate_enrichment` (the two combined).
+(measured seconds/unit) then `estimate_enrichment` (the two combined).
 """
 
 from collections.abc import Iterable
 from datetime import datetime
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import Field
 
@@ -68,7 +68,6 @@ def run_device(enrichment_type: EnrichmentType, accelerator: RunDevice = RunDevi
 
 class EstimateConfidence(StrEnum):
     MEASURED = "measured"
-    SEEDED = "seeded"
     NONE = "none"
 
 
@@ -81,7 +80,7 @@ TEXT_GROUPS: tuple[str, ...] = ("document", "email")
 # approximates a 10-page OCR'd PDF.
 BYTES_PER_PAGE = 3_500
 
-MIN_SAMPLES_FOR_MEASURED = 5
+MIN_SAMPLES_FOR_MEASURED = 1
 
 # Surfaced in the request wizard, roughly in pipeline order.
 ESTIMATE_ORDER: tuple[EnrichmentType, ...] = (
@@ -144,18 +143,6 @@ class EnrichmentWorkload(BaseModel):
     note: str | None = None
 
 
-class SeedRate(BaseModel):
-    """A conservative fallback throughput, used until real runs accumulate."""
-
-    unit: WorkUnit
-    seconds_per_unit: dict[RunDevice, float]
-    fixed_overhead_seconds: float = 5.0
-
-    def per_unit(self, device: RunDevice) -> float:
-        """Seconds per unit for `device`, falling back to the CPU figure."""
-        return self.seconds_per_unit.get(device) or self.seconds_per_unit[RunDevice.CPU]
-
-
 class RateStat(BaseModel):
     """Measured seconds-per-unit percentiles for one (enrichment, device)."""
 
@@ -176,8 +163,6 @@ class ResolvedRate(BaseModel):
     seconds_per_unit: float
     low_per_unit: float
     high_per_unit: float
-    fixed_overhead_seconds: float
-    source: Literal["measured", "seed"]
     sample_size: int
 
 
@@ -204,37 +189,6 @@ class DatasetEnrichmentEstimates(BaseModel):
     accelerator: RunDevice
     date_generated: datetime
     items: list[EnrichmentEstimate]
-
-
-def _seed(unit: WorkUnit, *, cpu: float, gpu: float, na: float | None = None, overhead: float = 5.0) -> SeedRate:
-    return SeedRate(
-        unit=unit,
-        fixed_overhead_seconds=overhead,
-        seconds_per_unit={
-            RunDevice.CPU: cpu,
-            RunDevice.CUDA: gpu,
-            RunDevice.MPS: gpu,
-            RunDevice.NA: na if na is not None else cpu,
-        },
-    )
-
-
-# Seeded from existing run logs, `benchmark-ingest` output, and conservative
-# constants for served-LLM passes. Deliberately pessimistic -- a measured rate
-# takes over once `MIN_SAMPLES_FOR_MEASURED` real runs exist.
-DEFAULT_RATES: dict[EnrichmentType, SeedRate] = {
-    EnrichmentType.TEXT_EXTRACTION: _seed(WorkUnit.TEXT_FILE, cpu=1.5, gpu=1.5),
-    EnrichmentType.OCR: _seed(WorkUnit.FILE, cpu=60.0, gpu=2.0, overhead=60.0),
-    EnrichmentType.TEXT_EMBEDDING: _seed(WorkUnit.TEXT_FILE, cpu=4.0, gpu=0.8),
-    EnrichmentType.IMAGE_EMBEDDING: _seed(WorkUnit.IMAGE, cpu=0.6, gpu=0.08),
-    EnrichmentType.FACE_DETECTION: _seed(WorkUnit.IMAGE, cpu=1.2, gpu=0.15),
-    EnrichmentType.EXIF_LOCATION: _seed(WorkUnit.IMAGE, cpu=0.02, gpu=0.02, overhead=2.0),
-    EnrichmentType.SELECTOR_EXTRACTION: _seed(WorkUnit.TEXT_FILE, cpu=0.3, gpu=0.3),
-    EnrichmentType.ENTITY_EXTRACTION: _seed(WorkUnit.LLM_FILE, cpu=12.0, gpu=4.0, na=3.0, overhead=10.0),
-    EnrichmentType.EVENT_EXTRACTION: _seed(WorkUnit.LLM_FILE, cpu=12.0, gpu=4.0, na=3.0, overhead=10.0),
-    EnrichmentType.RELATIONSHIP_EXTRACTION: _seed(WorkUnit.LLM_FILE, cpu=1.0, gpu=1.0, overhead=5.0),
-    EnrichmentType.CONTACT_EXTRACTION: _seed(WorkUnit.CONTACT_FILE, cpu=0.1, gpu=0.1, overhead=2.0),
-}
 
 
 def estimate_workload(
@@ -277,41 +231,20 @@ def resolve_rate(
     measured: dict[tuple[EnrichmentType, RunDevice], RateStat] | None = None,
     params: dict[str, Any] | None = None,
 ) -> ResolvedRate | None:
-    """Pick the measured rate when it has enough samples, else the seed. None when neither exists."""
-    measured = measured or {}
+    """The measured rate for this analytic on this device; None until it has run here."""
     params = params or {}
-    seed = DEFAULT_RATES.get(enrichment_type)
-    unit = _UNIT.get(enrichment_type, WorkUnit.FILE)
-    overhead = seed.fixed_overhead_seconds if seed else 5.0
-
-    stat = measured.get((enrichment_type, device))
-    if stat and stat.sample_size >= MIN_SAMPLES_FOR_MEASURED:
-        rate = ResolvedRate(
-            enrichment_type=enrichment_type,
-            device=device,
-            unit=unit,
-            seconds_per_unit=stat.seconds_per_unit,
-            low_per_unit=stat.low_per_unit,
-            high_per_unit=stat.high_per_unit,
-            fixed_overhead_seconds=overhead,
-            source="measured",
-            sample_size=stat.sample_size,
-        )
-    elif seed is not None:
-        spu = seed.per_unit(device)
-        rate = ResolvedRate(
-            enrichment_type=enrichment_type,
-            device=device,
-            unit=unit,
-            seconds_per_unit=spu,
-            low_per_unit=spu * 0.6,
-            high_per_unit=spu * 1.8,
-            fixed_overhead_seconds=overhead,
-            source="seed",
-            sample_size=0,
-        )
-    else:
+    stat = (measured or {}).get((enrichment_type, device))
+    if stat is None or stat.sample_size < MIN_SAMPLES_FOR_MEASURED:
         return None
+    rate = ResolvedRate(
+        enrichment_type=enrichment_type,
+        device=device,
+        unit=_UNIT.get(enrichment_type, WorkUnit.FILE),
+        seconds_per_unit=stat.seconds_per_unit,
+        low_per_unit=stat.low_per_unit,
+        high_per_unit=stat.high_per_unit,
+        sample_size=stat.sample_size,
+    )
 
     concurrency = int(params.get("concurrency", 1) or 1)
     if rate.unit == WorkUnit.LLM_FILE and concurrency > 1:
@@ -329,7 +262,7 @@ def estimate_enrichment(
     rate: ResolvedRate | None,
     progress: float = 0.0,
 ) -> EnrichmentEstimate:
-    """Combine an eligible workload and a resolved rate into a wall-time estimate."""
+    """Combine an eligible workload and a measured rate into the remaining wall time (the undone share)."""
     prerequisites = enrichment_prerequisites(workload.enrichment_type)
 
     def _bare(basis: str) -> EnrichmentEstimate:
@@ -348,18 +281,10 @@ def estimate_enrichment(
     if workload.unit_count == 0:
         return _bare("no eligible files in this dataset")
     if rate is None:
-        return _bare("no throughput data for this analytic")
+        return _bare("no run history yet")
 
-    n = workload.unit_count
-    seconds = rate.fixed_overhead_seconds + n * rate.seconds_per_unit
-    low = rate.fixed_overhead_seconds + n * rate.low_per_unit
-    high = rate.fixed_overhead_seconds + n * rate.high_per_unit
-    if rate.source == "measured":
-        confidence = EstimateConfidence.MEASURED
-        basis = f"median of {rate.sample_size} prior {rate.device.value} run(s)"
-    else:
-        confidence = EstimateConfidence.SEEDED
-        basis = f"rough estimate ({rate.device.value}, no run history yet)"
+    remaining = workload.unit_count * (1.0 - min(max(progress, 0.0), 1.0))
+    runs = "run" if rate.sample_size == 1 else "runs"
 
     return EnrichmentEstimate(
         enrichment_type=workload.enrichment_type,
@@ -367,11 +292,11 @@ def estimate_enrichment(
         eligible=workload,
         prerequisites=prerequisites,
         progress=round(progress, 4),
-        estimate_seconds=round(seconds, 1),
-        low_seconds=round(low, 1),
-        high_seconds=round(high, 1),
-        confidence=confidence,
-        basis=basis,
+        estimate_seconds=round(remaining * rate.seconds_per_unit, 1),
+        low_seconds=round(remaining * rate.low_per_unit, 1),
+        high_seconds=round(remaining * rate.high_per_unit, 1),
+        confidence=EstimateConfidence.MEASURED,
+        basis=f"median of {rate.sample_size} prior {rate.device.value} {runs}",
     )
 
 

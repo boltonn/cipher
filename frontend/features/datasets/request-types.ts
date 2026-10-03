@@ -301,7 +301,8 @@ export interface DatasetRequestConfig {
 /* -------------------------------------------------------------------------- */
 
 export type RunDevice = "cpu" | "cuda" | "mps" | "na";
-export type EstimateConfidence = "measured" | "seeded" | "none";
+/** `measured` from prior runs on this machine; `none` until an analytic has run here (nothing is guessed). */
+export type EstimateConfidence = "measured" | "none";
 
 export interface EnrichmentWorkload {
   enrichmentType: string;
@@ -344,6 +345,21 @@ export function formatDuration(seconds: number | null | undefined): string {
   const hours = minutes / 60;
   if (hours < 36) return `~${hours.toFixed(1)} h`;
   return `~${(hours / 24).toFixed(1)} d`;
+}
+
+/** Sequential total of the timed estimates, plus how many analytics with work left have no timing yet. */
+export function sumEstimates(items: EnrichmentEstimate[]): string {
+  const seconds = items.reduce((sum, it) => sum + (it.estimateSeconds ?? 0), 0);
+  const untimed = items.filter(
+    (it) =>
+      it.estimateSeconds == null &&
+      it.eligible.estimable &&
+      it.eligible.unitCount > 0 &&
+      it.progress < 0.999
+  ).length;
+  if (!untimed) return formatDuration(seconds);
+  const note = `${untimed} not yet timed`;
+  return seconds > 0 ? `${formatDuration(seconds)} + ${note}` : note;
 }
 
 /* -------------------------------------------------------------------------- */
