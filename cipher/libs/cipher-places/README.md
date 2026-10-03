@@ -3,8 +3,13 @@
 Offline multilingual gazetteer for resolving `location` name mentions to one
 canonical place (country, state/province, city, or curated region).
 
+Everything it needs is committed under `data/`, so it runs and rebuilds offline:
+
 ```
-cipher-places-build            # downloads sources, writes ~/models/gazetteer/places.json.gz
+data/places.json.gz          # the built index (what `Gazetteer.load()` reads)
+data/src/                    # Natural Earth + GeoNames sources the index is built from
+data/custom_places.jsonl     # your own places
+cipher-places-build          # rebuild data/places.json.gz from data/src (+ custom); downloads only missing sources
 ```
 
 ```python
@@ -24,8 +29,15 @@ matches nothing is retried as its lemma (Russian/Ukrainian case forms, via
 
 ## Adding your own places
 
-Put one JSON object per line in `~/models/gazetteer/custom_places.jsonl` and
-re-run `cipher-places-build`. A custom place outranks every other reading.
+```
+uv run libs/cipher-places/scripts/add_place.py "North Facility" 49.84 24.03 \
+    --alias "Північний об'єкт" --alias "Северный объект" --country UA
+uv run libs/cipher-places/scripts/add_place.py --remove "North Facility"
+```
+
+The script upserts the entry in `data/custom_places.jsonl`, rebuilds the index and
+prints how the name and each alias now resolve. A custom place outranks every
+other reading. Each line of the file is one JSON object:
 
 ```json
 {"name": "North Facility", "latitude": 49.84, "longitude": 24.03, "aliases": ["Північний об'єкт", "Северный объект"], "country_code": "UA"}

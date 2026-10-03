@@ -42,9 +42,9 @@ router = APIRouter(
     summary="Get the distinct file types present among images",
     response_model=list[str],
 )
-async def get_image_filetypes(datastore: ImageDatastoreDep):
-    """Get the distinct set of file types actually present among images."""
-    return await datastore.get_filetypes()
+async def get_image_filetypes(access: DatasetAccessDep, datastore: ImageDatastoreDep):
+    """Get the distinct set of file types present among images in the user's datasets."""
+    return await datastore.get_filetypes(datasets=access.scope(None))
 
 
 @router.get("/{id}", summary="Get image by ID", response_model=Image)

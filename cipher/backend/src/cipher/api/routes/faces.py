@@ -116,8 +116,23 @@ FaceAccess = Depends(require_face)
     response_model=PaginatedFaceMatchesResponse,
     response_model_by_alias=True,
 )
-async def get_face_matches(params: Annotated[FaceMatchSearchParameters, Depends()], datastore: FaceMatchDatastoreDep):
-    """List candidate matches, e.g. a face's pending 'potential matches' for review."""
+async def get_face_matches(
+    params: Annotated[FaceMatchSearchParameters, Depends()],
+    access: DatasetAccessDep,
+    datastore: FaceMatchDatastoreDep,
+    face_datastore: FaceDatastoreDep,
+    file_datastore: FileDatastoreDep,
+):
+    """List candidate matches, e.g. a face's pending 'potential matches' for review.
+
+    Non-admins must name the face (`faceId`), whose source image must be in one of their datasets.
+    """
+    if params.face_id:
+        await _require_faces(
+            face_ids=[params.face_id], access=access, datastore=face_datastore, file_datastore=file_datastore
+        )
+    elif access.dataset_ids is not None:
+        raise HTTPException(status_code=403, detail="Listing face matches requires a faceId.")
     return await datastore.list_matches(request=params)
 
 
@@ -130,14 +145,24 @@ async def get_face_matches(params: Annotated[FaceMatchSearchParameters, Depends(
 async def resolve_face_match(
     id: str,
     resolution: FaceMatchResolution,
-    user: CurrentUserDep,
+    access: DatasetAccessDep,
     datastore: FaceMatchDatastoreDep,
+    face_datastore: FaceDatastoreDep,
+    file_datastore: FileDatastoreDep,
     graph_datastore: GraphDatastoreDep,
 ):
     """Confirm or reject a candidate match. Confirming assigns the face to the person."""
+    existing = await datastore.get_match_by_id(match_id=id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail=f"Face match not found: {id}")
+    await _require_faces(
+        face_ids=[existing.face_id], access=access, datastore=face_datastore, file_datastore=file_datastore
+    )
     match = await datastore.resolve_match(
         match_id=id,
-        review=FaceMatchReview(status=resolution.status, reviewed_by=user.id, review_note=resolution.review_note),
+        review=FaceMatchReview(
+            status=resolution.status, reviewed_by=access.user.id, review_note=resolution.review_note
+        ),
     )
     if match is None:
         raise HTTPException(status_code=404, detail=f"Face match not found: {id}")

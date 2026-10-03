@@ -32,6 +32,8 @@ from cipher.datastores.postgres.repositories.file import PostgresFileRepository
 from cipher.datastores.postgres.repositories.image import PostgresImageRepository
 from cipher.datastores.postgres.repositories.location import PostgresLocationRepository
 from cipher.datastores.postgres.repositories.mention import PostgresMentionRepository
+from cipher.datastores.postgres.repositories.mention_relationship import PostgresMentionRelationshipRepository
+from cipher.datastores.postgres.repositories.name_suggestion import PostgresNameSuggestionRepository
 from cipher.datastores.postgres.repositories.person import PostgresPersonRepository
 from cipher.datastores.postgres.repositories.tag import PostgresTagRepository
 from cipher.datastores.postgres.repositories.user import PostgresUserRepository
@@ -218,6 +220,18 @@ async def get_relationship_candidate_repository() -> AsyncGenerator[PostgresRela
         yield PostgresRelationshipCandidateRepository(session=session)
 
 
+async def get_mention_relationship_repository() -> AsyncGenerator[PostgresMentionRelationshipRepository, None]:
+    """Dependency injector for PostgresMentionRelationshipRepository."""
+    async with get_session() as session:
+        yield PostgresMentionRelationshipRepository(session=session)
+
+
+async def get_name_suggestion_repository() -> AsyncGenerator[PostgresNameSuggestionRepository, None]:
+    """Dependency injector for PostgresNameSuggestionRepository."""
+    async with get_session() as session:
+        yield PostgresNameSuggestionRepository(session=session)
+
+
 async def get_entity_match_repository() -> AsyncGenerator[PostgresEntityMatchRepository, None]:
     """Dependency injector for PostgresEntityMatchRepository."""
     async with get_session() as session:
@@ -255,6 +269,10 @@ GraphDatastoreDep = Annotated[PostgresGraphRepository, Depends(get_graph_reposit
 RelationshipCandidateDatastoreDep = Annotated[
     PostgresRelationshipCandidateRepository, Depends(get_relationship_candidate_repository)
 ]
+MentionRelationshipDatastoreDep = Annotated[
+    PostgresMentionRelationshipRepository, Depends(get_mention_relationship_repository)
+]
+NameSuggestionDatastoreDep = Annotated[PostgresNameSuggestionRepository, Depends(get_name_suggestion_repository)]
 EntityMatchDatastoreDep = Annotated[PostgresEntityMatchRepository, Depends(get_entity_match_repository)]
 EventDatastoreDep = Annotated[PostgresEventRepository, Depends(get_event_repository)]
 TagDatastoreDep = Annotated[PostgresTagRepository, Depends(get_tag_repository)]
@@ -385,6 +403,8 @@ __all__ = [
     "LocationDatastoreDep",
     "GraphDatastoreDep",
     "RelationshipCandidateDatastoreDep",
+    "MentionRelationshipDatastoreDep",
+    "NameSuggestionDatastoreDep",
     "EntityMatchDatastoreDep",
     "EventDatastoreDep",
     "TagDatastoreDep",

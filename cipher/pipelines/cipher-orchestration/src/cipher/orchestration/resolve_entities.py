@@ -13,7 +13,8 @@ For each `(entity_type, normalized_value)` group of unresolved `name` mentions:
    * `review` -> a pending group-level `entity_match` per candidate for the queue;
    * nothing clears `review_low` -> a provisional entity for a trustworthy typed
      group (a structured mention, or >= `min_mentions`), else leave for Review.
-4. `link_header_selectors` + promote extractor relations to candidates.
+4. `link_header_selectors` + promote extractor relations to candidates, then email-domain
+   employment suggestions (`domain_affiliations`).
 
 Re-runnable: only reads `entity_id IS NULL` mentions and `on_conflict_do_nothing`
 on the group key, so a second run is a no-op. `reset-entities` clears it all.
@@ -42,6 +43,7 @@ from cipher.datastores.postgres.tables.mention import MentionTable
 from cipher.datastores.postgres.tables.mention_relationship import MentionRelationshipTable
 from cipher.datastores.postgres.tables.selector import SelectorTable
 from cipher.names import entity_keys
+from cipher.orchestration.domain_affiliations import propose_domain_affiliations
 from cipher.orchestration.entity_resolution import (
     CandidateScoringInput,
     MentionScoringInput,
@@ -635,6 +637,7 @@ async def resolve_entities_workflow(
 
     edges = await PostgresGraphRepository(session=session).link_header_selectors(dataset_id) if link_selectors else 0
     candidates = await PostgresMentionRelationshipRepository(session=session).promote_to_candidates(dataset_id)
+    domain_candidates = await propose_domain_affiliations(session, dataset_id)
     closed = await _reconcile_resolved_name_groups(session, dataset_id)
 
     counts = {
@@ -647,6 +650,7 @@ async def resolve_entities_workflow(
         "review_rows_closed": closed,
         "has_selector_edges": edges,
         "relationship_candidates": candidates,
+        "email_domain_candidates": domain_candidates,
     }
     logger.success(f"Resolved entities for dataset {dataset_id}: {counts}")
     return counts

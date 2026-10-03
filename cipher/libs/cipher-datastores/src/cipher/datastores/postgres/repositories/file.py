@@ -1,10 +1,12 @@
-from sqlalchemy import asc, desc, distinct, func, select, tuple_, update
+from sqlalchemy import asc, desc, distinct, func, literal, select, tuple_, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cipher.datastores.postgres.repositories.tag import PostgresTagRepository
+from cipher.datastores.postgres.tables.chunk import ChunkTable
 from cipher.datastores.postgres.tables.file import FileTable
 from cipher.schemas._base.common import ModelTagType
+from cipher.schemas.content.search import SourceFacets, SourceValueCount
 from cipher.schemas.ingestion.file import (
     File,
     FileBrowserItem,
@@ -281,6 +283,25 @@ class PostgresFileRepository:
 
         result = await self.session.execute(stmt)
         return result.scalar_one()
+
+    async def source_facets(self, *, dataset_ids: list[str] | None) -> SourceFacets:
+        """Counts of each `source_tags` / `message_states` value over files with searchable chunks."""
+        facets: dict[str, list[SourceValueCount]] = {}
+        for column in ("source_tags", "message_states"):
+            value = func.jsonb_array_elements_text(getattr(FileTable, column)).table_valued("value").alias("v")
+            stmt = (
+                select(value.c.value, func.count(distinct(FileTable.id)).label("file_count"))
+                .select_from(FileTable)
+                .join(value, literal(True))
+                .where(select(ChunkTable.id).where(ChunkTable.file_id == FileTable.id).exists())
+                .group_by(value.c.value)
+                .order_by(desc("file_count"))
+            )
+            if dataset_ids is not None:
+                stmt = stmt.where(FileTable.dataset_id.in_(dataset_ids))
+            rows = await self.session.execute(stmt)
+            facets[column] = [SourceValueCount(value=v, file_count=n) for v, n in rows.tuples().all()]
+        return SourceFacets(**facets)
 
     async def count_folders(
         self,

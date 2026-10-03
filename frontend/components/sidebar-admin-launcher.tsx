@@ -37,7 +37,7 @@ export function SidebarAdminLauncher({ pathname }: { pathname: string }) {
               "group-data-[collapsible=icon]:size-9! group-data-[collapsible=icon]:p-0!"
             )}
           >
-            <span className="flex w-full items-center gap-2.5 px-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
+            <span className="flex w-full items-center gap-2.5 group-data-[collapsible=icon]:justify-center">
               <AdminIcon className="ml-1.5 h-4.5 w-4.5 shrink-0 group-data-[collapsible=icon]:ml-0" />
               <span className="text-sm group-data-[collapsible=icon]:hidden">{title}</span>
               <ChevronRight className="ml-auto h-3.5 w-3.5 transition-transform group-data-[state=open]/admin:rotate-90 group-data-[collapsible=icon]:hidden" />

@@ -1,8 +1,9 @@
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cipher.datastores.postgres.tables.extracted_text import ExtractedTextTable
+from cipher.datastores.postgres.tables.file import FileTable
 from cipher.datastores.postgres.utils import strip_null_bytes
 from cipher.schemas.content.extraction import ExtractedText, ExtractedTextCreate
 
@@ -52,7 +53,10 @@ class PostgresExtractedTextRepository:
         return set(result.scalars().all())
 
     async def upsert(self, extracted: ExtractedTextCreate) -> ExtractedText:
-        """Upsert extracted text -- insert or overwrite if file_id already has a row."""
+        """Upsert extracted text -- insert or overwrite if file_id already has a row.
+
+        Also refreshes the file's `source_tags` / `message_states`, the filterable copy of what the metadata says.
+        """
         data = strip_null_bytes(extracted.model_dump(mode="json"))
         data["metadata_"] = data.pop("metadata")  # ORM attribute name; see `_to_schema`
 
@@ -69,6 +73,11 @@ class PostgresExtractedTextRepository:
         ).returning(ExtractedTextTable)
 
         result = await self.session.execute(upsert_stmt)
+        await self.session.execute(
+            update(FileTable)
+            .where(FileTable.id == extracted.file_id)
+            .values(source_tags=extracted.source_tags(), message_states=extracted.message_states())
+        )
         await self.session.commit()
 
         row = result.scalar_one()

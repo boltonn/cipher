@@ -46,6 +46,7 @@ from cipher.orchestration.extract_events import (
     persist_llm_events,
     tag_event_files,
 )
+from cipher.orchestration.memberships import persist_memberships
 from cipher.schemas.ingestion.enrichment import EnrichableType, EnrichmentType
 
 if TYPE_CHECKING:
@@ -235,6 +236,13 @@ async def extract_llm_workflow(
                                 model=resolved_model,
                                 seen=seen,
                                 event_repo=event_repo,
+                            )
+                            await persist_memberships(
+                                session,
+                                res.events.memberships,
+                                extracted=extracted,
+                                dataset_id=dataset_id,
+                                file_id=file_id,
                             )
                             (with_events if res.events.events else without_events).append(file_id)
                         completed.append(item.enrichment.id)

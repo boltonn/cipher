@@ -19,6 +19,7 @@ import { Ban, ChevronDown, ExternalLink, FileText, Mail, TextQuote, X } from "lu
 import Link from "next/link";
 import { type ReactNode, useState } from "react";
 import type { SearchFilters, SearchFiletypeGroup } from "../types";
+import { SourceFilter } from "./source-filter";
 
 interface SearchFiltersBarProps {
   filters: SearchFilters;
@@ -117,7 +118,7 @@ function MentionValueChip({ value, onRemove }: { value: string; onRemove: () => 
   );
 }
 
-/** Type, entity-mention, sender/recipient and date filters -- all compose with every search mode (and an empty-query browse). */
+/** Type, entity-mention, sender/recipient, date and from-the-data filters -- all compose with every search mode (and an empty-query browse). */
 export function SearchFiltersBar({ filters, onFiltersChange }: SearchFiltersBarProps) {
   const selectorType = filters.selectorTypes?.[0] as SelectorType | undefined;
   const setIds = (key: EntityFilterKey, next: string[]) =>
@@ -217,6 +218,8 @@ export function SearchFiltersBar({ filters, onFiltersChange }: SearchFiltersBarP
           onChange={({ from, to }) => onFiltersChange({ ...filters, dateFrom: from, dateTo: to })}
         />
       </FilterGroup>
+
+      <SourceFilter filters={filters} onFiltersChange={onFiltersChange} />
 
       {selectorType && (
         <FilterGroup label="Selector">

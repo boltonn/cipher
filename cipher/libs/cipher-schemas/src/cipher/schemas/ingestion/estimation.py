@@ -98,6 +98,7 @@ ESTIMATE_ORDER: tuple[EnrichmentType, ...] = (
     EnrichmentType.ENTITY_EXTRACTION,
     EnrichmentType.RELATIONSHIP_EXTRACTION,
     EnrichmentType.EVENT_EXTRACTION,
+    EnrichmentType.SIGNATURE_EXTRACTION,
 )
 
 _ELIGIBLE_GROUPS: dict[EnrichmentType, tuple[str, ...]] = {
@@ -113,6 +114,7 @@ _ELIGIBLE_GROUPS: dict[EnrichmentType, tuple[str, ...]] = {
     EnrichmentType.RELATIONSHIP_EXTRACTION: TEXT_GROUPS,
     EnrichmentType.EVENT_EXTRACTION: TEXT_GROUPS,
     EnrichmentType.CONTACT_EXTRACTION: ("contact",),
+    EnrichmentType.SIGNATURE_EXTRACTION: ("email",),
 }
 
 _UNIT: dict[EnrichmentType, WorkUnit] = {
@@ -129,6 +131,7 @@ _UNIT: dict[EnrichmentType, WorkUnit] = {
     EnrichmentType.RELATIONSHIP_EXTRACTION: WorkUnit.TEXT_FILE,
     EnrichmentType.EVENT_EXTRACTION: WorkUnit.LLM_FILE,
     EnrichmentType.CONTACT_EXTRACTION: WorkUnit.CONTACT_FILE,
+    EnrichmentType.SIGNATURE_EXTRACTION: WorkUnit.LLM_FILE,
     EnrichmentType.MESSAGE_TRANSLATION: WorkUnit.MESSAGE,
 }
 

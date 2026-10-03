@@ -14,7 +14,7 @@ from cipher.names.normalize import fold
 from cipher.names.parse import ParsedName, parse_name
 
 # Shared mailbox providers: their domain says nothing about the owner.
-_FREEMAIL = frozenset(
+FREEMAIL_LABELS = frozenset(
     {
         "gmail", "googlemail", "yahoo", "ymail", "hotmail", "outlook", "live", "msn", "aol", "icloud",
         "me", "mac", "protonmail", "proton", "gmx", "mail", "comcast", "verizon", "att", "sbcglobal",
@@ -34,7 +34,7 @@ def _name_parts(address: str) -> list[str]:
     local, _, domain = fold(address).partition("@")
     parts = [local]
     label = domain.split(".")[0] if domain else ""
-    if label and label not in _FREEMAIL:
+    if label and label not in FREEMAIL_LABELS:
         parts.append(label)
     return parts
 

@@ -52,6 +52,7 @@ import {
   ScanFace,
   ScanText,
   Send,
+  Signature,
   Users,
   UsersRound,
   Waypoints,
@@ -73,6 +74,7 @@ const META: Record<string, { label: string; Icon: IconComponent }> = {
   entity_extraction: { label: "Entity extraction", Icon: Network },
   relationship_extraction: { label: "Relationship extraction", Icon: Waypoints },
   event_extraction: { label: "Event extraction", Icon: CalendarClock },
+  signature_extraction: { label: "Signature extraction", Icon: Signature },
 };
 
 const metaFor = (enrichmentType: string) =>

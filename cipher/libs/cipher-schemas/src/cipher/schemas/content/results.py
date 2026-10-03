@@ -31,6 +31,8 @@ class FileSearchResult(BaseModel):
     tags: list[str] = Field(
         default_factory=list, description="The file content's current positive tags (read live, not from the index)"
     )
+    source_tags: list[str] = Field(default_factory=list, description="Tags that came with the data")
+    message_states: list[str] = Field(default_factory=list, description="Message states as the source recorded them")
 
 
 class PaginatedFileSearchResponse(PaginatedResponse):

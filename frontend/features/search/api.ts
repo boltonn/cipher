@@ -7,6 +7,7 @@ import type {
   PaginatedFileSearchResponse,
   SearchChunk,
   SearchChunkRaw,
+  SourceFacets,
 } from "./types";
 
 export function toSearchChunk(raw: SearchChunkRaw): SearchChunk {
@@ -41,6 +42,8 @@ export function toGroupedFileResult(raw: FileSearchResultRaw): GroupedFileResult
     topChunkId: raw.topChunkId,
     matchCount: raw.matchCount,
     tags: raw.tags ?? [],
+    sourceTags: raw.sourceTags ?? [],
+    messageStates: raw.messageStates ?? [],
   };
 }
 
@@ -54,6 +57,10 @@ export const searchService = {
   // POST /search/semantic
   searchSemantic: (payload: ChunkTextSearchRequest): Promise<PaginatedFileSearchResponse> =>
     apiClient.post<PaginatedFileSearchResponse>(`${searchBaseURL}/semantic`, payload).then((res) => res.data),
+
+  // GET /search/source-facets -- tags and message states that came with the data, with file counts
+  sourceFacets: (datasetIds?: string[]): Promise<SourceFacets> =>
+    apiClient.get<SourceFacets>(`${searchBaseURL}/source-facets`, { params: { datasetIds } }).then((res) => res.data),
 
   // POST /search/hybrid
   searchHybrid: (payload: ChunkTextSearchRequest): Promise<PaginatedFileSearchResponse> =>

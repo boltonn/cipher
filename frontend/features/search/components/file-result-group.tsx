@@ -2,10 +2,11 @@
 
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
-import { FileText, Mail, Target } from "lucide-react";
+import { Database, FileText, Mail, Target } from "lucide-react";
 import { matchTerms, snippetRange } from "../highlight";
 import type { GroupedFileResult, SearchMode } from "../types";
 import { MentionMarkedText } from "./mention-marked-text";
+import { SOURCE_ORIGIN, sourceLabel } from "./source-filter";
 
 interface FileResultGroupProps {
   group: GroupedFileResult;
@@ -95,6 +96,16 @@ export function FileResultGroup({ group, isSelected, onSelect, searchMode, query
             className="rounded border border-primary/20 bg-primary/20 px-1.5 py-0.5 text-[11px] text-primary"
           >
             {tag}
+          </span>
+        ))}
+        {[...group.messageStates, ...group.sourceTags].map((value) => (
+          <span
+            key={value}
+            title={SOURCE_ORIGIN}
+            className="flex items-center gap-1 rounded border border-border bg-secondary px-1.5 py-0.5 text-[11px] text-secondary-foreground"
+          >
+            <Database className="h-2.5 w-2.5 opacity-60" />
+            {sourceLabel(value)}
           </span>
         ))}
       </div>

@@ -3,7 +3,6 @@
 import { DateRangePicker } from "@/components/date-range-picker";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
-import { DatasetMultiSelectCombobox } from "@/features/datasets/components/dataset-multi-select-combobox";
 import { useImageFiletypes } from "@/features/images/api";
 import { ImageFilters } from "@/features/images/hooks/use-search-controller";
 import { TagFilterCombobox } from "@/features/tags/components/tag-filter-combobox";
@@ -18,7 +17,6 @@ export function hasActiveImageFilters(params: ImageFilters): boolean {
   return !!(
     params.dateFrom ||
     params.dateTo ||
-    params.datasets?.length ||
     params.filetypes?.length ||
     hasTagFilters(params) ||
     (params.minSimilarity ?? 0) > 0
@@ -106,17 +104,6 @@ export const ImageFilterPanel: React.FC<ImageFilterPanelProps> = ({
             onChange={({ from, to }) => {
               setParams((prev) => ({ ...prev, dateFrom: from, dateTo: to }));
             }}
-          />
-        </div>
-
-        {/* Datasets */}
-        <div className="flex flex-col gap-3 min-w-0">
-          <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
-            Datasets
-          </span>
-          <DatasetMultiSelectCombobox
-            value={params.datasets ?? []}
-            onChange={(datasets) => updateParam("datasets", datasets.length ? datasets : undefined)}
           />
         </div>
 

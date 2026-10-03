@@ -68,6 +68,7 @@ from cipher.orchestration.extract_relationships import (
     get_relationship_extraction_stats,
 )
 from cipher.orchestration.extract_selectors import extract_selectors_workflow, get_selector_extraction_stats
+from cipher.orchestration.extract_signatures import extract_signatures_workflow
 from cipher.orchestration.image_size import DEFAULT_MIN_IMAGE_SIDE
 from cipher.orchestration.ingest import create_dataset, load_files
 from cipher.orchestration.link_face_cooccurrence import (
@@ -86,8 +87,9 @@ from cipher.orchestration.run_recorder import record_run
 from cipher.orchestration.schema import create_tables, stamp_head
 from cipher.orchestration.session import get_elasticsearch_client_context, get_session_context
 from cipher.orchestration.sync_chunk_entities import sync_chunk_entities_workflow
+from cipher.places import default_gazetteer_path
 from cipher.schemas._base.common import ModelDevice
-from cipher.schemas.content.email import EmailCategory, EmailState
+from cipher.schemas.content.email import EmailCategory, MessageState
 from cipher.schemas.graph.entity_resolution import EntityResolutionConfig
 from cipher.schemas.identity.face import DEFAULT_FACE_REJECT_SIMILARITY
 from cipher.schemas.ingestion.enrichment import EnrichmentType
@@ -602,7 +604,7 @@ def embed_text_cmd(
         ),
     ] = None,
     skip_email_state: Annotated[
-        list[EmailState] | None,
+        list[MessageState] | None,
         typer.Option(
             help="Email states to exclude from embedding entirely (repeat the flag to skip several); default: spam"
         ),
@@ -961,7 +963,7 @@ def extract_events_cmd(
         typer.Option(help="Mail-client inbox category the gate skips (repeatable; default: promotions)"),
     ] = None,
     gate_skip_state: Annotated[
-        list[EmailState] | None,
+        list[MessageState] | None,
         typer.Option(help="Mail state the gate skips (repeatable; default: spam)"),
     ] = None,
     gliner_model_dir: Annotated[
@@ -1244,7 +1246,9 @@ def resolve_entities_cmd(
                 link_selectors=not skip_selector_links,
                 concurrency=concurrency,
             )
-            if not skip_locations:
+            if not skip_locations and not default_gazetteer_path().exists():
+                logger.warning(f"No gazetteer at {default_gazetteer_path()}; skipping location mentions")
+            elif not skip_locations:
                 counts["locations"] = await resolve_locations_workflow(session=session, dataset_id=resolved_id)
             typer.echo(json.dumps(counts, indent=2))
 
@@ -1347,6 +1351,53 @@ def extract_contact_entities_cmd(
             ) as run:
                 counts = await extract_contact_entities_workflow(session=session, dataset_id=resolved_id)
                 run.units = counts.get("contacts", 0)
+            typer.echo(json.dumps(counts, indent=2))
+
+    asyncio.run(_run())
+
+
+@app.command("extract-signatures")
+def extract_signatures_cmd(
+    dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
+    dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
+    concurrency: Annotated[int, typer.Option(help="Concurrent LLM calls")] = 8,
+    model: Annotated[str | None, typer.Option(help="Override the configured LLM model id")] = None,
+    limit: Annotated[int | None, typer.Option(help="Only read this many emails (a trial slice)")] = None,
+    include_bulk: Annotated[
+        bool, typer.Option(help="Also read Gmail promotions / updates / social / forums mail (skipped by default)")
+    ] = False,
+    rebuild: Annotated[
+        bool, typer.Option(help="Drop this dataset's signature output (not reviewed decisions) and re-read every email")
+    ] = False,
+):
+    """Read senders' email signatures: employer -> division -> department, title, phones/emails/websites/addresses.
+
+    A language-agnostic gate finds the sender's signature block (their name line, or the lines after a
+    sign-off); the local LLM reads it verbatim, once per distinct signature. Emits mentions + relations (employed_by with role,
+    part_of between units, located_in, and selectors next to the name). Run `resolve-entities` next:
+    the results appear as suggestions on the organization page. Enrichment-gated (`signature_extraction`):
+    each email is read once; failed model calls retry on the next run.
+    """
+
+    async def _run():
+        async with get_session_context() as session:
+            resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
+            async with record_run(
+                enrichment_type=EnrichmentType.SIGNATURE_EXTRACTION,
+                dataset_id=resolved_id,
+                device="na",
+                unit=WorkUnit.LLM_FILE,
+            ) as run:
+                counts = await extract_signatures_workflow(
+                    session=session,
+                    dataset_id=resolved_id,
+                    concurrency=concurrency,
+                    model=model,
+                    limit=limit,
+                    rebuild=rebuild,
+                    include_bulk=include_bulk,
+                )
+                run.units = counts["emails"]
             typer.echo(json.dumps(counts, indent=2))
 
     asyncio.run(_run())

@@ -29,7 +29,6 @@ class OrganizationTable(Base):
         String, ForeignKey("entity.id", ondelete="SET NULL"), nullable=True, index=True
     )
     country: Mapped[str | None] = mapped_column(String, nullable=True)
-    notes: Mapped[str | None] = mapped_column(String, nullable=True)
 
     date_created: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)

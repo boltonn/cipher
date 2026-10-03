@@ -140,14 +140,16 @@ class PostgresImageRepository:
         result = await self.session.execute(select(func.count(ImageTable.id)))
         return result.scalar_one()
 
-    async def get_filetypes(self) -> list[str]:
-        """Get the distinct set of file types actually present among images."""
-        result = await self.session.execute(
-            select(FileTable.filetype)
-            .join(ImageTable, ImageTable.id == FileTable.sha256)
-            .distinct()
-            .order_by(FileTable.filetype)
-        )
+    async def get_filetypes(self, datasets: list[str] | None = None) -> list[str]:
+        """Get the distinct set of file types actually present among images.
+
+        Args:
+            datasets: Only count images from these datasets; None means every dataset.
+        """
+        stmt = select(FileTable.filetype).join(ImageTable, ImageTable.id == FileTable.sha256)
+        if datasets:
+            stmt = stmt.where(FileTable.dataset_id.in_(datasets))
+        result = await self.session.execute(stmt.distinct().order_by(FileTable.filetype))
         return list(result.scalars().all())
 
     async def delete_image(self, image_id: str) -> bool:

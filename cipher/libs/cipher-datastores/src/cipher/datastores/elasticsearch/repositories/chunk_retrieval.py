@@ -152,6 +152,9 @@ class ElasticsearchChunkRetrievalRepository(ChunkRetrievalRepository):
         """Rank chunks (keyword / semantic / hybrid / browse), filter, group by file."""
         if query.filters.has_correspondence_filter():
             raise ValueError("sent_from / sent_to / participants / date filters need the postgres retrieval backend")
+        f = query.filters
+        if f.source_tags or f.exclude_source_tags or f.message_states or f.exclude_message_states:
+            raise ValueError("source tag / message state filters need the postgres retrieval backend")
         extra_filter, _ = await self._resolve_extra_filter(query)
 
         has_text = bool(query.text and query.text.strip())

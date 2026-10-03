@@ -31,6 +31,7 @@ _ENRICHMENT_TYPES = (
     EnrichmentType.SELECTOR_EXTRACTION,
     EnrichmentType.ENTITY_EXTRACTION,
     EnrichmentType.RELATIONSHIP_EXTRACTION,
+    EnrichmentType.SIGNATURE_EXTRACTION,
 )
 
 

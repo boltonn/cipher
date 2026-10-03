@@ -9,7 +9,9 @@ from sqlalchemy import (
     ForeignKey,
     String,
     UniqueConstraint,
+    text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from cipher.datastores.postgres.tables.base import Base
@@ -45,6 +47,8 @@ class MentionRelationshipTable(Base):
 
     file_id: Mapped[str | None] = mapped_column(String, ForeignKey("file.id", ondelete="SET NULL"), nullable=True)
     context: Mapped[str | None] = mapped_column(String, nullable=True)
+    date_reviewed: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    attributes: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb"))
     extractor: Mapped[str | None] = mapped_column(String, nullable=True)
     extraction_model: Mapped[str | None] = mapped_column(String, nullable=True)
 

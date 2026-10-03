@@ -1,4 +1,4 @@
-from sqlalchemy import delete, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
@@ -7,17 +7,22 @@ from cipher.datastores.postgres.tables.entity import EntityTable
 from cipher.datastores.postgres.tables.entity_relationship_candidate import (
     EntityRelationshipCandidateTable,
 )
+from cipher.datastores.postgres.tables.extracted_text import ExtractedTextTable
+from cipher.datastores.postgres.tables.file import FileTable
 from cipher.datastores.postgres.tables.mention import MentionTable
 from cipher.datastores.postgres.tables.mention_relationship import MentionRelationshipTable
 from cipher.schemas.graph.entity_relationship import (
     RelationshipCandidateCreate,
     RelationshipCandidateMethod,
 )
+from cipher.schemas.graph.mention import MentionedType
 from cipher.schemas.graph.mention_relationship import (
+    EvidenceSpan,
     MentionRelationship,
     MentionRelationshipCreate,
+    RelationshipEvidence,
 )
-from cipher.schemas.graph.ontology import RELATIONSHIPS, validate_relationship
+from cipher.schemas.graph.ontology import RELATIONSHIPS, RelationshipType, validate_relationship
 
 
 class PostgresMentionRelationshipRepository:
@@ -80,6 +85,8 @@ class PostgresMentionRelationshipRepository:
                     MentionRelationshipTable.relationship_type,
                     MentionRelationshipTable.confidence,
                     MentionRelationshipTable.src_mention_id,
+                    MentionRelationshipTable.attributes,
+                    MentionRelationshipTable.extractor,
                     src.entity_id,
                     dst.entity_id,
                     src_entity.entity_type,
@@ -89,13 +96,26 @@ class PostgresMentionRelationshipRepository:
                 .join(dst, dst.id == MentionRelationshipTable.dst_mention_id)
                 .join(src_entity, src_entity.id == src.entity_id)
                 .join(dst_entity, dst_entity.id == dst.entity_id)
-                .where(MentionRelationshipTable.dataset_id == dataset_id)
+                .where(
+                    MentionRelationshipTable.dataset_id == dataset_id,
+                    MentionRelationshipTable.date_reviewed.is_(None),
+                )
             )
         ).all()
 
         candidates: list[RelationshipCandidateCreate] = []
         seen: set[tuple[str, str, str]] = set()
-        for rel_type, confidence, evidence_mention_id, src_eid, dst_eid, src_type, dst_type in rows:
+        for (
+            rel_type,
+            confidence,
+            evidence_mention_id,
+            attributes,
+            extractor,
+            src_eid,
+            dst_eid,
+            src_type,
+            dst_type,
+        ) in rows:
             if not src_eid or not dst_eid or src_eid == dst_eid:
                 continue
 
@@ -115,8 +135,9 @@ class PostgresMentionRelationshipRepository:
                     dst_entity_id=b_eid,
                     relationship_type=rel_type,
                     confidence=float(confidence),
-                    method=RelationshipCandidateMethod.LLM,
+                    method=_EXTRACTOR_METHOD.get(extractor, RelationshipCandidateMethod.LLM),
                     evidence_mention_id=evidence_mention_id,
+                    attributes=attributes or {},
                 )
             )
 
@@ -130,6 +151,79 @@ class PostgresMentionRelationshipRepository:
         await self.session.execute(stmt)
         await self.session.commit()
         return len(candidates)
+
+    async def evidence_for(
+        self,
+        *,
+        src_entity_id: str | None = None,
+        dst_entity_id: str | None = None,
+        relationship_type: RelationshipType | None = None,
+        mention_relationship_ids: list[str] | None = None,
+        dataset_ids: list[str] | None = None,
+        limit: int = 25,
+    ) -> list[RelationshipEvidence]:
+        """The mention relations behind an edge, with a source-text snippet each.
+
+        Either the entity-level edge (`src_entity_id`/`dst_entity_id`/`relationship_type`, either
+        direction) or explicit `mention_relationship_ids` (a name-level suggestion).
+        """
+        src = aliased(MentionTable)
+        dst = aliased(MentionTable)
+        relation = MentionRelationshipTable
+        stmt = (
+            select(relation, src, dst, ExtractedTextTable.content, ExtractedTextTable.metadata_)
+            .join(src, src.id == relation.src_mention_id)
+            .join(dst, dst.id == relation.dst_mention_id)
+            .outerjoin(
+                ExtractedTextTable,
+                and_(src.mentioned_type == MentionedType.EXTRACTED_TEXT, ExtractedTextTable.id == src.mentioned_id),
+            )
+            .where(
+                relation.id.in_(mention_relationship_ids)
+                if mention_relationship_ids is not None
+                else and_(
+                    relation.relationship_type == relationship_type,
+                    or_(
+                        and_(src.entity_id == src_entity_id, dst.entity_id == dst_entity_id),
+                        and_(src.entity_id == dst_entity_id, dst.entity_id == src_entity_id),
+                    ),
+                )
+            )
+            .order_by(relation.confidence.desc(), relation.date_created)
+            .limit(limit)
+        )
+        if dataset_ids is not None:
+            stmt = stmt.where(relation.dataset_id.in_(dataset_ids))
+        return [
+            _evidence(relation_row, src_row, dst_row, content, metadata)
+            for relation_row, src_row, dst_row, content, metadata in (await self.session.execute(stmt)).all()
+        ]
+
+    async def emails_from(
+        self, addresses: list[str], *, dataset_ids: list[str] | None = None, limit: int = 25
+    ) -> list[RelationshipEvidence]:
+        """Emails sent from `addresses`, newest first, as whole-email evidence (the opening of each body)."""
+        sender = func.lower(ExtractedTextTable.metadata_["sent_from"]["value"].astext)
+        stmt = (
+            select(ExtractedTextTable, FileTable.dataset_id)
+            .join(FileTable, FileTable.id == ExtractedTextTable.file_id)
+            .where(sender.in_([a.lower() for a in addresses]))
+            .order_by(ExtractedTextTable.metadata_["date_sent"].astext.desc().nulls_last())
+            .limit(limit)
+        )
+        if dataset_ids is not None:
+            stmt = stmt.where(FileTable.dataset_id.in_(dataset_ids))
+        return [
+            RelationshipEvidence(
+                dataset_id=dataset_id,
+                file_id=row.file_id,
+                extractor="email header",
+                confidence=1.0,
+                snippet=row.content[: _SNIPPET_PAD * 3],
+                **_email_fields(row.metadata_),
+            )
+            for row, dataset_id in (await self.session.execute(stmt)).all()
+        ]
 
     async def delete_by_dataset_id(self, dataset_id: str) -> int:
         """Delete all mention relations for a dataset (used by reset-entities)."""
@@ -155,3 +249,47 @@ def _legal_endpoints(rel_type, src_eid, dst_eid, src_type, dst_type):
         except ValueError:
             return None
     return None
+
+
+_SNIPPET_PAD = 160
+_EXTRACTOR_METHOD = {"signature": RelationshipCandidateMethod.SIGNATURE}
+
+
+def _span(mention: MentionTable) -> EvidenceSpan:
+    return EvidenceSpan(
+        mention_id=mention.id,
+        surface_text=mention.surface_text,
+        start_offset=mention.start_offset,
+        end_offset=mention.end_offset,
+    )
+
+
+def _evidence(relation, src: MentionTable, dst: MentionTable, content: str | None, metadata: dict | None):
+    """A relation's evidence row: both spans plus the text around them (or the stored context)."""
+    offsets = [o for o in (src.start_offset, src.end_offset, dst.start_offset, dst.end_offset) if o is not None]
+    if content and offsets:
+        start = max(0, min(offsets) - _SNIPPET_PAD)
+        snippet, snippet_offset = content[start : max(offsets) + _SNIPPET_PAD], start
+    else:
+        snippet, snippet_offset = relation.context or src.context or "", 0
+    return RelationshipEvidence(
+        mention_relationship_id=relation.id,
+        dataset_id=relation.dataset_id,
+        file_id=relation.file_id or src.file_id,
+        extractor=relation.extractor,
+        confidence=relation.confidence,
+        attributes=relation.attributes or {},
+        src=_span(src),
+        dst=_span(dst),
+        snippet=snippet,
+        snippet_offset=snippet_offset,
+        **_email_fields(metadata),
+    )
+
+
+def _email_fields(metadata: dict | None) -> dict:
+    """Subject / sender / date of an email's extracted-text metadata (all None for non-email sources)."""
+    metadata = metadata or {}
+    sender = metadata.get("sent_from") or metadata.get("from") or metadata.get("sender") or {}
+    label = " ".join(p for p in (sender.get("name"), f"<{sender['value']}>" if sender.get("value") else None) if p)
+    return {"subject": metadata.get("title"), "sender": label or None, "date_sent": metadata.get("date_sent")}

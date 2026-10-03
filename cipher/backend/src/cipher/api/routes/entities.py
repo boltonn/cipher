@@ -13,6 +13,8 @@ from cipher.api.deps.postgres import (
     EntityMatchDatastoreDep,
     GraphDatastoreDep,
     MentionDatastoreDep,
+    MentionRelationshipDatastoreDep,
+    NameSuggestionDatastoreDep,
     RelationshipCandidateDatastoreDep,
 )
 from cipher.datastores.postgres.utils import normalize_name
@@ -54,6 +56,7 @@ from cipher.schemas.graph.entity_relationship import (
     GraphResponse,
     PaginatedRelationshipCandidatesResponse,
     PaginatedRelationshipsResponse,
+    RelationshipCandidateMethod,
     RelationshipCandidateSearchParameters,
     RelationshipReview,
     RelationshipSearchParameters,
@@ -69,6 +72,7 @@ from cipher.schemas.graph.mention import (
     PaginatedMentionsResponse,
     ResolvedName,
 )
+from cipher.schemas.graph.mention_relationship import RelationshipEvidence
 from cipher.schemas.graph.ontology import (
     RELATIONSHIP_ROLE_ENUM,
     EntityType,
@@ -79,7 +83,18 @@ from cipher.schemas.graph.ontology import (
     build_ontology,
     validate_relationship,
 )
-from cipher.schemas.graph.organization import OrganizationStructure, OrganizationUpdate
+from cipher.schemas.graph.organization import (
+    NameSuggestion,
+    NameSuggestionAccept,
+    NameSuggestionAccepted,
+    NameSuggestionDismiss,
+    OrganizationPeopleParameters,
+    OrganizationStructure,
+    OrganizationSuggestion,
+    OrganizationTree,
+    OrganizationUpdate,
+    PaginatedOrganizationPeople,
+)
 from cipher.schemas.graph.selector import SelectorEvidence, SelectorLinkRequest, SelectorRegion, SelectorUpdate
 from cipher.schemas.interaction.comment import CommentableType
 from cipher.schemas.interaction.tag import TagSource
@@ -278,6 +293,82 @@ async def list_relationship_candidates(
     return await datastore.list_candidates(params)
 
 
+@router.get(
+    "/relationship-candidates/{candidate_id}/evidence",
+    summary="Source passages behind a proposed edge",
+    response_model=list[RelationshipEvidence],
+    **_BY_ALIAS,
+)
+async def list_relationship_candidate_evidence(
+    candidate_id: str,
+    access: DatasetAccessDep,
+    datastore: RelationshipCandidateDatastoreDep,
+    relations: MentionRelationshipDatastoreDep,
+) -> list[RelationshipEvidence]:
+    """Each extractor sighting of the two entities together (e.g. every signature), with a text snippet."""
+    candidate = await datastore.get_by_id(candidate_id)
+    if candidate is None:
+        raise EntityNotFoundError("RelationshipCandidate", candidate_id)
+    if candidate.method == RelationshipCandidateMethod.EMAIL_DOMAIN:
+        addresses = (candidate.explanation or {}).get("addresses", [])
+        return await relations.emails_from(addresses, dataset_ids=access.scope(None))
+    return await relations.evidence_for(
+        src_entity_id=candidate.src_entity_id,
+        dst_entity_id=candidate.dst_entity_id,
+        relationship_type=candidate.relationship_type,
+        dataset_ids=access.scope(None),
+    )
+
+
+@router.get(
+    "/name-suggestions/unplaced",
+    summary="Signature employers that are not an organization yet",
+    response_model=list[NameSuggestion],
+    **_BY_ALIAS,
+)
+async def list_unplaced_name_suggestions(
+    access: DatasetAccessDep, names: NameSuggestionDatastoreDep
+) -> list[NameSuggestion]:
+    """People whose signatures name an organization with no entity and no resolver guess."""
+    return await names.list_suggestions(dataset_ids=access.scope(None))
+
+
+@router.get(
+    "/name-suggestions/evidence",
+    summary="Source passages behind a name-level suggestion",
+    response_model=list[RelationshipEvidence],
+    **_BY_ALIAS,
+)
+async def list_name_suggestion_evidence(
+    ids: Annotated[list[str], Query(alias="ids")], access: DatasetAccessDep, relations: MentionRelationshipDatastoreDep
+) -> list[RelationshipEvidence]:
+    """Each signature behind it, both names marked."""
+    return await relations.evidence_for(mention_relationship_ids=ids, dataset_ids=access.scope(None))
+
+
+@router.post(
+    "/name-suggestions/accept",
+    summary="Accept a name-level suggestion",
+    response_model=NameSuggestionAccepted,
+    **_BY_ALIAS,
+)
+async def accept_name_suggestion(
+    body: NameSuggestionAccept, user: CurrentUserDep, access: DatasetAccessDep, names: NameSuggestionDatastoreDep
+) -> NameSuggestionAccepted:
+    """Settle both names (attach the name group; create the entity if no id is given; confirm it) and add the edge."""
+    access.require(body.dataset_id)
+    try:
+        return await names.accept(body, reviewed_by=user.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/name-suggestions/dismiss", summary="Dismiss a name-level suggestion")
+async def dismiss_name_suggestion(body: NameSuggestionDismiss, names: NameSuggestionDatastoreDep) -> dict:
+    """Never offer it again; the names stay in the Resolve queue."""
+    return camelize_keys({"dismissed": await names.dismiss(body.mention_relationship_ids)})
+
+
 @router.post(
     "/relationship-candidates/{candidate_id}/resolve",
     summary="Resolve a relationship candidate",
@@ -366,6 +457,67 @@ async def get_organization_structure(entity_id: str, datastore: EntityDatastoreD
     return await datastore.organization_structure(entity_id)
 
 
+@router.get(
+    "/{entity_id}/structure/suggestions",
+    summary="Pending people suggested for an organization unit",
+    response_model=list[OrganizationSuggestion],
+    **_BY_ALIAS,
+)
+async def list_organization_suggestions(entity_id: str, datastore: EntityDatastoreDep) -> list[OrganizationSuggestion]:
+    """Person<->unit candidates awaiting review on this unit or below; resolve via /relationship-candidates."""
+    await _require_organization(entity_id, datastore)
+    return await datastore.organization_suggestions(entity_id)
+
+
+@router.get(
+    "/{entity_id}/structure/name-suggestions",
+    summary="Signature relationships on this unit whose names are not settled yet",
+    response_model=list[NameSuggestion],
+    **_BY_ALIAS,
+)
+async def list_organization_name_suggestions(
+    entity_id: str, access: DatasetAccessDep, datastore: EntityDatastoreDep, names: NameSuggestionDatastoreDep
+) -> list[NameSuggestion]:
+    """Per name pair: what each name resolved to, the resolver's guess, or who owns the sending address."""
+    await _require_organization(entity_id, datastore)
+    tree = await datastore.organization_tree(entity_id)
+    return await names.list_suggestions(unit_ids={n.entity.id for n in tree.nodes}, dataset_ids=access.scope(None))
+
+
+async def _require_organization(entity_id: str, datastore: EntityDatastoreDep) -> None:
+    entity = await datastore.get_entity(entity_id)
+    if entity is None:
+        raise EntityNotFoundError("Entity", entity_id)
+    if entity.entity_type != EntityType.ORGANIZATION:
+        raise HTTPException(status_code=400, detail="Only organizations have a structure")
+
+
+@router.get(
+    "/{entity_id}/structure/tree",
+    summary="The whole organization hierarchy this unit belongs to",
+    response_model=OrganizationTree,
+    **_BY_ALIAS,
+)
+async def get_organization_tree(entity_id: str, datastore: EntityDatastoreDep) -> OrganizationTree:
+    """Every unit from the top-most `part_of` ancestor down, parent-linked, with per-unit people counts."""
+    await _require_organization(entity_id, datastore)
+    return await datastore.organization_tree(entity_id)
+
+
+@router.get(
+    "/{entity_id}/structure/people",
+    summary="People within or connected to an organization unit",
+    response_model=PaginatedOrganizationPeople,
+    **_BY_ALIAS,
+)
+async def list_organization_people(
+    entity_id: str, params: Annotated[OrganizationPeopleParameters, Query()], datastore: EntityDatastoreDep
+) -> PaginatedOrganizationPeople:
+    """One row per person<->unit edge; members are `employed_by`/`member_of`, anything else is connected."""
+    await _require_organization(entity_id, datastore)
+    return await datastore.organization_people(entity_id, params)
+
+
 @router.delete("/{entity_id}", summary="Delete an entity")
 async def delete_entity(
     entity_id: str,
@@ -405,9 +557,7 @@ async def get_entity_profile(entity_id: str, access: DatasetAccessDep, datastore
     profile = await datastore.get_profile(entity_id)
     if profile is None:
         raise EntityNotFoundError("Entity", entity_id)
-    return profile.model_copy(
-        update={"top_mentions": [m for m in profile.top_mentions if access.allows(m.dataset_id)]}
-    )
+    return profile.model_copy(update={"top_mentions": [m for m in profile.top_mentions if access.allows(m.dataset_id)]})
 
 
 @router.post("/{entity_id}/promote", summary="Promote a provisional entity", response_model=Entity, **_BY_ALIAS)
@@ -687,10 +837,10 @@ async def list_entity_mentions(
     return await datastore.list_mentions(
         access.scoped(
             MentionSearchParameters(
-            entity_id=entity_id,
-            mentioned_type=mentioned_type,
-            provenance=provenance,
-            file_id=file_id,
+                entity_id=entity_id,
+                mentioned_type=mentioned_type,
+                provenance=provenance,
+                file_id=file_id,
                 resolved=True,
                 limit=limit,
                 page=page,

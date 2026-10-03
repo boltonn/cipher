@@ -3,6 +3,7 @@
 import { PageError, PageLoading } from "@/components/page-loading";
 import { PageHeader } from "@/components/page-header";
 import { PaginationModeToggle } from "@/components/pagination-mode-toggle";
+import { DatasetSelect } from "@/features/datasets/components/dataset-select";
 import { ImageAnnotateBar } from "@/features/images/components/image-annotate-bar";
 import { ImageSelectionBar } from "@/features/images/components/image-selection-bar";
 import { ImageSearchBar } from "@/features/images/components/image-search-bar";
@@ -131,6 +132,10 @@ function ImageSearchPageInner() {
         }
         actions={
           <div className="flex items-center gap-2">
+            <DatasetSelect
+              datasetId={filters.datasets?.[0]}
+              onChange={(datasetId) => setFilters((prev) => ({ ...prev, datasets: datasetId ? [datasetId] : undefined }))}
+            />
             <Button
               size="sm"
               variant={isAnnotating ? "default" : "outline"}

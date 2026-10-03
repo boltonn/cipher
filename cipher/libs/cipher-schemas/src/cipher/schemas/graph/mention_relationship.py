@@ -32,8 +32,14 @@ class MentionRelationshipBase(BaseModel):
     confidence: float = Field(default=1.0, ge=0, le=1)
     file_id: str | None = Field(default=None, description="Denormalized owning file")
     context: str | None = Field(default=None, description="Windowed snippet spanning both endpoint spans")
+    attributes: dict = Field(
+        default_factory=dict, description="Edge attributes to carry onto the entity edge, e.g. role"
+    )
     extractor: str | None = Field(default=None, description="Which extractor produced this (llm, gliner, ...)")
     extraction_model: str | None = Field(default=None, description="Model id/version, if any")
+    date_reviewed: datetime | None = Field(
+        default=None, description="An analyst accepted or dismissed it as a name-level suggestion; never re-offered"
+    )
 
 
 class MentionRelationshipCreate(MentionRelationshipBase):
@@ -49,3 +55,30 @@ class MentionRelationship(MentionRelationshipBase):
     date_created: datetime
 
     model_config = {"from_attributes": True}
+
+
+class EvidenceSpan(BaseModel):
+    """One endpoint mention of a relation, with its offsets into the source text."""
+
+    mention_id: str
+    surface_text: str
+    start_offset: int | None = Field(default=None)
+    end_offset: int | None = Field(default=None)
+
+
+class RelationshipEvidence(BaseModel):
+    """A source passage behind a proposed edge: where the extractor saw the two names together."""
+
+    mention_relationship_id: str | None = Field(default=None, description="None for a whole-email source")
+    dataset_id: str
+    file_id: str | None = Field(default=None)
+    extractor: str | None = Field(default=None)
+    confidence: float
+    attributes: dict = Field(default_factory=dict)
+    src: EvidenceSpan | None = Field(default=None, description="Head span; None for a whole-email source")
+    dst: EvidenceSpan | None = Field(default=None)
+    snippet: str = Field(description="Source text around both spans (the stored context when there is no text)")
+    snippet_offset: int = Field(default=0, description="Offset of `snippet` in the source text; spans are absolute")
+    subject: str | None = Field(default=None, description="Email subject, when the source is an email")
+    sender: str | None = Field(default=None, description="Email sender name/address, when the source is an email")
+    date_sent: datetime | None = Field(default=None)

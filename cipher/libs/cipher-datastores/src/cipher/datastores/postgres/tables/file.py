@@ -47,6 +47,9 @@ class FileTable(Base):
     negative_tags: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
     # A model's confidence that a tag applies ({tag: 0-1}) -- a prediction, kept apart from the labels above.
     tag_scores: Mapped[dict[str, float]] = mapped_column(JSONB, nullable=False, default=dict, server_default="{}")
+    # From the data, not a decision: copied from the extracted-text metadata on every extraction upsert.
+    source_tags: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
+    message_states: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
 
     # Relationships (only defined if dependencies are available)
     dataset: Mapped["DatasetTable"] = relationship(back_populates="files")
@@ -67,4 +70,6 @@ class FileTable(Base):
         Index("ix_file_sha256_dataset", "sha256", "dataset_id"),
         Index("ix_file_tags_gin", "tags", postgresql_using="gin"),
         Index("ix_file_negative_tags_gin", "negative_tags", postgresql_using="gin"),
+        Index("ix_file_source_tags_gin", "source_tags", postgresql_using="gin"),
+        Index("ix_file_message_states_gin", "message_states", postgresql_using="gin"),
     )

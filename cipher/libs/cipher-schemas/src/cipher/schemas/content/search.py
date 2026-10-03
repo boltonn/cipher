@@ -111,6 +111,20 @@ class TextChunk(BaseModel):
         return self
 
 
+class SourceValueCount(BaseModel):
+    """One value the data itself carries and how many files carry it."""
+
+    value: str
+    file_count: int
+
+
+class SourceFacets(BaseModel):
+    """What the data itself says about its files, for the search filters (not user or model tags)."""
+
+    source_tags: list[SourceValueCount] = Field(default_factory=list)
+    message_states: list[SourceValueCount] = Field(default_factory=list)
+
+
 class RetrievalConfigInfo(BaseModel):
     """What backs chunk search in this deployment right now -- `GET /search/config`.
 
@@ -175,6 +189,18 @@ class ChunkFilters(CorrespondenceFilters):
     )
     file_id: str | None = None
     tags: list[str] | None = None
+    source_tags: list[str] | None = Field(
+        default=None, description="Only files the data itself tagged with any of these (e.g. Gmail's `updates`)"
+    )
+    exclude_source_tags: list[str] | None = Field(
+        default=None, description="Drop files the data tagged with any of these (e.g. `promotions`)"
+    )
+    message_states: list[str] | None = Field(
+        default=None, description="Only messages whose source recorded any of these states (e.g. `sent`)"
+    )
+    exclude_message_states: list[str] | None = Field(
+        default=None, description="Drop messages whose source recorded any of these states (e.g. `spam`)"
+    )
     filetype_group: Literal["document", "email"] | None = Field(
         default=None, description="Restrict to one filetype group; omit to search both"
     )
@@ -294,9 +320,7 @@ class RetrievalQuery(BaseChunkSearchParameters):
 
     mode: RetrievalMode = RetrievalMode.HYBRID
     text: str | None = Field(default=None, description="Keyword / hybrid query string")
-    embedding: list[float] | None = Field(
-        default=None, description="Pre-computed query vector for semantic / hybrid"
-    )
+    embedding: list[float] | None = Field(default=None, description="Pre-computed query vector for semantic / hybrid")
     query_language: str | None = Field(
         default=None, description="Language of `text`; picks the FTS config for the `core` keyword ranker"
     )

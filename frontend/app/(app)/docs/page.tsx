@@ -69,7 +69,7 @@ const PIPELINE = [
     services: ["pyselectors", "pygliner", "nerd", "pyprompt"],
     ml: true,
     description:
-      "Mentions are pulled from text: selectors (phones, emails, IBANs, …) deterministically; person, organization, and location names with GLiNER, a fine-tuned NER model, or an LLM; events from .ics files or email bodies; and contacts from vCards.",
+      "Mentions are pulled from text: selectors (phones, emails, IBANs, …) deterministically; person, organization, and location names with GLiNER, a fine-tuned NER model, or an LLM; events from .ics files or email bodies; contacts from vCards; and each sender's email signature -- employer, division, department, title, and work contact details -- read by the LLM in any language.",
   },
   {
     num: "05",
@@ -77,7 +77,7 @@ const PIPELINE = [
     services: ["cipher-names", "resolve-entities"],
     ml: false,
     description:
-      "Mentions are grouped by name and scored against existing entities (Fellegi-Sunter, explainable per signal). Confident matches attach, uncertain ones go to review, unmatched ones become provisional entities. Email headers become directed emailed edges; places resolve against an offline gazetteer.",
+      "Mentions are grouped by name and scored against existing entities (Fellegi-Sunter, explainable per signal). Confident matches attach, uncertain ones go to review, unmatched ones become provisional entities. Email headers become directed emailed edges; places resolve against an offline gazetteer; signature and email-domain affiliations become reviewable organization suggestions.",
   },
   {
     num: "06",
@@ -93,7 +93,7 @@ const PIPELINE = [
     services: ["next.js frontend"],
     ml: false,
     description:
-      "Analysts browse datasets and files, search, review entities, faces, events, and locations, walk the graph, and ask questions in chat. AI/ML-derived surfaces are marked amber so a reviewer always knows what's a model's read versus ground truth.",
+      "Analysts browse datasets and files, search, review entities, faces, events, and locations, browse organization charts, walk the graph, and ask questions in chat. AI/ML-derived surfaces are marked amber so a reviewer always knows what's a model's read versus ground truth.",
   },
 ];
 
@@ -114,7 +114,7 @@ const FILETYPES: {
   {
     name: "Emails",
     icon: <Mail size={16} />,
-    description: "Headers, participants, body, and attachments (split back out as child files). Headers feed selectors and directed emailed edges between addresses.",
+    description: "Headers, participants, body, and attachments (split back out as child files). Headers feed selectors and directed emailed edges between addresses; the sender's signature feeds who they work for, in which unit, and their work phone / address.",
     extensions: [".eml", ".msg"],
     handler: "pyparse → clir",
   },
@@ -168,8 +168,8 @@ const ANALYTICS: {
   {
     name: "pyxberg",
     role: "AI/ML",
-    description: "Rust-based document text extraction. Records which PDF pages are image-based and OCRs just those with EasyOCR, offline.",
-    tech: "Kreuzberg + EasyOCR",
+    description: "Rust-based document text extraction. Records which PDF pages are image-based so the OCR step reads just those; inline EasyOCR / Tesseract is only an offline fallback (--ocr-backend) when no GPU is available.",
+    tech: "Kreuzberg (+ optional EasyOCR / Tesseract)",
     commands: ["extract-text"],
     links: { model: "#", code: "#" },
   },
@@ -200,17 +200,17 @@ const ANALYTICS: {
   {
     name: "setfitcv",
     role: "AI/ML",
-    description: "CLIP image embedding -- powers image-to-image and text-to-image search, reads EXIF GPS into locations, and filters which images are worth OCR.",
+    description: "CLIP image embedding -- powers image-to-image and text-to-image search, reads EXIF GPS into locations, and filters which images are worth OCR. Tag heads: train one small classifier per analyst tag on the stored embeddings, then score every image with it.",
     tech: "CLIP (image/text joint embedding)",
-    commands: ["embed-images", "extract-locations"],
+    commands: ["embed-images", "extract-locations", "train-image-heads", "score-image-heads"],
     links: { model: "#", code: "#" },
   },
   {
     name: "face",
     role: "AI/ML",
-    description: "Face detection and embedding across every image, then matching to known persons and clustering the rest into new ones.",
+    description: "Face detection and embedding across every image, then matching to known persons and clustering the rest into new ones. Faces marked “not a face” auto-reject their look-alikes; people sharing a photo get appears_in_photo_with edges.",
     tech: "InsightFace",
-    commands: ["detect-faces", "match-faces", "cluster-faces"],
+    commands: ["detect-faces", "match-faces", "cluster-faces", "reject-similar-faces", "link-face-cooccurrence"],
     links: { model: "#", code: "#" },
   },
   {
@@ -240,9 +240,33 @@ const ANALYTICS: {
   {
     name: "pyprompt",
     role: "AI/ML",
-    description: "LLM prompt runner for structured extraction -- entities and events from email bodies in one call per email. Slowest, most flexible.",
+    description: "LLM prompt runner for structured extraction -- entities and events (plus memberships: clubs, gyms, accounts the recipient belongs to) from email bodies in one call per email. Slowest, most flexible. Also reads email signatures (below).",
     tech: "OpenAI-compatible LLM + prompt packs",
     commands: ["extract-llm", "extract-entities --extractor llm", "extract-events --llm"],
+    links: { code: "#" },
+  },
+  {
+    name: "signatures",
+    role: "AI/ML",
+    description: "Who each sender works for, in which unit, and how to reach them. First pass (rules): bulk mail is skipped, and the last lines the sender wrote are only sent on when someone may be signing off (a farewell phrase, the sender's name, an NER person) and there is something to learn (an organization, phone, website or other email address) -- about 5% of a mailbox. The multilingual word lists are one file (signature_cues.py). The LLM then decides whether it's really a signature and copies out company → division → department, title, phone, email, website and address; code checks every value is verbatim, the signer is the sender, and it isn't a brand. A sender's known signature is reused without another call. Results land as reviewable suggestions on the organization page -- including names not settled yet. Full walkthrough: docs/signatures.md.",
+    tech: "Gate + pyprompt signature pack (local LLM)",
+    commands: ["extract-signatures", "resolve-entities"],
+    links: { code: "#" },
+  },
+  {
+    name: "cipher-names",
+    role: "Parser",
+    description: "Name parsing, transliteration, nicknames, and blocking keys behind entity resolution: candidates are scored Fellegi-Sunter style with a per-signal explanation, so every match can be reviewed.",
+    tech: "Rule-based name matching, no ML",
+    commands: ["resolve-entities", "dedupe-entities"],
+    links: { code: "#" },
+  },
+  {
+    name: "cipher-places",
+    role: "Parser",
+    description: "Offline gazetteer: place mentions resolve to shared country / state / city / region entities using the text around each mention; ambiguous names stay unresolved.",
+    tech: "Offline gazetteer index (cipher-places-build)",
+    commands: ["resolve-locations"],
     links: { code: "#" },
   },
 ];
@@ -541,6 +565,7 @@ const ONTOLOGY_SELECTOR_TYPES = [
   "social_handle",
   "crypto_address",
   "license_plate",
+  "domain",
 ];
 
 const ONTOLOGY_RELATIONSHIPS: {
@@ -556,13 +581,23 @@ const ONTOLOGY_RELATIONSHIPS: {
     to: "selector",
     description: "An actor uses this phone / email / passport / handle / IBAN.",
   },
-  { type: "member_of", from: "person", to: "organization", description: "Belongs to an organization." },
-  { type: "employed_by", from: "person", to: "organization", description: "Employed by an organization." },
+  {
+    type: "member_of",
+    from: "person",
+    to: "organization",
+    description: "Belongs to an organization (a club, gym, association, account). Produced from vCards and from membership emails (welcome, renewal, dues receipt) read by the events LLM pass, as suggestions.",
+  },
+  {
+    type: "employed_by",
+    from: "person",
+    to: "organization",
+    description: "Employed by an organization (or one of its units); role in attributes. Produced from email signatures and email domains, as suggestions.",
+  },
   {
     type: "part_of",
     from: "organization",
     to: "organization",
-    description: "A sub-unit (e.g. a regional office) is part of a parent org.",
+    description: "A sub-unit (division, department, office) is part of a parent org; an org has at most one parent. Signature unit chains propose these.",
   },
   {
     type: "subsidiary_of",
@@ -718,6 +753,7 @@ const OPTIONAL_ANALYTICS: {
       { title: "face", subtitle: "detect faces", variant: "ml" },
       { title: "match · cluster faces", subtitle: "faces → persons", variant: "ml" },
       { title: "link-face-cooccurrence", subtitle: "photo-with edges", variant: "default" },
+      { title: "image heads", subtitle: "tag classifiers", variant: "ml" },
     ],
   },
   {
@@ -728,12 +764,13 @@ const OPTIONAL_ANALYTICS: {
       { title: "pyprompt", subtitle: "LLM entities + events", variant: "ml" },
       { title: "pyparse .ics", subtitle: "calendar events", variant: "default" },
       { title: "pyparse .vcf", subtitle: "contacts", variant: "default" },
+      { title: "extract-signatures", subtitle: "employer · unit · title", variant: "ml" },
     ],
   },
   {
     stage: "Resolve",
     nodes: [
-      { title: "resolve-entities", subtitle: "mentions → entities", variant: "default" },
+      { title: "resolve-entities", subtitle: "mentions → entities · email domains", variant: "default" },
       { title: "resolve-locations", subtitle: "places → gazetteer", variant: "default" },
       { title: "dedupe-entities", subtitle: "merge duplicates", variant: "default" },
       { title: "extract-relationships", subtitle: "emailed edges", variant: "default" },

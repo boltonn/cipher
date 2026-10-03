@@ -228,7 +228,18 @@ export default function EntityDetailPage({
         {!isSelector && <EntitySelectorProposals entityId={id} entityName={entity.displayName} />}
 
         {entity.entityType === "organization" && (
-          <Section id="structure" title="Structure" icon={<Building2 size={14} className="text-primary" />}>
+          <Section
+            id="structure"
+            title="Structure"
+            icon={<Building2 size={14} className="text-primary" />}
+            action={
+              <Button asChild variant="ghost" size="sm" className="h-7 gap-1 text-xs">
+                <Link href={`/organizations/${id}`}>
+                  <Network size={12} /> Org chart
+                </Link>
+              </Button>
+            }
+          >
             <OrganizationStructure entityId={id} entityName={entity.displayName} />
           </Section>
         )}

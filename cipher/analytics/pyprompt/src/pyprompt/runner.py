@@ -25,14 +25,16 @@ from cipher.schemas.graph.event import (
 )
 from cipher.schemas.graph.ontology import default_ner_labels, default_relation_labels
 from pyprompt.errors import StructuredOutputError
-from pyprompt.offsets import OffsetResolver
-from pyprompt.prompts.registry import ENTITIES, EVENTS, EXTRACT, get_pack
+from pyprompt.offsets import OffsetResolver, find_span
+from pyprompt.prompts.registry import ENTITIES, EVENTS, EXTRACT, SIGNATURE, get_pack
 from pyprompt.schemas import (
     CombinedExtraction,
     EntityExtraction,
     EntitySpan,
     EventExtraction,
     LlmEventOutput,
+    LlmMembership,
+    LlmSignatureOutput,
     ParsedEvent,
     RelationSpan,
     build_combined_output_model,
@@ -117,7 +119,9 @@ class PromptRunner:
             model=model,
             max_tokens=self._settings.max_event_tokens,
         )
-        return EventExtraction(events=[_coerce_event(e) for e in raw.events])
+        return EventExtraction(
+            events=[_coerce_event(e) for e in raw.events], memberships=_verbatim_memberships(raw.memberships, clipped)
+        )
 
     async def extract_all(
         self,
@@ -155,11 +159,53 @@ class PromptRunner:
 
         entities = _resolve_entity_spans(raw, clipped) if "entities" in task_set else EntityExtraction()
         events = (
-            EventExtraction(events=[_coerce_event(e) for e in raw.events])
+            EventExtraction(
+                events=[_coerce_event(e) for e in raw.events],
+                memberships=_verbatim_memberships(raw.memberships, clipped),
+            )
             if "events" in task_set
             else EventExtraction()
         )
         return CombinedExtraction(entities=entities, events=events)
+
+    async def read_signature(
+        self, block: str, *, sender: str | None = None, model: str | None = None
+    ) -> LlmSignatureOutput:
+        """Decide whether `block` (an email's last lines) ends in a signature and read it.
+
+        Values the model did not copy verbatim from `block` are dropped.
+        """
+        template = get_pack(SIGNATURE).load()
+        system, user = template.render(block=block, sender=sender or "unknown")
+        raw = await self._structured(
+            system=system,
+            user=user,
+            model_cls=LlmSignatureOutput,
+            model=model,
+            max_tokens=self._settings.max_event_tokens,
+        )
+
+        def verbatim(value: str | None) -> str | None:
+            """The value as `block` writes it (inflected endings allowed), or None if it isn't there."""
+            span = find_span(block, value)
+            return block[slice(*span)] if span else None
+
+        def keep(values: list[str]) -> list[str]:
+            return [v for v in dict.fromkeys(verbatim(v) for v in values) if v]
+
+        if not raw.is_signature:
+            return LlmSignatureOutput()
+        return LlmSignatureOutput(
+            is_signature=True,
+            signature=verbatim(raw.signature),
+            person_name=verbatim(raw.person_name),
+            organizations=keep(raw.organizations),
+            role=verbatim(raw.role),
+            phones=keep(raw.phones),
+            emails=keep(raw.emails),
+            websites=keep(raw.websites),
+            addresses=keep(raw.addresses),
+        )
 
     async def run(
         self,
@@ -247,6 +293,25 @@ class PromptRunner:
         raise StructuredOutputError(
             f"No schema-valid response after {self._settings.max_retries + 1} attempts: {last_error}"
         )
+
+
+def _verbatim_memberships(memberships: list[LlmMembership], source: str) -> list[LlmMembership]:
+    """Keep memberships whose organization occurs in `source`, written as the source writes it.
+
+    An address that can't be found is dropped. Inflected forms count (`find_span`).
+    """
+    kept: dict[str, LlmMembership] = {}
+    for membership in memberships:
+        org_span = find_span(source, membership.organization)
+        if org_span is None:
+            continue
+        address_span = find_span(source, membership.address)
+        organization = source[slice(*org_span)]
+        kept.setdefault(
+            organization.casefold(),
+            LlmMembership(organization=organization, address=source[slice(*address_span)] if address_span else None),
+        )
+    return list(kept.values())
 
 
 def _messages(system: str | None, user: str) -> list[dict[str, str]]:

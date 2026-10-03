@@ -230,6 +230,25 @@ attachment extraction persists them (`extract-text`) — verify that path feeds
 
 ---
 
+### Memberships (same LLM call)
+
+The events prompt also lists **memberships**: organizations the email's recipient is confirmed to
+belong to -- a welcome, activation, renewal, membership card or dues receipt addressed to them
+(a gym, club, association, school, loyalty program, account). Offers to join, promotions and
+newsletters are not memberships. Each gives the organization's name and, when the email has
+one, its address -- no dates or membership numbers.
+
+A membership is not a separate concept: it is the ontology's `member_of` edge. `memberships.py`
+writes the organization (and address) as mentions with offsets, plus mention relations: the
+recipient's To-header name `member_of` the organization, the organization `located_in` the
+address (needs `extract-selectors` first for the header names). `resolve-entities` resolves the
+names; the edges show as reviewable suggestions on the organization page, including "Names not
+settled yet". The gate passes an email on either label: `personal_event` or `membership`.
+
+Inflected languages: the model writes `яхт-клуб «Нева»` where the email says `яхт-клубе «Нева»`;
+`pyprompt.offsets.find_span` matches word forms that differ only in their endings and keeps the
+email's own wording.
+
 ## 6. Frontend (Phase 2 — landed)
 
 `cipher-frontend/features/events/` + `app/(app)/events/page.tsx`, nav item under

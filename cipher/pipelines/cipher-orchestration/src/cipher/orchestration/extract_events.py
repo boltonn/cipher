@@ -53,8 +53,9 @@ from cipher.datastores.postgres.tables.event_place import EventPlaceTable
 from cipher.datastores.postgres.tables.extracted_text import ExtractedTextTable
 from cipher.datastores.postgres.tables.file import FileTable
 from cipher.datastores.postgres.utils import normalize_name
+from cipher.orchestration.memberships import persist_memberships
 from cipher.schemas._base.common import ModelTagType
-from cipher.schemas.content.email import EmailCategory, EmailClient, EmailState
+from cipher.schemas.content.email import EmailCategory, EmailMetadata, MessageState
 from cipher.schemas.graph.event import (
     EVENT_FILE_TAG,
     DatePrecision,
@@ -497,9 +498,11 @@ async def persist_llm_events(
 # --------------------------------------------------------------------------- #
 EVENT_GATE_LABELS: dict[str, str] = {
     "personal_event": "booking confirmation, itinerary, reservation, or arranging to meet",
+    "membership": "membership or account welcome, activation, renewal, or dues receipt",
     "marketing": "marketing, promotion, or newsletter",
 }
-_GATE_POSITIVE_LABEL = "personal_event"
+# The LLM pass also reads memberships, so either label lets an email through.
+_GATE_POSITIVE_LABELS = ("personal_event", "membership")
 _GATE_MARKETING_LABEL = "marketing"
 # Recall first: junk is cheap to mark invalid in bulk, a missed event is never seen.
 DEFAULT_GATE_THRESHOLD = 0.4
@@ -508,13 +511,13 @@ DEFAULT_GATE_SAMPLE_RATE = 0.05
 # found on a real mailbox, yet a third of what the GLiNER score passes. Skipped emails are still scored
 # (and sampled), so what this costs stays measurable.
 DEFAULT_GATE_SKIP_CATEGORIES = frozenset({EmailCategory.PROMOTIONS})
-DEFAULT_GATE_SKIP_STATES = frozenset({EmailState.SPAM})
+DEFAULT_GATE_SKIP_STATES = frozenset({MessageState.SPAM})
 _GATE_MAX_CHARS = 20_000
 
 
 def event_gate_score(label_scores: dict[str, float]) -> float:
-    """Collapse the gate labels' scores into one "someone is taking part in something" score."""
-    return label_scores.get(_GATE_POSITIVE_LABEL, 0.0)
+    """Collapse the gate labels' scores into one "someone takes part in or belongs to something" score."""
+    return max(label_scores.get(label, 0.0) for label in _GATE_POSITIVE_LABELS)
 
 
 def gate_skip_reason(
@@ -523,19 +526,17 @@ def gate_skip_reason(
     *,
     threshold: float,
     skip_categories: frozenset[EmailCategory] = DEFAULT_GATE_SKIP_CATEGORIES,
-    skip_states: frozenset[EmailState] = DEFAULT_GATE_SKIP_STATES,
+    skip_states: frozenset[MessageState] = DEFAULT_GATE_SKIP_STATES,
 ) -> str | None:
     """Why the gate keeps a text from the LLM (stored on the skipped row), or None when it passes.
 
     The mail client's verdict (state, then category) is reported ahead of a low score.
     """
     if metadata and "email_client" in metadata:
-        if (state := metadata.get("state")) in skip_states:
-            return f"mail state: {state}"
-        categories = metadata.get("categories") or EmailCategory.for_email(
-            EmailClient(metadata["email_client"]), metadata.get("labels") or []
-        )
-        if skipped := sorted(skip_categories.intersection(categories)):
+        email = EmailMetadata.model_validate(metadata)
+        if states := [state for state in email.message_states() if state in skip_states]:
+            return f"mail state: {states[0]}"
+        if skipped := sorted(skip_categories.intersection(email.client_categories())):
             return f"mail category: {skipped[0]}"
     if score < threshold:
         return f"gate score below {threshold:.2f}"
@@ -556,7 +557,7 @@ async def gate_text_events_workflow(
     sample_rate: float = DEFAULT_GATE_SAMPLE_RATE,
     filetype_groups: tuple[str, ...] = TEXT_EVENT_GROUPS_EMAIL,
     skip_categories: frozenset[EmailCategory] = DEFAULT_GATE_SKIP_CATEGORIES,
-    skip_states: frozenset[EmailState] = DEFAULT_GATE_SKIP_STATES,
+    skip_states: frozenset[MessageState] = DEFAULT_GATE_SKIP_STATES,
     batch_size: int = 64,
     model: str,
 ) -> int:
@@ -668,7 +669,7 @@ async def get_event_gate_report(
     *,
     threshold: float,
     skip_categories: frozenset[EmailCategory] = DEFAULT_GATE_SKIP_CATEGORIES,
-    skip_states: frozenset[EmailState] = DEFAULT_GATE_SKIP_STATES,
+    skip_states: frozenset[MessageState] = DEFAULT_GATE_SKIP_STATES,
 ) -> dict:
     """How the gate did against the LLM: pass rate, and recall estimated from the sampled rejects."""
     rows = (
@@ -852,6 +853,7 @@ async def extract_text_events_workflow(
                         work.append((item, extracted))
 
                 with_events, without_events = [], []
+                extracted_by_file = {item.resource["id"]: extracted for item, extracted in work}
                 for item, result in await asyncio.gather(*(_call(*w) for w in work)):
                     file_id = item.resource["id"]
                     if isinstance(result, Exception):
@@ -866,6 +868,13 @@ async def extract_text_events_workflow(
                             model=resolved_model,
                             seen=seen,
                             event_repo=event_repo,
+                        )
+                        await persist_memberships(
+                            session,
+                            result.memberships,
+                            extracted=extracted_by_file[file_id],
+                            dataset_id=item.resource["dataset_id"],
+                            file_id=file_id,
                         )
                         (with_events if result.events else without_events).append(file_id)
                         completed.append(item.enrichment.id)

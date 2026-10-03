@@ -18,7 +18,7 @@ class EmailClient(StrEnum):
     Detected from characteristic headers rather than trusted metadata, since
     nothing in an .eml file self-identifies its exporting client. Add a new
     member (plus a header fingerprint in `detect` and a mapping in
-    `EmailState`) once a real sample confirms that client's convention --
+    `MessageState`) once a real sample confirms that client's convention --
     guessing at unseen header formats (e.g. Yahoo/Yandex, not yet observed
     in any sample data) risks silently mis-tagging state.
     """
@@ -37,14 +37,19 @@ class EmailClient(StrEnum):
         return cls.UNKNOWN
 
 
-class EmailState(StrEnum):
-    """Uniform status vocabulary every `EmailClient`'s own convention maps onto.
+def _normalized_labels(labels: list[str]) -> set[str]:
+    r"""Lowercased labels with folded-header whitespace collapsed (`Category\n Updates` -> `category updates`)."""
+    return {" ".join(label.split()).lower() for label in labels}
+
+
+class MessageState(StrEnum):
+    """Uniform status vocabulary for a message (email now; SMS / chat apps later), as its source recorded it.
 
     Each source client exposes status through completely different headers
     (Outlook/Exchange: a single `X-Folder` path; Gmail: a comma-separated
     `X-Gmail-Labels` list where several labels can apply at once) -- these
     values are what a UI actually filters/displays on, independent of which
-    client produced the email.
+    client produced the message.
     """
 
     ARCHIVED = "archived"
@@ -61,7 +66,7 @@ class EmailState(StrEnum):
         if not folder:
             return None
         lower = folder.lower()
-        _mapping: dict[str, EmailState] = {
+        _mapping: dict[str, MessageState] = {
             "archive": cls.ARCHIVED,
             "deleted": cls.DELETED,
             "trash": cls.DELETED,
@@ -76,30 +81,29 @@ class EmailState(StrEnum):
         return next((v for k, v in _mapping.items() if k in lower), None)
 
     @classmethod
-    def from_gmail_labels(cls, labels: list[str]) -> Self | None:
-        r"""Gmail: infer state from `X-Gmail-Labels`.
+    def all_from_gmail_labels(cls, labels: list[str]) -> list[Self]:
+        """Gmail: every state its `X-Gmail-Labels` carry, most definitive first.
 
-        Several labels can apply to one message at once (e.g. `Starred` and
-        `Category Promotions` together), so this picks the most definitive
-        single state in priority order -- a location label (trash/spam/
-        draft/sent) beats a flag label (starred/important), and `Archived`
-        (Gmail's "All Mail, no Inbox label" state) is the lowest-priority
-        fallback. A plain `Inbox` label (no special state) yields None, same
-        as an Outlook `X-Folder` of `\Inbox` does via `from_folder`.
+        A location label (trash/spam/draft/sent) ranks above a flag label
+        (starred/important), and `Archived` (Gmail's "All Mail, no Inbox label")
+        is last. `Sent Messages` / `Deleted Messages` are IMAP folders synced in as labels.
         """
-        if not labels:
-            return None
-        lowered = {label.lower() for label in labels}
-        _priority: list[tuple[str, EmailState]] = [
-            ("trash", cls.DELETED),
-            ("spam", cls.SPAM),
-            ("draft", cls.DRAFT),
-            ("sent", cls.SENT),
-            ("starred", cls.STARRED),
-            ("important", cls.FLAGGED),
-            ("archived", cls.ARCHIVED),
+        lowered = _normalized_labels(labels)
+        _priority: list[tuple[set[str], MessageState]] = [
+            ({"trash", "deleted messages"}, cls.DELETED),
+            ({"spam"}, cls.SPAM),
+            ({"draft", "drafts"}, cls.DRAFT),
+            ({"sent", "sent messages"}, cls.SENT),
+            ({"starred"}, cls.STARRED),
+            ({"important"}, cls.FLAGGED),
+            ({"archived"}, cls.ARCHIVED),
         ]
-        return next((state for label, state in _priority if label in lowered), None)
+        return [state for names, state in _priority if names & lowered]
+
+    @classmethod
+    def from_gmail_labels(cls, labels: list[str]) -> Self | None:
+        """Gmail: the single most definitive state (see `all_from_gmail_labels`); None for plain `Inbox`."""
+        return next(iter(cls.all_from_gmail_labels(labels)), None)
 
 
 class EmailCategory(StrEnum):
@@ -107,7 +111,8 @@ class EmailCategory(StrEnum):
 
     Gmail tabs messages with `Category *` labels; other clients' conventions get a
     mapper here once a real sample confirms them (see `EmailClient`). Several can
-    apply at once (Gmail tags an order receipt both Purchases and Updates).
+    apply at once (Gmail tags an order receipt both Purchases and Updates). Stored
+    on the file as **source tags**.
     """
 
     PERSONAL = "personal"
@@ -117,11 +122,12 @@ class EmailCategory(StrEnum):
     FORUMS = "forums"
     PURCHASES = "purchases"
     TRAVEL = "travel"
+    BILLS = "bills"
 
     @classmethod
     def from_gmail_labels(cls, labels: list[str]) -> list[Self]:
         """Gmail: `Category Promotions` etc. in `X-Gmail-Labels`."""
-        lowered = {label.lower() for label in labels}
+        lowered = _normalized_labels(labels)
         return [category for category in cls if f"category {category.value}" in lowered]
 
     @classmethod
@@ -189,7 +195,7 @@ class EmailMetadata(BaseModel):
     email_client: EmailClient = Field(
         default=EmailClient.UNKNOWN, description="Mailbox export this email's status/label headers follow"
     )
-    state: EmailState | None = None
+    state: MessageState | None = None
     message_id: str | None = None
     labels: list[str] = Field(default_factory=list, description="Labels or folders associated with the email")
     categories: list[EmailCategory] = Field(
@@ -201,6 +207,11 @@ class EmailMetadata(BaseModel):
     def client_categories(self) -> list[EmailCategory]:
         """`categories`, or derived from `labels` for emails parsed before categories were stored."""
         return self.categories or EmailCategory.for_email(self.email_client, self.labels)
+
+    def message_states(self) -> list[MessageState]:
+        """Every state the source recorded (Gmail labels can carry several), plus the parsed `state`."""
+        states = MessageState.all_from_gmail_labels(self.labels) if self.email_client == EmailClient.GMAIL else []
+        return states if not self.state or self.state in states else [self.state, *states]
 
 
 class EmailBase(BaseModel):

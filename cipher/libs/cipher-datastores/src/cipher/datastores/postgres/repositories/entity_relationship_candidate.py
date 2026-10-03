@@ -17,7 +17,7 @@ from cipher.schemas.graph.entity_relationship import (
     RelationshipCandidateStatus,
     RelationshipReview,
 )
-from cipher.schemas.graph.ontology import RelationshipSource
+from cipher.schemas.graph.ontology import RelationshipSource, RelationshipType
 
 
 class PostgresRelationshipCandidateRepository:
@@ -104,7 +104,16 @@ class PostgresRelationshipCandidateRepository:
             await self.session.commit()
             return None
 
-        if review.status == RelationshipCandidateStatus.CONFIRMED:
+        # read before anything below commits (the parent setter does), which would expire `row`
+        candidate = RelationshipCandidate.model_validate(row)
+        if review.status == RelationshipCandidateStatus.CONFIRMED and row.relationship_type == RelationshipType.PART_OF:
+            # an organization has one parent: route through the detail row that owns it (cycle-checked)
+            from cipher.datastores.postgres.repositories.entity import PostgresEntityRepository
+
+            await PostgresEntityRepository(session=self.session).set_organization_parent(
+                row.src_entity_id, row.dst_entity_id
+            )
+        elif review.status == RelationshipCandidateStatus.CONFIRMED:
             edge = EntityRelationshipCreate(
                 dataset_id=row.dataset_id,
                 src_entity_id=row.src_entity_id,
@@ -112,16 +121,20 @@ class PostgresRelationshipCandidateRepository:
                 relationship_type=row.relationship_type,
                 source=RelationshipSource.EXTRACTION,
                 weight=row.confidence,
+                attributes=row.attributes or {},
             )
             insert_stmt = pg_insert(EntityRelationshipTable).values(**edge.model_dump(by_alias=False))
             await self.session.execute(
                 insert_stmt.on_conflict_do_update(
                     constraint="uq_entity_relationship_triple",
-                    set_={"weight": insert_stmt.excluded.weight, "source": insert_stmt.excluded.source},
+                    set_={
+                        "weight": insert_stmt.excluded.weight,
+                        "source": insert_stmt.excluded.source,
+                        "attributes": EntityRelationshipTable.attributes.op("||")(insert_stmt.excluded.attributes),
+                    },
                 )
             )
 
-        candidate = RelationshipCandidate.model_validate(row)
         await self.session.commit()
         return candidate
 

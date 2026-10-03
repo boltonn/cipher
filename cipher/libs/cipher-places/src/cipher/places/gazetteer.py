@@ -82,9 +82,14 @@ class Place(BaseModel):
     population: int = Field(default=0)
 
 
+def default_data_dir() -> Path:
+    """`libs/cipher-places/data/`: the committed index, its sources and `custom_places.jsonl` (works offline)."""
+    return Path(__file__).resolve().parents[3] / "data"
+
+
 def default_gazetteer_path() -> Path:
-    """`CIPHER_GAZETTEER_PATH`, else `~/models/gazetteer/places.json.gz` (built by `cipher-places-build`)."""
-    return Path(os.environ.get("CIPHER_GAZETTEER_PATH", "~/models/gazetteer/places.json.gz")).expanduser()
+    """`CIPHER_GAZETTEER_PATH`, else the committed `data/places.json.gz` (built by `cipher-places-build`)."""
+    return Path(os.environ.get("CIPHER_GAZETTEER_PATH", default_data_dir() / "places.json.gz")).expanduser()
 
 
 def place_key(text: str, *, fold_accents: bool = True) -> str:

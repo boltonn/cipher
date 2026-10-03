@@ -35,7 +35,7 @@ from cipher.datastores.postgres.repositories import (
 )
 from cipher.orchestration.extract_documents import DEFAULT_CHUNK_SIZE
 from cipher.schemas.content.document import DocumentMetadata, DocumentTextChunk
-from cipher.schemas.content.email import EmailMetadata, EmailState, EmailTextChunk
+from cipher.schemas.content.email import EmailMetadata, EmailTextChunk, MessageState
 from cipher.schemas.content.extraction import ExtractedText
 from cipher.schemas.content.search import TextChunk
 from cipher.schemas.ingestion.enrichment import EnrichableType, EnrichmentBatchItem, EnrichmentType
@@ -60,11 +60,13 @@ _EXECUTOR = ThreadPoolExecutor(max_workers=4)
 
 # Spam contributes noise chunks to the search index without triage value --
 # skipped by default, overridable per run (embed-text --skip-email-state).
-DEFAULT_SKIP_EMAIL_STATES = frozenset({EmailState.SPAM})
+DEFAULT_SKIP_EMAIL_STATES = frozenset({MessageState.SPAM})
 
 
-def _skip_email_state(extracted: ExtractedText, skip_email_states: frozenset[EmailState]) -> bool:
-    return isinstance(extracted.metadata, EmailMetadata) and extracted.metadata.state in skip_email_states
+def _skip_email_state(extracted: ExtractedText, skip_email_states: frozenset[MessageState]) -> bool:
+    return isinstance(extracted.metadata, EmailMetadata) and bool(
+        skip_email_states.intersection(extracted.metadata.message_states())
+    )
 
 
 def _truncate_to_pages(extracted: ExtractedText, max_pages: int | None) -> str:
@@ -249,7 +251,7 @@ async def dedupe_pending_text_embeddings(
     es_repo: "ElasticsearchTextChunkRepository",
     dataset_id: str | None = None,
     batch_size: int = 100,
-    skip_email_states: frozenset[EmailState] = DEFAULT_SKIP_EMAIL_STATES,
+    skip_email_states: frozenset[MessageState] = DEFAULT_SKIP_EMAIL_STATES,
 ) -> int:
     """Resolve pending text embeddings whose content has already been embedded elsewhere.
 
@@ -378,7 +380,7 @@ async def _producer(
     batch_size: int,
     embed_batch_size: int,
     max_pages: int | None,
-    skip_email_states: frozenset[EmailState],
+    skip_email_states: frozenset[MessageState],
     stats: dict,
     pbar: tqdm,
 ) -> None:
@@ -549,7 +551,7 @@ async def embed_text_workflow(
     embed_batch_size: int = 32,
     commit_batch_size: int = 20,
     max_pages: int | None = None,
-    skip_email_states: frozenset[EmailState] = DEFAULT_SKIP_EMAIL_STATES,
+    skip_email_states: frozenset[MessageState] = DEFAULT_SKIP_EMAIL_STATES,
 ) -> int:
     """Chunk (if needed) and embed a dataset's extracted text into the chunk store (`RETRIEVAL__BACKEND`).
 

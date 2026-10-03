@@ -8,19 +8,22 @@ either of them independently can't tell a caller when *all* matching content
 (documents and emails together) has been exhausted.
 """
 
+from typing import Annotated
+
 from clir.api.deps import TextEmbeddingModelDep
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import text as sa_text
 
 from cipher.api.deps.access import DatasetAccessDep
 from cipher.api.deps.elasticsearch import TextChunkDatastoreDep
-from cipher.api.deps.postgres import get_session
+from cipher.api.deps.postgres import FileDatastoreDep, get_session
 from cipher.api.services.search import search_chunks
 from cipher.api.settings import RetrievalBackend, Settings, TextRanker
 from cipher.schemas.content.search import (
     ChunkSemanticSearchRequest,
     ChunkTextSearchRequest,
     RetrievalConfigInfo,
+    SourceFacets,
 )
 
 router = APIRouter(
@@ -80,6 +83,21 @@ async def search_config() -> RetrievalConfigInfo:
         installed_extensions=installed,
         graph_expand_entity_cap=r.graph_expand_entity_cap,
     )
+
+
+@router.get(
+    "/source-facets",
+    summary="Tags and message states that came with the data, with file counts",
+    response_model=SourceFacets,
+    response_model_by_alias=True,
+)
+async def source_facets(
+    access: DatasetAccessDep,
+    datastore: FileDatastoreDep,
+    dataset_ids: Annotated[list[str] | None, Query(alias="datasetIds")] = None,
+) -> SourceFacets:
+    """Values for the "from the data" search filters (e.g. Gmail's `promotions`, `spam`), over searchable files."""
+    return await datastore.source_facets(dataset_ids=access.scope(dataset_ids))
 
 
 @router.post(

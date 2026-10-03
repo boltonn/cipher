@@ -10,10 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  useEnrichmentFailures,
-  useRetryFailedEnrichments,
-} from "@/features/datasets/api";
+import { useEnrichmentFailures } from "@/features/datasets/api";
 import type { FailedEnrichment } from "@/features/datasets/types";
 import { useFile } from "@/features/files/api";
 import { FileViewerDialog } from "@/features/files/components/file-viewer-dialog";
@@ -25,7 +22,6 @@ import {
   Loader2,
   Maximize2,
   Minimize2,
-  RotateCcw,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -56,7 +52,6 @@ export function EnrichmentFailuresDialog({
     enrichmentType,
     { limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE }
   );
-  const retryFailed = useRetryFailedEnrichments(datasetId);
   const { data: viewingFile } = useFile(viewingFileId ?? undefined);
 
   return (
@@ -149,23 +144,7 @@ export function EnrichmentFailuresDialog({
               ))}
             </div>
 
-            <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={retryFailed.isPending || !enrichmentType}
-                onClick={() =>
-                  enrichmentType && retryFailed.mutate(enrichmentType)
-                }
-                title="Put every failed row back in the queue for this step's next run"
-              >
-                {retryFailed.isPending ? (
-                  <Loader2 className="animate-spin" />
-                ) : (
-                  <RotateCcw />
-                )}
-                Retry all failed
-              </Button>
+            <div className="flex shrink-0 justify-end">
               {data.total > PAGE_SIZE && (
                 <Pagination
                   variant="compact"

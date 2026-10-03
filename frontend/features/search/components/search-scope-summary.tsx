@@ -60,6 +60,10 @@ export function SearchScopeSummary({ query, searchMode, filters, total }: Search
   if (dateFrom && dateTo) clauses.push(<>dated {day(dateFrom)} – {day(dateTo)}</>);
   else if (dateFrom) clauses.push(<>dated on or after {day(dateFrom)}</>);
   else if (dateTo) clauses.push(<>dated on or before {day(dateTo)}</>);
+  const only = [...(filters.messageStates ?? []), ...(filters.sourceTags ?? [])];
+  const hidden = [...(filters.excludeMessageStates ?? []), ...(filters.excludeSourceTags ?? [])];
+  if (only.length) clauses.push(<>marked {only.join(" or ")} in the data</>);
+  if (hidden.length) clauses.push(<>not marked {hidden.join(" or ")} in the data</>);
 
   return (
     <p className="px-1 text-xs text-muted-foreground">

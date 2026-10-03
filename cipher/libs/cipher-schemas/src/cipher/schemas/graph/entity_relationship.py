@@ -34,6 +34,8 @@ class RelationshipCandidateMethod(StrEnum):
     LLM = "llm"
     SELECTOR_INFERENCE = "selector_inference"
     MANUAL = "manual"
+    SIGNATURE = "signature"  # an email signature names the sender's employer / unit
+    EMAIL_DOMAIN = "email_domain"  # the sender's address domain is one colleagues sign for
 
 
 class EntityRelationshipBase(BaseModel):
@@ -80,6 +82,12 @@ class RelationshipCandidateBase(BaseModel):
     confidence: float = Field(ge=0, le=1)
     method: RelationshipCandidateMethod = RelationshipCandidateMethod.CO_MENTION
     evidence_mention_id: str | None = Field(default=None, description="A mention supporting this edge")
+    attributes: dict = Field(
+        default_factory=dict, description="Edge attributes to carry onto the entity edge, e.g. role"
+    )
+    explanation: dict | None = Field(
+        default=None, description="Why it was proposed, for the reviewer (method-specific)"
+    )
 
 
 class RelationshipCandidateCreate(RelationshipCandidateBase):

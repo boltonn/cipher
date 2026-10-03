@@ -126,9 +126,7 @@ class LlmEvent(BaseModel):
 
     title: str
     summary: str | None = None
-    event_type: str = Field(
-        description="travel | lodging | reservation | meeting | gathering | delivery | other"
-    )
+    event_type: str = Field(description="travel | lodging | reservation | meeting | gathering | delivery | other")
     date_start: str | None = Field(default=None, description="ISO 8601; date or datetime")
     date_end: str | None = Field(default=None, description="ISO 8601; date or datetime")
     timezone: str | None = Field(default=None, description="IANA tz name if stated")
@@ -153,10 +151,18 @@ class LlmEvent(BaseModel):
     order_number: str | None = Field(default=None, description="Order number (delivery)")
 
 
+class LlmMembership(BaseModel):
+    """An organization the email's recipient actually belongs to (verbatim from the text)."""
+
+    organization: str = Field(description="The organization's name as written")
+    address: str | None = Field(default=None, description="Its street / postal address as written, if given")
+
+
 class LlmEventOutput(BaseModel):
     """Full structured payload for the events prompt."""
 
     events: list[LlmEvent] = Field(default_factory=list)
+    memberships: list[LlmMembership] = Field(default_factory=list)
 
 
 class LlmCombinedOutput(BaseModel):
@@ -171,6 +177,7 @@ class LlmCombinedOutput(BaseModel):
     entities: list[LlmEntity] = Field(default_factory=list)
     relations: list[LlmRelation] = Field(default_factory=list)
     events: list[LlmEvent] = Field(default_factory=list)
+    memberships: list[LlmMembership] = Field(default_factory=list)
 
 
 @lru_cache(maxsize=32)
@@ -182,12 +189,27 @@ def build_combined_output_model(labels: tuple[str, ...], relation_labels: tuple[
         entities=(strict_entities.model_fields["entities"].annotation, Field(default_factory=list)),
         relations=(strict_entities.model_fields["relations"].annotation, Field(default_factory=list)),
         events=(list[LlmEvent], Field(default_factory=list)),
+        memberships=(list[LlmMembership], Field(default_factory=list)),
     )
 
 
 # --------------------------------------------------------------------------- #
 # Public results (offsets resolved, enums coerced)                            #
 # --------------------------------------------------------------------------- #
+class LlmSignatureOutput(BaseModel):
+    """What the model reads from the end of an email (every value verbatim from the text)."""
+
+    is_signature: bool = Field(default=False, description="The text ends with an individual's signature block")
+    signature: str | None = Field(default=None, description="The signature block, copied exactly")
+    person_name: str | None = Field(default=None)
+    organizations: list[str] = Field(default_factory=list, description="Broadest first: company, division, team")
+    role: str | None = Field(default=None)
+    phones: list[str] = Field(default_factory=list)
+    emails: list[str] = Field(default_factory=list)
+    websites: list[str] = Field(default_factory=list)
+    addresses: list[str] = Field(default_factory=list)
+
+
 class EntityExtraction(BaseModel):
     """Entities + relations, offsets resolved against the analyzed text."""
 
@@ -214,9 +236,12 @@ class ParsedEvent(BaseModel):
 
 
 class EventExtraction(BaseModel):
-    """Events found in the analyzed text."""
+    """Events found in the analyzed text, plus organizations the recipient is confirmed to belong to."""
 
     events: list[ParsedEvent] = Field(default_factory=list)
+    memberships: list[LlmMembership] = Field(
+        default_factory=list, description="Verbatim: values the model did not copy from the text are dropped"
+    )
 
 
 class CombinedExtraction(BaseModel):

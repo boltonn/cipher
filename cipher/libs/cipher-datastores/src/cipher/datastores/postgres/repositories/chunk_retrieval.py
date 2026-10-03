@@ -24,7 +24,6 @@ from cipher.datastores.postgres.repositories.mention import (
     PostgresMentionRepository,
     correspondence_predicates,
 )
-from cipher.datastores.postgres.repositories.tag import PostgresTagRepository
 from cipher.datastores.postgres.utils import normalize_name
 from cipher.schemas._base.common import PaginatedResponse
 from cipher.schemas.content.document import ScoredDocumentTextChunk
@@ -204,16 +203,12 @@ class PostgresChunkRetrievalRepository(ChunkRetrievalRepository):
 
     async def delete_by_file_id(self, file_id: str) -> int:
         """Delete the chunks a file owns as representative. Caller commits."""
-        res = await self.session.execute(
-            sa_text("DELETE FROM chunk WHERE file_id = :f"), {"f": file_id}
-        )
+        res = await self.session.execute(sa_text("DELETE FROM chunk WHERE file_id = :f"), {"f": file_id})
         return res.rowcount or 0
 
     async def delete_by_dataset_id(self, dataset_id: str) -> int:
         """Delete every chunk in a dataset (standalone -- commits)."""
-        res = await self.session.execute(
-            sa_text("DELETE FROM chunk WHERE dataset_id = :d"), {"d": dataset_id}
-        )
+        res = await self.session.execute(sa_text("DELETE FROM chunk WHERE dataset_id = :d"), {"d": dataset_id})
         await self.session.commit()
         return res.rowcount or 0
 
@@ -251,15 +246,19 @@ class PostgresChunkRetrievalRepository(ChunkRetrievalRepository):
         dataset's already-computed embeddings). Not part of the search path.
         """
         rows = (
-            await self.session.execute(
-                sa_text(
-                    "SELECT id, dataset_id, file_id, sha256, filetype_group, duplicate_file_ids, "
-                    "chunk_index, start_offset, end_offset, text, language, embedding::text AS embedding "
-                    "FROM chunk WHERE file_id = :f ORDER BY chunk_index"
-                ),
-                {"f": file_id},
+            (
+                await self.session.execute(
+                    sa_text(
+                        "SELECT id, dataset_id, file_id, sha256, filetype_group, duplicate_file_ids, "
+                        "chunk_index, start_offset, end_offset, text, language, embedding::text AS embedding "
+                        "FROM chunk WHERE file_id = :f ORDER BY chunk_index"
+                    ),
+                    {"f": file_id},
+                )
             )
-        ).mappings().all()
+            .mappings()
+            .all()
+        )
         out: list[TextChunk] = []
         for r in rows:
             emb = r["embedding"]
@@ -321,6 +320,22 @@ class PostgresChunkRetrievalRepository(ChunkRetrievalRepository):
             # GIN-indexed `file.tags`: tags are on the content, so every copy of a file carries them.
             p["tags"] = list(f.tags)
             out.append("EXISTS (SELECT 1 FROM file fl WHERE fl.id = c.file_id AND fl.tags ?| cast(:tags as text[]))")
+        # What the data itself says (GIN-indexed copies of the extracted-text metadata).
+        for column, include, exclude in (
+            ("source_tags", f.source_tags, f.exclude_source_tags),
+            ("message_states", f.message_states, f.exclude_message_states),
+        ):
+            if include:
+                p[column] = list(include)
+                out.append(
+                    f"EXISTS (SELECT 1 FROM file fl WHERE fl.id = c.file_id AND fl.{column} ?| cast(:{column} as text[]))"
+                )
+            if exclude:
+                p[f"exclude_{column}"] = list(exclude)
+                out.append(
+                    f"NOT EXISTS (SELECT 1 FROM file fl WHERE fl.id = c.file_id "
+                    f"AND fl.{column} ?| cast(:exclude_{column} as text[]))"
+                )
         return out
 
     def _mention_sql(self, q: RetrievalQuery, p: dict) -> list[str]:
@@ -340,9 +355,7 @@ class PostgresChunkRetrievalRepository(ChunkRetrievalRepository):
             if vals:
                 key = f"m_{field}"
                 p[key] = [v.upper() for v in vals]  # mention enum cols store member NAMES
-                out.append(
-                    f"EXISTS (SELECT 1 FROM mention m WHERE m.chunk_id = c.id AND m.{field} = ANY(:{key}))"
-                )
+                out.append(f"EXISTS (SELECT 1 FROM mention m WHERE m.chunk_id = c.id AND m.{field} = ANY(:{key}))")
         return out
 
     def _keyword_predicate(self, p: dict) -> str:
@@ -352,8 +365,10 @@ class PostgresChunkRetrievalRepository(ChunkRetrievalRepository):
         return "c.text_tsv @@ plainto_tsquery(coalesce(:kw_lang,'simple'), :kw_tsq)"
 
     def _keyword_score(self) -> str:
-        return "paradedb.score(c.id)" if self.text_ranker == "pg_search" else (
-            "ts_rank_cd(c.text_tsv, plainto_tsquery(coalesce(:kw_lang,'simple'), :kw_tsq))"
+        return (
+            "paradedb.score(c.id)"
+            if self.text_ranker == "pg_search"
+            else ("ts_rank_cd(c.text_tsv, plainto_tsquery(coalesce(:kw_lang,'simple'), :kw_tsq))")
         )
 
     async def _resolve_expand(self, q: RetrievalQuery) -> None:
@@ -501,15 +516,21 @@ class PostgresChunkRetrievalRepository(ChunkRetrievalRepository):
                 f"ORDER BY c.date_content DESC NULLS LAST, c.date_created DESC LIMIT :pool"
             )
         elif mode == RetrievalMode.KEYWORD:
-            cand = f"SELECT c.id, {self._keyword_score()} AS score FROM chunk c " \
-                   f"WHERE {scope} AND {self._keyword_predicate(p)} ORDER BY score DESC LIMIT :pool"
+            cand = (
+                f"SELECT c.id, {self._keyword_score()} AS score FROM chunk c "
+                f"WHERE {scope} AND {self._keyword_predicate(p)} ORDER BY score DESC LIMIT :pool"
+            )
         elif mode == RetrievalMode.SEMANTIC:
-            cand = f"SELECT c.id, 1 - (c.embedding <=> CAST(:qvec AS vector)) AS score FROM chunk c " \
-                   f"WHERE {scope} AND c.embedding IS NOT NULL " \
-                   f"ORDER BY c.embedding <=> CAST(:qvec AS vector) LIMIT :pool"
+            cand = (
+                f"SELECT c.id, 1 - (c.embedding <=> CAST(:qvec AS vector)) AS score FROM chunk c "
+                f"WHERE {scope} AND c.embedding IS NOT NULL "
+                f"ORDER BY c.embedding <=> CAST(:qvec AS vector) LIMIT :pool"
+            )
         else:  # hybrid RRF of the two candidate orderings
-            sem = f"SELECT c.id, row_number() OVER (ORDER BY c.embedding <=> CAST(:qvec AS vector)) AS r FROM chunk c " \
-                  f"WHERE {scope} AND c.embedding IS NOT NULL ORDER BY c.embedding <=> CAST(:qvec AS vector) LIMIT :pool"
+            sem = (
+                f"SELECT c.id, row_number() OVER (ORDER BY c.embedding <=> CAST(:qvec AS vector)) AS r FROM chunk c "
+                f"WHERE {scope} AND c.embedding IS NOT NULL ORDER BY c.embedding <=> CAST(:qvec AS vector) LIMIT :pool"
+            )
             if has_text:
                 kw = (
                     f"SELECT id, row_number() OVER (ORDER BY s DESC) AS r FROM ("
@@ -522,9 +543,11 @@ class PostgresChunkRetrievalRepository(ChunkRetrievalRepository):
                     f"FROM ({kw}) kw FULL OUTER JOIN ({sem}) sem ON kw.id = sem.id"
                 )
             else:
-                cand = f"SELECT c.id, 1 - (c.embedding <=> CAST(:qvec AS vector)) AS score FROM chunk c " \
-                       f"WHERE {scope} AND c.embedding IS NOT NULL " \
-                       f"ORDER BY c.embedding <=> CAST(:qvec AS vector) LIMIT :pool"
+                cand = (
+                    f"SELECT c.id, 1 - (c.embedding <=> CAST(:qvec AS vector)) AS score FROM chunk c "
+                    f"WHERE {scope} AND c.embedding IS NOT NULL "
+                    f"ORDER BY c.embedding <=> CAST(:qvec AS vector) LIMIT :pool"
+                )
 
         # Stage B -- refine candidates by the mention/graph filters (plain joins, no
         # pg_search). Already applied directly for browse -- don't re-filter (and
@@ -546,9 +569,7 @@ class PostgresChunkRetrievalRepository(ChunkRetrievalRepository):
         by_file: dict[str, list[dict]] = {}
         for r in rows:
             by_file.setdefault(r["file_id"], []).append(dict(r))
-        ordered_files = sorted(
-            by_file.items(), key=lambda kv: max(c["score"] for c in kv[1]), reverse=True
-        )
+        ordered_files = sorted(by_file.items(), key=lambda kv: max(c["score"] for c in kv[1]), reverse=True)
         total = len(ordered_files)
         total_is_exact = browse or (mode == RetrievalMode.KEYWORD and has_text)
         if mode == RetrievalMode.KEYWORD and has_text:
@@ -569,7 +590,10 @@ class PostgresChunkRetrievalRepository(ChunkRetrievalRepository):
             # count every file the filters admit instead.
             total = (
                 await self.session.execute(
-                    sa_text(f"SELECT count(*) FROM (SELECT DISTINCT c.file_id FROM chunk c WHERE {browse_where}) files"), p
+                    sa_text(
+                        f"SELECT count(*) FROM (SELECT DISTINCT c.file_id FROM chunk c WHERE {browse_where}) files"
+                    ),
+                    p,
                 )
             ).scalar_one()
         page_files = ordered_files[query.offset : query.offset + query.limit]
@@ -613,9 +637,14 @@ class PostgresChunkRetrievalRepository(ChunkRetrievalRepository):
                     chunks=scored,
                 )
             )
-        tags = await PostgresTagRepository(self.session).file_tags([r.file_id for r in results])
+        file_rows = await self.session.execute(
+            sa_text("SELECT id, tags, source_tags, message_states FROM file WHERE id = ANY(cast(:file_ids AS text[]))"),
+            {"file_ids": [r.file_id for r in results]},
+        )
+        by_file = {row.id: row for row in file_rows.all()}
         for result in results:
-            result.tags = tags.get(result.file_id, [])
+            if row := by_file.get(result.file_id):
+                result.tags, result.source_tags, result.message_states = row.tags, row.source_tags, row.message_states
         return PaginatedFileSearchResponse(
             total=total, total_is_exact=total_is_exact, page=query.page, limit=query.limit, data=results
         )

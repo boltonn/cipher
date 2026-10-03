@@ -19,7 +19,7 @@ async def test_rejects_empty_tasks():
 
 
 def test_known_tasks_are_entities_and_events():
-    assert _KNOWN_TASKS == {"entities", "events"}
+    assert {"entities", "events"} == _KNOWN_TASKS
 
 
 class _FakeEnrichmentRepo:

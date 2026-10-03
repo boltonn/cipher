@@ -57,6 +57,12 @@ class File(FileBase):
     tag_scores: dict[str, float] = Field(
         default_factory=dict, description="Model confidence (0-1) that a tag applies; a prediction, not a label"
     )
+    source_tags: list[str] = Field(
+        default_factory=list, description="Tags that came with the data (e.g. Gmail's inbox categories), not a label"
+    )
+    message_states: list[str] = Field(
+        default_factory=list, description="A message's states as its source recorded them (spam, sent, ...)"
+    )
 
     model_config = {
         "from_attributes": True,

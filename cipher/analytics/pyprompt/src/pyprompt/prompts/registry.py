@@ -13,12 +13,13 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from pyprompt.errors import PromptPackNotFoundError
-from pyprompt.schemas import LlmCombinedOutput, LlmEntityOutput, LlmEventOutput
+from pyprompt.schemas import LlmCombinedOutput, LlmEntityOutput, LlmEventOutput, LlmSignatureOutput
 from pyprompt.templating import PromptTemplate, load_prompt
 
 ENTITIES = "entities"
 EVENTS = "events"
 EXTRACT = "extract"
+SIGNATURE = "signature"
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,6 +40,7 @@ REGISTRY: dict[str, PromptPack] = {
     ENTITIES: PromptPack(task=ENTITIES, relative_path="entities/v1.md", output_model=LlmEntityOutput),
     EVENTS: PromptPack(task=EVENTS, relative_path="events/v1.md", output_model=LlmEventOutput),
     EXTRACT: PromptPack(task=EXTRACT, relative_path="extract/v1.md", output_model=LlmCombinedOutput),
+    SIGNATURE: PromptPack(task=SIGNATURE, relative_path="signature/v1.md", output_model=LlmSignatureOutput),
 }
 
 

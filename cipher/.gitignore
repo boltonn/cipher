@@ -1,6 +1,7 @@
 # Custom
 .env
 scripts/
+!libs/cipher-places/scripts/
 /data/
 scratchpad/
 

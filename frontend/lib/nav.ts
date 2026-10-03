@@ -1,6 +1,7 @@
 import type { IconComponent } from "@/types/common";
 import {
   BookOpen,
+  Building2,
   CalendarDays,
   Database,
   HelpCircle,
@@ -79,6 +80,12 @@ export const NAV = {
       url: "/graph",
       icon: Share2,
       blurb: "The same entities as a network — seed it, expand outward, follow links.",
+    },
+    {
+      title: "Organizations",
+      url: "/organizations",
+      icon: Building2,
+      blurb: "Org charts — click a unit to see who works there or is connected to it.",
     },
     {
       title: "Persons",

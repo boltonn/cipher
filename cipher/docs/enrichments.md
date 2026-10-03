@@ -30,7 +30,7 @@ has files; `date_staged` records when that first happened.
 single source of truth (also served at `GET /enrichments/config`). Hard
 prerequisites only — an enrichment that reads rows a prior one produces:
 
-- `text_embedding`, `selector_extraction`, `entity_extraction` ← `text_extraction`
+- `text_embedding`, `selector_extraction`, `entity_extraction`, `signature_extraction` ← `text_extraction`
 - `ocr` ← `text_extraction` (PDFs only: OCR merges into the xberg row; images need nothing)
 - `relationship_extraction` ← `entity_extraction`, `selector_extraction`
 - `face_matching`, `face_clustering` ← `face_detection`
@@ -48,17 +48,18 @@ Pure functions in `cipher/schemas/ingestion/estimation.py`:
 1. **`estimate_workload(enrichment_type, inventory, params)`** — maps the
    `get_dataset_inventory` dict to the eligible unit count. Eligibility is by
    `filetype_group`: `image` for image/face/exif, `document` + `email` for the
-   text family, `contact` for contact extraction. `face_matching` /
+   text family, `email` for signature extraction, `contact` for contact extraction. `face_matching` /
    `face_clustering` / `message_translation` are marked *not estimable* (they
    scale with data not visible in the file inventory).
 2. **`resolve_rate(enrichment_type, device, measured, params)`** — the measured
    `RateStat` for that `(type, device)` when it has ≥ `MIN_SAMPLES_FOR_MEASURED`
-   (5) runs, else the seeded `DEFAULT_RATES` entry. `concurrency` divides LLM
+   (1) run on this machine, else no rate -- nothing is guessed. `concurrency` divides LLM
    wall time; `maxPages` caps document byte counts.
 3. **`estimate_enrichment(workload, rate, progress)`** —
    `seconds = fixed_overhead + unit_count * seconds_per_unit`, with
-   `low`/`high` from p25/p75 (measured) or ±40–80 % (seed). `confidence` is
-   `measured` | `seeded` | `none`; `basis` is a human string.
+   `low`/`high` from p25/p75. `confidence` is `measured` | `none` ("no run
+   history yet"); `basis` is a human string. Estimates cover the remaining
+   (not yet done) share, and totals say "+ N not yet timed" for unmeasured analytics.
 
 `total_estimate_seconds(...)` sums a selected set (sequential execution).
 
@@ -70,11 +71,8 @@ Every enrichment command in `cipher/orchestration/cli.py` is wrapped in
 `unit_count`, `params`, `date_started/completed`, `duration_seconds`, `status`.
 `PostgresEnrichmentRunRepository.get_rates()` computes median / p25 / p75
 `duration_seconds / unit_count` per `(enrichment_type, device)`. So estimates
-self-calibrate to whatever hardware the pipeline runs on — seeds first, then
-measured once real runs accumulate.
-
-Seed values are deliberately pessimistic and live in `DEFAULT_RATES`; adjust
-them from `cipher rates` output as runs accumulate.
+self-calibrate to whatever hardware the pipeline runs on —
+measured from the first real run (`cipher rates` shows them).
 
 ## Surfaces
 

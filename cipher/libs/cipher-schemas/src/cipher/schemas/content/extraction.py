@@ -66,6 +66,18 @@ class ExtractedTextBase(BaseModel):
         description="Pre-computed chunk boundaries; only set when the extractor's own chunker was used",
     )
 
+    def source_tags(self) -> list[str]:
+        """Tags that came with the data -- an email client's inbox categories; documents have none yet."""
+        if isinstance(self.metadata, EmailMetadata):
+            return [category.value for category in self.metadata.client_categories()]
+        return []
+
+    def message_states(self) -> list[str]:
+        """A message's states as its source recorded them; empty for documents."""
+        if isinstance(self.metadata, EmailMetadata):
+            return [state.value for state in self.metadata.message_states()]
+        return []
+
 
 class ExtractedTextCreate(ExtractedTextBase):
     """Schema for creating/upserting an extraction result."""

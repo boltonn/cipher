@@ -1,7 +1,7 @@
 """Parser for Outlook .msg files (OLE compound-file format).
 
 Delegates all header-string parsing (address decoding, from/to/cc/bcc,
-`EmailClient`/`EmailState` detection, date parsing) to `EmlParser`, since a
+`EmailClient`/`MessageState` detection, date parsing) to `EmlParser`, since a
 .msg file's `TransportMessageHeaders` property is the same RFC 822 header
 blob `EmlParser` already knows how to read -- .msg only differs in where
 the body and attachments live (OLE properties, not MIME parts), and in

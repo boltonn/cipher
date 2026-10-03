@@ -16,6 +16,11 @@ export interface SearchFilters {
   datasetId?: string;
   fileId?: string;
   tags?: string[];
+  /** What the data itself says (not a user or model tag): any-of include, any-of exclude. */
+  sourceTags?: string[];
+  excludeSourceTags?: string[];
+  messageStates?: string[];
+  excludeMessageStates?: string[];
   filetypeGroup?: SearchFiletypeGroup;
   filetype?: string;
   /** Passages that mention every one of these entities -- composes with any search mode. */
@@ -101,6 +106,10 @@ export interface FileSearchResultRaw {
   chunks: SearchChunkRaw[];
   /** The file content's current tags (read live -- a chunk's own `tags` is an indexing-time copy). */
   tags: string[];
+  /** Tags that came with the data (e.g. Gmail's inbox categories). */
+  sourceTags: string[];
+  /** A message's states as its source recorded them (spam, sent, ...). */
+  messageStates: string[];
 }
 
 export type PaginatedFileSearchResponse = PaginatedResponse<FileSearchResultRaw> & {
@@ -149,6 +158,19 @@ export interface GroupedFileResult {
   matchCount: number;
   /** The file content's current tags. */
   tags: string[];
+  sourceTags: string[];
+  messageStates: string[];
+}
+
+/** One value the data itself carries and how many searchable files carry it. */
+export interface SourceValueCount {
+  value: string;
+  fileCount: number;
+}
+
+export interface SourceFacets {
+  sourceTags: SourceValueCount[];
+  messageStates: SourceValueCount[];
 }
 
 /** Selecting a search result always includes its matched `chunkId`; `chunkId` stays optional for a plain file-browser-style selection with no match to highlight. */

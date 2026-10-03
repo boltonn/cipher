@@ -78,6 +78,7 @@ flowchart LR
     L[extract-entities / extract-llm]
     M[extract-events]
     N[extract-contact-entities]
+    O[extract-signatures]
   end
   subgraph Resolve
     P[resolve-entities] --> Q[dedupe-entities]
@@ -86,9 +87,9 @@ flowchart LR
   end
   B --> C & F & G & H & N
   F -- text gate --> D
-  C --> K & L & M
+  C --> K & L & M & O
   K & L --> S
-  K & L & N --> P
+  K & L & N & O --> P
   M --> R
 ```
 
@@ -132,8 +133,9 @@ These can run in any order, but after 2b: OCR'd text is only seen by what runs a
 | `cipher extract-entities --dataset-name rag --extractor gliner --gliner-model-dir $GLINER_MODEL_DIR --device cuda` | person / org / location name mentions + relations. Engines: `llm` (default), `gliner`, `nerd`. |
 | `cipher extract-events --dataset-name rag` | `.ics` → events (deterministic) |
 | `cipher extract-contact-entities --dataset-name rag` | Parses vCard files into `contact` rows, then name + selector mentions and `member_of` for orgs |
+| `cipher extract-signatures --dataset-name rag [--rebuild]` | Who each sender works for -- see **`docs/signatures.md`**. First pass (rules): skip Gmail bulk mail (`--include-bulk` to read it); the last 15 lines the sender wrote become a candidate only when there is a signer cue (farewell phrase, sender's name/address, NER person) **and** something to learn (NER organization, phone, website, another email address) -- ~5% of a mailbox. Run `extract-entities` first for the NER cues. The local LLM decides whether it's a signature and copies out company → division → department, role, phones/emails/websites/addresses; code then checks it (verbatim, signer = sender, not a brand). Enrichment-gated; a sender's known signature is reused without another call. Then `resolve-entities` turns it into suggestions (and email-domain ones) on `/organizations`. Languages: `signature_cues.py` |
 
-**LLM events:** `cipher extract-events --dataset-name rag --llm-only --gliner-model-dir $GLINER_MODEL_DIR --device cuda`
+**LLM events:** `cipher extract-events --dataset-name rag --llm-only --gliner-model-dir $GLINER_MODEL_DIR --device cuda` -- the same call also reads **memberships** (recipient `member_of` an organization, with its address; see `docs/events.md`). Run `extract-selectors` first so the recipient's header name exists.
 gates every email with GLiNER, sends the likely ones (plus a 5% sample of the
 rest) to the LLM, tags each file read `event` positive or negative, and prints a
 gate report. `--no-gate` reads everything.
@@ -150,7 +152,7 @@ mailbox takes overnight), and runs over 15,000 files are refused unless you pass
 |---|---|---|
 | 5a | `cipher extract-relationships --dataset-name rag` | Directed `emailed` edges, sender → recipient address, weight = emails sent that way. Needs no resolution; feeds `top_connections`. |
 | 5b | `cipher resolve-entities --dataset-name rag --concurrency 8` | Matches mention groups to entities: auto-attach, send to review, or create a provisional entity. `--concurrency` makes it about 6× faster. |
-| 5b′ | `cipher resolve-locations --dataset-name rag` | Place mentions → shared country / state / city / region entities via the offline gazetteer (`cipher-places-build` once, writes `~/models/gazetteer/`). Per mention, using nearby text (`Dover, DE 19904` → Delaware); ambiguous names (`Washington`, `Georgia`) stay unresolved. Runs automatically at the end of 5b (`--skip-locations` to opt out). Matches dictionary forms in any indexed language, then lemmas (ru/uk case forms, ar/fa prefixes, zh suffixes). Places are entities, not map points. Own places: `~/models/gazetteer/custom_places.jsonl` + rebuild (see `libs/cipher-places/README.md`). |
+| 5b′ | `cipher resolve-locations --dataset-name rag` | Place mentions → shared country / state / city / region entities via the offline gazetteer (index + sources committed in `libs/cipher-places/data/`; skipped with a warning if the index is missing). Per mention, using nearby text (`Dover, DE 19904` → Delaware); ambiguous names (`Washington`, `Georgia`) stay unresolved. Runs automatically at the end of 5b (`--skip-locations` to opt out). Matches dictionary forms in any indexed language, then lemmas (ru/uk case forms, ar/fa prefixes, zh suffixes). Places are entities, not map points. Own places: `uv run libs/cipher-places/scripts/add_place.py NAME LAT LON --alias ...` (see `libs/cipher-places/README.md`). |
 | 5c | `cipher dedupe-entities --dataset-name rag` | Proposes merges between provisional and canonical entities (always goes to review) |
 | 5d | `cipher resolve-event-links --dataset-name rag` | Links event participants and places to entities / locations |
 
@@ -181,6 +183,7 @@ cipher extract-selectors --dataset-name $D
 cipher extract-entities  --dataset-name $D --extractor gliner --gliner-model-dir $GLINER_MODEL_DIR --device cuda
 cipher extract-events    --dataset-name $D
 cipher extract-contact-entities  --dataset-name $D
+cipher extract-signatures --dataset-name $D
 cipher extract-relationships --dataset-name $D
 cipher resolve-entities  --dataset-name $D --concurrency 8
 cipher dedupe-entities   --dataset-name $D

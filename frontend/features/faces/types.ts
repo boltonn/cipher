@@ -28,6 +28,8 @@ export interface BaseFaceSearchParameters {
   minSize?: number;
   /** Faces assigned to, or with a pending match for, any of these persons. */
   personIds?: string[];
+  /** Only faces in images from these datasets (the backend limits this to the user's access). */
+  datasets?: string[];
   sortBy?: FaceSortFieldType;
   sortOrder?: SortOrderType;
   limit: number;

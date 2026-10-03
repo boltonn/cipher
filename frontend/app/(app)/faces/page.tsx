@@ -3,6 +3,7 @@
 import { PageError, PageLoading } from "@/components/page-loading";
 import { PageHeader } from "@/components/page-header";
 import { PaginationModeToggle } from "@/components/pagination-mode-toggle";
+import { DatasetSelect } from "@/features/datasets/components/dataset-select";
 import { FaceSelectionBar } from "@/features/faces/components/face-selection-bar";
 import { FaceUploadSearchBar } from "@/features/faces/components/face-upload-search-bar";
 import { FacesContainerInfinite } from "@/features/faces/components/faces-container-infinite";
@@ -92,15 +93,17 @@ function FacesPageInner() {
           )
         }
         actions={
-          <PaginationModeToggle
-            mode={paginationMode}
-            onToggle={() =>
-              setPaginationMode((p) =>
-                p === "infinite" ? "normal" : "infinite"
-              )
-            }
-            accentClassName="hover:text-annotation"
-          />
+          <div className="flex items-center gap-2">
+            <DatasetSelect
+              datasetId={filters.datasets?.[0]}
+              onChange={(datasetId) => setFilters((prev) => ({ ...prev, datasets: datasetId ? [datasetId] : undefined }))}
+            />
+            <PaginationModeToggle
+              mode={paginationMode}
+              onToggle={() => setPaginationMode((p) => (p === "infinite" ? "normal" : "infinite"))}
+              accentClassName="hover:text-annotation"
+            />
+          </div>
         }
       />
 

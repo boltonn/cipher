@@ -13,6 +13,7 @@ from cipher.datastores.postgres.repositories.tag import PostgresTagRepository
 from cipher.datastores.postgres.tables.entity import EntityTable, is_canonical_entity
 from cipher.datastores.postgres.tables.entity_match import EntityMatchTable
 from cipher.datastores.postgres.tables.entity_relationship import EntityRelationshipTable
+from cipher.datastores.postgres.tables.entity_relationship_candidate import EntityRelationshipCandidateTable
 from cipher.datastores.postgres.tables.face import FaceTable
 from cipher.datastores.postgres.tables.location import LocationTable
 from cipher.datastores.postgres.tables.mention import MentionTable
@@ -42,6 +43,7 @@ from cipher.schemas.graph.entity import (
     SelectorMention,
 )
 from cipher.schemas.graph.entity_match import DecisionSource, EntityMatchStatus
+from cipher.schemas.graph.entity_relationship import RelationshipCandidateStatus
 from cipher.schemas.graph.entity_resolution import ResolutionCandidate
 from cipher.schemas.graph.location import LocationCreate, LocationUpdate
 from cipher.schemas.graph.mention import MentionProvenance
@@ -56,10 +58,19 @@ from cipher.schemas.graph.ontology import (
     validate_relationship,
 )
 from cipher.schemas.graph.organization import (
+    MEMBERSHIP_RELATIONSHIPS,
+    OrganizationAffiliation,
     OrganizationCreate,
     OrganizationMember,
+    OrganizationPeopleParameters,
+    OrganizationPeopleSortField,
+    OrganizationPerson,
     OrganizationStructure,
+    OrganizationSuggestion,
+    OrganizationTree,
+    OrganizationTreeNode,
     OrganizationUpdate,
+    PaginatedOrganizationPeople,
 )
 from cipher.schemas.graph.selector import Selector, SelectorCreate, SelectorUpdate
 from cipher.schemas.identity.person import Person, PersonSource
@@ -84,6 +95,12 @@ def _detail_key(entity_type: EntityType):
 
 
 _NAME_TRGM_FLOOR = 0.3
+_SUMMARY_COLUMNS = ("id", "entity_type", "display_name", "is_verified")
+
+
+def _summary(row, prefix: str) -> EntitySummary:
+    """An `EntitySummary` from columns selected as `<prefix><column>` (two aliased entities in one row)."""
+    return EntitySummary(**{c: row._mapping[f"{prefix}{c}"] for c in _SUMMARY_COLUMNS})
 
 
 def _entity_with_selector(row) -> Entity:
@@ -450,9 +467,7 @@ class PostgresEntityRepository:
         if request.sort_by == EntitySortField.MENTION_COUNT and request.query:
             # typeahead: a name query leaves few rows, so count per match instead of totalling the dataset
             sort_column = (
-                select(func.count())
-                .where(MentionTable.entity_id == EntityTable.id, *mention_where)
-                .scalar_subquery()
+                select(func.count()).where(MentionTable.entity_id == EntityTable.id, *mention_where).scalar_subquery()
             )
         elif request.sort_by == EntitySortField.MENTION_COUNT:
             mention_totals = (
@@ -1075,6 +1090,255 @@ class PostgresEntityRepository:
                 for e, rt, attrs in members
             ],
         )
+
+    async def _top_organization(self, entity_id: str) -> str:
+        """Walk `part_of` up to the top-most ancestor (cycle-safe)."""
+        seen, current = {entity_id}, entity_id
+        while True:
+            parent_id = await self.session.scalar(
+                select(EntityRelationshipTable.dst_entity_id)
+                .where(
+                    EntityRelationshipTable.src_entity_id == current,
+                    EntityRelationshipTable.relationship_type == RelationshipType.PART_OF,
+                )
+                .limit(1)
+            )
+            if parent_id is None or parent_id in seen:
+                return current
+            seen.add(parent_id)
+            current = parent_id
+
+    def _organization_subtree(self, root_id: str, *, include_suggested: bool = False):
+        """Recursive CTE of `(id, parent_id, suggestion_id)`: `root_id` and every unit `part_of` it, transitively.
+
+        With `include_suggested`, pending `part_of` suggestions count as links too (`suggestion_id` set),
+        so a proposed division and the department proposed under it both appear.
+        """
+        rel, candidate = EntityRelationshipTable, EntityRelationshipCandidateTable
+        no_suggestion = literal(None, type_=EntityTable.id.type)
+        links = select(
+            rel.src_entity_id.label("child"), rel.dst_entity_id.label("parent"), no_suggestion.label("suggestion_id")
+        ).where(rel.relationship_type == RelationshipType.PART_OF)
+        if include_suggested:
+            links = union_all(
+                links,
+                select(candidate.src_entity_id, candidate.dst_entity_id, candidate.id).where(
+                    candidate.relationship_type == RelationshipType.PART_OF,
+                    candidate.status == RelationshipCandidateStatus.PENDING,
+                ),
+            )
+        links = links.subquery("org_link")
+        tree = select(
+            literal(root_id).label("id"), no_suggestion.label("parent_id"), no_suggestion.label("suggestion_id")
+        ).cte("org_subtree", recursive=True)
+        return tree.union(
+            select(links.c.child, links.c.parent, links.c.suggestion_id).join(tree, links.c.parent == tree.c.id)
+        )
+
+    def _person_org_edges(self, unit_ids):
+        """Every person<->organization edge touching `unit_ids`, either direction, as `(rel_id, person_id, unit_id)`."""
+        person = select(EntityTable.id).where(EntityTable.entity_type == EntityType.PERSON)
+        rel = EntityRelationshipTable
+        return union_all(
+            select(
+                rel.id.label("rel_id"), rel.src_entity_id.label("person_id"), rel.dst_entity_id.label("unit_id")
+            ).where(rel.dst_entity_id.in_(unit_ids), rel.src_entity_id.in_(person)),
+            select(rel.id, rel.dst_entity_id, rel.src_entity_id).where(
+                rel.src_entity_id.in_(unit_ids), rel.dst_entity_id.in_(person)
+            ),
+        ).subquery("person_org_edge")
+
+    async def organization_tree(self, entity_id: str) -> OrganizationTree:
+        """The whole hierarchy `entity_id` belongs to, rooted at its top-most ancestor, with per-unit people counts."""
+        root_id = await self._top_organization(entity_id)
+        tree = self._organization_subtree(root_id, include_suggested=True)
+        rows = (
+            await self.session.execute(
+                select(EntityTable, tree.c.parent_id, tree.c.suggestion_id, OrganizationTable.category)
+                .join(tree, tree.c.id == EntityTable.id)
+                .outerjoin(OrganizationTable, OrganizationTable.entity_id == EntityTable.id)
+                # a confirmed parent wins over a suggested one
+                .order_by(tree.c.suggestion_id.is_not(None), EntityTable.display_name_normalized)
+            )
+        ).all()
+        edges = self._person_org_edges(select(tree.c.id))
+        is_member = EntityRelationshipTable.relationship_type.in_(MEMBERSHIP_RELATIONSHIPS)
+        counts = {
+            unit_id: (members, connected)
+            for unit_id, members, connected in (
+                await self.session.execute(
+                    select(
+                        edges.c.unit_id,
+                        func.count(distinct(case((is_member, edges.c.person_id)))),
+                        func.count(distinct(case((~is_member, edges.c.person_id)))),
+                    )
+                    .join(EntityRelationshipTable, EntityRelationshipTable.id == edges.c.rel_id)
+                    .group_by(edges.c.unit_id)
+                )
+            ).all()
+        }
+        seen: set[str] = set()
+        nodes = []
+        for entity, parent_id, suggestion_id, category in rows:
+            if entity.id in seen:  # a unit reachable twice keeps its first parent
+                continue
+            seen.add(entity.id)
+            members, connected = counts.get(entity.id, (0, 0))
+            nodes.append(
+                OrganizationTreeNode(
+                    entity=EntitySummary.model_validate(entity),
+                    parent_id=parent_id,
+                    suggestion_id=suggestion_id,
+                    category=category,
+                    member_count=members,
+                    connected_count=connected,
+                )
+            )
+        return OrganizationTree(root_id=root_id, nodes=nodes)
+
+    async def organization_people(
+        self, entity_id: str, request: OrganizationPeopleParameters
+    ) -> PaginatedOrganizationPeople:
+        """People on an organization unit (and, optionally, every unit below it), one row per edge."""
+        unit_ids = (
+            select(self._organization_subtree(entity_id).c.id)
+            if request.include_sub_units
+            else select(literal(entity_id))
+        )
+        edges = self._person_org_edges(unit_ids)
+        rel = EntityRelationshipTable
+        person = EntityTable.__table__.alias("person")
+        unit = EntityTable.__table__.alias("unit")
+        role = rel.attributes["role"].astext
+        is_member = rel.relationship_type.in_(MEMBERSHIP_RELATIONSHIPS)
+        mention_count = (
+            select(func.count()).where(MentionTable.entity_id == person.c.id).correlate(person).scalar_subquery()
+        )
+        file_count = (
+            select(func.count(distinct(MentionTable.file_id)))
+            .where(MentionTable.entity_id == person.c.id)
+            .correlate(person)
+            .scalar_subquery()
+        )
+
+        where = []
+        if request.affiliation is not None:
+            where.append(is_member if request.affiliation == OrganizationAffiliation.MEMBER else ~is_member)
+        if request.relationship_types:
+            where.append(rel.relationship_type.in_(request.relationship_types))
+        if request.sources:
+            where.append(rel.source.in_(request.sources))
+        if request.query:
+            where.append(person.c.display_name.ilike(f"%{request.query}%"))
+        if request.role:
+            where.append(role.ilike(f"%{request.role}%"))
+        if request.unit:
+            where.append(unit.c.display_name.ilike(f"%{request.unit}%"))
+        if request.is_verified is not None:
+            where.append(person.c.is_verified == request.is_verified)
+
+        base = (
+            select(
+                rel,
+                *(person.c[c].label(f"p_{c}") for c in _SUMMARY_COLUMNS),
+                *(unit.c[c].label(f"u_{c}") for c in _SUMMARY_COLUMNS),
+                mention_count.label("mention_count"),
+                file_count.label("file_count"),
+            )
+            .join(edges, edges.c.rel_id == rel.id)
+            .join(person, person.c.id == edges.c.person_id)
+            .join(unit, unit.c.id == edges.c.unit_id)
+            .where(*where)
+        )
+        total = await self.session.scalar(select(func.count()).select_from(base.subquery()))
+        sort_column = {
+            OrganizationPeopleSortField.DISPLAY_NAME: person.c.display_name_normalized,
+            OrganizationPeopleSortField.ROLE: role,
+            OrganizationPeopleSortField.UNIT: unit.c.display_name_normalized,
+            OrganizationPeopleSortField.RELATIONSHIP_TYPE: rel.relationship_type,
+            OrganizationPeopleSortField.SOURCE: rel.source,
+            OrganizationPeopleSortField.MENTION_COUNT: mention_count,
+            OrganizationPeopleSortField.FILE_COUNT: file_count,
+            OrganizationPeopleSortField.DATE_OBSERVED_END: rel.date_observed_end,
+        }[request.sort_by]
+        order = (
+            desc(sort_column).nulls_last() if request.sort_order == SortOrder.DESC else asc(sort_column).nulls_last()
+        )
+        rows = (
+            await self.session.execute(
+                base.order_by(order, person.c.display_name_normalized, rel.id)
+                .offset(request.offset)
+                .limit(request.limit)
+            )
+        ).all()
+        data = [
+            OrganizationPerson(
+                relationship_id=r.EntityRelationshipTable.id,
+                person=_summary(r, "p_"),
+                unit=_summary(r, "u_"),
+                relationship_type=r.EntityRelationshipTable.relationship_type,
+                affiliation=(
+                    OrganizationAffiliation.MEMBER
+                    if r.EntityRelationshipTable.relationship_type in MEMBERSHIP_RELATIONSHIPS
+                    else OrganizationAffiliation.CONNECTED
+                ),
+                role=(r.EntityRelationshipTable.attributes or {}).get("role"),
+                source=r.EntityRelationshipTable.source,
+                mention_count=r.mention_count,
+                file_count=r.file_count,
+                date_observed_start=r.EntityRelationshipTable.date_observed_start,
+                date_observed_end=r.EntityRelationshipTable.date_observed_end,
+            )
+            for r in rows
+        ]
+        return PaginatedOrganizationPeople(total=total or 0, page=request.page, limit=request.limit, data=data)
+
+    async def organization_suggestions(self, entity_id: str, *, limit: int = 100) -> list[OrganizationSuggestion]:
+        """Pending suggestions on this unit or anything below it (suggested units included), most confident first.
+
+        People proposed as `employed_by` / `member_of` a unit, and units proposed as `part_of` one.
+        """
+        candidate = EntityRelationshipCandidateTable
+        member = EntityTable.__table__.alias("member")
+        unit = EntityTable.__table__.alias("unit")
+        scope = select(self._organization_subtree(entity_id, include_suggested=True).c.id)
+        rows = (
+            await self.session.execute(
+                select(
+                    candidate,
+                    *(member.c[c].label(f"m_{c}") for c in _SUMMARY_COLUMNS),
+                    *(unit.c[c].label(f"u_{c}") for c in _SUMMARY_COLUMNS),
+                )
+                .join(member, member.c.id == candidate.src_entity_id)
+                .join(unit, unit.c.id == candidate.dst_entity_id)
+                .where(
+                    candidate.status == RelationshipCandidateStatus.PENDING,
+                    candidate.dst_entity_id.in_(scope),
+                    or_(
+                        and_(
+                            candidate.relationship_type.in_(MEMBERSHIP_RELATIONSHIPS),
+                            member.c.entity_type == EntityType.PERSON,
+                        ),
+                        candidate.relationship_type == RelationshipType.PART_OF,
+                    ),
+                )
+                .order_by(desc(candidate.confidence), member.c.display_name_normalized)
+                .limit(limit)
+            )
+        ).all()
+        return [
+            OrganizationSuggestion(
+                candidate_id=row[0].id,
+                entity=_summary(row, "m_"),
+                unit=_summary(row, "u_"),
+                relationship_type=row[0].relationship_type,
+                method=row[0].method,
+                role=(row[0].attributes or {}).get("role"),
+                confidence=row[0].confidence,
+                explanation=row[0].explanation,
+            )
+            for row in rows
+        ]
 
     async def get_selector_detail(self, entity_id: str) -> Selector | None:
         """Fetch the selector detail row for a selector entity."""

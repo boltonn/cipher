@@ -23,6 +23,7 @@ class EnrichmentType(StrEnum):
     ENTITY_EXTRACTION = "entity_extraction"
     RELATIONSHIP_EXTRACTION = "relationship_extraction"
     EVENT_EXTRACTION = "event_extraction"
+    SIGNATURE_EXTRACTION = "signature_extraction"
 
 
 # Hard prerequisites: an enrichment reads rows a prior enrichment produces and
@@ -38,6 +39,7 @@ ENRICHMENT_DEPENDENCIES: dict[EnrichmentType, tuple[EnrichmentType, ...]] = {
     EnrichmentType.TEXT_EMBEDDING: (EnrichmentType.TEXT_EXTRACTION,),
     EnrichmentType.SELECTOR_EXTRACTION: (EnrichmentType.TEXT_EXTRACTION,),
     EnrichmentType.ENTITY_EXTRACTION: (EnrichmentType.TEXT_EXTRACTION,),
+    EnrichmentType.SIGNATURE_EXTRACTION: (EnrichmentType.TEXT_EXTRACTION,),
     EnrichmentType.RELATIONSHIP_EXTRACTION: (
         EnrichmentType.ENTITY_EXTRACTION,
         EnrichmentType.SELECTOR_EXTRACTION,
@@ -68,9 +70,7 @@ def enrichment_prerequisites(enrichment_type: EnrichmentType) -> list[Enrichment
 
 
 def resolve_enrichment_order(types: Iterable[EnrichmentType]) -> list[EnrichmentType]:
-    """`types` plus all their transitive prerequisites, deduped and ordered so
-    every prerequisite precedes the enrichment that needs it.
-    """
+    """`types` plus all their transitive prerequisites, deduped, each prerequisite first."""
     result: list[EnrichmentType] = []
     seen: set[EnrichmentType] = set()
 

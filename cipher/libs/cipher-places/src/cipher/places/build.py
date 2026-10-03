@@ -14,7 +14,7 @@ fine-grained (France's départements would make "Paris" collide with its city).
 so those are indexed last (`admin_names`): the bare name stays the city, the full
 form (`Псковская область`, `محافظة الأنبار`, `广东省`) is the province.
 
-`--custom` (default `custom_places.jsonl` beside the index) adds analyst-curated
+`--custom` (default `data/custom_places.jsonl`) adds analyst-curated
 places, one JSON object per line -- see `CustomPlace`.
 """
 
@@ -30,7 +30,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from cipher.places.gazetteer import Place, PlaceKind, default_gazetteer_path, place_code, place_key
+from cipher.places.gazetteer import Place, PlaceKind, default_data_dir, default_gazetteer_path, place_code, place_key
 
 _NE = "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson"
 _SOURCES = {
@@ -235,16 +235,18 @@ def build(src: Path, out: Path, custom: Path | None = None) -> int:
         _add_custom(index, custom)
 
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_bytes(gzip.compress(json.dumps(index.dump(), ensure_ascii=False, separators=(",", ":")).encode()))
+    out.write_bytes(
+        gzip.compress(json.dumps(index.dump(), ensure_ascii=False, separators=(",", ":")).encode(), mtime=0)
+    )
     return len(index.places)
 
 
 def main() -> None:
     """CLI entry point."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--src", type=Path, default=default_gazetteer_path().parent / "src")
+    parser.add_argument("--src", type=Path, default=default_data_dir() / "src")
     parser.add_argument("--out", type=Path, default=default_gazetteer_path())
-    parser.add_argument("--custom", type=Path, default=default_gazetteer_path().parent / "custom_places.jsonl")
+    parser.add_argument("--custom", type=Path, default=default_data_dir() / "custom_places.jsonl")
     args = parser.parse_args()
     count = build(args.src, args.out, args.custom)
     print(f"wrote {count} places -> {args.out} ({args.out.stat().st_size / 1e6:.1f} MB)")
