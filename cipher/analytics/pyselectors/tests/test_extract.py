@@ -106,8 +106,8 @@ def test_private_ip_attributes():
 
 def test_context_lifts_confidence():
     """Context lifts confidence."""
-    plain = extract_selectors("number 8 (999) 111-22-33 here", language="ru")
-    cued = extract_selectors("телефон 8 (999) 111-22-33 here", language="ru")
+    plain = extract_selectors("number +7 (999) 111-22-33 here", language="ru")
+    cued = extract_selectors("телефон +7 (999) 111-22-33 here", language="ru")
     p = next(s for s in plain if s.selector_type is SelectorType.PHONE)
     c = next(s for s in cued if s.selector_type is SelectorType.PHONE)
     assert c.confidence > p.confidence
@@ -206,9 +206,7 @@ def test_bare_handle_keeps_hyphens_no_dot_runon():
     (span,) = extract_selectors("pay via Venmo (@matt-regan-1) please", language="en")
     assert span.normalized_value == "matt-regan-1"
     # a sentence boundary must not glue the next word on (a `.` ends the handle)
-    handles = [
-        s.normalized_value for s in extract_selectors("Twitter bot @NYT_first_said.You can see", language="en")
-    ]
+    handles = [s.normalized_value for s in extract_selectors("Twitter bot @NYT_first_said.You can see", language="en")]
     assert "nyt_first_said" in handles and not any("you" in h for h in handles)
 
 
@@ -242,3 +240,37 @@ def test_web_address_helpers():
     assert web_host_containing(content, 6, 13) == "towardsdatascience.com"
     assert web_host_containing(content, 43, 46) is None  # path, not host
     assert web_host_containing(content, 50, 54) is None
+    promo = "See Dell.com/giftcard/promoterms."
+    assert web_host_containing(promo, 4, 32) == "dell.com"  # host running on into the path
+
+
+def test_phone_without_country_kept_national():
+    """A number with no country code is kept as written -- never given a guessed country."""
+    text = "Tel: 215.895.2372 | Fax: 215.895.1285"
+    for language in (None, "en"):
+        phones = [s for s in extract_selectors(text, language=language) if s.selector_type is SelectorType.PHONE]
+        assert [p.normalized_value for p in phones] == ["2158952372", "2158951285"]
+        assert all("region" not in p.attributes and p.region_hint is None for p in phones)
+
+
+def test_national_phone_needs_a_cue():
+    """Country-less digits without a phone cue (a date, an order number) are not phones."""
+    assert not [
+        s for s in extract_selectors("shipped 2021-10-05, ref 215 895 2372") if s.selector_type is SelectorType.PHONE
+    ]
+
+
+def test_national_phone_drops_extension():
+    """An extension is not part of the number."""
+    from pyselectors.normalize import normalize_phone
+
+    assert normalize_phone("(856)697-2400 ext 8200", region=None) == "8566972400"
+    assert normalize_phone("212-903-8181 x12", region=None) == "2129038181"
+
+
+def test_phone_label_and_spaced_plus_keep_the_country():
+    """`T + 1 646 …` states its country even with a label and a space after the plus."""
+    from pyselectors.normalize import normalize_phone
+
+    assert normalize_phone("T + 1 646 452 2372", region=None) == "+16464522372"
+    assert normalize_phone("Tel: 215.895.2372", region=None) == "2158952372"

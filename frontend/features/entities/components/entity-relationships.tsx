@@ -9,17 +9,22 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ENTITY_TYPE_META } from "@/features/entities/components/entity-type-meta";
-import { useEntityRelatedInfinite } from "@/features/entities/hooks/use-entities";
+import {
+  useEntityRelatedInfinite,
+  useRelationshipSuggestions,
+  useResolveRelationshipSuggestion,
+} from "@/features/entities/hooks/use-entities";
 import {
   FAMILY_ROLE_INVERSE,
   DERIVED_RELATIONSHIPS,
   RELATIONSHIP_TYPES,
   type RelatedEntitySort,
+  type RelationshipSuggestion,
   type RelationshipType,
   type TraversalDirection,
 } from "@/features/entities/types";
-import { cn } from "@/lib/utils";
-import { Loader2 } from "lucide-react";
+import { cn, humanize } from "@/lib/utils";
+import { Check, Loader2, Sparkles, X } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -82,9 +87,11 @@ export function EntityRelationships({ entityId }: { entityId: string }) {
             <SelectItem value="all" className="text-xs">
               All types
             </SelectItem>
-            {RELATIONSHIP_TYPES.filter((t) => !DERIVED_RELATIONSHIPS.includes(t)).map((t) => (
+            {RELATIONSHIP_TYPES.filter(
+              (t) => !DERIVED_RELATIONSHIPS.includes(t)
+            ).map((t) => (
               <SelectItem key={t} value={t} className="text-xs">
-                {t.replace(/_/g, " ")}
+                {humanize(t)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -119,7 +126,7 @@ export function EntityRelationships({ entityId }: { entityId: string }) {
                 </span>
                 <span className="shrink-0 text-[11px] uppercase tracking-wide text-muted-foreground">
                   {r.direction === "in" ? "← " : ""}
-                  {role ?? r.relationshipType.replace(/_/g, " ")}
+                  {role ?? humanize(r.relationshipType)}
                 </span>
                 {typeof r.weight === "number" && (
                   <span
@@ -186,6 +193,90 @@ function Seg<T extends string>({
           {o.label}
         </button>
       ))}
+    </div>
+  );
+}
+
+/** "parent of Ivan Petrovich Sidorov", read from `entityId`'s side of the suggested edge. */
+function suggestionPhrase(s: RelationshipSuggestion, entityId: string) {
+  const outgoing = s.srcEntityId === entityId;
+  const role = s.attributes?.role;
+  const relation =
+    s.relationshipType === "familyOf" && role
+      ? (outgoing ? role : (FAMILY_ROLE_INVERSE[role] ?? role)).replace(
+          "_",
+          " / "
+        )
+      : humanize(s.relationshipType).toLowerCase();
+  return {
+    relation,
+    otherId: outgoing ? s.dstEntityId : s.srcEntityId,
+    otherName: (outgoing ? s.dstName : s.srcName) ?? "unknown",
+  };
+}
+
+/** Suggested edges for this entity (e.g. a parent read from a patronymic): accept makes them real. */
+export function RelationshipSuggestions({ entityId }: { entityId: string }) {
+  const { data } = useRelationshipSuggestions(entityId);
+  const resolve = useResolveRelationshipSuggestion();
+  const suggestions = data?.data ?? [];
+  if (suggestions.length === 0) return null;
+  return (
+    <div className="mb-3 rounded-lg border border-annotation/30 bg-annotation/[0.04] p-3">
+      <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium">
+        <Sparkles size={12} className="text-annotation" /> Suggested
+        relationships
+      </p>
+      <ul className="space-y-1">
+        {suggestions.map((s) => {
+          const { relation, otherId, otherName } = suggestionPhrase(
+            s,
+            entityId
+          );
+          return (
+            <li
+              key={s.id}
+              className="flex flex-wrap items-center gap-2 text-xs"
+            >
+              <span className="text-muted-foreground">{relation} of</span>
+              <Link
+                href={`/entities/${otherId}`}
+                className="font-medium text-foreground hover:underline"
+              >
+                {otherName}
+              </Link>
+              {s.explanation?.reason && (
+                <span className="truncate rounded-full border border-annotation/40 px-1.5 text-[11px] text-annotation">
+                  {s.explanation.reason}
+                </span>
+              )}
+              <span className="ml-auto flex items-center gap-1">
+                <Button
+                  size="sm"
+                  disabled={resolve.isPending}
+                  className="h-6 gap-1 px-2 text-[11px]"
+                  onClick={() =>
+                    resolve.mutate({ id: s.id, status: "confirmed" })
+                  }
+                >
+                  <Check size={11} /> Accept
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={resolve.isPending}
+                  className="h-6 gap-1 px-2 text-[11px] text-muted-foreground hover:text-destructive"
+                  onClick={() =>
+                    resolve.mutate({ id: s.id, status: "rejected" })
+                  }
+                >
+                  <X size={11} /> Reject
+                </Button>
+              </span>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

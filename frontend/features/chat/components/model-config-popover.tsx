@@ -10,7 +10,6 @@ import {
 } from "@/components/ai-elements/environment-variables";
 import { PromptInputButton } from "@/components/ai-elements/prompt-input";
 import { Button } from "@/components/ui/button";
-import { Combobox } from "@/components/ui/combobox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -31,8 +30,6 @@ import { useAgentConfig } from "../api";
 import { useChatStore } from "../hooks/use-chat-store";
 import { useModelOptions } from "../hooks/use-model-options";
 import { PROVIDER_LABELS } from "../lib/models";
-// Planned: replace Select with Combobox for searchable model picker
-const _modelCombobox = Combobox;
 
 export function ModelConfigPopover() {
   const { keys, model: storedModel, setKey, setModel } = useChatStore();

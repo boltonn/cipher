@@ -15,6 +15,9 @@ import { useState } from "react";
 /** Admin-only controls share the rose `admin` token so they read as "only you see this". */
 export const ADMIN_ICON_BUTTON = "h-7 text-admin/70 hover:bg-admin/10 hover:text-admin";
 
+/** An admin-only action button (outlined in the `admin` token). */
+export const ADMIN_BUTTON = "border-admin/30 bg-admin/5 text-admin hover:bg-admin/10 hover:text-admin";
+
 /** Fetched only while the popover is open. */
 function DatasetMemberList({ datasetId }: { datasetId: string }) {
   const { data: members = [], isPending } = useDatasetUsers(datasetId);
@@ -108,7 +111,7 @@ export function NewDatasetButton() {
         variant="outline"
         size="sm"
         onClick={() => setIsOpen(true)}
-        className="h-9 gap-1.5 border-admin/30 bg-admin/5 text-admin hover:bg-admin/10 hover:text-admin"
+        className={cn("h-9 gap-1.5", ADMIN_BUTTON)}
       >
         <Plus size={14} />
         New dataset

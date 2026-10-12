@@ -26,9 +26,7 @@ try:
     from fastapi.middleware.cors import CORSMiddleware
     from starlette.middleware.base import BaseHTTPMiddleware
 except ImportError:
-    logger.error(
-        "Failed to import uvicorn and/or fastapi. Please install them with `pip install uvicorn fastapi`"
-    )
+    logger.error("Failed to import uvicorn and/or fastapi. Please install them with `pip install uvicorn fastapi`")
     exit(1)
 
 
@@ -79,14 +77,18 @@ async def infer_image(
     use_heads = model.heads is not None if classify is None else classify
     if use_heads:
         if model.heads is None:
-            raise HTTPException(status_code=400, detail="Classification is off (set IMAGE_CLASSIFY and IMAGE_HEADS_DIR)")
+            raise HTTPException(
+                status_code=400, detail="Classification is off (set IMAGE_CLASSIFY and IMAGE_HEADS_DIR)"
+            )
         embedding, tag_scores = await model.infer_image_with_tags(image_bytes)
         return ImageInference(embedding=embedding, tag_scores=tag_scores, heads_version=model.heads.version)
     return ImageInference(embedding=await model.infer_image(image_bytes))
 
 
 @app.post("/classify/embeddings")
-async def classify_embeddings(request: EmbeddingsClassifyRequest, model: ImageEmbeddingModelDep) -> list[dict[str, float]]:
+async def classify_embeddings(
+    request: EmbeddingsClassifyRequest, model: ImageEmbeddingModelDep
+) -> list[dict[str, float]]:
     """Score already-computed (normalized) CLIP embeddings with the tag heads -- CPU only, no images."""
     if model.heads is None:
         raise HTTPException(status_code=400, detail="Classification is off (set IMAGE_CLASSIFY and IMAGE_HEADS_DIR)")
@@ -99,7 +101,12 @@ async def heads_info(model: ImageEmbeddingModelDep) -> dict:
     if model.heads is None:
         return {"enabled": False}
     heads = model.heads
-    return {"enabled": True, "version": heads.version, "embeddingModel": heads.embedding_model, "metrics": heads.metrics}
+    return {
+        "enabled": True,
+        "version": heads.version,
+        "embeddingModel": heads.embedding_model,
+        "metrics": heads.metrics,
+    }
 
 
 @app.post("/exif")

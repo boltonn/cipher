@@ -37,7 +37,15 @@ On a plain PGDG image you add `pg_bigm` (one RPM) for the `bigm` ranker.
 `unaccent`, `pg_trgm`, `postgis`, and `vector` are created automatically at
 startup (`init_db` / `init_db_from_settings`). The ranker's own extension is
 *attempted* there too and, if its package isn't installed, logged once and the
-retrieval layer downgrades a rung. Nothing errors.
+retrieval layer downgrades a rung. Nothing errors. `cipher create-tables` does the
+same for `pg_search` and its BM25 index.
+
+The downgrade is resolved once per process from `pg_extension`
+(`effective_text_ranker` in `chunk_retrieval.py`), so every search, the embed
+pipeline and `GET /search/config` agree. Below `pg_search`, keyword search reads
+`chunk.text_tsv` (`to_tsvector('simple', text)`): chunks write it, and startup
+backfills any rows embedded while `pg_search` was in use. On a large corpus,
+expect that first startup to take a while.
 
 ## Check what's live
 

@@ -41,11 +41,6 @@ export const organizationsService = {
       .get<NameSuggestion[]>(`${baseURL}/${id}/structure/name-suggestions`)
       .then((res) => res.data),
 
-  getUnplacedNameSuggestions: () =>
-    apiClient
-      .get<NameSuggestion[]>(`${baseURL}/name-suggestions/unplaced`)
-      .then((res) => res.data),
-
   getNameSuggestionEvidence: (ids: string[]) =>
     apiClient
       .get<

@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cipher.datastores.postgres.tables.dataset import DatasetTable
 from cipher.datastores.postgres.tables.file import FileTable
-from cipher.datastores.postgres.tables.user import UserDatasetAccessTable
+from cipher.datastores.postgres.tables.user import UserDatasetAccessTable, UserTable
 from cipher.schemas.ingestion.dataset import (
     Dataset,
     DatasetCreate,
@@ -48,7 +48,12 @@ class PostgresDatasetRepository:
         return result.scalar_one()
 
     async def delete_dataset(self, dataset_id: str) -> bool:
-        """Delete a dataset by ID. Returns True if deleted, False if not found."""
+        """Delete a dataset by ID (and from every user's selection). Returns True if deleted, False if not found."""
+        await self.session.execute(
+            update(UserTable)
+            .where(UserTable.selected_dataset_ids.any(dataset_id))
+            .values(selected_dataset_ids=func.array_remove(UserTable.selected_dataset_ids, dataset_id))
+        )
         result = await self.session.execute(delete(DatasetTable).where(DatasetTable.id == dataset_id))
         await self.session.commit()
         return result.rowcount > 0

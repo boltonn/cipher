@@ -3,7 +3,10 @@ name = "cipher-utils"
 description = "Common space for utilities for Cipher."
 version = "0.0.1"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "pydantic",
+    "universal-pathlib>=0.3.10",
+]
 
 [project.optional-dependencies]
 fastapi = [
@@ -13,6 +16,9 @@ fastapi = [
     "python-multipart",
     "uvicorn[standard]",
     "uvloop",
+]
+aws = [
+    "s3fs>=2026.4.0",
 ]
 
 [build-system]

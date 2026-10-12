@@ -42,9 +42,10 @@ def test_max_pages_caps_byte_count():
     capped = estimate_workload(
         enrichment_type=EnrichmentType.TEXT_EXTRACTION, inventory=INVENTORY, params={"maxPages": 2}
     )
-    assert capped.byte_count < estimate_workload(
-        enrichment_type=EnrichmentType.TEXT_EXTRACTION, inventory=INVENTORY
-    ).byte_count
+    assert (
+        capped.byte_count
+        < estimate_workload(enrichment_type=EnrichmentType.TEXT_EXTRACTION, inventory=INVENTORY).byte_count
+    )
 
 
 def _measured(enrichment_type: EnrichmentType, device: RunDevice, seconds_per_unit: float = 0.2) -> dict:
@@ -65,7 +66,9 @@ def test_resolve_rate_is_measured_only():
     resolved = resolve_rate(enrichment_type=EnrichmentType.IMAGE_EMBEDDING, device=RunDevice.CPU, measured=measured)
     assert resolved.seconds_per_unit == 0.2
     # a rate measured on another device doesn't count
-    assert resolve_rate(enrichment_type=EnrichmentType.IMAGE_EMBEDDING, device=RunDevice.CUDA, measured=measured) is None
+    assert (
+        resolve_rate(enrichment_type=EnrichmentType.IMAGE_EMBEDDING, device=RunDevice.CUDA, measured=measured) is None
+    )
 
 
 def test_resolve_rate_concurrency_speeds_up_llm_only():

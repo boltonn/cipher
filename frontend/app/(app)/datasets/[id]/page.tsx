@@ -22,6 +22,9 @@ import { DatasetDatabaseUsagePanel } from "@/features/database/components/datase
 import { DatasetMembers } from "@/features/datasets/components/dataset-members";
 import { LOCKED_DATASET_HINT } from "@/features/datasets/components/dataset-lock";
 import { DatasetDialog } from "@/features/datasets/components/dataset-dialog";
+import { DatasetBriefCard } from "@/features/global-search/components/dataset-brief-card";
+import { useRunSearch } from "@/features/global-search/api";
+import { EMPTY_FILTERS } from "@/features/global-search/hooks/use-search-actions";
 import { EnrichmentPipeline } from "@/features/datasets/components/enrichment-pipeline";
 import { FiletypeBreakdownList } from "@/features/datasets/components/filetype-breakdown-list";
 import { LoadHistogramChart } from "@/features/datasets/components/load-histogram-chart";
@@ -110,6 +113,7 @@ function DatasetWorkspace({ dataset }: { dataset: Dataset }) {
   const id = dataset.id;
   const router = useRouter();
   const isAdmin = useIsAdmin();
+  const runSearch = useRunSearch();
 
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [range, setRange] = useState<{ from?: string; to?: string }>({});
@@ -231,6 +235,19 @@ function DatasetWorkspace({ dataset }: { dataset: Dataset }) {
         isOpen={isEditOpen}
         onOpenChange={setIsEditOpen}
       />
+
+      <div className="mt-4">
+        <DatasetBriefCard
+          datasetIds={[id]}
+          onSearch={(query) =>
+            runSearch.mutate({
+              query,
+              datasetIds: [id],
+              filters: EMPTY_FILTERS,
+            })
+          }
+        />
+      </div>
 
       <EnrichmentPipeline datasetId={id} />
 

@@ -43,3 +43,9 @@ def test_on_behalf_of_name_on_a_company_address_is_not_linked():
         _row("service@wayfair.com", "Wayfair", None, 300),
     ]
     assert decide_header_links(evidence, ACTORS) == set()
+
+
+def test_role_mailbox_is_never_linked():
+    """Cvent sends confirmations as "Nick Bolton <info@cvent.com>" -- the name is the recipient's."""
+    evidence = [_row("info@cvent.com", "Nick B", "nick", 5)]
+    assert decide_header_links(evidence, ACTORS) == set()

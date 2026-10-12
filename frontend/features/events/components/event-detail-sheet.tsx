@@ -58,7 +58,7 @@ import {
   type ParticipantRole,
   type PlaceRole,
 } from "@/features/events/types";
-import { cn } from "@/lib/utils";
+import { cn, humanize } from "@/lib/utils";
 import { format } from "date-fns";
 import {
   BadgeCheck,
@@ -68,12 +68,13 @@ import {
   Loader2,
   Lock,
   MapPin,
+  MapPinPlus,
   PanelRight,
   Pencil,
-  Plus,
   Repeat,
   Sparkles,
   Trash2,
+  UserRoundPlus,
   Users,
   X,
 } from "lucide-react";
@@ -184,167 +185,151 @@ function EventReadView({
 }) {
   const update = useUpdateEvent(event.id);
   const markInvalid = useDeleteEvent(onInvalid);
+  const dateRange = formatDateRange(event);
+  const labels = [...event.categories, ...event.tags.map((t) => `#${t}`)];
   return (
-    <>
-      <SheetHeader className="gap-2 pr-10">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+    <div className="flex min-h-full flex-col">
+      <SheetHeader className="gap-3 border-b border-border px-6 pt-5 pb-4 pr-12">
+        <div className="flex flex-wrap items-center gap-1.5">
           <TypeBadge eventType={event.eventType} category={event.category} />
-          <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
+          <Badge variant="outline" className="h-6 px-2 text-[11px] font-medium text-muted-foreground">
             {EVENT_STATUS_LABELS[event.status]}
-          </span>
+          </Badge>
           {event.isVerified ? (
-            <span className="flex items-center gap-1 text-[11px] text-primary">
+            <Badge variant="outline" className="h-6 gap-1 border-primary/40 px-2 text-[11px] text-primary">
               <BadgeCheck size={12} /> Verified
-            </span>
+            </Badge>
           ) : event.extractor === "llm" ? (
-            <span
-              className="flex items-center gap-1 text-[11px] text-annotation"
-              title={event.extractionModel ?? "LLM-extracted"}
+            <Badge
+              variant="outline"
+              className="h-6 gap-1 border-annotation/40 bg-annotation/10 px-2 text-[11px] text-annotation"
+              title={event.extractionModel ?? undefined}
             >
               <Sparkles size={12} /> AI-extracted
-            </span>
+            </Badge>
           ) : null}
         </div>
-        <div className="flex w-fit gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-7 gap-1 px-2 text-xs text-muted-foreground"
-            onClick={onEdit}
+        <div className="space-y-1">
+          <SheetTitle
+            className={cn(
+              "text-lg leading-snug font-semibold",
+              event.status === "cancelled" && "line-through opacity-60"
+            )}
           >
-            <Pencil size={12} /> Edit
+            {event.title}
+          </SheetTitle>
+          <SheetDescription className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-sm">
+            <CalendarClock size={14} className="shrink-0" />
+            {formatEventStart(event)}
+            {dateRange && <span>· {dateRange}</span>}
+            {event.timezone && <span className="text-muted-foreground/70">({event.timezone})</span>}
+            {event.recurrenceRule && (
+              <span className="flex items-center gap-1 text-muted-foreground/70" title={event.recurrenceRule}>
+                <Repeat size={12} /> Recurring
+              </span>
+            )}
+          </SheetDescription>
+        </div>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs" onClick={onEdit}>
+            <Pencil size={13} /> Edit
           </Button>
           <SourceToggle hasFile={hasFile} sourceOpen={sourceOpen} onToggle={onToggleSource} />
         </div>
-        <SheetTitle
-          className={cn("text-lg leading-tight", event.status === "cancelled" && "line-through opacity-60")}
-        >
-          {event.title}
-        </SheetTitle>
-        <SheetDescription className="flex items-center gap-1.5">
-          <CalendarClock size={13} />
-          {formatEventStart(event)}
-          {formatDateRange(event) && (
-            <span className="text-muted-foreground">· {formatDateRange(event)}</span>
-          )}
-          {event.timezone && <span className="text-muted-foreground/70">({event.timezone})</span>}
-          {event.recurrenceRule && (
-            <span className="flex items-center gap-1 text-muted-foreground/70" title={event.recurrenceRule}>
-              <Repeat size={12} /> Recurring
-            </span>
-          )}
-        </SheetDescription>
       </SheetHeader>
 
-      <div className="space-y-6 px-6 py-5">
-        {event.summary && (
-          <p className="pb-1 text-sm leading-relaxed text-foreground/90">{event.summary}</p>
-        )}
+      <div className="flex-1 space-y-6 px-6 py-5">
+        {event.summary && <p className="text-sm leading-relaxed text-foreground/90">{event.summary}</p>}
 
         {event.places.length > 0 && (
-          <DetailBlock icon={<MapPin size={13} />} title="Places">
-            <ul className="space-y-1.5">
-              {event.places.map((p) => (
-                <PlaceRow key={p.id} place={p} />
-              ))}
-            </ul>
+          <DetailBlock icon={<MapPin size={14} />} title="Places">
+            {event.places.map((p) => (
+              <PlaceRow key={p.id} place={p} />
+            ))}
           </DetailBlock>
         )}
 
         {event.participants.length > 0 && (
-          <DetailBlock icon={<Users size={13} />} title="People">
-            <ul className="space-y-1.5">
-              {event.participants.map((p) => (
-                <ParticipantRow key={p.id} participant={p} />
-              ))}
-            </ul>
+          <DetailBlock icon={<Users size={14} />} title="People">
+            {event.participants.map((p) => (
+              <ParticipantRow key={p.id} participant={p} />
+            ))}
           </DetailBlock>
         )}
 
         {event.details && <TypedDetails details={event.details} />}
 
-        {event.categories.length > 0 && (
-          <div className="flex flex-wrap gap-1" title="Source labels (iCalendar CATEGORIES)">
-            {event.categories.map((c) => (
-              <Badge
-                key={c}
-                variant="outline"
-                className="h-5 border-border/60 bg-transparent px-1.5 text-[11px] font-normal text-muted-foreground"
-              >
-                {c}
-              </Badge>
-            ))}
-          </div>
-        )}
-
-        {event.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1">
-            {event.tags.map((t) => (
-              <Badge
-                key={t}
-                variant="outline"
-                className="h-5 border-border bg-muted/40 px-1.5 text-[11px] text-muted-foreground"
-              >
-                #{t}
-              </Badge>
-            ))}
-          </div>
+        {labels.length > 0 && (
+          <DetailBlock title="Labels">
+            <FactRow label="Tags">
+              <div className="flex flex-wrap gap-1">
+                {labels.map((label) => (
+                  <Badge
+                    key={label}
+                    variant="outline"
+                    className="h-6 border-border bg-muted/40 px-2 text-xs font-normal text-muted-foreground"
+                  >
+                    {label}
+                  </Badge>
+                ))}
+              </div>
+            </FactRow>
+          </DetailBlock>
         )}
 
         {event.notes && (
           <DetailBlock title="Notes">
-            <p className="text-xs leading-relaxed text-muted-foreground">{event.notes}</p>
+            <p className="text-sm leading-relaxed text-muted-foreground">{event.notes}</p>
           </DetailBlock>
         )}
 
-        <div className="flex flex-col gap-2 border-t border-border pt-4 text-[11px] text-muted-foreground">
+        <DetailBlock icon={<FileText size={14} />} title="Source">
           {event.fileId && (
-            <div className="flex items-center gap-2">
-              <span className="uppercase tracking-wide">Source file</span>
-              <Link
-                href={`/files/${event.fileId}?from=/events`}
-                className="flex items-center gap-1 text-primary hover:underline"
-              >
-                <FileText size={11} />
-                Open
-              </Link>
-              <CopyableId id={event.fileId} />
-            </div>
+            <FactRow label="File">
+              <div className="flex min-w-0 items-center gap-3">
+                <Link
+                  href={`/files/${event.fileId}?from=/events`}
+                  className="shrink-0 text-primary hover:underline"
+                >
+                  Open file
+                </Link>
+                <CopyableId id={event.fileId} className="min-w-0" />
+              </div>
+            </FactRow>
           )}
-          <div className="flex items-center gap-2">
-            <span className="uppercase tracking-wide">Extractor</span>
-            <span>{event.extractor ?? "manual"}</span>
-            {event.extractionModel && <span>· {event.extractionModel}</span>}
-            {event.confidence != null && <span>· {Math.round(event.confidence * 100)}% conf</span>}
-          </div>
+          <FactRow label="Extracted by">
+            {extractorLabel(event.extractor)}
+            {event.extractionModel && (
+              <span className="text-muted-foreground"> · {event.extractionModel}</span>
+            )}
+          </FactRow>
+          {event.confidence != null && (
+            <FactRow label="Confidence">{Math.round(event.confidence * 100)}%</FactRow>
+          )}
           {event.sensitivity && (
-            <div className="flex items-center gap-2">
-              <Lock size={11} />
-              <span className="capitalize">{event.sensitivity}</span>
-            </div>
+            <FactRow label="Sensitivity">
+              <span className="flex items-center gap-1.5 capitalize">
+                <Lock size={12} className="text-muted-foreground" />
+                {event.sensitivity}
+              </span>
+            </FactRow>
           )}
           {event.uid && (
-            <div className="flex items-center gap-2">
-              <span className="uppercase tracking-wide">UID</span>
-              <span className="break-all font-mono text-[11px]">{event.uid}</span>
-            </div>
+            <FactRow label="Calendar UID">
+              <span className="font-mono text-xs break-all text-muted-foreground">{event.uid}</span>
+            </FactRow>
           )}
-        </div>
+        </DetailBlock>
+      </div>
 
-        {!event.isVerified && (
-          <Button
-            size="sm"
-            variant="outline"
-            className="w-full text-xs"
-            disabled={update.isPending}
-            onClick={() => update.mutate({ isVerified: true })}
-          >
-            <BadgeCheck size={13} /> Mark verified
-          </Button>
-        )}
+      <div className="sticky bottom-0 flex items-center justify-between gap-2 border-t border-border bg-background px-6 py-3">
         <ConfirmDialog
           trigger={
-            <Button size="sm" variant="ghost" className="w-full text-xs text-destructive hover:text-destructive">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-8 gap-1.5 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
+            >
               <Trash2 size={13} /> Mark invalid
             </Button>
           }
@@ -354,9 +339,25 @@ function EventReadView({
           onConfirm={() => markInvalid.mutate(event.id)}
           isPending={markInvalid.isPending}
         />
+        {!event.isVerified && (
+          <Button
+            size="sm"
+            className="h-8 gap-1.5 text-xs"
+            disabled={update.isPending}
+            onClick={() => update.mutate({ isVerified: true })}
+          >
+            <BadgeCheck size={13} /> Mark verified
+          </Button>
+        )}
       </div>
-    </>
+    </div>
   );
+}
+
+function extractorLabel(extractor: string | null): string {
+  if (extractor === "llm") return "AI model";
+  if (extractor === "ics") return "Calendar file";
+  return extractor ? humanize(extractor) : "Added by hand";
 }
 
 /* ------------------------------------------------------------------ edit form */
@@ -407,7 +408,7 @@ function EventEditForm({
   const [tagQuery, setTagQuery] = useState("");
   const debouncedTagQuery = useDebounce(tagQuery, 200);
   const { data: tagSuggestions, isFetching: isFetchingTags } = useEventTagOptions({
-    datasetId: event.datasetId ?? undefined,
+    datasetIds: event.datasetId ? [event.datasetId] : undefined,
     q: debouncedTagQuery || undefined,
   });
 
@@ -438,9 +439,9 @@ function EventEditForm({
 
   return (
     <>
-      <SheetHeader className="gap-1 pr-10">
+      <SheetHeader className="gap-1 border-b border-border px-6 pt-5 pb-4 pr-12">
         <div className="flex items-center justify-between gap-2">
-          <SheetTitle className="text-sm uppercase tracking-wide">Edit event</SheetTitle>
+          <SheetTitle className="text-lg font-semibold">Edit event</SheetTitle>
           <SourceToggle hasFile={hasFile} sourceOpen={sourceOpen} onToggle={onToggleSource} />
         </div>
         <SheetDescription className="text-xs">
@@ -538,8 +539,8 @@ function EventEditForm({
             </SelectTrigger>
             <SelectContent>
               {DATE_PRECISIONS.map((p) => (
-                <SelectItem key={p} value={p} className="text-sm capitalize">
-                  {p}
+                <SelectItem key={p} value={p} className="text-sm">
+                  {roleLabel(p)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -576,7 +577,7 @@ function EventEditForm({
                         </SelectItem>
                         {(f.options ?? []).map((o) => (
                           <SelectItem key={o} value={o} className="text-sm">
-                            {o.replace(/_/g, " ")}
+                            {humanize(o)}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -696,9 +697,7 @@ function LinkEditor({ event }: { event: EventWithLinks }) {
         <ul className="space-y-1">
           {event.participants.map((p) => (
             <li key={p.id} className="flex items-center gap-2 text-sm">
-              <span className="w-16 shrink-0 text-[11px] uppercase tracking-wide text-muted-foreground">
-                {p.role}
-              </span>
+              <span className="w-24 shrink-0 text-xs text-muted-foreground">{roleLabel(p.role)}</span>
               <span className="flex-1 truncate text-foreground/90">
                 {p.rawName ?? p.rawEmail ?? p.entityId ?? "Unknown"}
               </span>
@@ -708,13 +707,13 @@ function LinkEditor({ event }: { event: EventWithLinks }) {
         </ul>
         <div className="mt-2 flex items-center gap-2">
           <Select value={pRole} onValueChange={(v) => setPRole(v as ParticipantRole)}>
-            <SelectTrigger className="h-8 w-28 bg-muted/40 text-xs capitalize">
+            <SelectTrigger className="h-8 w-28 bg-muted/40 text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               {PARTICIPANT_ROLES.map((r) => (
-                <SelectItem key={r} value={r} className="text-xs capitalize">
-                  {r}
+                <SelectItem key={r} value={r} className="text-xs">
+                  {roleLabel(r)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -724,7 +723,7 @@ function LinkEditor({ event }: { event: EventWithLinks }) {
               value={pEntityId}
               valueName={pEntityName}
               entityTypes={["person", "organization"]}
-              datasetId={event.datasetId ?? undefined}
+              datasetIds={event.datasetId ? [event.datasetId] : undefined}
               placeholder="Link a person / org…"
               onSelect={(id, name) => {
                 setPEntityId(id);
@@ -750,7 +749,7 @@ function LinkEditor({ event }: { event: EventWithLinks }) {
           disabled={addParticipant.isPending || (!pEntityId && !pName.trim())}
           onClick={submitParticipant}
         >
-          <Plus size={12} /> Add person
+          <UserRoundPlus size={12} /> Add person
         </Button>
       </div>
 
@@ -759,9 +758,7 @@ function LinkEditor({ event }: { event: EventWithLinks }) {
         <ul className="space-y-1">
           {event.places.map((p) => (
             <li key={p.id} className="flex items-center gap-2 text-sm">
-              <span className="w-16 shrink-0 text-[11px] uppercase tracking-wide text-muted-foreground">
-                {p.role}
-              </span>
+              <span className="w-24 shrink-0 text-xs text-muted-foreground">{roleLabel(p.role)}</span>
               <span className="flex-1 truncate text-foreground/90">
                 {p.rawText ?? p.locationId ?? "Unnamed place"}
               </span>
@@ -771,13 +768,13 @@ function LinkEditor({ event }: { event: EventWithLinks }) {
         </ul>
         <div className="mt-2 flex items-center gap-2">
           <Select value={plRole} onValueChange={(v) => setPlRole(v as PlaceRole)}>
-            <SelectTrigger className="h-8 w-28 bg-muted/40 text-xs capitalize">
+            <SelectTrigger className="h-8 w-28 bg-muted/40 text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               {PLACE_ROLES.map((r) => (
-                <SelectItem key={r} value={r} className="text-xs capitalize">
-                  {r}
+                <SelectItem key={r} value={r} className="text-xs">
+                  {roleLabel(r)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -787,7 +784,7 @@ function LinkEditor({ event }: { event: EventWithLinks }) {
               value={plLocId}
               valueName={plLocName}
               entityTypes={["location"]}
-              datasetId={event.datasetId ?? undefined}
+              datasetIds={event.datasetId ? [event.datasetId] : undefined}
               placeholder="Link a location…"
               onSelect={(id, name) => {
                 setPlLocId(id);
@@ -813,7 +810,7 @@ function LinkEditor({ event }: { event: EventWithLinks }) {
           disabled={addPlace.isPending || (!plLocId && !plText.trim())}
           onClick={submitPlace}
         >
-          <Plus size={12} /> Add place
+          <MapPinPlus size={12} /> Add place
         </Button>
       </div>
     </div>
@@ -907,7 +904,7 @@ function SourceMeta({ event }: { event: EventWithLinks }) {
         <Lock size={10} /> Source
       </span>
       <span>
-        {event.extractor ?? "manual"}
+        {extractorLabel(event.extractor)}
         {event.extractionModel && ` · ${event.extractionModel}`}
       </span>
       {event.confidence != null && <span>{Math.round(event.confidence * 100)}% conf</span>}
@@ -941,11 +938,11 @@ function SourceToggle({
     <Button
       size="sm"
       variant={sourceOpen ? "secondary" : "outline"}
-      className="h-7 gap-1 px-2 text-xs text-muted-foreground"
+      className="h-8 gap-1.5 text-xs"
       onClick={onToggle}
-      title="Show the source file alongside"
+      title={sourceOpen ? "Hide the source file" : "Show the source file alongside"}
     >
-      <PanelRight size={12} /> Source
+      <PanelRight size={13} /> {sourceOpen ? "Hide source" : "Show source"}
     </Button>
   );
 }
@@ -986,57 +983,67 @@ function DetailBlock({
   children: React.ReactNode;
 }) {
   return (
-    <div>
-      <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+    <section>
+      <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
         {icon}
         {title}
-      </div>
-      {children}
-    </div>
+      </h3>
+      <dl className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">{children}</dl>
+    </section>
   );
 }
+
+function FactRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <>
+      <dt className="pt-px text-xs leading-5 text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 leading-5 text-foreground/90">{children}</dd>
+    </>
+  );
+}
+
+const roleLabel = (role: string) => {
+  const text = humanize(role);
+  return text.charAt(0).toUpperCase() + text.slice(1);
+};
 
 function PlaceRow({ place }: { place: EventPlace }) {
   const label = place.rawText ?? "Unnamed place";
   return (
-    <li className="flex items-center gap-2 text-sm">
-      <span className="w-16 shrink-0 text-[11px] uppercase tracking-wide text-muted-foreground">
-        {place.role}
-      </span>
+    <FactRow label={roleLabel(place.role)}>
       {place.locationId ? (
         <Link href={`/locations?focus=${place.locationId}`} className="text-foreground hover:text-primary">
           {label}
         </Link>
       ) : (
-        <span className="text-foreground/90">{label}</span>
+        label
       )}
-    </li>
+    </FactRow>
   );
 }
 
 function ParticipantRow({ participant }: { participant: EventParticipant }) {
   const label = participant.rawName ?? participant.rawEmail ?? "Unknown";
+  const notes = [
+    participant.isResource ? "resource" : null,
+    participant.rsvpStatus && participant.rsvpStatus !== "needs-action" ? humanize(participant.rsvpStatus) : null,
+  ].filter(Boolean);
   return (
-    <li className="flex items-center gap-2 text-sm">
-      <span className="w-16 shrink-0 text-[11px] uppercase tracking-wide text-muted-foreground">
-        {participant.role}
+    <FactRow label={roleLabel(participant.role)}>
+      <span className="flex flex-wrap items-baseline gap-x-2">
+        {participant.entityId ? (
+          <Link href={`/entities/${participant.entityId}`} className="text-foreground hover:text-primary">
+            {label}
+          </Link>
+        ) : (
+          <span>{label}</span>
+        )}
+        {participant.rawName && participant.rawEmail && (
+          <span className="truncate text-xs text-muted-foreground">{participant.rawEmail}</span>
+        )}
+        {notes.length > 0 && <span className="text-xs text-muted-foreground">{notes.join(" · ")}</span>}
       </span>
-      {participant.entityId ? (
-        <Link href={`/entities/${participant.entityId}`} className="text-foreground hover:text-primary">
-          {label}
-        </Link>
-      ) : (
-        <span className="text-foreground/90">{label}</span>
-      )}
-      {participant.isResource && (
-        <span className="text-[11px] uppercase tracking-wide text-muted-foreground/70">resource</span>
-      )}
-      {participant.rsvpStatus && participant.rsvpStatus !== "needs-action" && (
-        <span className="text-[11px] uppercase tracking-wide text-muted-foreground/70">
-          {participant.rsvpStatus}
-        </span>
-      )}
-    </li>
+    </FactRow>
   );
 }
 
@@ -1047,14 +1054,11 @@ function TypedDetails({ details }: { details: Record<string, unknown> }) {
   if (entries.length === 0) return null;
   return (
     <DetailBlock title="Details">
-      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
-        {entries.map(([k, v]) => (
-          <div key={k} className="contents">
-            <dt className="text-muted-foreground capitalize">{k.replace(/_/g, " ")}</dt>
-            <dd className="text-foreground/90">{String(v)}</dd>
-          </div>
-        ))}
-      </dl>
+      {entries.map(([k, v]) => (
+        <FactRow key={k} label={roleLabel(k)}>
+          {String(v)}
+        </FactRow>
+      ))}
     </DetailBlock>
   );
 }

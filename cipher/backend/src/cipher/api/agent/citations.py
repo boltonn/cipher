@@ -5,19 +5,28 @@ JSON dump ignores field aliases, so serializing here is what keeps the wire
 shape camelCase to match the frontend's `ChatCitation` type.
 """
 
+from datetime import datetime
+
 from cipher.datastores.elasticsearch.repositories.text_chunk import FileSearchResult, ScoredTextChunk
 from cipher.schemas.content.document import ScoredDocumentTextChunk
 from cipher.schemas.content.email import EmailAddress, EmailCountBucket
+from cipher.schemas.content.image import ImagePublic
 from cipher.schemas.graph.entity import Entity
 from cipher.schemas.graph.entity_relationship import TopConnection
+from cipher.schemas.graph.event import Event
 from cipher.schemas.graph.mention import Mention
 from cipher.schemas.identity.person import Person
 from cipher.schemas.ingestion.dataset import Dataset
+from cipher.schemas.ingestion.dataset_profile import ProfileEntity
+from cipher.schemas.ingestion.file import File
 from cipher.schemas.interaction.chat import ChatCitation
+
+_PASSAGE_CHARS = 700
 
 
 def _dump(citation: ChatCitation) -> dict:
-    return citation.model_dump(by_alias=True)
+    # Unset fields omitted: tool results share a small model's context window.
+    return citation.model_dump(by_alias=True, exclude_none=True)
 
 
 def top_chunk(result: FileSearchResult) -> ScoredTextChunk:
@@ -44,7 +53,8 @@ def chunk_citation(chunk: ScoredTextChunk) -> dict:
             heading_path=chunk.heading_path if is_document else None,
             start_offset=chunk.start_offset,
             end_offset=chunk.end_offset,
-            snippet=chunk.highlights[0] if chunk.highlights else chunk.text[:280],
+            # Long enough for the model to reason over; the card clamps it to three lines.
+            snippet=" ".join(chunk.text.split())[:_PASSAGE_CHARS],
             score=chunk.score,
             sent_from=_participant(sender) if sender else None,
             sent_to=None if is_document else [_participant(p) for p in (*chunk.sent_to, *chunk.cc)] or None,
@@ -179,5 +189,67 @@ def connection_citation(connection: TopConnection) -> dict:
                 )
             ),
             score=connection.weight,
+        )
+    )
+
+
+def _day(value: datetime | None) -> str | None:
+    return value.date().isoformat() if value else None
+
+
+def file_citation(file: File, *, path: str) -> dict:
+    """A file found by its metadata -- navigates to the file's page. `path` is as the model should see it."""
+    return _dump(
+        ChatCitation(
+            kind="file",
+            file_id=file.id,
+            target_id=file.id,
+            href=f"/files/{file.id}",
+            display_name=" ".join(file.filename.split()),
+            snippet=" · ".join(filter(None, [path, file.filetype_group, file.filetype, _day(file.date_created)])),
+        )
+    )
+
+
+def event_citation(event: Event) -> dict:
+    """An extracted event -- opens the file it was extracted from."""
+    span = " → ".join(filter(None, [_day(event.date_start), _day(event.date_end)]))
+    return _dump(
+        ChatCitation(
+            kind="event",
+            target_id=event.id,
+            file_id=event.file_id,
+            display_name=event.title,
+            snippet=" · ".join(filter(None, [event.event_type, span, event.summary])),
+        )
+    )
+
+
+def image_citation(image: ImagePublic) -> dict:
+    """An image -- navigates to the page of a file holding it."""
+    place = f"GPS {image.gps_latitude:.4f},{image.gps_longitude:.4f}" if image.gps_latitude is not None else None
+    camera = " ".join(filter(None, [image.camera_make, image.camera_model]))
+    return _dump(
+        ChatCitation(
+            kind="image",
+            target_id=image.id,
+            file_id=image.file_id,
+            href=f"/files/{image.file_id}" if image.file_id else None,
+            display_name=f"Photo {_day(image.date_taken)}" if image.date_taken else "Image",
+            snippet=" · ".join(filter(None, [", ".join(image.tags), camera, place])),
+        )
+    )
+
+
+def profile_entity_citation(entity: ProfileEntity) -> dict:
+    """A person / org / place / identifier ranked in the dataset profile -- navigates to its dossier page."""
+    return _dump(
+        ChatCitation(
+            kind="entity",
+            target_id=entity.entity_id,
+            href=f"/entities/{entity.entity_id}",
+            display_name=entity.display_name,
+            snippet=f"{entity.entity_type} · in {entity.files} files",
+            count=entity.files,
         )
     )

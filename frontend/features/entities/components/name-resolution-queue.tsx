@@ -5,6 +5,9 @@ import { SearchBarShell } from "@/components/search-bar-shell";
 import { SearchInput } from "@/components/search-input";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
+import { Checkbox } from "@/components/ui/checkbox";
+import { CorrespondentBadge } from "./correspondent-badge";
+import { SourceTagsToggle } from "./source-tags-toggle";
 import {
   Command,
   CommandEmpty,
@@ -28,7 +31,9 @@ import {
 } from "@/features/entities/hooks/use-entity-matches";
 import {
   useDismissNameGroup,
+  useDismissNameGroups,
   useResolveNameGroup,
+  useResolveNameGroups,
   useUnresolvedNameGroups,
 } from "@/features/entities/hooks/use-mentions";
 import type {
@@ -52,12 +57,14 @@ import {
   X,
   TextSearch,
 } from "lucide-react";
+import { DatasetName } from "@/features/datasets/components/dataset-name";
 import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
 
 const PAGE_SIZE = 25;
 const CLEAN_MIN = 0.95;
+const SNIPPET_RADIUS = 90;
 const GUIDE_HREF = "/entities/resolution-guide";
 
 type QueueFilter = "all" | "suggested" | "new";
@@ -89,6 +96,34 @@ function isClean(group: UnresolvedNameGroup): boolean {
   );
 }
 
+const groupKey = (group: UnresolvedNameGroup) =>
+  `${group.datasetId}:${group.normalizedValue}`;
+
+const escapeRegExp = (value: string) =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** The snippet cut around the first place the name is written in it (as a whole word), so the highlight is always visible. */
+function snippetAround(context: string, names: (string | null | undefined)[]) {
+  for (const name of names) {
+    if (!name?.trim()) continue;
+    const match = new RegExp(
+      `(?<![\\p{L}\\p{N}])${escapeRegExp(name.trim())}(?![\\p{L}\\p{N}])`,
+      "iu"
+    ).exec(context);
+    if (!match) continue;
+    const at = match.index;
+    const end = at + match[0].length;
+    const from = Math.max(0, at - SNIPPET_RADIUS);
+    const to = Math.min(context.length, end + SNIPPET_RADIUS);
+    return {
+      before: `${from > 0 ? "…" : ""}${context.slice(from, at)}`,
+      name: match[0],
+      after: `${context.slice(end, to)}${to < context.length ? "…" : ""}`,
+    };
+  }
+  return null;
+}
+
 /**
  * The Resolve queue -- one card per name group (every unresolved mention of one name).
  * For each, decide which entity the name refers to: accept or reject a suggested
@@ -96,21 +131,34 @@ function isClean(group: UnresolvedNameGroup): boolean {
  * "not an entity". Every decision applies to all of the group's mentions at once.
  */
 export function NameResolutionQueue({
-  datasetId,
+  datasetIds,
   focus,
   onClearFocus,
 }: {
-  datasetId: string;
+  datasetIds: string[];
   /** narrow to names with a pending resolution to this entity (its "N to resolve" badge) */
   focus?: { id: string; name: string } | null;
   onClearFocus?: () => void;
 }) {
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<QueueFilter>("all");
+  const [excludeSourceTags, setExcludeSourceTags] = useState<string[]>();
   const [page, setPage] = useState(1);
+  const [selected, setSelected] = useState<Map<string, UnresolvedNameGroup>>(
+    new Map()
+  );
+  const clearSelection = () => setSelected(new Map());
+  const toggle = (group: UnresolvedNameGroup, checked: boolean) =>
+    setSelected((current) => {
+      const next = new Map(current);
+      if (checked) next.set(groupKey(group), group);
+      else next.delete(groupKey(group));
+      return next;
+    });
   const { data, isPending, isFetching } = useUnresolvedNameGroups({
-    datasetId,
+    datasetIds,
     q,
+    excludeSourceTags,
     hasResolution: FILTERS.find((f) => f.value === filter)?.hasResolution,
     entityId: focus?.id,
     page,
@@ -168,6 +216,7 @@ export function NameResolutionQueue({
               onSearch={(value) => {
                 setQ(value);
                 setPage(1);
+                clearSelection();
               }}
               ariaLabel="Search names"
               placeholder="Search names…"
@@ -183,12 +232,22 @@ export function NameResolutionQueue({
                 onClick={() => {
                   setFilter(f.value);
                   setPage(1);
+                  clearSelection();
                 }}
               >
                 {f.label}
               </Button>
             ))}
           </ButtonGroup>
+          <SourceTagsToggle
+            datasetIds={datasetIds}
+            value={excludeSourceTags}
+            onChange={(value) => {
+              setExcludeSourceTags(value);
+              setPage(1);
+              clearSelection();
+            }}
+          />
           {clean.length > 0 && (
             <Button
               size="sm"
@@ -243,13 +302,27 @@ export function NameResolutionQueue({
           </div>
         ) : (
           <>
+            <SelectionBar
+              groups={groups}
+              selected={selected}
+              onSelectAll={(checked) =>
+                setSelected(
+                  checked
+                    ? new Map(groups.map((g) => [groupKey(g), g]))
+                    : new Map()
+                )
+              }
+              onDone={clearSelection}
+            />
             <ul className="space-y-2">
               {groups.map((g) => (
                 <NameGroupCard
-                  key={g.normalizedValue}
+                  key={groupKey(g)}
                   group={g}
-                  datasetId={datasetId}
+                  showDataset={datasetIds.length > 1}
                   onDecided={onLastDecided}
+                  isSelected={selected.has(groupKey(g))}
+                  onSelect={(checked) => toggle(g, checked)}
                 />
               ))}
             </ul>
@@ -257,7 +330,10 @@ export function NameResolutionQueue({
               currentPage={page}
               totalItems={total}
               itemsPerPage={PAGE_SIZE}
-              onPageChange={setPage}
+              onPageChange={(next) => {
+                setPage(next);
+                clearSelection();
+              }}
               isLoading={isFetching}
             />
           </>
@@ -269,15 +345,21 @@ export function NameResolutionQueue({
 
 function NameGroupCard({
   group,
-  datasetId,
+  showDataset,
   onDecided,
+  isSelected,
+  onSelect,
 }: {
   group: UnresolvedNameGroup;
-  datasetId: string;
+  /** label the card with its dataset (several datasets selected) */
+  showDataset: boolean;
   /** called after any decision on this card succeeds */
   onDecided?: () => void;
+  isSelected: boolean;
+  onSelect: (checked: boolean) => void;
 }) {
   const done = { onSuccess: onDecided };
+  const datasetId = group.datasetId;
   const decide = useResolveMatch();
   const create = useResolveNameGroup();
   const dismiss = useDismissNameGroup();
@@ -287,8 +369,18 @@ function NameGroupCard({
     group.suggestedType;
 
   return (
-    <li className="rounded-lg border border-border bg-card p-3">
+    <li
+      className={cn(
+        "rounded-lg border bg-card p-3",
+        isSelected ? "border-primary/60" : "border-border"
+      )}
+    >
       <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+        <Checkbox
+          checked={isSelected}
+          onCheckedChange={(checked) => onSelect(checked === true)}
+          aria-label={`Select ${group.surface}`}
+        />
         <span className="rounded bg-annotation/15 px-1 font-mono text-foreground">
           {group.surface}
         </span>
@@ -298,6 +390,8 @@ function NameGroupCard({
           {group.fileCount.toLocaleString()} file
           {group.fileCount === 1 ? "" : "s"}
         </span>
+        {group.isCorrespondent && <CorrespondentBadge />}
+        {showDataset && <DatasetName datasetId={datasetId} />}
         {group.suggestedType && (
           <span className="rounded-full border border-border/60 px-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">
             looks like {group.suggestedType}
@@ -312,9 +406,10 @@ function NameGroupCard({
         </Link>
       </p>
       {group.sampleContext && (
-        <p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground [overflow-wrap:anywhere]">
-          …{group.sampleContext}…
-        </p>
+        <SampleContext
+          context={group.sampleContext}
+          names={[group.sampleSurface, group.surface]}
+        />
       )}
 
       {group.resolutions.length > 0 && (
@@ -470,7 +565,6 @@ function ResolutionRow({
         </span>
         <Button
           size="sm"
-          variant={primary && pct >= 90 ? "default" : "outline"}
           disabled={disabled}
           onClick={onAccept}
           className="h-6 gap-1 px-2 text-[11px]"
@@ -515,18 +609,21 @@ function ResolveToExisting({
   datasetId,
   surface,
   disabled,
+  label = "Another entity…",
   onPick,
 }: {
+  /** the name group's dataset -- resolution runs per dataset */
   datasetId: string;
   surface: string;
   disabled?: boolean;
+  label?: string;
   onPick: (entityId: string, entityType: EntityType) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState(surface.trim().slice(0, 80));
   const debouncedQuery = useDebounce(query, 250);
   const { data: results, isFetching } = useEntitySearch(
-    { datasetId, q: debouncedQuery },
+    { datasetIds: [datasetId], q: debouncedQuery },
     open
   );
 
@@ -539,7 +636,7 @@ function ResolveToExisting({
           disabled={disabled}
           className="h-7 text-[11px]"
         >
-          Another entity…
+          {label}
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-72 border-border bg-popover p-0" align="end">
@@ -584,5 +681,149 @@ function ResolveToExisting({
         </Command>
       </PopoverContent>
     </Popover>
+  );
+}
+
+function SampleContext({
+  context,
+  names,
+}: {
+  context: string;
+  names: (string | null | undefined)[];
+}) {
+  const snippet = snippetAround(context, names);
+  return (
+    <p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground [overflow-wrap:anywhere]">
+      {snippet ? (
+        <>
+          {snippet.before}
+          <mark className="rounded-sm bg-annotation/25 px-0.5 font-medium text-foreground box-decoration-clone">
+            {snippet.name}
+          </mark>
+          {snippet.after}
+        </>
+      ) : (
+        context
+      )}
+    </p>
+  );
+}
+
+/** Select names on this page and decide them together: each to its own new entity, all to one entity, or not entities. */
+function SelectionBar({
+  groups,
+  selected,
+  onSelectAll,
+  onDone,
+}: {
+  groups: UnresolvedNameGroup[];
+  selected: Map<string, UnresolvedNameGroup>;
+  onSelectAll: (checked: boolean) => void;
+  onDone: () => void;
+}) {
+  const resolve = useResolveNameGroups();
+  const dismiss = useDismissNameGroups();
+  const accept = useResolveMatchesBatch();
+  const busy = resolve.isPending || dismiss.isPending || accept.isPending;
+  const chosen = [...selected.values()];
+  const keys = chosen.map((g) => ({
+    datasetId: g.datasetId,
+    normalizedValue: g.normalizedValue,
+    displayName: g.surface,
+  }));
+  const suggested = chosen.filter((g) => g.resolutions.length > 0);
+  const datasetIds = new Set(chosen.map((g) => g.datasetId));
+  const allChecked = groups.length > 0 && selected.size === groups.length;
+  const done = { onSuccess: onDone };
+  const names = (n: number) => `${n} name${n === 1 ? "" : "s"}`;
+
+  return (
+    <div className="sticky top-0 z-10 flex flex-wrap items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 shadow-sm">
+      <Checkbox
+        checked={
+          allChecked ? true : selected.size > 0 ? "indeterminate" : false
+        }
+        onCheckedChange={(checked) => onSelectAll(checked === true)}
+        aria-label="Select every name on this page"
+      />
+      <span className="text-[11px] text-muted-foreground">
+        {selected.size
+          ? `${names(selected.size)} selected`
+          : "Select names to decide them together"}
+      </span>
+      {selected.size > 0 && (
+        <>
+          {suggested.length > 0 && (
+            <Button
+              size="sm"
+              disabled={busy}
+              className="h-7 gap-1 text-[11px]"
+              title="Accept each selected name's top suggested entity"
+              onClick={() =>
+                accept.mutate(
+                  {
+                    decisions: suggested.map((g) => ({
+                      matchId: g.resolutions[0].id,
+                      status: "confirmed",
+                    })),
+                  },
+                  done
+                )
+              }
+            >
+              <Check size={12} /> Accept {suggested.length} suggestion
+              {suggested.length === 1 ? "" : "s"}
+            </Button>
+          )}
+          <span className="ml-1 text-[11px] text-muted-foreground">
+            New entity for each:
+          </span>
+          {CREATE_TYPES.map(({ type, label, Icon }) => (
+            <Button
+              key={type}
+              size="sm"
+              variant="outline"
+              disabled={busy}
+              className="h-7 gap-1 text-[11px]"
+              onClick={() =>
+                resolve.mutate({ groups: keys, entityType: type }, done)
+              }
+            >
+              <Icon size={12} />
+              {label}
+            </Button>
+          ))}
+          {datasetIds.size === 1 && (
+            <ResolveToExisting
+              datasetId={chosen[0].datasetId}
+              surface={chosen[0].surface}
+              disabled={busy}
+              label="All to one entity…"
+              onPick={(entityId, entityType) =>
+                resolve.mutate({ groups: keys, entityType, entityId }, done)
+              }
+            />
+          )}
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={busy}
+            className="h-7 gap-1 px-2 text-[11px] text-muted-foreground hover:text-destructive"
+            onClick={() => dismiss.mutate(keys, done)}
+          >
+            <X size={12} /> Not entities
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={busy}
+            className="ml-auto h-7 px-2 text-[11px] text-muted-foreground"
+            onClick={onDone}
+          >
+            Clear selection
+          </Button>
+        </>
+      )}
+    </div>
   );
 }

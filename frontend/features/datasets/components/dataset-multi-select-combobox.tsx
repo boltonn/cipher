@@ -64,9 +64,9 @@ export function DatasetMultiSelectCombobox({
               triggerClassName
             )}
           >
-            <span className="flex items-center gap-2 truncate text-muted-foreground">
+            <span className={cn("flex min-w-0 items-center gap-2", value.length > 0 ? "text-foreground" : "text-muted-foreground")}>
               <Database size={14} className="text-muted-foreground shrink-0" />
-              {value.length > 0 ? `${value.length} selected` : placeholder}
+              {value.length > 0 ? <SelectionLabel datasetIds={value} /> : placeholder}
             </span>
             <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 text-muted-foreground" />
           </Button>
@@ -116,6 +116,17 @@ export function DatasetMultiSelectCombobox({
         </div>
       )}
     </div>
+  );
+}
+
+/** "rag", or "rag +2" -- the first selected dataset's name and how many more. */
+function SelectionLabel({ datasetIds }: { datasetIds: string[] }) {
+  const { data: first } = useDataset(datasetIds[0]);
+  return (
+    <>
+      <span className="truncate">{first?.name ?? "…"}</span>
+      {datasetIds.length > 1 && <span className="shrink-0 text-muted-foreground">+{datasetIds.length - 1}</span>}
+    </>
   );
 }
 

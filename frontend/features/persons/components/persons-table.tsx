@@ -1,6 +1,7 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -11,18 +12,47 @@ import {
 } from "@/components/ui/table";
 import { PersonAvatar } from "@/features/persons/components/person-avatar";
 import type { Person } from "@/features/persons/types";
+import type { GridSelection } from "@/hooks/use-grid-selection";
+import { cn, humanize } from "@/lib/utils";
 import { BadgeCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 /** Compact row list of people -- the table alternative to the card grid. */
-export function PersonsTable({ persons }: { persons: Person[] }) {
+export function PersonsTable({
+  persons,
+  selection,
+}: {
+  persons: Person[];
+  selection?: GridSelection;
+}) {
   const router = useRouter();
+  const ids = persons.map((p) => p.id);
+  const selectedCount = selection
+    ? ids.filter((id) => selection.selectedIds.has(id)).length
+    : 0;
 
   return (
     <div className="overflow-x-auto rounded-xl border border-border/50">
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
+            {selection && (
+              <TableHead className="w-8">
+                <Checkbox
+                  aria-label="Select all people on this page"
+                  checked={
+                    selectedCount === 0
+                      ? false
+                      : selectedCount === ids.length
+                        ? true
+                        : "indeterminate"
+                  }
+                  onCheckedChange={(checked) =>
+                    checked ? selection.selectAll(ids) : selection.clear()
+                  }
+                />
+              </TableHead>
+            )}
             <TableHead className="w-10" />
             <TableHead>Name</TableHead>
             <TableHead>a.k.a.</TableHead>
@@ -37,12 +67,30 @@ export function PersonsTable({ persons }: { persons: Person[] }) {
               p.aliases.length > 0
                 ? `${p.aliases[0]}${p.aliases.length > 1 ? ` +${p.aliases.length - 1}` : ""}`
                 : "—";
+            const isSelected = !!selection?.selectedIds.has(p.id);
             return (
               <TableRow
                 key={p.id}
-                onClick={() => router.push(`/persons/${p.id}`)}
-                className="cursor-pointer"
+                onClick={(e) => {
+                  if (selection && (selection.selectedIds.size > 0 || e.shiftKey))
+                    selection.toggle(p.id, ids, e.shiftKey);
+                  else router.push(`/persons/${p.id}`);
+                }}
+                data-state={isSelected ? "selected" : undefined}
+                className={cn("cursor-pointer", isSelected && "bg-primary/5")}
               >
+                {selection && (
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    <Checkbox
+                      aria-label={isSelected ? "Deselect person" : "Select person"}
+                      checked={isSelected}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        selection.toggle(p.id, ids, e.shiftKey);
+                      }}
+                    />
+                  </TableCell>
+                )}
                 <TableCell>
                   <PersonAvatar person={p} size="sm" />
                 </TableCell>
@@ -61,7 +109,7 @@ export function PersonsTable({ persons }: { persons: Person[] }) {
                     : "—"}
                 </TableCell>
                 <TableCell className="capitalize text-muted-foreground">
-                  {p.source.replace(/_/g, " ")}
+                  {humanize(p.source)}
                 </TableCell>
                 <TableCell>
                   {p.tags.length > 0 ? (

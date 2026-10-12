@@ -75,6 +75,36 @@ class PostgresUserRepository:
             data=[User.model_validate(u) for u in result.scalars().all()],
         )
 
+    # ---- dataset selection --------------------------------------------
+
+    async def _accessible(self, user: User, dataset_ids: list[str]) -> list[str]:
+        """`dataset_ids` (in order, deduplicated) limited to datasets that exist and the user can access."""
+        if not dataset_ids:
+            return []
+        query = select(DatasetTable.id).where(DatasetTable.id.in_(dataset_ids))
+        if not user.is_admin:
+            query = query.where(
+                DatasetTable.id.in_(
+                    select(UserDatasetAccessTable.dataset_id).where(UserDatasetAccessTable.user_id == user.id)
+                )
+            )
+        valid = set((await self.session.execute(query)).scalars().all())
+        return [dataset_id for dataset_id in dict.fromkeys(dataset_ids) if dataset_id in valid]
+
+    async def get_selected_dataset_ids(self, user: User) -> list[str]:
+        """The user's selected datasets that still exist and that they can still access."""
+        selected = await self.session.scalar(select(UserTable.selected_dataset_ids).where(UserTable.id == user.id))
+        return await self._accessible(user=user, dataset_ids=selected or [])
+
+    async def set_selected_dataset_ids(self, user: User, dataset_ids: list[str]) -> list[str]:
+        """Replace the user's selection; missing or inaccessible datasets are dropped. Returns what was stored."""
+        selected = await self._accessible(user=user, dataset_ids=dataset_ids)
+        await self.session.execute(
+            update(UserTable).where(UserTable.id == user.id).values(selected_dataset_ids=selected)
+        )
+        await self.session.commit()
+        return selected
+
     # ---- dataset membership -------------------------------------------
 
     async def get_dataset_ids(self, user_id: str) -> list[str]:

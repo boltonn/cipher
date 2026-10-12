@@ -8,7 +8,7 @@ export const ENTITY_TYPES = [
 ] as const;
 export type EntityType = (typeof ENTITY_TYPES)[number];
 
-/** A graph node's kind: every entity type, plus `event` (reached through a `participant_in` edge). */
+/** A graph node's kind: every entity type, plus `event` (reached through a `participantIn` edge). */
 export const GRAPH_NODE_TYPES = [...ENTITY_TYPES, "event"] as const;
 export type GraphNodeType = (typeof GRAPH_NODE_TYPES)[number];
 
@@ -17,14 +17,15 @@ export const SELECTOR_TYPES = [
   "email",
   "ip",
   "iban",
-  "bank_card",
+  "bankCard",
   "passport",
-  "national_id",
+  "nationalId",
   "imei",
   "imsi",
-  "social_handle",
-  "crypto_address",
-  "license_plate",
+  "macAddress",
+  "socialHandle",
+  "cryptoAddress",
+  "licensePlate",
   "domain",
 ] as const;
 export type SelectorType = (typeof SELECTOR_TYPES)[number];
@@ -34,14 +35,15 @@ export const SELECTOR_TYPE_LABELS: Record<SelectorType, string> = {
   email: "Email",
   ip: "IP address",
   iban: "IBAN",
-  bank_card: "Bank card",
+  bankCard: "Bank card",
   passport: "Passport",
-  national_id: "National ID",
+  nationalId: "National ID",
   imei: "IMEI",
   imsi: "IMSI",
-  social_handle: "Social handle",
-  crypto_address: "Crypto address",
-  license_plate: "License plate",
+  macAddress: "MAC address",
+  socialHandle: "Social handle",
+  cryptoAddress: "Crypto address",
+  licensePlate: "License plate",
   domain: "Website",
 };
 
@@ -64,71 +66,90 @@ export const SELECTOR_SUBTYPES = [
   "bale",
   "rubika",
   "eitaa",
-  "btc_address",
-  "eth_address",
-  "xmr_address",
-  "tron_address",
-  "ru_inn",
-  "ru_snils",
-  "cn_ric",
-  "ir_code_melli",
+  "btcAddress",
+  "ethAddress",
+  "xmrAddress",
+  "tronAddress",
+  "ruInn",
+  "ruSnils",
+  "cnRic",
+  "irCodeMelli",
 ] as const;
 export type SelectorSubtype = (typeof SELECTOR_SUBTYPES)[number];
 
 /** Which broad SelectorType a subtype rolls up to (mirrors backend SELECTOR_SUBTYPES). */
 export const SELECTOR_SUBTYPE_TYPE: Record<SelectorSubtype, SelectorType> = {
-  telegram: "social_handle",
-  instagram: "social_handle",
-  facebook: "social_handle",
-  whatsapp: "social_handle",
-  signal: "social_handle",
-  twitter: "social_handle",
-  tiktok: "social_handle",
-  vk: "social_handle",
-  odnoklassniki: "social_handle",
-  wechat: "social_handle",
-  qq: "social_handle",
-  weibo: "social_handle",
-  douyin: "social_handle",
-  soroush: "social_handle",
-  bale: "social_handle",
-  rubika: "social_handle",
-  eitaa: "social_handle",
-  btc_address: "crypto_address",
-  eth_address: "crypto_address",
-  xmr_address: "crypto_address",
-  tron_address: "crypto_address",
-  ru_inn: "national_id",
-  ru_snils: "national_id",
-  cn_ric: "national_id",
-  ir_code_melli: "national_id",
+  telegram: "socialHandle",
+  instagram: "socialHandle",
+  facebook: "socialHandle",
+  whatsapp: "socialHandle",
+  signal: "socialHandle",
+  twitter: "socialHandle",
+  tiktok: "socialHandle",
+  vk: "socialHandle",
+  odnoklassniki: "socialHandle",
+  wechat: "socialHandle",
+  qq: "socialHandle",
+  weibo: "socialHandle",
+  douyin: "socialHandle",
+  soroush: "socialHandle",
+  bale: "socialHandle",
+  rubika: "socialHandle",
+  eitaa: "socialHandle",
+  btcAddress: "cryptoAddress",
+  ethAddress: "cryptoAddress",
+  xmrAddress: "cryptoAddress",
+  tronAddress: "cryptoAddress",
+  ruInn: "nationalId",
+  ruSnils: "nationalId",
+  cnRic: "nationalId",
+  irCodeMelli: "nationalId",
 };
 
 export const RELATIONSHIP_TYPES = [
-  "has_selector",
-  "member_of",
-  "employed_by",
-  "part_of",
-  "subsidiary_of",
-  "located_in",
+  "hasSelector",
+  "memberOf",
+  "employedBy",
+  "partOf",
+  "subsidiaryOf",
+  "locatedIn",
   "emailed",
-  "family_of",
-  "appears_in_photo_with",
-  "co_mention_of",
-  "same_as",
+  "called",
+  "messaged",
+  "paid",
+  "familyOf",
+  "appearsInPhotoWith",
+  "coMentionOf",
+  "sameAs",
   "owns",
-  "participant_in",
+  "participantIn",
 ] as const;
 export type RelationshipType = (typeof RELATIONSHIP_TYPES)[number];
 
+/** A proposed edge awaiting review (`entity_relationship_candidate`), with both ends' names. */
+export interface RelationshipSuggestion {
+  id: string;
+  srcEntityId: string;
+  dstEntityId: string;
+  srcName?: string | null;
+  dstName?: string | null;
+  relationshipType: RelationshipType;
+  confidence: number;
+  /** how it was proposed: `patronymic`, `signature`, `coMention`, … */
+  method: string;
+  /** e.g. `{ role: "parent" }` on a `familyOf` edge: "src is parent of dst" */
+  attributes: { role?: string };
+  explanation?: { reason?: string } | null;
+}
+
 /** Edges the graph derives at read time (from `event_participant`) -- never in the stored relationship list. */
-export const DERIVED_RELATIONSHIPS: RelationshipType[] = ["participant_in"];
+export const DERIVED_RELATIONSHIPS: RelationshipType[] = ["participantIn"];
 
 /** Edge types dropped from graph views as low-signal (none today; face co-occurrence stays visible). */
 export const LOW_SIGNAL_RELATIONSHIPS: RelationshipType[] = [];
 
 /**
- * Inverse of a gender-neutral `family_of` role, seen from the target's side.
+ * Inverse of a gender-neutral `familyOf` role, seen from the target's side.
  * Mirrors the backend `FAMILY_ROLE_INVERSE` (cipher.schemas.ontology).
  */
 export const FAMILY_ROLE_INVERSE: Record<string, string> = {
@@ -165,12 +186,12 @@ export interface Ontology {
 }
 
 export type TraversalDirection = "out" | "in" | "both";
-export type MentionedType = "extracted_text" | "image" | "structured_field";
+export type MentionedType = "extractedText" | "image" | "structuredField";
 
 /** How a mention was found -- its evidence class. Mirrors backend MentionProvenance. */
 export const MENTION_PROVENANCES = [
   "text",
-  "email_header",
+  "emailHeader",
   "metadata",
   "image",
   "pattern",
@@ -180,7 +201,7 @@ export type EntitySource =
   | "extraction"
   | "manual"
   | "import"
-  | "face_clustering";
+  | "faceClustering";
 export type EntityMatchStatus = "pending" | "confirmed" | "rejected";
 
 export interface Entity {
@@ -211,9 +232,25 @@ export interface Entity {
 export interface EntityListItem extends Entity {
   mentionCount: number;
   fileCount: number;
+  /** named in an email's from / to / cc header */
+  isCorrespondent: boolean;
   relationshipCount: number;
   /** pending Resolve-queue candidates + merge candidates naming this entity */
   pendingMatchCount: number;
+  /** entities this auto-created entity may duplicate, best first (Verify list only) */
+  mergeSuggestions?: MergeSuggestion[];
+}
+
+/** An entity an auto-created entity may be a duplicate of; confirm `matchId` to merge it in. */
+export interface MergeSuggestion {
+  matchId: string;
+  entityId: string;
+  entityName: string;
+  entityType: EntityType;
+  entityIsProvisional: boolean;
+  similarityScore: number;
+  /** what agrees, strongest first ("same name", …) */
+  reasons: string[];
 }
 
 export interface EntityBreakdownItem {
@@ -408,9 +445,9 @@ export interface ResolutionExplanation {
 
 export type DecisionSource =
   | "analyst"
-  | "sibling_auto"
+  | "siblingAuto"
   | "reconcile"
-  | "system_auto";
+  | "systemAuto";
 
 export interface EntityMatch {
   id: string;
@@ -455,24 +492,11 @@ export interface EntityMatchGroup {
   alternatives: EntityMatch[];
 }
 
-export type PaginatedEntityMatchGroupsResponse = PaginatedResponse<EntityMatchGroup> & {
-  /** Name groups left out because their only candidates are provisional (auto-created) entities. */
-  hiddenProvisionalTotal: number;
-};
-
-/** One card in the entity-merge review queue: a provisional stub + canonical targets. */
-export interface EntityMergeGroup {
-  datasetId: string;
-  provisionalEntityId: string;
-  provisionalName: string;
-  provisionalEntityType: EntityType;
-  mentionCount: number;
-  status: EntityMatchStatus;
-  candidates: EntityMatch[];
-}
-
-export type PaginatedEntityMergeGroupsResponse =
-  PaginatedResponse<EntityMergeGroup>;
+export type PaginatedEntityMatchGroupsResponse =
+  PaginatedResponse<EntityMatchGroup> & {
+    /** Name groups left out because their only candidates are provisional (auto-created) entities. */
+    hiddenProvisionalTotal: number;
+  };
 
 export interface EntityMatchBatchItem {
   matchId: string;
@@ -482,7 +506,7 @@ export interface EntityMatchBatchItem {
 
 export interface EntitySearchParameters {
   query?: string;
-  datasetId?: string;
+  datasetIds?: string[];
   entityType?: EntityType;
   selectorType?: SelectorType;
   selectorSubtype?: SelectorSubtype;
@@ -490,6 +514,8 @@ export interface EntitySearchParameters {
   isVerified?: boolean;
   /** Auto-created by the resolver, not yet verified or merged (selectors excluded). */
   provisional?: boolean;
+  /** Only entities with a mention in a file carrying none of these source tags. */
+  excludeSourceTags?: string[];
   country?: string;
   category?: string;
   dateOfBirthFrom?: string;
@@ -501,10 +527,12 @@ export interface EntitySearchParameters {
 }
 
 export type EntitySortKey =
-  | "display_name"
-  | "date_created"
-  | "date_updated"
-  | "mention_count"
+  | "displayName"
+  | "dateCreated"
+  | "dateUpdated"
+  | "mentionCount"
+  /** correspondents first, then most files, then most mentions */
+  | "evidence"
   | "relevance";
 
 export interface EntityCreatePayload {
@@ -533,7 +561,7 @@ export interface ResolvedName {
   isAlias: boolean;
 }
 
-/** An entity a selector is linked to by `has_selector`, and how (`manual`, `selector_inference`, ...). */
+/** An entity a selector is linked to by `hasSelector`, and how (`manual`, `selectorInference`, ...). */
 export interface SelectorOwner {
   entityId: string;
   displayName: string;
@@ -549,6 +577,8 @@ export interface SelectorEvidence {
   /** Display names seen next to it in headers, most frequent first. */
   names: string[];
   linkedTo: SelectorOwner[];
+  /** Shared/automated mailbox (info@, noreply@) that sends under other people's names. */
+  isRoleAddress: boolean;
 }
 
 export interface SelectorLinkPayload {
@@ -609,11 +639,17 @@ export interface MentionResolvePayload {
 
 /** One distinct unresolved name in the review queue (grouped, not per-mention). */
 export interface UnresolvedNameGroup {
+  /** resolution runs per dataset, so a name group belongs to one */
+  datasetId: string;
   normalizedValue: string;
   surface: string;
   mentionCount: number;
   fileCount: number;
+  /** named in an email's from / to / cc header */
+  isCorrespondent: boolean;
   sampleContext?: string | null;
+  /** the name as written in `sampleContext` */
+  sampleSurface?: string | null;
   suggestedType?: EntityType | null;
   /** Pending resolutions: entities the resolver proposes this name group is, best first. */
   resolutions: EntityMatch[];
@@ -628,6 +664,20 @@ export interface ResolveNameGroupPayload {
   displayName?: string;
 }
 
+export interface NameGroupKey {
+  datasetId: string;
+  normalizedValue: string;
+  /** display name if a new entity is created for this group */
+  displayName?: string;
+}
+
+export interface ResolveNameGroupsPayload {
+  groups: NameGroupKey[];
+  entityType: EntityType;
+  /** attach every group to this entity; omit to create a new entity per group */
+  entityId?: string;
+}
+
 export type PaginatedEntitiesResponse = PaginatedResponse<EntityListItem>;
 export type PaginatedMentionsResponse = PaginatedResponse<Mention>;
 export type PaginatedUnresolvedNamesResponse =
@@ -637,7 +687,7 @@ export type PaginatedRelationshipsResponse =
 export type PaginatedRelatedEntitiesResponse = PaginatedResponse<RelatedEntity>;
 export type PaginatedEntityMatchesResponse = PaginatedResponse<EntityMatch>;
 
-/** A person tied to an organization by `employed_by` / `member_of`. */
+/** A person tied to an organization by `employedBy` / `memberOf`. */
 export interface OrganizationMember {
   entity: EntitySummary;
   relationshipType: RelationshipType;

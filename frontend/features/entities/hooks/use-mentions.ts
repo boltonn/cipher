@@ -5,7 +5,9 @@ import type {
   MentionCreatePayload,
   MentionResolvePayload,
   MentionUpdatePayload,
+  NameGroupKey,
   ResolveNameGroupPayload,
+  ResolveNameGroupsPayload,
 } from "@/features/entities/types";
 import {
   keepPreviousData,
@@ -35,16 +37,28 @@ export function useMentionResolution(mentionId: string | undefined) {
 }
 
 /** Entities other mentions of this value already resolve to, most mentions first -- "elsewhere this is …". */
-export function useValueResolvedEntities(datasetId: string, normalizedValue: string | undefined) {
+export function useValueResolvedEntities(
+  datasetId: string,
+  normalizedValue: string | undefined
+) {
   return useQuery({
     queryKey: ["mentions", "value-entities", datasetId, normalizedValue],
     queryFn: () =>
-      mentionsService.list({ datasetId, normalizedValue: normalizedValue as string, resolved: true, limit: 200 }),
+      mentionsService.list({
+        datasetId,
+        normalizedValue: normalizedValue as string,
+        resolved: true,
+        limit: 200,
+      }),
     enabled: !!normalizedValue,
     select: (page) => {
       const counts = new Map<string, number>();
-      for (const m of page.data) if (m.entityId) counts.set(m.entityId, (counts.get(m.entityId) ?? 0) + 1);
-      return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([entityId, count]) => ({ entityId, count }));
+      for (const m of page.data)
+        if (m.entityId)
+          counts.set(m.entityId, (counts.get(m.entityId) ?? 0) + 1);
+      return [...counts.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([entityId, count]) => ({ entityId, count }));
     },
   });
 }
@@ -65,10 +79,11 @@ export function useUnresolvedMentions(datasetId: string | undefined) {
 
 /** The Resolve queue: one row per unresolved name group, with its suggested resolutions. */
 export function useUnresolvedNameGroups(params: {
-  datasetId: string | undefined;
+  datasetIds: string[];
   q?: string;
   hasResolution?: boolean;
   entityId?: string;
+  excludeSourceTags?: string[];
   page: number;
 }) {
   return useQuery({
@@ -76,10 +91,9 @@ export function useUnresolvedNameGroups(params: {
     queryFn: () =>
       mentionsService.listUnresolvedNames({
         ...params,
-        datasetId: params.datasetId as string,
         q: params.q || undefined,
       }),
-    enabled: !!params.datasetId,
+    enabled: params.datasetIds.length > 0,
     placeholderData: keepPreviousData,
   });
 }
@@ -108,12 +122,36 @@ export function useDismissNameGroup(onSuccess?: () => void) {
   });
 }
 
+export function useResolveNameGroups() {
+  const invalidate = useMentionInvalidation();
+  return useMutation({
+    mutationFn: (payload: ResolveNameGroupsPayload) =>
+      mentionsService.resolveNameGroups(payload),
+    onSuccess: invalidate,
+  });
+}
+
+export function useDismissNameGroups() {
+  const invalidate = useMentionInvalidation();
+  return useMutation({
+    mutationFn: (groups: NameGroupKey[]) =>
+      mentionsService.dismissNameGroups(groups),
+    onSuccess: invalidate,
+  });
+}
+
 function useMentionInvalidation() {
   const qc = useQueryClient();
   return () => {
     // Resolution lookups only go stale: the open popover's mention may have just been deleted or replaced.
-    qc.invalidateQueries({ queryKey: ["mentions"], predicate: (q) => q.queryKey[1] !== "resolution" });
-    qc.invalidateQueries({ queryKey: ["mentions", "resolution"], refetchType: "none" });
+    qc.invalidateQueries({
+      queryKey: ["mentions"],
+      predicate: (q) => q.queryKey[1] !== "resolution",
+    });
+    qc.invalidateQueries({
+      queryKey: ["mentions", "resolution"],
+      refetchType: "none",
+    });
     qc.invalidateQueries({ queryKey: ["entities"] });
     qc.invalidateQueries({ queryKey: ["search"] });
   };

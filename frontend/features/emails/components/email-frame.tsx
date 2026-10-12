@@ -2,8 +2,12 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 "use client";
+import { useTheme } from "@/providers/theme-provider";
 import DOMPurify from "dompurify";
 import { useMemo } from "react";
+
+// any color the email sets itself: inline `color:` / `background:`, `bgcolor=` / `color=` attributes, `<font color>`
+const OWN_COLORS = /\b(?:color|background)(?:-color)?\s*:|\b(?:bg)?color\s*=/i;
 
 interface EmailIframeProps {
   body: string;
@@ -26,6 +30,11 @@ interface EmailIframeProps {
  *   iframe as a defense-in-depth layer -- most commonly this blocks
  *   plain-http tracking pixels. Blocked images just don't render;
  *   the block is silent by design.
+ *
+ * Page defaults follow the app theme: transparent over the viewer's card, with
+ * the browser's scheme-aware system colors (CanvasText, LinkText, GrayText).
+ * An email that sets colors of its own was designed against a white page, so it
+ * gets one -- its gray text would vanish on dark. Inline styles are never changed.
  */
 export default function EmailIframe({ body }: EmailIframeProps) {
   // Rendered as a `srcDoc` prop rather than assigned in an effect: the iframe
@@ -34,6 +43,7 @@ export default function EmailIframe({ body }: EmailIframeProps) {
   // navigates to the srcdoc, and when that second navigation lands mid
   // dialog-open the compositor can keep showing the stale blank frame -- the
   // document loads but the pane paints white.
+  const { resolvedTheme } = useTheme();
   const srcDoc = useMemo(() => {
     if (!body) return undefined;
 
@@ -46,6 +56,7 @@ export default function EmailIframe({ body }: EmailIframeProps) {
 
     // Use srcdoc so the iframe is truly sandboxed (no same-origin access).
     // We can't use doc.write() because that requires allow-same-origin.
+    const scheme = OWN_COLORS.test(cleanBody) ? "light" : resolvedTheme;
     return `<!DOCTYPE html>
 <html>
 <head>
@@ -55,15 +66,15 @@ export default function EmailIframe({ body }: EmailIframeProps) {
 <style>
 * { box-sizing: border-box; }
 html {
-	background: #ffffff;
-	color-scheme: light;
+	background: ${scheme === "light" && resolvedTheme === "dark" ? "#ffffff" : "transparent"};
+	color-scheme: ${scheme};
 }
 body {
 	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 	font-size: 14px;
 	line-height: 1.6;
-	color: #1a1a1a;
-	background: #ffffff;
+	color: CanvasText;
+	background: transparent;
 	padding: 24px;
 	margin: 0;
 	word-wrap: break-word;
@@ -72,16 +83,16 @@ body {
 [style*="position: fixed"], [style*="position:fixed"], [style*="position: absolute"], [style*="position:absolute"] {
 	position: relative !important;
 }
-a { color: #2563eb; }
+a { color: LinkText; }
 img { max-width: 100%; height: auto; }
 blockquote {
-	border-left: 3px solid #d1d5db;
+	border-left: 3px solid color-mix(in srgb, CanvasText 25%, transparent);
 	padding-left: 1em;
 	margin-left: 0;
-	color: #6b7280;
+	color: GrayText;
 }
 pre {
-	background: #f3f4f6;
+	background: color-mix(in srgb, CanvasText 8%, transparent);
 	padding: 12px;
 	border-radius: 6px;
 	overflow-x: auto;
@@ -96,7 +107,7 @@ ul, ol { padding-left: 20px; margin: 4px 0; }
 </head>
 <body>${cleanBody}</body>
 </html>`;
-  }, [body]);
+  }, [body, resolvedTheme]);
 
   return (
     <iframe

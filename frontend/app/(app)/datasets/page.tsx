@@ -125,7 +125,11 @@ export default function DatasetSearchPage() {
                   Request Dataset
                 </Button>
               </DialogTrigger>
-              <DialogContent className="border-border bg-transparent p-0 ring-0 sm:max-w-2xl">
+              <DialogContent
+                className="border-border bg-transparent p-0 ring-0 sm:max-w-2xl"
+                onInteractOutside={(event) => event.preventDefault()}
+                onEscapeKeyDown={(event) => event.preventDefault()}
+              >
                 <DialogTitle className="sr-only">Request Dataset</DialogTitle>
                 <DatasetRequestForm onClose={() => setCreateOpen(false)} />
               </DialogContent>

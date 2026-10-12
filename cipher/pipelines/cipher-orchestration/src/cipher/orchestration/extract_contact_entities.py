@@ -12,7 +12,6 @@ file, deterministic ids), then sweeps contacts into mentions. Re-runnable: skips
 contacts that already have a mention.
 """
 
-from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import NAMESPACE_URL, uuid5
 
@@ -35,6 +34,7 @@ from cipher.schemas.graph.mention import MentionCreate, MentionedType
 from cipher.schemas.graph.mention_relationship import MentionRelationshipCreate
 from cipher.schemas.graph.ontology import EntityType, RelationshipType, SelectorType
 from cipher.schemas.ingestion.enrichment import EnrichableType, EnrichmentType
+from cipher.utils.uri import local_copy
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -46,7 +46,7 @@ _VCARD_FILETYPES = ["vcard"]
 
 async def load_vcard_contacts(session: "AsyncSession", dataset_id: str, batch_size: int = 50) -> int:
     """Parse a dataset's vCard files into `contact` rows (id = uuid5(file_id, index), so re-runs no-op)."""
-    from pyparse.parsers.contacts.vcard import VcardParser
+    from pyparse.parsers.contacts.vcard import parse_contacts
 
     enrichment_repo = PostgresEnrichmentRepository(session=session)
     unqueued = await enrichment_repo.get_unqueued_files(
@@ -58,6 +58,13 @@ async def load_vcard_contacts(session: "AsyncSession", dataset_id: str, batch_si
     await session.commit()
 
     count = 0
+    total = await enrichment_repo.count_pending(
+        enrichment_type=EnrichmentType.CONTACT_EXTRACTION,
+        enrichable_type=EnrichableType.FILE,
+        dataset_id=dataset_id,
+        filetype_group_filter="contact",
+    )
+    pbar = tqdm(total=total, desc="Reading vCards", unit=" file")
     while batch := await enrichment_repo.get_pending_batch(
         enrichment_type=EnrichmentType.CONTACT_EXTRACTION,
         enrichable_type=EnrichableType.FILE,
@@ -69,7 +76,8 @@ async def load_vcard_contacts(session: "AsyncSession", dataset_id: str, batch_si
         for item in batch:
             file_id = item.resource["id"]
             try:
-                contacts = VcardParser.parse(Path(item.resource["path"]))
+                with local_copy(item.resource["uri"]) as vcard:
+                    contacts = parse_contacts(vcard)
             except Exception as e:
                 logger.error(f"vCard parse failed for file {file_id}: {e}")
                 failed[item.enrichment.id] = e
@@ -88,6 +96,9 @@ async def load_vcard_contacts(session: "AsyncSession", dataset_id: str, batch_si
             await enrichment_repo.mark_completed_batch(completed)
         await enrichment_repo.mark_failed(failed)
         await session.commit()
+        pbar.update(len(batch))
+        pbar.set_postfix(contacts=count, failed=len(failed))
+    pbar.close()
     logger.info(f"Loaded {count} contacts from vCard files")
     return count
 

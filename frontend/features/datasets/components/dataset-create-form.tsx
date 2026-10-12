@@ -22,7 +22,13 @@ import {
   StepperTrigger,
 } from "@/components/ui/stepper";
 import { Button } from "@/components/ui/button";
+import { ButtonGroup } from "@/components/ui/button-group";
 import { Switch } from "@/components/ui/switch";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Textarea } from "@/components/ui/textarea";
 import {
   ANALYTICS,
@@ -45,6 +51,7 @@ import {
   ArrowRight,
   ArrowUpRight,
   CheckCircle2,
+  Info,
   Lock,
   OctagonAlert,
   Sparkles,
@@ -203,7 +210,14 @@ export function DatasetRequestForm({ onClose }: DatasetRequestFormProps) {
           return;
         }
         const bucket = (rawByOwner[owner] ||= {});
-        bucket[param.key] = param.kind === "number" ? Number(value) : value;
+        bucket[param.key] =
+          param.kind === "number"
+            ? Number(value)
+            : param.kind === "groups" && !param.csv
+              ? value.split(",").filter(Boolean)
+              : param.kind === "boolean"
+                ? value === "true"
+                : value;
       }
 
       for (const emitType of def.emits ?? [def.type]) {
@@ -550,14 +564,33 @@ function AnalyticRow({
             const missing = !param.optional && value.trim() === "";
             return (
               <div key={param.key} className="flex flex-col space-y-1">
-                <Label
-                  htmlFor={`${analytic.type}-${param.key}`}
-                  className="text-xs text-muted-foreground"
-                >
-                  {param.label}
-                  {param.optional && " (optional)"}
-                </Label>
-                {param.kind === "select" ? (
+                <div className="flex items-center gap-1">
+                  <Label
+                    htmlFor={`${analytic.type}-${param.key}`}
+                    className="text-xs text-muted-foreground"
+                  >
+                    {param.label}
+                    {param.optional && " (optional)"}
+                  </Label>
+                  {param.info && <InfoHint text={param.info} />}
+                </div>
+                {param.kind === "boolean" ? (
+                  <div className="flex h-8 items-center">
+                    <Switch
+                      id={`${analytic.type}-${param.key}`}
+                      checked={value === "true"}
+                      onCheckedChange={(checked) =>
+                        onParamChange(param.key, String(checked))
+                      }
+                    />
+                  </div>
+                ) : param.kind === "groups" ? (
+                  <GroupToggles
+                    value={values[param.key] ?? String(param.defaultValue)}
+                    options={param.options ?? []}
+                    onChange={(next) => onParamChange(param.key, next)}
+                  />
+                ) : param.kind === "select" ? (
                   <Select
                     value={values[param.key] || String(param.defaultValue)}
                     onValueChange={(value) => onParamChange(param.key, value)}
@@ -575,7 +608,7 @@ function AnalyticRow({
                           value={option}
                           className="text-xs"
                         >
-                          {option}
+                          {param.optionLabels?.[option] ?? option}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -605,5 +638,65 @@ function AnalyticRow({
         </div>
       )}
     </div>
+  );
+}
+
+function InfoHint({ text }: { text: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-label="What is this?"
+          className="text-muted-foreground/60 transition-colors hover:text-foreground"
+        >
+          <Info size={11} />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-64 text-xs leading-relaxed">
+        {text}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** Pick filetype groups as toggles; the value is comma-joined like every other param string. */
+function GroupToggles({
+  value,
+  options,
+  onChange,
+}: {
+  value: string;
+  options: readonly string[];
+  onChange: (value: string) => void;
+}) {
+  const selected = new Set(value.split(",").filter(Boolean));
+  const toggle = (option: string) => {
+    const next = new Set(selected);
+    if (next.has(option)) next.delete(option);
+    else next.add(option);
+    onChange(options.filter((o) => next.has(o)).join(","));
+  };
+  return (
+    <ButtonGroup>
+      {options.map((option) => (
+        <Button
+          key={option}
+          type="button"
+          variant="outline"
+          size="sm"
+          aria-pressed={selected.has(option)}
+          onClick={() => toggle(option)}
+          className={cn(
+            "h-8 border-border text-xs",
+            selected.has(option)
+              ? "bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary"
+              : "bg-muted/40 text-muted-foreground hover:text-foreground"
+          )}
+        >
+          {option}
+        </Button>
+      ))}
+    </ButtonGroup>
   );
 }

@@ -127,11 +127,17 @@ const FileTreeFolderContext = createContext<FileTreeFolderContextType>({
 export type FileTreeFolderProps = HTMLAttributes<HTMLDivElement> & {
   path: string;
   name: string;
+  /** Replaces the folder icon (e.g. an archive that opens like a folder). */
+  icon?: ReactNode;
+  /** Shown after the name, like `FileTreeActions` on a file. */
+  actions?: ReactNode;
 };
 
 export const FileTreeFolder = ({
   path,
   name,
+  icon,
+  actions,
   className,
   children,
   ...props
@@ -189,14 +195,16 @@ export const FileTreeFolder = ({
               type="button"
             >
               <FileTreeIcon>
-                {isExpanded ? (
-                  <FolderOpenIcon className="size-4 text-primary" />
-                ) : (
-                  <FolderIcon className="size-4 text-primary" />
-                )}
+                {icon ??
+                  (isExpanded ? (
+                    <FolderOpenIcon className="size-4 text-primary" />
+                  ) : (
+                    <FolderIcon className="size-4 text-primary" />
+                  ))}
               </FileTreeIcon>
               <FileTreeName>{name}</FileTreeName>
             </button>
+            {actions}
           </div>
           <CollapsibleContent>
             <div className="ml-4 border-l pl-2">{children}</div>

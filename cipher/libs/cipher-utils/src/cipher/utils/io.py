@@ -2,7 +2,6 @@ import hashlib
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
-from urllib.parse import unquote, urlparse
 
 
 class HashType(StrEnum):
@@ -30,16 +29,20 @@ def convert_st_time_to_datetime(st_time: float) -> datetime:
     return datetime.fromtimestamp(st_time)
 
 
-def fetch_bytes_from_uri(uri: str) -> bytes:
-    """Fetch file content as bytes from file:// or s3:// URI."""
-    parsed = urlparse(uri)
-    scheme = parsed.scheme.lower()
+def suffixed_path(path: Path, suffix: str, links_dir: Path) -> Path:
+    """`path`, or a symlink to it in `links_dir` ending in `suffix`, for readers that type files by extension.
 
-    if scheme == "file" or scheme == "":
-        path = Path(unquote(parsed.path))
-        return path.read_bytes()
+    Blobs are named by their hash alone; a reader such as xberg that picks its parser from the
+    extension gets a link that carries one. No bytes are copied.
 
-    elif scheme == "s3":
-        raise NotImplementedError("S3 URI fetching not implemented yet.")
-    else:
-        raise ValueError(f"Unsupported URI scheme: {scheme}")
+    Args:
+        path: The file's local path.
+        suffix: The extension the reader needs, with its dot (e.g. `.pdf`).
+        links_dir: A scratch directory the caller removes when done.
+    """
+    if path.suffix or not suffix:
+        return path
+    link = links_dir / f"{path.name}{suffix}"
+    if not link.is_symlink():
+        link.symlink_to(path)
+    return link

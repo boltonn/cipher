@@ -36,7 +36,7 @@ import {
   type LayoutKind,
 } from "@/features/graph/lib/graph-layouts";
 import { useDebounce } from "@/hooks/use-debounce";
-import { cn } from "@/lib/utils";
+import { cn, humanize } from "@/lib/utils";
 import {
   CalendarRange,
   Download,
@@ -70,7 +70,7 @@ const LABEL_MODES: { value: LabelsMode; label: string }[] = [
 const CTRL = "h-9";
 
 interface GraphToolbarProps {
-  datasetId: string | undefined;
+  datasetIds: string[];
   filters: GraphFilters;
   onFiltersChange: (next: GraphFilters) => void;
   labelsMode: LabelsMode;
@@ -110,7 +110,7 @@ interface GraphToolbarProps {
 }
 
 export function GraphToolbar({
-  datasetId,
+  datasetIds,
   filters,
   onFiltersChange,
   labelsMode,
@@ -174,9 +174,9 @@ export function GraphToolbar({
       <div className="flex flex-wrap items-center gap-2">
         <EntityPicker
           className={cn(CTRL, "w-72 rounded-md")}
-          datasetId={datasetId}
-          disabled={!datasetId}
-          placeholder={datasetId ? "Add / find an entity…" : "Pick a dataset above first"}
+          datasetIds={datasetIds}
+          disabled={datasetIds.length === 0}
+          placeholder={datasetIds.length > 0 ? "Add / find an entity…" : "Pick datasets above first"}
           onSelect={(entityId) => onAddSeed(entityId)}
           onQueryChange={setQ}
         />
@@ -288,7 +288,7 @@ export function GraphToolbar({
                           : "border-border bg-muted/30 text-muted-foreground hover:text-foreground"
                       )}
                     >
-                      {t.replace(/_/g, " ")}
+                      {humanize(t)}
                     </button>
                   );
                 })}

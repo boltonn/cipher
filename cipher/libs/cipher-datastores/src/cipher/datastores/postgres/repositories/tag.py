@@ -21,7 +21,7 @@ from cipher.datastores.postgres.tables.person import PersonTable
 from cipher.datastores.postgres.tables.tag import TagTable
 from cipher.datastores.postgres.tables.user import UserTable
 from cipher.schemas._base.common import ModelTagType
-from cipher.schemas.interaction.tag import TagPublic, TagSource, TagSourceType, TagTargetType
+from cipher.schemas.interaction.tag import TagPublic, TagSource, TagSourceType, TagStats, TagTargetType
 
 # Per target: the latest label per tag split into positive / negative lists, and the latest score per tag.
 PROJECTION_CTE = """
@@ -272,6 +272,26 @@ class PostgresTagRepository:
         )
         return list(result.scalars().all())
 
+    async def stats(self, *, user_id: str, limit: int = 200) -> list[TagStats]:
+        """Per tag and target kind: analyst positives / negatives, model coverage, `user_id`'s labels; busiest first."""
+        user = TagTable.source_type == TagSourceType.USER
+        targets = func.count(TagTable.target_id.distinct())
+        rows = await self.session.execute(
+            select(
+                TagTable.tag,
+                TagTable.target_type,
+                targets.filter(user, TagTable.label == ModelTagType.POSITIVE).label("labelled"),
+                targets.filter(user, TagTable.label == ModelTagType.NEGATIVE).label("rejected"),
+                targets.filter(TagTable.source_type == TagSourceType.MODEL).label("predicted"),
+                func.count().filter(user, TagTable.source_name == user_id).label("by_you"),
+                func.max(TagTable.date_updated).label("date_last_used"),
+            )
+            .group_by(TagTable.tag, TagTable.target_type)
+            .order_by(func.count().desc(), TagTable.tag)
+            .limit(limit)
+        )
+        return [TagStats.model_validate(row, from_attributes=True) for row in rows]
+
     async def file_tags(self, file_ids: list[str]) -> dict[str, list[str]]:
         """Current positive tags of these files (their content's), for decorating search results."""
         if not file_ids:
@@ -304,6 +324,20 @@ class PostgresTagRepository:
         )
         await self.delete_for_targets(target_type=target_type, target_ids=[source_id])
         await self.refresh(target_type=target_type, target_ids=[target_id])
+
+    async def forget_model(self, *, target_type: TagTargetType, target_ids: list[str], tag: str) -> None:
+        """Drop every model's score and label for `tag` on these targets (people's labels stay). Caller commits."""
+        if not target_ids:
+            return
+        await self.session.execute(
+            delete(TagTable).where(
+                TagTable.target_type == target_type,
+                TagTable.target_id.in_(target_ids),
+                TagTable.tag == tag,
+                TagTable.source_type == TagSourceType.MODEL,
+            )
+        )
+        await self.refresh(target_type=target_type, target_ids=target_ids)
 
     async def delete_for_targets(self, *, target_type: TagTargetType, target_ids: list[str]) -> None:
         """Purge the tags of deleted targets (no FK -- `target_id` is polymorphic). Caller commits."""

@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Any
 
 from loguru import logger
-from pyparse.parsers.contacts.vcard import VcardParser
+from pyparse.parsers.contacts.vcard import parse_contacts
 from rich.pretty import pprint
 
 in_dir = Path.home() / "data" / "google" / "Takeout"
@@ -10,8 +10,7 @@ file_paths = sorted(in_dir.rglob("*.vcf"))
 
 unique_fields = set()
 for test_file in file_paths:
-    parser = VcardParser()
-    contacts = parser.parse(test_file)
+    contacts = parse_contacts(test_file)
 
     # pprint(contacts)
 

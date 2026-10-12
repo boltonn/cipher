@@ -77,4 +77,5 @@ class EventTable(Base):
     __table_args__ = (
         Index("ix_event_dataset_start", "dataset_id", "date_start"),
         Index("ix_event_dataset_type", "dataset_id", "event_type"),
+        Index("ix_event_title_trgm", "title", postgresql_using="gin", postgresql_ops={"title": "gin_trgm_ops"}),
     )

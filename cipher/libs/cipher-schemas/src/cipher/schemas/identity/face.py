@@ -1,11 +1,10 @@
 from datetime import datetime
-from enum import StrEnum
 from typing import Annotated, NotRequired, TypedDict
 
 import numpy as np
 from pydantic import Field, field_serializer
 
-from cipher.schemas._base.base import BaseModel
+from cipher.schemas._base.base import BaseModel, StrEnum
 from cipher.schemas._base.common import PageParams, PaginatedResponse, Sex
 from cipher.schemas._base.detection import BoundingBox
 
@@ -16,15 +15,11 @@ FaceEmbedding = Annotated[
     Field(min_length=FACE_EMBEDDING_DIMENSION, max_length=FACE_EMBEDDING_DIMENSION),
 ]
 
-DEFAULT_FACE_MATCH_SIMILARITY = 0.61
-"""Datastore-wide default for 'this counts as a match': the floor used
-whenever similarity search runs without an analyst-chosen threshold (e.g.
-the background matching pipeline), and the UI's default slider position."""
-
-DEFAULT_FACE_REJECT_SIMILARITY = 0.64
-"""Floor for auto-rejecting a face as 'not a face': an unassigned face at least
-this similar to one an analyst manually rejected (e.g. the same cat) is
-rejected automatically, flagged `rejection_method=automatic` so it can be undone."""
+DEFAULT_FACE_SIMILARITY = 0.61
+"""Datastore-wide cosine-similarity floor for "these are the same face": matching and
+clustering propose at or above it, and an unassigned face this close to one an analyst
+marked "not a face" is auto-rejected (`rejection_method=automatic`, undoable). Also the
+UI's default slider position."""
 
 
 class FaceAssignmentMethod(StrEnum):
@@ -104,7 +99,7 @@ class FaceBase(BaseModel):
         default=None,
         ge=0,
         le=1,
-        description="Usability of this face for recognition (pose/blur/occlusion)",
+        description="Usability of this face for recognition: resolution x sharpness x frontal x detector score",
     )
     pose: FacePose | None = Field(default=None, description="Head pose, if estimated")
     embedding_model: str | None = Field(default=None, description="Face embedding model name")
@@ -133,6 +128,12 @@ class FaceAssignment(BaseModel):
     assignment_confidence: float | None = Field(default=None, ge=0, le=1)
 
 
+class FaceBulkAssignment(FaceAssignment):
+    """Assign (or unassign) many faces at once, e.g. every result of a similarity search."""
+
+    face_ids: list[str] = Field(min_length=1, max_length=1000)
+
+
 class FaceRejection(BaseModel):
     """Mark (or unmark) a set of faces as not a face.
 
@@ -143,7 +144,7 @@ class FaceRejection(BaseModel):
 
     face_ids: list[str] = Field(min_length=1, max_length=1000)
     reject_similar: bool = Field(default=True)
-    min_similarity: float = Field(default=DEFAULT_FACE_REJECT_SIMILARITY, ge=0, le=1)
+    min_similarity: float = Field(default=DEFAULT_FACE_SIMILARITY, ge=0, le=1)
 
 
 class FaceRejectionResult(BaseModel):
@@ -268,14 +269,14 @@ class BaseFaceSearchParameters(PageParams):
         description="Filter to faces assigned to, or with a pending match for, any of these persons",
     )
     limit: int = Field(default=10, ge=1, le=100)
-    sort_by: FaceSortField = Field(default=FaceSortField.DETECTION_CONFIDENCE)
+    sort_by: FaceSortField = Field(default=FaceSortField.QUALITY)
 
 
 class FaceSimilaritySearchParameters(BaseFaceSearchParameters):
     """Parameters for similarity-based face search."""
 
     sort_by: FaceSortField = Field(default=FaceSortField.SIMILARITY)
-    min_similarity: float | None = Field(default=DEFAULT_FACE_MATCH_SIMILARITY, ge=0, le=1)
+    min_similarity: float | None = Field(default=DEFAULT_FACE_SIMILARITY, ge=0, le=1)
 
 
 class FaceSimilaritySearchRequest(FaceSimilaritySearchParameters):
@@ -339,6 +340,7 @@ class FaceAnnotation(TypedDict):
     confidence: float
     landmarks: dict[str, float]
     embedding: list[float] | None
+    quality: NotRequired[float]
     pose: NotRequired[dict[str, float]]
     age: NotRequired[float]
     sex: NotRequired[Sex]
@@ -376,6 +378,7 @@ def face_annotation_to_face_create(
         ],
         detector_model=detector_model,
         detection_confidence=annotation["confidence"],
+        quality_score=annotation.get("quality"),
         pose=FacePose(**pose) if pose else None,
         embedding=annotation["embedding"],
         embedding_model=embedding_model,

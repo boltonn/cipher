@@ -2,12 +2,15 @@ import bisect
 from datetime import UTC, date, datetime, time, timedelta
 
 from sqlalchemy import asc, case, delete, desc, func, or_, select, text, update
+from sqlalchemy.dialects.postgresql import aggregate_order_by, array_agg
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cipher.datastores.postgres.tables.entity_match import EntityMatchTable
 from cipher.datastores.postgres.tables.extracted_text import ExtractedTextTable
+from cipher.datastores.postgres.tables.file import outside_source_tags
 from cipher.datastores.postgres.tables.mention import MentionTable
 from cipher.datastores.postgres.utils import normalize_name, strip_null_bytes
+from cipher.names import is_role_address
 from cipher.schemas._base.common import SortOrder
 from cipher.schemas.content.email import EmailCountBucket, EmailCountGroupBy, EmailCountRequest, EmailCounts
 from cipher.schemas.content.search import CorrespondenceFilters
@@ -133,40 +136,6 @@ class PostgresMentionRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def entity_rows_for_chunk_sync(self, *, dataset_id: str) -> list[dict]:
-        """Every text-anchored mention in a dataset, flat, for `sync-chunk-entities`.
-
-        Only mentions with a real char offset (text/pattern extraction, not
-        header/metadata) -- those are the ones that land inside a chunk span.
-        """
-        rows = (
-            await self.session.execute(
-                select(
-                    MentionTable.file_id,
-                    MentionTable.start_offset,
-                    MentionTable.entity_id,
-                    MentionTable.entity_type,
-                    MentionTable.selector_type,
-                    MentionTable.selector_subtype,
-                ).where(
-                    MentionTable.dataset_id == dataset_id,
-                    MentionTable.file_id.is_not(None),
-                    MentionTable.start_offset.is_not(None),
-                )
-            )
-        ).all()
-        return [
-            {
-                "file_id": r.file_id,
-                "start_offset": r.start_offset,
-                "entity_id": r.entity_id,
-                "entity_type": str(r.entity_type) if r.entity_type is not None else None,
-                "selector_type": str(r.selector_type) if r.selector_type is not None else None,
-                "selector_subtype": str(r.selector_subtype) if r.selector_subtype is not None else None,
-            }
-            for r in rows
-        ]
-
     async def create_table(self):
         """Create the mention table using SQLAlchemy metadata."""
         async with self.session.bind.begin() as conn:
@@ -255,7 +224,7 @@ class PostgresMentionRepository:
                 await self.session.execute(
                     text(
                         "SELECT id, start_offset, end_offset FROM chunk "
-                        "WHERE file_id = :f OR duplicate_file_ids @> to_jsonb(cast(:f as text)) "
+                        "WHERE NOT is_summary AND (file_id = :f OR duplicate_file_ids @> to_jsonb(cast(:f as text))) "
                         "ORDER BY start_offset"
                     ),
                     {"f": file_id},
@@ -271,7 +240,7 @@ class PostgresMentionRepository:
                     m.chunk_id = rows[i].id
 
     async def backfill_chunk_ids(self, *, dataset_id: str) -> int:
-        """Set `chunk_id` on a dataset's text-anchored mentions that don't have one.
+        """Set `chunk_id` on a dataset's text-anchored mentions that don't have one (end of `embed-text`).
 
         Set-based: one UPDATE joining `mention` to `chunk` on file + offset
         containment (through `duplicate_file_ids`). For datasets extracted before
@@ -279,7 +248,7 @@ class PostgresMentionRepository:
         """
         # Two equality joins, not one `file_id = ... OR duplicate_file_ids @> ...`: the OR
         # defeats the index and turned a seconds-long update into a many-minute one.
-        span = "AND m.start_offset >= c.start_offset AND m.start_offset < c.end_offset"
+        span = "AND NOT c.is_summary AND m.start_offset >= c.start_offset AND m.start_offset < c.end_offset"
         unlinked = "m.dataset_id = :ds AND m.chunk_id IS NULL AND m.start_offset IS NOT NULL"
         own = await self.session.execute(
             text(
@@ -502,18 +471,20 @@ class PostgresMentionRepository:
         return result.rowcount or 0
 
     async def unresolved_name_groups(self, *, dataset_id: str, entity_types: list[EntityType]) -> list[dict]:
-        """Group a dataset's unresolved `name` mentions by (entity_type, normalized_value).
+        """Group a dataset's unresolved `name` mentions by name key (`normalized_value`) -- the resolution unit.
 
-        Includes untyped name mentions (`entity_type IS NULL`) -- an email-header
-        display name whose person-vs-organization kind is unknown. The grouping
-        key is the resolution blocking key. `from_structured` flags a group with
-        at least one `structured_field` mention (e.g. an email header). Each
-        dict: `entity_type` (may be None), `normalized_value`, `mention_ids`,
-        `surface_texts`, `from_structured`.
+        Type is not part of the key: `Adaire` tagged person in one email and organization in
+        another is one name. `entity_type` is the most common type among the group's typed
+        mentions (None if none are typed); untyped mentions (an email-header display name)
+        are included. `from_structured` flags a group with at least one `structured_field`
+        mention (e.g. an email header). Each dict: `entity_type`, `normalized_value`,
+        `mention_ids`, `surface_texts`, `from_structured`.
         """
         stmt = (
             select(
-                MentionTable.entity_type,
+                func.mode(type_=MentionTable.entity_type.type)
+                .within_group(MentionTable.entity_type)
+                .label("entity_type"),
                 MentionTable.normalized_value,
                 func.array_agg(MentionTable.id).label("mention_ids"),
                 func.array_agg(MentionTable.surface_text).label("surface_texts"),
@@ -526,7 +497,7 @@ class PostgresMentionRepository:
                 MentionTable.entity_attribute == "name",
                 MentionTable.normalized_value.is_not(None),
             )
-            .group_by(MentionTable.entity_type, MentionTable.normalized_value)
+            .group_by(MentionTable.normalized_value)
         )
         rows = (await self.session.execute(stmt)).all()
         return [
@@ -543,34 +514,39 @@ class PostgresMentionRepository:
     async def unresolved_name_group_page(
         self,
         *,
-        dataset_id: str,
+        dataset_ids: list[str],
         query: str | None = None,
         has_resolution: bool | None = None,
         entity_id: str | None = None,
+        exclude_source_tags: list[str] | None = None,
         limit: int = 25,
         page: int = 1,
     ) -> dict:
         """Paginated distinct-name view of the review queue.
 
-        One row per `normalized_value` of an unresolved `name` mention, with the
+        One row per dataset and `normalized_value` of an unresolved `name` mention, with the
         most common surface form, how many mentions and files it spans, and one
-        context snippet. Ordered by mention count (noisiest first). Returns
-        `{total, page, limit, data}`.
+        context snippet. Strongest evidence first: correspondents (named in an email
+        header), then most files, then most mentions. `exclude_source_tags`
+        counts only mentions in files carrying none of them, so a name seen only in, say,
+        `promotions` mail drops out. Returns `{total, page, limit, data}`.
         """
         where = [
-            MentionTable.dataset_id == dataset_id,
+            MentionTable.dataset_id.in_(dataset_ids),
             MentionTable.entity_id.is_(None),
             MentionTable.entity_attribute == "name",
             MentionTable.normalized_value.is_not(None),
         ]
         if query and query.strip():
             where.append(MentionTable.normalized_value.ilike(f"%{query.strip().lower()}%"))
+        if exclude_source_tags:
+            where.append(outside_source_tags(MentionTable.file_id, exclude_source_tags))
         if has_resolution is not None:
             # a pending name-group resolution (name -> entity) exists for this name
             pending = (
                 select(EntityMatchTable.id)
                 .where(
-                    EntityMatchTable.dataset_id == dataset_id,
+                    EntityMatchTable.dataset_id == MentionTable.dataset_id,
                     EntityMatchTable.mention_id.is_(None),
                     EntityMatchTable.normalized_value == MentionTable.normalized_value,
                     EntityMatchTable.status == EntityMatchStatus.PENDING,
@@ -583,7 +559,7 @@ class PostgresMentionRepository:
             where.append(
                 select(EntityMatchTable.id)
                 .where(
-                    EntityMatchTable.dataset_id == dataset_id,
+                    EntityMatchTable.dataset_id == MentionTable.dataset_id,
                     EntityMatchTable.mention_id.is_(None),
                     EntityMatchTable.normalized_value == MentionTable.normalized_value,
                     EntityMatchTable.status == EntityMatchStatus.PENDING,
@@ -594,21 +570,31 @@ class PostgresMentionRepository:
 
         grouped = (
             select(
+                MentionTable.dataset_id.label("dataset_id"),
                 MentionTable.normalized_value.label("normalized_value"),
                 func.mode().within_group(MentionTable.surface_text).label("surface"),
                 func.count(MentionTable.id).label("mention_count"),
                 func.count(func.distinct(MentionTable.file_id)).label("file_count"),
+                func.coalesce(func.bool_or(MentionTable.field_path.like("header.%")), False).label("is_correspondent"),
                 func.min(MentionTable.context).label("sample_context"),
+                # the surface of that same snippet's mention, so it can be highlighted in it
+                array_agg(aggregate_order_by(MentionTable.surface_text, MentionTable.context, MentionTable.id))[
+                    1
+                ].label("sample_surface"),
             )
             .where(*where)
-            .group_by(MentionTable.normalized_value)
+            .group_by(MentionTable.dataset_id, MentionTable.normalized_value)
         )
 
         total = (await self.session.execute(select(func.count()).select_from(grouped.subquery()))).scalar_one()
 
         rows = (
             await self.session.execute(
-                grouped.order_by(desc("mention_count"), asc("normalized_value")).offset((page - 1) * limit).limit(limit)
+                grouped.order_by(
+                    desc("is_correspondent"), desc("file_count"), desc("mention_count"), asc("normalized_value")
+                )
+                .offset((page - 1) * limit)
+                .limit(limit)
             )
         ).all()
         return {
@@ -617,11 +603,14 @@ class PostgresMentionRepository:
             "limit": limit,
             "data": [
                 {
+                    "dataset_id": r.dataset_id,
                     "normalized_value": r.normalized_value,
                     "surface": r.surface,
                     "mention_count": r.mention_count,
                     "file_count": r.file_count,
+                    "is_correspondent": bool(r.is_correspondent),
                     "sample_context": r.sample_context,
+                    "sample_surface": r.sample_surface,
                 }
                 for r in rows
             ],
@@ -669,6 +658,55 @@ class PostgresMentionRepository:
             .exists()
         )
         return bool((await self.session.execute(stmt)).scalar())
+
+    async def extractor_mentions(self, *, mentioned_id: str, extractor: str) -> list[Mention]:
+        """Every mention one extractor wrote for this evidence row."""
+        rows = await self.session.execute(
+            select(MentionTable).where(MentionTable.mentioned_id == mentioned_id, MentionTable.extractor == extractor)
+        )
+        return [Mention.model_validate(row) for row in rows.scalars()]
+
+    async def delete_extractor_mentions(self, *, mentioned_id: str, extractor: str) -> int:
+        """Drop one extractor's mentions for this evidence row ahead of a re-extraction. Does not commit."""
+        result = await self.session.execute(
+            delete(MentionTable).where(MentionTable.mentioned_id == mentioned_id, MentionTable.extractor == extractor)
+        )
+        return result.rowcount or 0
+
+    async def unambiguous_name_entities(self, *, dataset_id: str, extractor: str) -> dict[tuple[str, str], str]:
+        """`(entity_type, normalized_value)` -> entity, for names whose resolved mentions all point at one entity."""
+        rows = await self.session.execute(
+            select(MentionTable.entity_type, MentionTable.normalized_value, func.min(MentionTable.entity_id))
+            .where(
+                MentionTable.dataset_id == dataset_id,
+                MentionTable.extractor == extractor,
+                MentionTable.entity_id.is_not(None),
+                MentionTable.normalized_value.is_not(None),
+            )
+            .group_by(MentionTable.entity_type, MentionTable.normalized_value)
+            .having(func.count(func.distinct(MentionTable.entity_id)) == 1)
+        )
+        return {(str(entity_type), value): entity_id for entity_type, value, entity_id in rows.tuples()}
+
+    async def text_spans(self, *, mentioned_id: str) -> list[tuple[int, int]]:
+        """`(start, end)` of every mention anchored in this text, whoever wrote it."""
+        rows = await self.session.execute(
+            select(MentionTable.start_offset, MentionTable.end_offset).where(
+                MentionTable.mentioned_id == mentioned_id, MentionTable.start_offset.is_not(None)
+            )
+        )
+        return [(start, end) for start, end in rows.tuples()]
+
+    async def extractor_offsets(self, *, mentioned_id: str, extractor: str) -> set[tuple[str | None, int]]:
+        """`(selector_type, start_offset)` of every span one extractor already wrote for this evidence row."""
+        rows = await self.session.execute(
+            select(MentionTable.selector_type, MentionTable.start_offset).where(
+                MentionTable.mentioned_id == mentioned_id,
+                MentionTable.extractor == extractor,
+                MentionTable.start_offset.is_not(None),
+            )
+        )
+        return {(selector_type, start) for selector_type, start in rows.tuples()}
 
     async def update_mention(
         self, mention_id: str, data: MentionUpdate, *, reviewed_by: str | None = None
@@ -748,7 +786,7 @@ class PostgresMentionRepository:
             params["dataset_ids"] = list(request.dataset_ids)
             where.append("f.dataset_id = ANY(cast(:dataset_ids AS text[]))")
         emails_cte = (
-            "emails AS (SELECT f.id AS file_id, coalesce(et.metadata->>'message_id', f.sha256) AS message_key, "
+            "emails AS (SELECT f.id AS file_id, coalesce(et.metadata->>'meaningful_hash', et.metadata->>'message_id', f.sha256) AS message_key, "
             f"{CONTENT_DATE_SQL} AS date_sent FROM file f JOIN extracted_text et ON et.file_id = f.id "
             f"WHERE {' AND '.join(where)})"
         )
@@ -854,11 +892,19 @@ class PostgresMentionRepository:
                     email_count=row.email_count,
                     names=list(row.names),
                     linked_to=by_selector.get(row.id, []),
+                    is_role_address=is_role_address(row.display_name),
                 )
                 for row in usage
             ),
             key=lambda evidence: order[evidence.entity_id],
         )
+
+    async def file_ids_for_entities(self, *, dataset_id: str | None, entity_ids: list[str]) -> list[str]:
+        """Files with a mention resolved to any of `entity_ids`, headers and metadata included."""
+        stmt = select(MentionTable.file_id).where(MentionTable.entity_id.in_(entity_ids)).distinct()
+        if dataset_id:
+            stmt = stmt.where(MentionTable.dataset_id == dataset_id)
+        return list((await self.session.execute(stmt)).scalars().all())
 
     async def header_addresses_for_name(
         self, *, name: str, dataset_id: str | None, exclude_owner: str | None = None, limit: int = 6
@@ -896,6 +942,47 @@ class PostgresMentionRepository:
             LIMIT :limit
         """
         return [dict(r) for r in (await self.session.execute(text(sql), params)).mappings().all()]
+
+    async def name_group(self, *, name: str, dataset_id: str | None, candidate_limit: int = 5) -> dict | None:
+        """How a name is written across the data, resolved or not: the lead for an identity still under review.
+
+        `value` (to search by), `mentions`, `files`, `unresolvedMentions`, and `pendingCandidates` -- the
+        entities the resolver proposed for the group (name + score), awaiting review. None when unseen.
+        """
+        params: dict = {"raw": name.strip().lower(), "folded": normalize_name(name), "limit": candidate_limit}
+        dataset_filter = ""
+        if dataset_id:
+            params["dataset_id"] = dataset_id
+            dataset_filter = "AND dataset_id = :dataset_id"
+        counts = (
+            await self.session.execute(
+                text(
+                    "SELECT count(*) AS mentions, count(DISTINCT file_id) AS files, "
+                    "count(*) FILTER (WHERE entity_id IS NULL) AS unresolved FROM mention "
+                    f"WHERE normalized_value IN (:raw, :folded) {dataset_filter}"
+                ),
+                params,
+            )
+        ).one()
+        if not counts.mentions:
+            return None
+        candidates = await self.session.execute(
+            text(
+                "SELECT e.display_name AS name, round(max(em.similarity_score)::numeric, 2)::float AS score "
+                "FROM entity_match em JOIN entity e ON e.id = em.entity_id "
+                "WHERE em.normalized_value IN (:raw, :folded) AND em.mention_id IS NULL AND em.status = 'PENDING' "
+                f"{dataset_filter.replace('dataset_id', 'em.dataset_id', 1)} "
+                "GROUP BY e.display_name ORDER BY score DESC LIMIT :limit"
+            ),
+            params,
+        )
+        return {
+            "value": params["folded"],
+            "mentions": counts.mentions,
+            "files": counts.files,
+            "unresolvedMentions": counts.unresolved,
+            "pendingCandidates": [dict(r) for r in candidates.mappings().all()],
+        }
 
     async def names_for_entity(self, entity_id: str, *, limit: int = 50) -> list[dict]:
         """Name groups resolved to an entity, most mentions first: `normalized_value`, `surface`, `mention_count`."""

@@ -93,3 +93,99 @@ async def test_persist_llm_events_dedups_within_a_call():
     written = await persist_llm_events(same, dataset_id="d", file_id="f", model="m", seen=set(), event_repo=repo)
     assert written == 1
     assert len(repo.added) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_batch_failing_whole_requeues_it_and_stops(monkeypatch):
+    import pyprompt
+
+    from cipher.orchestration import extract_events
+    from cipher.orchestration.run_recorder import RunStoppedError
+
+    class _Item:
+        def __init__(self, n):
+            self.enrichment = type("E", (), {"id": f"enr-{n}"})()
+            self.resource = {"id": f"file-{n}", "dataset_id": "d", "mime_type": "message/rfc822"}
+
+    class _Repo:
+        released, failed, completed = [], {}, []
+
+        def __init__(self, session):
+            pass
+
+        async def count_pending(self, **k):
+            return 2
+
+        async def get_pending_batch(self, **k):
+            return [_Item(1), _Item(2)]
+
+        async def mark_processing(self, **k):
+            pass
+
+        async def release_claims(self, ids):
+            _Repo.released.extend(ids)
+
+        async def mark_failed(self, failed):
+            _Repo.failed.update(failed)
+
+        async def mark_completed_batch(self, ids):
+            _Repo.completed.extend(ids)
+
+    class _Texts:
+        def __init__(self, session):
+            pass
+
+        async def get_by_file_id(self, file_id):
+            return type("T", (), {"content": "Dinner Friday?", "date_content": None})()
+
+    class _DownRunner:
+        def __init__(self, settings):
+            pass
+
+        async def extract_events(self, content, reference_date=None, author=None):
+            raise ConnectionError("LLM server down")
+
+    class _Session:
+        async def commit(self):
+            pass
+
+    async def _nothing(*a, **k):
+        return set()
+
+    monkeypatch.setattr(extract_events, "PostgresEnrichmentRepository", _Repo)
+    monkeypatch.setattr(extract_events, "PostgresExtractedTextRepository", _Texts)
+    monkeypatch.setattr(extract_events, "PostgresEventRepository", lambda session: None)
+    monkeypatch.setattr(extract_events, "queue_text_event_extraction_enrichments", _nothing)
+    monkeypatch.setattr(extract_events, "_load_event_dedup_keys", _nothing)
+    monkeypatch.setattr(extract_events, "_reference_date", lambda extracted: None)
+    monkeypatch.setattr(pyprompt, "PromptRunner", _DownRunner)
+
+    with pytest.raises(RunStoppedError, match="back in the queue"):
+        await extract_events.extract_text_events_workflow(_Session(), "d")
+    assert sorted(_Repo.released) == ["enr-1", "enr-2"]
+    assert _Repo.failed == {}
+    assert _Repo.completed == []
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("Sender", ("cathi bolton", "cathi@example.com")),
+        ("we", ("cathi bolton", "cathi@example.com")),
+        ("Recipient", (None, None)),
+        ("You", (None, None)),
+        ("Cathi", ("Cathi", None)),
+    ],
+)
+def test_stand_in_participants_become_the_author_or_nobody(name, expected):
+    from cipher.orchestration.extract_events import _llm_participant_identity
+    from cipher.schemas.content.email import EmailAddress
+
+    author = EmailAddress(name="cathi bolton", value="cathi@example.com")
+    assert _llm_participant_identity(name, author) == expected
+
+
+def test_author_stand_in_without_an_author_is_left_blank():
+    from cipher.orchestration.extract_events import _llm_participant_identity
+
+    assert _llm_participant_identity("Sender", None) == (None, None)

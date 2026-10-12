@@ -98,6 +98,12 @@ export const facesService = {
       .patch<FacePublic>(`${facesBaseURL}/${id}/assign`, payload)
       .then((res) => res.data),
 
+  // POST /faces/assign - assign (or, with personId null, unassign) many faces at once
+  assignMany: (faceIds: string[], payload: FaceAssignment) =>
+    apiClient
+      .post<number>(`${facesBaseURL}/assign`, { ...payload, faceIds })
+      .then((res) => res.data),
+
   setRepresentative: (id: string, payload: FaceRepresentativeUpdate) =>
     apiClient
       .patch<FacePublic>(`${facesBaseURL}/${id}/representative`, payload)

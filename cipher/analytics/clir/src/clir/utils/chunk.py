@@ -75,9 +75,7 @@ class MessageChunker:
         self.max_messages_per_chunk = max_messages_per_chunk
         self.min_messages_per_chunk = min_messages_per_chunk
         self.overlap_messages = overlap_messages
-        self.time_window = (
-            timedelta(minutes=time_window_minutes) if time_window_minutes else None
-        )
+        self.time_window = timedelta(minutes=time_window_minutes) if time_window_minutes else None
         self.use_translation = use_translation
 
         model_max = tokenizer.model_max_length
@@ -85,18 +83,14 @@ class MessageChunker:
             if chunk_size <= 0:
                 raise ValueError("chunk_size must be positive")
             if chunk_size > model_max:
-                raise ValueError(
-                    f"chunk_size {chunk_size} exceeds model max sequence length {model_max}"
-                )
+                raise ValueError(f"chunk_size {chunk_size} exceeds model max sequence length {model_max}")
         self.chunk_size = chunk_size or model_max
 
         # Compute fixed token overheads that reduce the budget per chunk.
         # We tokenize with add_special_tokens=True on an empty string to find
         # how many special tokens the model always adds (CLS, EOS, etc.)
         special = tokenizer("", add_special_tokens=True, return_tensors="pt")
-        self._special_token_ids: torch.Tensor = special["input_ids"][
-            0
-        ]  # e.g. [CLS, EOS]
+        self._special_token_ids: torch.Tensor = special["input_ids"][0]  # e.g. [CLS, EOS]
         n_special = self._special_token_ids.shape[0]
 
         prompt_text = self.config.passage_template
@@ -124,9 +118,7 @@ class MessageChunker:
         )["input_ids"][0]
 
     def _message_text(self, msg: MessageBase) -> str | None:
-        return (
-            msg.translation if (self.use_translation and msg.translation) else msg.text
-        )
+        return msg.translation if (self.use_translation and msg.translation) else msg.text
 
     def _message_timestamp(self, msg: MessageBase) -> datetime | None:
         return msg.date_received or msg.date_sent
@@ -194,9 +186,7 @@ class MessageChunker:
             yield from self._chunk_by_time(messages, token_map)
         elif self.strategy == "hybrid":
             if not (self.max_messages_per_chunk and self.time_window):
-                raise ValueError(
-                    "hybrid requires max_messages_per_chunk and time_window_minutes"
-                )
+                raise ValueError("hybrid requires max_messages_per_chunk and time_window_minutes")
             yield from self._chunk_by_hybrid(messages, token_map)
         else:
             raise ValueError(f"Unknown strategy: {self.strategy}")
@@ -225,9 +215,7 @@ class MessageChunker:
 
         # Separate prefix specials (CLS) from suffix specials (EOS/SEP at end)
         # We do this by re-encoding a dummy token and seeing what wraps it
-        dummy = self.tokenizer("x", add_special_tokens=True, return_tensors="pt")[
-            "input_ids"
-        ][0]
+        dummy = self.tokenizer("x", add_special_tokens=True, return_tensors="pt")["input_ids"][0]
         dummy_no_special = self._encode_raw("x")
         # Find where the content token sits in the full encoding
         content_start = (dummy == dummy_no_special[0]).nonzero(as_tuple=True)[0]
@@ -334,16 +322,11 @@ class MessageChunker:
                 start_time = msg_time
 
             time_exceeded = msg_time - start_time > self.time_window
-            count_exceeded = (
-                self.max_messages_per_chunk
-                and len(current) >= self.max_messages_per_chunk
-            )
+            count_exceeded = self.max_messages_per_chunk and len(current) >= self.max_messages_per_chunk
 
             if (time_exceeded or count_exceeded) and current:
                 yield self._build_chunk(current, token_map)
-                current = (
-                    current[-self.overlap_messages :] if self.overlap_messages else []
-                )
+                current = current[-self.overlap_messages :] if self.overlap_messages else []
                 start_time = msg_time
 
             current.append(msg)

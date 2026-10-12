@@ -37,6 +37,7 @@ from cipher.datastores.postgres.repositories.mention_relationship import (
     PostgresMentionRelationshipRepository,
 )
 from cipher.datastores.postgres.repositories.person import PostgresPersonRepository
+from cipher.datastores.postgres.repositories.table_mapping import PostgresTableMappingRepository
 from cipher.datastores.postgres.repositories.user import PostgresUserRepository
 
 __all__ = [
@@ -61,5 +62,6 @@ __all__ = [
     "PostgresMentionRepository",
     "PostgresMentionRelationshipRepository",
     "PostgresPersonRepository",
+    "PostgresTableMappingRepository",
     "PostgresUserRepository",
 ]

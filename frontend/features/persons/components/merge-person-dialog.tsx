@@ -34,18 +34,32 @@ import {
 } from "@/features/persons/hooks/use-persons";
 import { Person, PersonMergeSuggestion } from "@/features/persons/types";
 import { cn } from "@/lib/utils";
-import { AlertTriangle, ArrowRight, Loader2, Sparkles, UserRound } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeftRight,
+  ArrowRight,
+  Loader2,
+  Sparkles,
+  UserRound,
+} from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
 interface MergePersonDialogProps {
-  /** The surviving record -- everything folds onto this person. */
+  /** The person whose page opened the dialog -- kept by default, swappable. */
   person: Person;
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Called with the surviving person's id after a successful merge. */
+  onMerged?: (keptId: string) => void;
 }
 
-export function MergePersonDialog({ person, isOpen, onOpenChange }: MergePersonDialogProps) {
+export function MergePersonDialog({
+  person,
+  isOpen,
+  onOpenChange,
+  onMerged,
+}: MergePersonDialogProps) {
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="bg-card border-border sm:max-w-xl">
@@ -54,12 +68,16 @@ export function MergePersonDialog({ person, isOpen, onOpenChange }: MergePersonD
             Merge Person
           </DialogTitle>
           <DialogDescription className="text-xs text-muted-foreground">
-            Fold a duplicate record into{" "}
-            <span className="text-foreground font-medium">{person.name || "this person"}</span>. The
-            other record is deleted.
+            Fold two records of the same person into one. Use the swap button to
+            choose which record is kept; the other is deleted.
           </DialogDescription>
         </DialogHeader>
-        <MergePersonForm key={String(isOpen)} person={person} onDone={() => onOpenChange(false)} />
+        <MergePersonForm
+          key={String(isOpen)}
+          person={person}
+          onDone={() => onOpenChange(false)}
+          onMerged={onMerged}
+        />
       </DialogContent>
     </Dialog>
   );
@@ -96,7 +114,9 @@ function PersonPreview({
     <div
       className={cn(
         "flex flex-1 flex-col items-center gap-2 rounded-xl border p-3 text-center",
-        tone === "remove" ? "border-destructive/30 bg-destructive/5" : "border-primary/30 bg-primary/5"
+        tone === "remove"
+          ? "border-destructive/30 bg-destructive/5"
+          : "border-primary/30 bg-primary/5"
       )}
     >
       <span
@@ -109,9 +129,13 @@ function PersonPreview({
       </span>
       <PersonAvatar person={person} size="lg" />
       <div className="min-w-0 w-full">
-        <p className="truncate text-sm font-semibold text-foreground">{person.name || "Unnamed"}</p>
+        <p className="truncate text-sm font-semibold text-foreground">
+          {person.name || "Unnamed"}
+        </p>
         {person.aliases && person.aliases.length > 0 && (
-          <p className="truncate text-[11px] text-muted-foreground">aka {person.aliases.join(", ")}</p>
+          <p className="truncate text-[11px] text-muted-foreground">
+            aka {person.aliases.join(", ")}
+          </p>
         )}
       </div>
       <FaceStrip personId={person.id} />
@@ -141,7 +165,9 @@ function SuggestionChip({
       )}
     >
       <PersonAvatar person={suggestion} size="sm" className="shrink-0" />
-      <span className="max-w-32 truncate font-medium">{suggestion.name || "Unnamed"}</span>
+      <span className="max-w-32 truncate font-medium">
+        {suggestion.name || "Unnamed"}
+      </span>
       <span className="font-mono text-[11px] text-annotation">
         {Math.round(suggestion.similarityScore * 100)}%
       </span>
@@ -149,13 +175,22 @@ function SuggestionChip({
   );
 }
 
-function MergePersonForm({ person, onDone }: { person: Person; onDone: () => void }) {
+function MergePersonForm({
+  person,
+  onDone,
+  onMerged,
+}: {
+  person: Person;
+  onDone: () => void;
+  onMerged?: (keptId: string) => void;
+}) {
   const [sourceId, setSourceId] = useState<string | undefined>();
+  const [isKeepingOther, setIsKeepingOther] = useState(false);
   const [idInput, setIdInput] = useState("");
   const { data: source, isError: sourceNotFound } = usePerson(sourceId);
   const { data: candidates = [] } = usePersonMergeCandidates(person.id);
 
-  const merge = useMergePerson(person.id, onDone);
+  const merge = useMergePerson(onDone);
 
   // Prefer the already-loaded suggestion row so the preview fills in instantly.
   const sourcePreview = source ?? candidates.find((c) => c.id === sourceId);
@@ -163,22 +198,36 @@ function MergePersonForm({ person, onDone }: { person: Person; onDone: () => voi
   const samePerson = sourceId === person.id;
   const canMerge = !!sourceId && !samePerson && !sourceNotFound;
 
+  const other = {
+    id: sourceId ?? "",
+    name: sourcePreview?.name,
+    aliases: sourcePreview?.aliases,
+  };
+  const kept = isKeepingOther ? other : person;
+  const removed = isKeepingOther ? person : other;
+  const keptName = kept.name || "the kept person";
+  const removedName = removed.name || "the other person";
+
   const runMerge = () => {
     if (!sourceId) return;
-    merge.mutate(sourceId, {
-      onSuccess: (result) => {
-        // the picked person is gone now -- stop the previews / usePerson from
-        // pointing at a deleted id before the dialog finishes closing
-        setSourceId(undefined);
-        toast.success(
-          `Merged into ${person.name || "person"} — ${result.facesMoved} face${
-            result.facesMoved === 1 ? "" : "s"
-          }, ${result.relationshipsMoved} connection${
-            result.relationshipsMoved === 1 ? "" : "s"
-          } moved`
-        );
-      },
-    });
+    merge.mutate(
+      { targetId: kept.id, sourceId: removed.id },
+      {
+        onSuccess: (result) => {
+          // the deleted person is gone now -- stop the previews / usePerson from
+          // pointing at a deleted id before the dialog finishes closing
+          setSourceId(undefined);
+          onMerged?.(kept.id);
+          toast.success(
+            `Merged into ${keptName} — ${result.facesMoved} face${
+              result.facesMoved === 1 ? "" : "s"
+            }, ${result.relationshipsMoved} connection${
+              result.relationshipsMoved === 1 ? "" : "s"
+            } moved`
+          );
+        },
+      }
+    );
   };
 
   return (
@@ -220,7 +269,8 @@ function MergePersonForm({ person, onDone }: { person: Person; onDone: () => voi
               value={idInput}
               onChange={(e) => setIdInput(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && idInput.trim()) setSourceId(idInput.trim());
+                if (e.key === "Enter" && idInput.trim())
+                  setSourceId(idInput.trim());
               }}
               placeholder="…or paste a person ID"
               className="h-8 bg-muted/40 border-border text-xs font-mono"
@@ -240,7 +290,9 @@ function MergePersonForm({ person, onDone }: { person: Person; onDone: () => voi
 
         {samePerson && (
           <Alert variant="destructive">
-            <AlertDescription>Pick a different person than this one.</AlertDescription>
+            <AlertDescription>
+              Pick a different person than this one.
+            </AlertDescription>
           </Alert>
         )}
 
@@ -252,31 +304,39 @@ function MergePersonForm({ person, onDone }: { person: Person; onDone: () => voi
 
         <div className="flex items-center gap-2">
           {canMerge ? (
-            <PersonPreview
-              person={{
-                id: sourceId!,
-                name: sourcePreview?.name,
-                aliases: sourcePreview?.aliases,
-              }}
-              tone="remove"
-            />
+            <PersonPreview person={removed} tone="remove" />
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border p-3 text-center text-[11px] text-muted-foreground min-h-[168px]">
               <UserRound size={20} className="text-muted-foreground/60" />
               Pick a person to merge in
             </div>
           )}
-          <ArrowRight size={18} className="shrink-0 text-muted-foreground" />
-          <PersonPreview person={person} tone="keep" />
+          <div className="flex shrink-0 flex-col items-center gap-1">
+            <ArrowRight size={18} className="text-muted-foreground" />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={!canMerge}
+              onClick={() => setIsKeepingOther((v) => !v)}
+              title="Swap which person is kept"
+              className="h-7 gap-1 px-2 text-[11px]"
+            >
+              <ArrowLeftRight size={12} />
+              Swap
+            </Button>
+          </div>
+          <PersonPreview person={canMerge ? kept : person} tone="keep" />
         </div>
 
         <Alert className="border-annotation/30 bg-annotation/5">
           <AlertTriangle size={14} className="text-annotation" />
           <AlertDescription className="text-[11px] leading-relaxed text-muted-foreground">
-            Faces, pending matches, event roles, comments, mentions and connections move onto{" "}
-            <span className="text-foreground">{person.name || "this person"}</span>. Moved faces lose
-            their exemplar (representative / primary) flags — re-pick them afterward. This cannot be
-            undone.
+            Faces, pending matches, event roles, comments, mentions and
+            connections move onto{" "}
+            <span className="text-foreground">{keptName}</span>. Moved faces
+            lose their exemplar (representative / primary) flags — re-pick them
+            afterward. This cannot be undone.
           </AlertDescription>
         </Alert>
 
@@ -290,7 +350,11 @@ function MergePersonForm({ person, onDone }: { person: Person; onDone: () => voi
       </div>
 
       <DialogFooter>
-        <Button variant="ghost" onClick={onDone} className="text-muted-foreground">
+        <Button
+          variant="ghost"
+          onClick={onDone}
+          className="text-muted-foreground"
+        >
           Cancel
         </Button>
         <AlertDialog>
@@ -300,23 +364,25 @@ function MergePersonForm({ person, onDone }: { person: Person; onDone: () => voi
               variant="destructive"
               className="gap-2"
             >
-              {merge.isPending && <Loader2 size={14} className="animate-spin" />}
+              {merge.isPending && (
+                <Loader2 size={14} className="animate-spin" />
+              )}
               Merge…
             </Button>
           </AlertDialogTrigger>
           <AlertDialogContent className="bg-card border-border">
             <AlertDialogHeader>
               <AlertDialogTitle>
-                Merge {sourcePreview?.name || "this person"} into {person.name || "this person"}?
+                Merge {removedName} into {keptName}?
               </AlertDialogTitle>
               <AlertDialogDescription>
                 The{" "}
                 <span className="font-medium text-foreground">
-                  {sourcePreview?.name || "source"}
+                  {removedName}
                 </span>{" "}
-                record is permanently deleted. Its faces, pending matches, event roles, comments,
-                mentions and connections move onto {person.name || "the surviving person"}. This
-                can&apos;t be undone.
+                record is permanently deleted. Its faces, pending matches, event
+                roles, comments, mentions and connections move onto {keptName}.
+                This can&apos;t be undone.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>

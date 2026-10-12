@@ -13,13 +13,22 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from pyprompt.errors import PromptPackNotFoundError
-from pyprompt.schemas import LlmCombinedOutput, LlmEntityOutput, LlmEventOutput, LlmSignatureOutput
+from pyprompt.schemas import (
+    LlmCombinedOutput,
+    LlmEntityOutput,
+    LlmEventOutput,
+    LlmFileSummary,
+    LlmSignatureOutput,
+    LlmTableColumnsOutput,
+)
 from pyprompt.templating import PromptTemplate, load_prompt
 
+COLUMNS = "columns"
 ENTITIES = "entities"
 EVENTS = "events"
 EXTRACT = "extract"
 SIGNATURE = "signature"
+SUMMARIZE = "summarize"
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,10 +46,12 @@ class PromptPack:
 
 
 REGISTRY: dict[str, PromptPack] = {
+    COLUMNS: PromptPack(task=COLUMNS, relative_path="columns/v1.md", output_model=LlmTableColumnsOutput),
     ENTITIES: PromptPack(task=ENTITIES, relative_path="entities/v1.md", output_model=LlmEntityOutput),
     EVENTS: PromptPack(task=EVENTS, relative_path="events/v1.md", output_model=LlmEventOutput),
     EXTRACT: PromptPack(task=EXTRACT, relative_path="extract/v1.md", output_model=LlmCombinedOutput),
     SIGNATURE: PromptPack(task=SIGNATURE, relative_path="signature/v1.md", output_model=LlmSignatureOutput),
+    SUMMARIZE: PromptPack(task=SUMMARIZE, relative_path="summarize/v1.md", output_model=LlmFileSummary),
 }
 
 

@@ -1,12 +1,11 @@
 from datetime import datetime
-from enum import StrEnum
 from typing import Annotated, Any
 from uuid import uuid4
 
 import numpy as np
 from pydantic import BeforeValidator, ConfigDict, Field, computed_field
 
-from cipher.schemas._base.base import BaseModel
+from cipher.schemas._base.base import BaseModel, StrEnum
 from cipher.schemas._base.common import PageParams, PaginatedResponse, PhoneNumberType
 
 TEXT_EMBEDDING_DIMENSION = 1024

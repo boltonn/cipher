@@ -77,7 +77,7 @@ const PIPELINE = [
     services: ["cipher-names", "resolve-entities"],
     ml: false,
     description:
-      "Mentions are grouped by name and scored against existing entities (Fellegi-Sunter, explainable per signal). Confident matches attach, uncertain ones go to review, unmatched ones become provisional entities. Email headers become directed emailed edges; places resolve against an offline gazetteer; signature and email-domain affiliations become reviewable organization suggestions.",
+      "One call (resolve-entities) runs the whole stage. Mentions are grouped by name and scored against existing entities (Fellegi-Sunter, explainable per signal): confident matches attach, uncertain ones go to review, unmatched ones become auto-created entities. Places resolve against an offline gazetteer. Every spelling of a name is one unit (Adaire, Adaire's, Adaire (no reply), even tagged person in one email and organization in another): auto-created copies fold, and the unit gets one entity, not one per spelling; possible duplicates wait on the Verify tab. Email headers become directed emailed edges; email-signature and email-domain affiliations become reviewable suggestions (the Entities page's Email signatures tab, and each organization's page).",
   },
   {
     num: "06",
@@ -107,42 +107,48 @@ const FILETYPES: {
   {
     name: "Documents",
     icon: <FileText size={16} />,
-    description: "Office files, PDFs, and plain text -- extracted, OCR'd where pages are scanned, chunked, and embedded for keyword and semantic search.",
+    description:
+      "Office files, PDFs, and plain text -- extracted, OCR'd where pages are scanned, chunked, and embedded for keyword and semantic search.",
     extensions: [".pdf", ".docx", ".xlsx", ".pptx", ".txt", ".rtf", ".html"],
     handler: "pyxberg (+ pyvllm OCR) → clir",
   },
   {
     name: "Emails",
     icon: <Mail size={16} />,
-    description: "Headers, participants, body, and attachments (split back out as child files). Headers feed selectors and directed emailed edges between addresses; the sender's signature feeds who they work for, in which unit, and their work phone / address.",
+    description:
+      "Headers, participants, body, and attachments (split back out as child files). Headers feed selectors and directed emailed edges between addresses; the sender's email signature feeds who they work for, in which unit, and their work phone / address.",
     extensions: [".eml", ".msg"],
     handler: "pyparse → clir",
   },
   {
     name: "Contacts",
     icon: <IdCard size={16} />,
-    description: "vCards parsed into contact records, then into name and selector mentions (with member_of for organizations) for entity resolution.",
+    description:
+      "vCards parsed into contact records, then into name and selector mentions (with member_of for organizations) for entity resolution.",
     extensions: [".vcf"],
     handler: "pyparse → mentions",
   },
   {
     name: "Calendars",
     icon: <CalendarDays size={16} />,
-    description: "Calendar entries become events with participants and places, linked to entities and locations once resolved.",
+    description:
+      "Calendar entries become events with participants and places, linked to entities and locations once resolved.",
     extensions: [".ics"],
     handler: "pyparse → events",
   },
   {
     name: "Images",
     icon: <ImageIcon size={16} />,
-    description: "Embedded for image-to-image and text-to-image search, scanned for faces (matched or clustered into persons), and mapped from EXIF GPS.",
+    description:
+      "Embedded for image-to-image and text-to-image search, scanned for faces (matched or clustered into persons), and mapped from EXIF GPS.",
     extensions: [".jpg", ".png", ".gif", ".tiff", ".webp", ".heic"],
     handler: "setfitcv + face",
   },
   {
     name: "Unclassified",
     icon: <HelpCircle size={16} />,
-    description: "Anything Magika and the heuristics can't confidently bucket still gets hashed, sized, and made browsable -- nothing silently drops out of the dataset.",
+    description:
+      "Anything Magika and the heuristics can't confidently bucket still gets hashed, sized, and made browsable -- nothing silently drops out of the dataset.",
     extensions: ["other / binary"],
     handler: "filetyper (fallback)",
   },
@@ -160,7 +166,8 @@ const ANALYTICS: {
   {
     name: "filetyper",
     role: "AI/ML",
-    description: "Types every file by combining filetype heuristics with Google's Magika where heuristics lack specificity -- the first stop for every ingested file.",
+    description:
+      "Types every file by combining filetype heuristics with Google's Magika where heuristics lack specificity -- the first stop for every ingested file.",
     tech: "Magika (AI-based file identification)",
     commands: ["load-files"],
     links: { model: "#", code: "#" },
@@ -168,7 +175,8 @@ const ANALYTICS: {
   {
     name: "pyxberg",
     role: "AI/ML",
-    description: "Rust-based document text extraction. Records which PDF pages are image-based so the OCR step reads just those; inline EasyOCR / Tesseract is only an offline fallback (--ocr-backend) when no GPU is available.",
+    description:
+      "Rust-based document text extraction. Records which PDF pages are image-based so the OCR step reads just those; inline EasyOCR / Tesseract is only an offline fallback (--ocr-backend) when no GPU is available.",
     tech: "Kreuzberg (+ optional EasyOCR / Tesseract)",
     commands: ["extract-text"],
     links: { model: "#", code: "#" },
@@ -176,7 +184,8 @@ const ANALYTICS: {
   {
     name: "pyparse",
     role: "Parser",
-    description: "Structured parsing for email, contacts, calendars, and legacy Microsoft Office formats.",
+    description:
+      "Structured parsing for email, contacts, calendars, and legacy Microsoft Office formats.",
     tech: ".eml · .msg · .vcf · .ics · legacy .doc/.ppt",
     commands: ["extract-text", "extract-contact-entities", "extract-events"],
     links: { code: "#" },
@@ -184,7 +193,8 @@ const ANALYTICS: {
   {
     name: "pyvllm",
     role: "AI/ML",
-    description: "Every local model on one vLLM install: the LLM behind chat and pyprompt, and the OCR model that reads image-based PDF pages and text-bearing images (started by the ocr step). OCR weights are non-commercial (CC BY-NC).",
+    description:
+      "Every local model on one vLLM install: the LLM behind chat and pyprompt, and the OCR model that reads image-based PDF pages and text-bearing images (started by the ocr step). OCR weights are non-commercial (CC BY-NC).",
     tech: "vLLM · Qwen3.8-27B · jina-ocr-v1",
     commands: ["ocr"],
     links: { model: "#", code: "#" },
@@ -192,7 +202,8 @@ const ANALYTICS: {
   {
     name: "clir",
     role: "AI/ML",
-    description: "Multilingual text embedding for document and email chunks -- the semantic half of hybrid search, across languages.",
+    description:
+      "Multilingual text embedding for document and email chunks -- the semantic half of hybrid search, across languages.",
     tech: "Jina multilingual embeddings",
     commands: ["embed-text"],
     links: { model: "#", code: "#" },
@@ -200,23 +211,37 @@ const ANALYTICS: {
   {
     name: "setfitcv",
     role: "AI/ML",
-    description: "CLIP image embedding -- powers image-to-image and text-to-image search, reads EXIF GPS into locations, and filters which images are worth OCR. Tag heads: train one small classifier per analyst tag on the stored embeddings, then score every image with it.",
+    description:
+      "CLIP image embedding -- powers image-to-image and text-to-image search, reads EXIF GPS into locations, and filters which images are worth OCR. Tag heads: train one small classifier per analyst tag on the stored embeddings, then score every image with it.",
     tech: "CLIP (image/text joint embedding)",
-    commands: ["embed-images", "extract-locations", "train-image-heads", "score-image-heads"],
+    commands: [
+      "embed-images",
+      "extract-locations",
+      "train-image-heads",
+      "score-image-heads",
+    ],
     links: { model: "#", code: "#" },
   },
   {
     name: "face",
     role: "AI/ML",
-    description: "Face detection and embedding across every image, then matching to known persons and clustering the rest into new ones. Faces marked “not a face” auto-reject their look-alikes; people sharing a photo get appears_in_photo_with edges.",
+    description:
+      "Face detection and embedding across every image, then matching to known persons and clustering the rest into new ones. Faces marked “not a face” auto-reject their look-alikes; people sharing a photo get appears_in_photo_with edges.",
     tech: "InsightFace",
-    commands: ["detect-faces", "match-faces", "cluster-faces", "reject-similar-faces", "link-face-cooccurrence"],
+    commands: [
+      "detect-faces",
+      "match-faces",
+      "cluster-faces",
+      "reject-similar-faces",
+      "link-face-cooccurrence",
+    ],
     links: { model: "#", code: "#" },
   },
   {
     name: "pyselectors",
     role: "Parser",
-    description: "Deterministic extraction of strong identifiers -- phone, email, IBAN, passport, IMEI, crypto address, … -- normalized, validated, and context-scored. About 1 ms per document.",
+    description:
+      "Deterministic extraction of strong identifiers -- phone, email, IBAN, passport, IMEI, crypto address, … -- normalized, validated, and context-scored. About 1 ms per document.",
     tech: "Pattern packs, no ML",
     commands: ["extract-selectors"],
     links: { code: "#" },
@@ -224,7 +249,8 @@ const ANALYTICS: {
   {
     name: "pygliner",
     role: "AI/ML",
-    description: "Zero-shot, multilingual entity and relation extraction; labels come from the ontology at inference time.",
+    description:
+      "Zero-shot, multilingual entity and relation extraction; labels come from the ontology at inference time.",
     tech: "GLiNER2.5",
     commands: ["extract-entities --extractor gliner"],
     links: { model: "#", code: "#" },
@@ -232,7 +258,8 @@ const ANALYTICS: {
   {
     name: "nerd",
     role: "AI/ML",
-    description: "Supervised multilingual named-entity recognition -- fast batched GPU inference for person, organization, and location names.",
+    description:
+      "Supervised multilingual named-entity recognition -- fast batched GPU inference for person, organization, and location names.",
     tech: "Fine-tuned XLM-RoBERTa token classification",
     commands: ["extract-entities --extractor nerd"],
     links: { model: "#", code: "#" },
@@ -240,15 +267,21 @@ const ANALYTICS: {
   {
     name: "pyprompt",
     role: "AI/ML",
-    description: "LLM prompt runner for structured extraction -- entities and events (plus memberships: clubs, gyms, accounts the recipient belongs to) from email bodies in one call per email. Slowest, most flexible. Also reads email signatures (below).",
+    description:
+      "LLM prompt runner for structured extraction -- entities and events (plus memberships: clubs, gyms, accounts the recipient belongs to) from email bodies in one call per email. Slowest, most flexible. Also reads email signatures (below).",
     tech: "OpenAI-compatible LLM + prompt packs",
-    commands: ["extract-llm", "extract-entities --extractor llm", "extract-events --llm"],
+    commands: [
+      "extract-llm",
+      "extract-entities --extractor llm",
+      "extract-events --llm",
+    ],
     links: { code: "#" },
   },
   {
-    name: "signatures",
+    name: "email signatures",
     role: "AI/ML",
-    description: "Who each sender works for, in which unit, and how to reach them. First pass (rules): bulk mail is skipped, and the last lines the sender wrote are only sent on when someone may be signing off (a farewell phrase, the sender's name, an NER person) and there is something to learn (an organization, phone, website or other email address) -- about 5% of a mailbox. The multilingual word lists are one file (signature_cues.py). The LLM then decides whether it's really a signature and copies out company → division → department, title, phone, email, website and address; code checks every value is verbatim, the signer is the sender, and it isn't a brand. A sender's known signature is reused without another call. Results land as reviewable suggestions on the organization page -- including names not settled yet. Full walkthrough: docs/signatures.md.",
+    description:
+      "Who each sender works for, in which unit, and how to reach them. First pass (rules): bulk mail is skipped, and the last lines the sender wrote are only sent on when someone may be signing off (a farewell phrase, the sender's name, an NER person) and there is something to learn (an organization, phone, website or other email address) -- about 5% of a mailbox. The multilingual word lists are one file (signature_cues.py). The LLM then decides whether it's really an email signature and copies out company → division → department, title, phone, email, website and address; code checks every value is verbatim, the signer is the sender, and it isn't a brand. Each address's city comes from the gazetteer (never guessed), and phones keep a country only when the number states one. A sender's known email signature is reused without another call. Review on the Entities page's Email signatures tab: fix labels in the text and accept, correct, reject or add relationships. Full walkthrough: docs/signatures.md.",
     tech: "Gate + pyprompt signature pack (local LLM)",
     commands: ["extract-signatures", "resolve-entities"],
     links: { code: "#" },
@@ -256,15 +289,17 @@ const ANALYTICS: {
   {
     name: "cipher-names",
     role: "Parser",
-    description: "Name parsing, transliteration, nicknames, and blocking keys behind entity resolution: candidates are scored Fellegi-Sunter style with a per-signal explanation, so every match can be reviewed.",
+    description:
+      "Name parsing, transliteration, nicknames, and blocking keys behind entity resolution: candidates are scored Fellegi-Sunter style with a per-signal explanation, so every match can be reviewed.",
     tech: "Rule-based name matching, no ML",
-    commands: ["resolve-entities", "dedupe-entities"],
+    commands: ["resolve-entities"],
     links: { code: "#" },
   },
   {
     name: "cipher-places",
     role: "Parser",
-    description: "Offline gazetteer: place mentions resolve to shared country / state / city / region entities using the text around each mention; ambiguous names stay unresolved.",
+    description:
+      "Offline gazetteer: place mentions resolve to shared country / state / city / region entities using the text around each mention; ambiguous names stay unresolved.",
     tech: "Offline gazetteer index (cipher-places-build)",
     commands: ["resolve-locations"],
     links: { code: "#" },
@@ -272,7 +307,12 @@ const ANALYTICS: {
 ];
 
 type Field = { key: string; type: string; ml?: boolean };
-const SCHEMAS: { name: string; vector: boolean; extends?: string; fields: Field[] }[] = [
+const SCHEMAS: {
+  name: string;
+  vector: boolean;
+  extends?: string;
+  fields: Field[];
+}[] = [
   {
     name: "Dataset",
     vector: false,
@@ -396,7 +436,10 @@ const SCHEMAS: { name: string; vector: boolean; extends?: string; fields: Field[
     fields: [
       { key: "id", type: "str" },
       { key: "dataset_id", type: "str | null" },
-      { key: "entity_type", type: '"person" | "organization" | "location" | "selector"' },
+      {
+        key: "entity_type",
+        type: '"person" | "organization" | "location" | "selector"',
+      },
       { key: "display_name", type: "str" },
       { key: "aliases", type: "str[]" },
       { key: "source", type: "EntitySource" },
@@ -462,7 +505,10 @@ const SCHEMAS: { name: string; vector: boolean; extends?: string; fields: Field[
       { key: "name", type: "str | null" },
       { key: "address", type: "str | null" },
       { key: "country", type: "str | null" },
-      { key: "source", type: '"name_mention" | "coordinate_mention" | "exif" | "geocoded" | "device_gps"' },
+      {
+        key: "source",
+        type: '"name_mention" | "coordinate_mention" | "exif" | "geocoded" | "device_gps"',
+      },
     ],
   },
   {
@@ -471,7 +517,10 @@ const SCHEMAS: { name: string; vector: boolean; extends?: string; fields: Field[
     fields: [
       { key: "id", type: "str" },
       { key: "content", type: "str" },
-      { key: "commentable_type", type: '"dataset" | "image" | "person" | "file" | "entity"' },
+      {
+        key: "commentable_type",
+        type: '"dataset" | "image" | "person" | "file" | "entity"',
+      },
       { key: "commentable_id", type: "str" },
       { key: "user_id", type: "str" },
     ],
@@ -484,7 +533,10 @@ const SCHEMAS: { name: string; vector: boolean; extends?: string; fields: Field[
       { key: "enrichable_type", type: '"file" | "contact" | "image" | "face"' },
       { key: "enrichable_id", type: "str" },
       { key: "enrichment_type", type: "EnrichmentType", ml: true },
-      { key: "status", type: '"pending" | "processing" | "completed" | "failed" | "skipped"' },
+      {
+        key: "status",
+        type: '"pending" | "processing" | "completed" | "failed" | "skipped"',
+      },
       { key: "retry_count", type: "int" },
       { key: "error_message", type: "str | null" },
     ],
@@ -516,18 +568,38 @@ const ONTOLOGY_NODE_ATTRS = [
   "selector_type",
 ];
 
-const ONTOLOGY_ENTITIES: { name: string; description: string; attributes: string[] }[] = [
+const ONTOLOGY_ENTITIES: {
+  name: string;
+  description: string;
+  attributes: string[];
+}[] = [
   {
     name: "person",
     description:
       "Real-world individual of interest. Reuses the existing person table; the node bridges to it via entity.person_id, so faces stay reachable.",
-    attributes: ["name", "aliases[]", "date_of_birth", "sex", "notes", "tags[]", "is_verified", "source"],
+    attributes: [
+      "name",
+      "aliases[]",
+      "date_of_birth",
+      "sex",
+      "notes",
+      "tags[]",
+      "is_verified",
+      "source",
+    ],
   },
   {
     name: "organization",
     description:
       "Company, agency, or unit. Sub-units (regional offices, subsidiaries) are themselves organizations linked with part_of / subsidiary_of.",
-    attributes: ["legal_name", "aliases[]", "category", "parent_id", "country", "notes"],
+    attributes: [
+      "legal_name",
+      "aliases[]",
+      "category",
+      "parent_id",
+      "country",
+      "notes",
+    ],
   },
   {
     name: "location",
@@ -548,7 +620,12 @@ const ONTOLOGY_ENTITIES: { name: string; description: string; attributes: string
     name: "selector",
     description:
       "A strong identifier that resolves to one thing. Its own node so it can carry mentions and edges -- one phone shared across three files is one node. Unique per (dataset, kind, normalized_value).",
-    attributes: ["selector_type", "raw_value", "normalized_value", "region_hint"],
+    attributes: [
+      "selector_type",
+      "raw_value",
+      "normalized_value",
+      "region_hint",
+    ],
   },
 ];
 
@@ -562,6 +639,7 @@ const ONTOLOGY_SELECTOR_TYPES = [
   "national_id",
   "imei",
   "imsi",
+  "mac_address",
   "social_handle",
   "crypto_address",
   "license_plate",
@@ -585,19 +663,22 @@ const ONTOLOGY_RELATIONSHIPS: {
     type: "member_of",
     from: "person",
     to: "organization",
-    description: "Belongs to an organization (a club, gym, association, account). Produced from vCards and from membership emails (welcome, renewal, dues receipt) read by the events LLM pass, as suggestions.",
+    description:
+      "Belongs to an organization (a club, gym, association, account). Produced from vCards and from membership emails (welcome, renewal, dues receipt) read by the events LLM pass, as suggestions.",
   },
   {
     type: "employed_by",
     from: "person",
     to: "organization",
-    description: "Employed by an organization (or one of its units); role in attributes. Produced from email signatures and email domains, as suggestions.",
+    description:
+      "Employed by an organization (or one of its units); role in attributes. Produced from email signatures and email domains, as suggestions.",
   },
   {
     type: "part_of",
     from: "organization",
     to: "organization",
-    description: "A sub-unit (division, department, office) is part of a parent org; an org has at most one parent. Signature unit chains propose these.",
+    description:
+      "A sub-unit (division, department, office) is part of a parent org; an org has at most one parent. Signature unit chains propose these.",
   },
   {
     type: "subsidiary_of",
@@ -617,16 +698,45 @@ const ONTOLOGY_RELATIONSHIPS: {
     from: "person · organization · selector",
     to: "(same)",
     description:
-      "Sender emailed recipient (to/cc/bcc); weight = emails sent that way, a reply is its own edge back. Endpoints are the bare email selectors, so links exist before names are known. Other channels (calls, messages) get their own directed types when their producers exist.",
+      "Sender emailed recipient (to/cc/bcc); weight = emails sent that way, a reply is its own edge back. Endpoints are the bare email selectors, so links exist before names are known.",
   },
-  { type: "family_of", from: "person", to: "person", symmetric: true, description: "Two people are family." },
+  {
+    type: "called",
+    from: "person · organization · selector",
+    to: "(same)",
+    description:
+      "Caller phoned callee, from call records in a table; weight = calls placed that way.",
+  },
+  {
+    type: "messaged",
+    from: "person · organization · selector",
+    to: "(same)",
+    description:
+      "Sender messaged recipient (SMS, chat exports); weight = messages sent that way.",
+  },
+  {
+    type: "paid",
+    from: "person · organization · selector",
+    to: "(same)",
+    description:
+      "Payer transferred money to payee (bank exports); weight = payments that way, amounts on the edge.",
+  },
+  {
+    type: "family_of",
+    from: "person",
+    to: "person",
+    symmetric: true,
+    description: "Two people are family.",
+  },
   {
     type: "appears_in_photo_with",
     from: "person",
     to: "person",
     symmetric: true,
-    description: "Two people's faces appear in the same photo (confirmed or pending face matches); weight = shared photos.",
-  },  {
+    description:
+      "Two people's faces appear in the same photo (confirmed or pending face matches); weight = shared photos.",
+  },
+  {
     type: "co_mention_of",
     from: "any",
     to: "any",
@@ -634,7 +744,6 @@ const ONTOLOGY_RELATIONSHIPS: {
     description:
       "Two entities are mentioned in the same chunk of text; weight = shared chunks. For co-occurrence-style knowledge graphs -- available, but no producer ships yet. Not walked by default graph traversal.",
   },
-
 
   {
     type: "same_as",
@@ -653,15 +762,42 @@ const ONTOLOGY_RELATIONSHIPS: {
 
 // Analyst-facing resolution terms -- keep in sync with docs/glossary.md "Resolution workflow".
 const RESOLUTION_TERMS: [string, string][] = [
-  ["Mention", "One occurrence of a name or identifier in a file — “Dell” in one email’s From header."],
-  ["Name group", "Every unresolved mention of one name, counted together — “dell”: 639 mentions. One decision covers all of them."],
-  ["Entity", "The single record for the real person, organization, location or identifier that mentions point at."],
-  ["Auto-created entity", "An entity the resolver made for a name that matched nothing. Check it on the Verify tab."],
-  ["Verify", "Keep an auto-created entity as a real one. Edit fixes its name; merge folds a duplicate (Dell Inc) into the entity it repeats (Dell)."],
-  ["Resolution", "A suggestion that a name group is a given entity, scored by the resolver, waiting for your decision."],
-  ["Accept / Reject", "Take the suggested resolution (all the name’s mentions resolve to that entity) or say it is wrong."],
-  ["Create new entity", "Make a new person, organization or location from the name group and resolve it there."],
-  ["Not an entity", "Discard the name group — a slogan, a greeting, parser junk."],
+  [
+    "Mention",
+    "One occurrence of a name or identifier in a file — “Dell” in one email’s From header.",
+  ],
+  [
+    "Name group",
+    "Every unresolved mention of one name, counted together — “dell”: 639 mentions. One decision covers all of them.",
+  ],
+  [
+    "Entity",
+    "The single record for the real person, organization, location or identifier that mentions point at.",
+  ],
+  [
+    "Auto-created entity",
+    "An entity the resolver made for a name that matched nothing. Check it on the Verify tab.",
+  ],
+  [
+    "Verify",
+    "Keep an auto-created entity as a real one. Edit fixes its name. Each row lists the entities it may duplicate: merge folds it in (its name becomes an alias), keep apart says they differ.",
+  ],
+  [
+    "Resolution",
+    "A suggestion that a name group is a given entity, scored by the resolver, waiting for your decision.",
+  ],
+  [
+    "Accept / Reject",
+    "Take the suggested resolution (all the name’s mentions resolve to that entity) or say it is wrong.",
+  ],
+  [
+    "Create new entity",
+    "Make a new person, organization or location from the name group and resolve it there.",
+  ],
+  [
+    "Not an entity",
+    "Discard the name group — a slogan, a greeting, parser junk.",
+  ],
 ];
 
 function SectionEyebrow({ children }: { children: ReactNode }) {
@@ -695,9 +831,15 @@ function ServiceLink({
 
 const FLOW_VARIANTS = {
   default: { border: "border-border bg-white/[0.02]", text: "text-foreground" },
-  ml: { border: "border-annotation/50 bg-annotation/5", text: "text-annotation" },
+  ml: {
+    border: "border-annotation/50 bg-annotation/5",
+    text: "text-annotation",
+  },
   vector: { border: "border-primary/50 bg-primary/5", text: "text-primary" },
-  muted: { border: "border-muted-foreground/40 bg-transparent", text: "text-muted-foreground" },
+  muted: {
+    border: "border-muted-foreground/40 bg-transparent",
+    text: "text-muted-foreground",
+  },
 } as const;
 
 function FlowNode({
@@ -722,7 +864,9 @@ function FlowNode({
       )}
     >
       <span className={cn("text-xs font-semibold", styles.text)}>{title}</span>
-      <span className="font-mono text-[11px] text-muted-foreground">{subtitle}</span>
+      <span className="font-mono text-[11px] text-muted-foreground">
+        {subtitle}
+      </span>
     </div>
   );
 }
@@ -730,7 +874,11 @@ function FlowNode({
 /** Every optional analytic, in pipeline order; title = service or `cipher` command. Text analytics need Extract first. */
 const OPTIONAL_ANALYTICS: {
   stage: string;
-  nodes: { title: string; subtitle: string; variant: keyof typeof FLOW_VARIANTS }[];
+  nodes: {
+    title: string;
+    subtitle: string;
+    variant: keyof typeof FLOW_VARIANTS;
+  }[];
 }[] = [
   {
     stage: "Extract",
@@ -749,32 +897,71 @@ const OPTIONAL_ANALYTICS: {
   {
     stage: "Images",
     nodes: [
-      { title: "extract-locations", subtitle: "EXIF GPS → map", variant: "default" },
+      {
+        title: "extract-locations",
+        subtitle: "EXIF GPS → map",
+        variant: "default",
+      },
       { title: "face", subtitle: "detect faces", variant: "ml" },
-      { title: "match · cluster faces", subtitle: "faces → persons", variant: "ml" },
-      { title: "link-face-cooccurrence", subtitle: "photo-with edges", variant: "default" },
+      {
+        title: "match · cluster faces",
+        subtitle: "faces → persons",
+        variant: "ml",
+      },
+      {
+        title: "link-face-cooccurrence",
+        subtitle: "photo-with edges",
+        variant: "default",
+      },
       { title: "image heads", subtitle: "tag classifiers", variant: "ml" },
     ],
   },
   {
     stage: "Find mentions",
     nodes: [
-      { title: "pyselectors", subtitle: "phones, emails, …", variant: "default" },
+      {
+        title: "pyselectors",
+        subtitle: "phones, emails, …",
+        variant: "default",
+      },
       { title: "gliner · nerd", subtitle: "entity names", variant: "ml" },
       { title: "pyprompt", subtitle: "LLM entities + events", variant: "ml" },
-      { title: "pyparse .ics", subtitle: "calendar events", variant: "default" },
+      {
+        title: "pyparse .ics",
+        subtitle: "calendar events",
+        variant: "default",
+      },
       { title: "pyparse .vcf", subtitle: "contacts", variant: "default" },
-      { title: "extract-signatures", subtitle: "employer · unit · title", variant: "ml" },
+      {
+        title: "extract-signatures",
+        subtitle: "employer · unit · title",
+        variant: "ml",
+      },
     ],
   },
   {
     stage: "Resolve",
     nodes: [
-      { title: "resolve-entities", subtitle: "mentions → entities · email domains", variant: "default" },
-      { title: "resolve-locations", subtitle: "places → gazetteer", variant: "default" },
-      { title: "dedupe-entities", subtitle: "merge duplicates", variant: "default" },
-      { title: "extract-relationships", subtitle: "emailed edges", variant: "default" },
-      { title: "resolve-event-links", subtitle: "events → entities", variant: "default" },
+      {
+        title: "resolve-entities",
+        subtitle: "one call: names · duplicates · places · links",
+        variant: "default",
+      },
+      {
+        title: "resolve-locations",
+        subtitle: "places → gazetteer",
+        variant: "default",
+      },
+      {
+        title: "extract-relationships",
+        subtitle: "emailed edges",
+        variant: "default",
+      },
+      {
+        title: "resolve-event-links",
+        subtitle: "events → entities",
+        variant: "default",
+      },
     ],
   },
 ];
@@ -782,25 +969,38 @@ const OPTIONAL_ANALYTICS: {
 export default function DocsPage() {
   return (
     <div className="max-w-400 mx-auto px-6 relative pb-24 pt-5">
-      <PageHeader eyebrow="Documentation" value="Platform overview" icon={<Braces size={14} className="text-primary/80" />} />
+      <PageHeader
+        eyebrow="Documentation"
+        value="Platform overview"
+        icon={<Braces size={14} className="text-primary/80" />}
+      />
 
       {/* Masthead */}
       <div className="pb-10">
-        <h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl">Cipher</h1>
+        <h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl">
+          Cipher
+        </h1>
         <p className="mt-3 max-w-2xl text-base text-muted-foreground">
-          A triage platform for unknown data. Point it at a pile of files, mailboxes, images, contacts, and calendars --
-          it types everything against defined schemas, runs AI/ML enrichment over it, resolves who and what is mentioned
-          into entities, and makes the result searchable.
+          A triage platform for unknown data. Point it at a pile of files,
+          mailboxes, images, contacts, and calendars -- it types everything
+          against defined schemas, runs AI/ML enrichment over it, resolves who
+          and what is mentioned into entities, and makes the result searchable.
         </p>
         <div className="mt-5 flex flex-wrap gap-x-6 gap-y-2 font-mono text-xs text-muted-foreground">
           <span>
-            API <b className="font-semibold text-foreground">FastAPI · cipher-serve</b>
+            API{" "}
+            <b className="font-semibold text-foreground">
+              FastAPI · cipher-serve
+            </b>
           </span>
           <span>
             UI <b className="font-semibold text-foreground">Next.js</b>
           </span>
           <span>
-            STORE <b className="font-semibold text-foreground">PostgreSQL · pgvector · pg_search · PostGIS</b>
+            STORE{" "}
+            <b className="font-semibold text-foreground">
+              PostgreSQL · pgvector · pg_search · PostGIS
+            </b>
           </span>
         </div>
       </div>
@@ -823,17 +1023,25 @@ export default function DocsPage() {
                 stage.ml ? "border-l-annotation/50" : "border-l-transparent"
               )}
             >
-              <div className="pt-0.5 font-mono text-xl font-semibold text-white/15">{stage.num}</div>
+              <div className="pt-0.5 font-mono text-xl font-semibold text-white/15">
+                {stage.num}
+              </div>
               <div>
                 <h3 className="mb-1 flex flex-wrap items-center gap-2 text-sm font-semibold text-foreground">
                   {stage.title}
                   {stage.services.map((s) => (
-                    <Badge key={s} variant="outline" className="font-mono text-[11px] font-normal text-muted-foreground">
+                    <Badge
+                      key={s}
+                      variant="outline"
+                      className="font-mono text-[11px] font-normal text-muted-foreground"
+                    >
                       {s}
                     </Badge>
                   ))}
                 </h3>
-                <p className="max-w-2xl text-sm text-muted-foreground">{stage.description}</p>
+                <p className="max-w-2xl text-sm text-muted-foreground">
+                  {stage.description}
+                </p>
               </div>
             </div>
           ))}
@@ -849,8 +1057,8 @@ export default function DocsPage() {
           <SectionEyebrow>What it ingests</SectionEyebrow>
         </div>
         <p className="mb-6 max-w-2xl text-sm text-muted-foreground">
-          Six broad categories, each with its own parser and its own downstream enrichment. Extensions shown are
-          representative, not exhaustive.
+          Six broad categories, each with its own parser and its own downstream
+          enrichment. Extensions shown are representative, not exhaustive.
         </p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {FILETYPES.map((ft) => (
@@ -874,7 +1082,10 @@ export default function DocsPage() {
                   ))}
                 </div>
                 <div className="border-t border-dashed border-border pt-2.5 font-mono text-[11px] text-muted-foreground">
-                  handled by <span className="font-semibold text-primary">{ft.handler}</span>
+                  handled by{" "}
+                  <span className="font-semibold text-primary">
+                    {ft.handler}
+                  </span>
                 </div>
               </CardContent>
             </Card>
@@ -891,17 +1102,24 @@ export default function DocsPage() {
           <SectionEyebrow>Analytics services</SectionEyebrow>
         </div>
         <p className="mb-6 max-w-2xl text-sm text-muted-foreground">
-          Each service is independently deployable and does exactly one job. Run them with the listed{" "}
-          <span className="font-mono text-xs text-foreground">cipher</span> commands (order and flags in{" "}
-          <span className="font-mono text-xs text-foreground">docs/running-analytics.md</span>); from a dataset
-          page you can request the ones that haven&apos;t run. Model / code links are placeholders.
+          Each service is independently deployable and does exactly one job. Run
+          them with the listed{" "}
+          <span className="font-mono text-xs text-foreground">cipher</span>{" "}
+          commands (order and flags in{" "}
+          <span className="font-mono text-xs text-foreground">
+            docs/running-analytics.md
+          </span>
+          ); from a dataset page you can request the ones that haven&apos;t run.
+          Model / code links are placeholders.
         </p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {ANALYTICS.map((svc) => (
             <Card key={svc.name} className="ring-white/10">
               <CardHeader>
                 <div className="flex items-start justify-between gap-2">
-                  <CardTitle className="font-mono text-foreground">{svc.name}</CardTitle>
+                  <CardTitle className="font-mono text-foreground">
+                    {svc.name}
+                  </CardTitle>
                   <Badge
                     className={cn(
                       "font-mono text-[11px] uppercase tracking-wide",
@@ -932,10 +1150,18 @@ export default function DocsPage() {
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {svc.links.model && (
-                    <ServiceLink href={svc.links.model} label="Model" icon={<Box size={12} />} />
+                    <ServiceLink
+                      href={svc.links.model}
+                      label="Model"
+                      icon={<Box size={12} />}
+                    />
                   )}
                   {svc.links.code && (
-                    <ServiceLink href={svc.links.code} label="Code" icon={<Code2 size={12} />} />
+                    <ServiceLink
+                      href={svc.links.code}
+                      label="Code"
+                      icon={<Code2 size={12} />}
+                    />
                   )}
                 </div>
               </CardContent>
@@ -953,14 +1179,21 @@ export default function DocsPage() {
           <SectionEyebrow>Architecture</SectionEyebrow>
         </div>
         <p className="mb-6 max-w-2xl text-sm text-muted-foreground">
-          Staging always runs; every analytic after it is optional and chosen per dataset. Everything lands in one Postgres database that the API and frontend read. Elasticsearch is an optional alternative chunk-search backend (RETRIEVAL__BACKEND), off by default.
+          Staging always runs; every analytic after it is optional and chosen
+          per dataset. Everything lands in one Postgres database that the API
+          and frontend read. Elasticsearch is an optional alternative
+          chunk-search backend (RETRIEVAL__BACKEND), off by default.
         </p>
 
         <Card className="ring-white/10">
           <CardContent className="flex flex-col items-center gap-3 py-6">
             <FlowNode title="Raw data" subtitle="unknown files" />
             <ArrowDown size={14} className="text-muted-foreground" />
-            <FlowNode title="filetyper" subtitle="stage: type + hash" variant="ml" />
+            <FlowNode
+              title="filetyper"
+              subtitle="stage: type + hash"
+              variant="ml"
+            />
 
             <ArrowDown size={14} className="text-muted-foreground" />
 
@@ -989,13 +1222,31 @@ export default function DocsPage() {
                 <span className="text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                   Datastores
                 </span>
-                <FlowNode title="Postgres" subtitle="pgvector · pg_search · PostGIS" variant="vector" />
-                <FlowNode title="Elasticsearch" subtitle="optional, off by default" variant="muted" optional />
+                <FlowNode
+                  title="Postgres"
+                  subtitle="pgvector · pg_search · PostGIS"
+                  variant="vector"
+                />
+                <FlowNode
+                  title="Elasticsearch"
+                  subtitle="optional, off by default"
+                  variant="muted"
+                  optional
+                />
               </div>
-              <ArrowRight size={16} className="shrink-0 text-muted-foreground" />
+              <ArrowRight
+                size={16}
+                className="shrink-0 text-muted-foreground"
+              />
               <FlowNode title="FastAPI" subtitle="cipher-serve" />
-              <ArrowRight size={16} className="shrink-0 text-muted-foreground" />
-              <FlowNode title="Next.js frontend" subtitle="search · entities · graph · chat" />
+              <ArrowRight
+                size={16}
+                className="shrink-0 text-muted-foreground"
+              />
+              <FlowNode
+                title="Next.js frontend"
+                subtitle="search · entities · graph · chat"
+              />
             </div>
 
             <p className="max-w-md text-center font-mono text-[11px] text-muted-foreground">
@@ -1006,13 +1257,16 @@ export default function DocsPage() {
 
         <div className="mt-4 flex flex-wrap gap-x-5 gap-y-1.5 font-mono text-[11px] text-muted-foreground">
           <span className="inline-flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-sm bg-annotation" /> AI/ML enrichment
+            <span className="h-2 w-2 rounded-sm bg-annotation" /> AI/ML
+            enrichment
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-sm bg-primary" /> relational + vector
+            <span className="h-2 w-2 rounded-sm bg-primary" /> relational +
+            vector
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span className="h-2 w-3 rounded-sm border border-dashed border-muted-foreground" /> optional
+            <span className="h-2 w-3 rounded-sm border border-dashed border-muted-foreground" />{" "}
+            optional
           </span>
         </div>
       </section>
@@ -1026,29 +1280,45 @@ export default function DocsPage() {
           <SectionEyebrow>Ontology</SectionEyebrow>
         </div>
         <p className="mb-3 max-w-2xl text-sm text-muted-foreground">
-          A dataset is triaged into <span className="text-foreground">entities</span> and typed{" "}
-          <span className="text-foreground">relationships</span> between them. Every entity is a thin node plus
-          one detail row.
+          A dataset is triaged into{" "}
+          <span className="text-foreground">entities</span> and typed{" "}
+          <span className="text-foreground">relationships</span> between them.
+          Every entity is a thin node plus one detail row.
         </p>
         <p className="mb-6 max-w-2xl text-sm text-muted-foreground">
           A{" "}
-          <Badge variant="outline" className="border-annotation/40 bg-annotation/10 text-[11px] text-annotation">
+          <Badge
+            variant="outline"
+            className="border-annotation/40 bg-annotation/10 text-[11px] text-annotation"
+          >
             mention
           </Badge>{" "}
-          is evidence that an entity has one attribute value — <span className="font-mono text-xs">phone number</span> →{" "}
-          <span className="font-mono text-xs text-foreground">selector.value</span>,{" "}
-          <span className="font-mono text-xs">a name</span> →{" "}
-          <span className="font-mono text-xs text-foreground">person.name</span>,{" "}
-          <span className="font-mono text-xs">an address</span> →{" "}
-          <span className="font-mono text-xs text-foreground">location.address</span> — anchored at a span in a
-          document, image, or structured field. Not every mention resolves to an entity: a bare place or facility
-          name with no coordinates stays unresolved until it is geolocated. Full reference:{" "}
-          <span className="font-mono text-xs text-foreground">docs/ontology.md</span>.
+          is evidence that an entity has one attribute value —{" "}
+          <span className="font-mono text-xs">phone number</span> →{" "}
+          <span className="font-mono text-xs text-foreground">
+            selector.value
+          </span>
+          , <span className="font-mono text-xs">a name</span> →{" "}
+          <span className="font-mono text-xs text-foreground">person.name</span>
+          , <span className="font-mono text-xs">an address</span> →{" "}
+          <span className="font-mono text-xs text-foreground">
+            location.address
+          </span>{" "}
+          — anchored at a span in a document, image, or structured field. Not
+          every mention resolves to an entity: a bare place or facility name
+          with no coordinates stays unresolved until it is geolocated. Full
+          reference:{" "}
+          <span className="font-mono text-xs text-foreground">
+            docs/ontology.md
+          </span>
+          .
         </p>
 
         <div className="mb-4 rounded-lg border border-border bg-white/[0.02] px-3.5 py-3">
           <span className="font-mono text-[13px] text-foreground">entity</span>
-          <span className="ml-2 text-xs text-muted-foreground">shared node attributes</span>
+          <span className="ml-2 text-xs text-muted-foreground">
+            shared node attributes
+          </span>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {ONTOLOGY_NODE_ATTRS.map((a) => (
               <span
@@ -1067,7 +1337,9 @@ export default function DocsPage() {
               <div className="rounded-lg border border-border bg-white/[0.02]">
                 <CollapsibleTrigger className="group/trigger flex w-full items-center gap-2.5 px-3.5 py-3 text-left">
                   <Box size={15} className="shrink-0 text-primary" />
-                  <span className="flex-1 font-mono text-[13px] text-foreground">{e.name}</span>
+                  <span className="flex-1 font-mono text-[13px] text-foreground">
+                    {e.name}
+                  </span>
                   <ChevronRight
                     size={13}
                     className="shrink-0 text-muted-foreground transition-transform group-data-[state=open]/trigger:rotate-90"
@@ -1075,7 +1347,9 @@ export default function DocsPage() {
                 </CollapsibleTrigger>
                 <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-none">
                   <div className="border-t border-dashed border-border px-3.5 py-3">
-                    <p className="mb-2 text-xs text-muted-foreground">{e.description}</p>
+                    <p className="mb-2 text-xs text-muted-foreground">
+                      {e.description}
+                    </p>
                     <div className="flex flex-wrap gap-1.5">
                       {e.attributes.map((a) => (
                         <span
@@ -1094,7 +1368,9 @@ export default function DocsPage() {
         </div>
 
         <div className="mt-3 rounded-lg border border-border bg-white/[0.02] px-3.5 py-3">
-          <span className="font-mono text-[13px] text-foreground">selector_type</span>
+          <span className="font-mono text-[13px] text-foreground">
+            selector_type
+          </span>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {ONTOLOGY_SELECTOR_TYPES.map((k) => (
               <span
@@ -1109,7 +1385,9 @@ export default function DocsPage() {
 
         <div className="mt-5 mb-2 flex items-center gap-2">
           <Workflow size={14} className="text-primary" />
-          <span className="text-xs font-semibold text-foreground">Relationship types</span>
+          <span className="text-xs font-semibold text-foreground">
+            Relationship types
+          </span>
         </div>
         <div className="overflow-x-auto rounded-lg border border-border">
           <table className="w-full min-w-[640px] text-left text-[12px]">
@@ -1123,15 +1401,24 @@ export default function DocsPage() {
             </thead>
             <tbody className="text-muted-foreground">
               {ONTOLOGY_RELATIONSHIPS.map((r) => (
-                <tr key={r.type} className="border-b border-border/60 last:border-0">
+                <tr
+                  key={r.type}
+                  className="border-b border-border/60 last:border-0"
+                >
                   <td className="whitespace-nowrap px-3 py-2 font-mono text-foreground">
                     {r.type}
                     {r.symmetric && (
-                      <span className="ml-1.5 text-[11px] text-muted-foreground">↔</span>
+                      <span className="ml-1.5 text-[11px] text-muted-foreground">
+                        ↔
+                      </span>
                     )}
                   </td>
-                  <td className="whitespace-nowrap px-3 py-2 font-mono">{r.from}</td>
-                  <td className="whitespace-nowrap px-3 py-2 font-mono">{r.to}</td>
+                  <td className="whitespace-nowrap px-3 py-2 font-mono">
+                    {r.from}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2 font-mono">
+                    {r.to}
+                  </td>
                   <td className="px-3 py-2">{r.description}</td>
                 </tr>
               ))}
@@ -1149,18 +1436,27 @@ export default function DocsPage() {
           <SectionEyebrow>Resolution workflow</SectionEyebrow>
         </div>
         <p className="mb-4 max-w-2xl text-sm text-muted-foreground">
-          How extracted names become entities, in the words the Entities page uses. <b className="text-foreground">Verify</b>{" "}
-          auto-created entities first, then <b className="text-foreground">Resolve</b> names to them.
+          How extracted names become entities, in the words the Entities page
+          uses. <b className="text-foreground">Verify</b> auto-created entities
+          first, then <b className="text-foreground">Resolve</b> names to them.
         </p>
         <dl className="max-w-3xl divide-y divide-border/60 rounded-lg border border-border">
           {RESOLUTION_TERMS.map(([term, meaning]) => (
-            <div key={term} className="flex flex-col gap-1 px-3.5 py-2.5 sm:flex-row sm:gap-4">
-              <dt className="text-sm font-medium text-foreground sm:w-48 sm:shrink-0">{term}</dt>
+            <div
+              key={term}
+              className="flex flex-col gap-1 px-3.5 py-2.5 sm:flex-row sm:gap-4"
+            >
+              <dt className="text-sm font-medium text-foreground sm:w-48 sm:shrink-0">
+                {term}
+              </dt>
               <dd className="text-sm text-muted-foreground">{meaning}</dd>
             </div>
           ))}
         </dl>
-        <Link href="/entities/resolution-guide" className="mt-3 inline-flex items-center gap-1 text-sm text-primary hover:underline">
+        <Link
+          href="/entities/resolution-guide"
+          className="mt-3 inline-flex items-center gap-1 text-sm text-primary hover:underline"
+        >
           Step-by-step guide <ArrowRight size={13} />
         </Link>
       </section>
@@ -1174,9 +1470,13 @@ export default function DocsPage() {
           <SectionEyebrow>Schemas</SectionEyebrow>
         </div>
         <p className="mb-6 max-w-2xl text-sm text-muted-foreground">
-          Every entity in Cipher is a typed Pydantic model shared across every service -- this is the shape a
-          dataset decomposes into. Expand a schema to see its field shape; the{" "}
-          <Badge variant="outline" className="border-annotation/40 bg-annotation/10 text-[11px] text-annotation">
+          Every entity in Cipher is a typed Pydantic model shared across every
+          service -- this is the shape a dataset decomposes into. Expand a
+          schema to see its field shape; the{" "}
+          <Badge
+            variant="outline"
+            className="border-annotation/40 bg-annotation/10 text-[11px] text-annotation"
+          >
             vector
           </Badge>{" "}
           tag marks anything carrying an embedding.
@@ -1189,9 +1489,14 @@ export default function DocsPage() {
                 <CollapsibleTrigger className="group/trigger flex w-full items-center gap-2.5 px-3.5 py-3 text-left">
                   <Braces
                     size={15}
-                    className={cn("shrink-0", schema.vector ? "text-annotation" : "text-primary")}
+                    className={cn(
+                      "shrink-0",
+                      schema.vector ? "text-annotation" : "text-primary"
+                    )}
                   />
-                  <span className="flex-1 font-mono text-[13px] text-foreground">{schema.name}</span>
+                  <span className="flex-1 font-mono text-[13px] text-foreground">
+                    {schema.name}
+                  </span>
                   {schema.vector && (
                     <Badge
                       variant="outline"
@@ -1210,10 +1515,18 @@ export default function DocsPage() {
                     {schema.fields.map((f) => (
                       <div key={f.key}>
                         <span className="text-foreground">{f.key}</span>:{" "}
-                        <span className={f.ml ? "text-annotation" : "text-cyan-400"}>{f.type}</span>
+                        <span
+                          className={f.ml ? "text-annotation" : "text-cyan-400"}
+                        >
+                          {f.type}
+                        </span>
                       </div>
                     ))}
-                    {schema.extends && <div className="mt-1 text-muted-foreground">&#8627; {schema.extends}</div>}
+                    {schema.extends && (
+                      <div className="mt-1 text-muted-foreground">
+                        &#8627; {schema.extends}
+                      </div>
+                    )}
                   </pre>
                 </CollapsibleContent>
               </div>

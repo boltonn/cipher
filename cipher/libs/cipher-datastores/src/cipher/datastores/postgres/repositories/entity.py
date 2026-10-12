@@ -15,6 +15,7 @@ from cipher.datastores.postgres.tables.entity_match import EntityMatchTable
 from cipher.datastores.postgres.tables.entity_relationship import EntityRelationshipTable
 from cipher.datastores.postgres.tables.entity_relationship_candidate import EntityRelationshipCandidateTable
 from cipher.datastores.postgres.tables.face import FaceTable
+from cipher.datastores.postgres.tables.file import outside_source_tags
 from cipher.datastores.postgres.tables.location import LocationTable
 from cipher.datastores.postgres.tables.mention import MentionTable
 from cipher.datastores.postgres.tables.organization import OrganizationTable
@@ -35,6 +36,7 @@ from cipher.schemas.graph.entity import (
     EntitySortField,
     EntitySummary,
     EntityUpdate,
+    MergeSuggestion,
     PaginatedEntitiesResponse,
     PaginatedRelatedEntitiesResponse,
     RelatedEntity,
@@ -111,18 +113,18 @@ def _entity_with_selector(row) -> Entity:
     return entity
 
 
-def _in_dataset(dataset_id: str):
-    """An entity belongs to a dataset: scoped to it, or dataset-agnostic and mentioned in it.
+def _in_datasets(dataset_ids: list[str]):
+    """An entity belongs to any of these datasets: scoped to one, or dataset-agnostic and mentioned in one.
 
     Dataset-agnostic nodes are person bridges and every location (shared PostGIS rows) --
     without the second branch they vanish from a dataset's lists and counts.
     """
     return or_(
-        EntityTable.dataset_id == dataset_id,
+        EntityTable.dataset_id.in_(dataset_ids),
         and_(
             EntityTable.dataset_id.is_(None),
             select(MentionTable.id)
-            .where(MentionTable.dataset_id == dataset_id, MentionTable.entity_id == EntityTable.id)
+            .where(MentionTable.dataset_id.in_(dataset_ids), MentionTable.entity_id == EntityTable.id)
             .exists(),
         ),
     )
@@ -312,6 +314,31 @@ class PostgresEntityRepository:
         await self.session.commit()
         return bool(result.rowcount)
 
+    async def delete_empty_provisional(self, dataset_id: str) -> int:
+        """Drop a dataset's auto-created entities left with no mentions and no edges (e.g. after a re-extraction).
+
+        Verified, canonical (person / place bridged, analyst-made) and selector entities are never touched.
+        """
+        result = await self.session.execute(
+            delete(EntityTable).where(
+                EntityTable.dataset_id == dataset_id,
+                ~is_canonical_entity(),
+                ~EntityTable.is_verified,
+                EntityTable.entity_type != EntityType.SELECTOR,
+                ~select(MentionTable.id).where(MentionTable.entity_id == EntityTable.id).exists(),
+                ~select(EntityRelationshipTable.id)
+                .where(
+                    or_(
+                        EntityRelationshipTable.src_entity_id == EntityTable.id,
+                        EntityRelationshipTable.dst_entity_id == EntityTable.id,
+                    )
+                )
+                .exists(),
+            )
+        )
+        await self.session.commit()
+        return result.rowcount or 0
+
     async def delete_nonmanual_by_dataset_id(self, dataset_id: str) -> dict[str, int]:
         """Drop a dataset's extraction-built entities (+ their detail) for reset-entities.
 
@@ -349,12 +376,15 @@ class PostgresEntityRepository:
                 MentionTable.entity_id,
                 func.count(MentionTable.id),
                 func.count(distinct(MentionTable.file_id)),
+                func.bool_or(MentionTable.field_path.like("header.%")),
             )
             .where(*mention_where, MentionTable.entity_id.in_(entity_ids))
             .group_by(MentionTable.entity_id)
         )
-        for entity_id, mention_count, file_count in mention_rows.all():
-            stats[entity_id].update(mention_count=mention_count, file_count=file_count)
+        for entity_id, mention_count, file_count, is_correspondent in mention_rows.all():
+            stats[entity_id].update(
+                mention_count=mention_count, file_count=file_count, is_correspondent=bool(is_correspondent)
+            )
 
         endpoints = union_all(
             select(EntityRelationshipTable.src_entity_id.label("entity_id")).where(
@@ -390,12 +420,12 @@ class PostgresEntityRepository:
     async def list_entities(self, request: EntitySearchParameters) -> PaginatedEntitiesResponse:
         """List/filter entity nodes with pagination and sorting."""
         where = []
-        if request.dataset_id:
+        if request.dataset_ids:
             # Dataset-scoped rows, plus dataset-agnostic bridge nodes (person
-            # entities have dataset_id NULL) that are actually mentioned in this
-            # dataset -- otherwise a person who appears all over `rag` is
+            # entities have dataset_id NULL) that are actually mentioned in these
+            # datasets -- otherwise a person who appears all over `rag` is
             # invisible on `rag`'s entity list.
-            where.append(_in_dataset(request.dataset_id))
+            where.append(_in_datasets(request.dataset_ids))
         if request.entity_type:
             where.append(EntityTable.entity_type == request.entity_type)
         if request.is_verified is not None:
@@ -405,6 +435,15 @@ class PostgresEntityRepository:
             where.append(~is_canonical_entity() if request.provisional else is_canonical_entity())
             if request.provisional:
                 where.append(EntityTable.entity_type != EntityType.SELECTOR)
+        if request.exclude_source_tags:
+            where.append(
+                select(MentionTable.id)
+                .where(
+                    MentionTable.entity_id == EntityTable.id,
+                    outside_source_tags(MentionTable.file_id, request.exclude_source_tags),
+                )
+                .exists()
+            )
         if request.tags:
             where.append(EntityTable.tags.overlap(request.tags))
         if request.query:
@@ -456,8 +495,11 @@ class PostgresEntityRepository:
         total = count_result.scalar_one()
 
         mention_where = [MentionTable.entity_id.is_not(None)]
-        if request.dataset_id:
-            mention_where.append(MentionTable.dataset_id == request.dataset_id)
+        if request.dataset_ids:
+            mention_where.append(MentionTable.dataset_id.in_(request.dataset_ids))
+        if request.exclude_source_tags:
+            # counts (and the evidence order) cover only the evidence left after the exclusion
+            mention_where.append(outside_source_tags(MentionTable.file_id, request.exclude_source_tags))
 
         stmt = (
             select(EntityTable, SelectorTable.selector_type, SelectorTable.selector_subtype)
@@ -479,6 +521,32 @@ class PostgresEntityRepository:
             )
             sort_column = func.coalesce(mention_totals.c.mention_count, 0)
             stmt = stmt.outerjoin(mention_totals, mention_totals.c.entity_id == EntityTable.id)
+        elif request.sort_by == EntitySortField.EVIDENCE:
+            # correspondents (named in an email header) first, then most files, then most mentions
+            evidence = (
+                select(
+                    MentionTable.entity_id,
+                    func.bool_or(MentionTable.field_path.like("header.%")).label("is_correspondent"),
+                    func.count(distinct(MentionTable.file_id)).label("file_count"),
+                    func.count().label("mention_count"),
+                )
+                .where(*mention_where)
+                .group_by(MentionTable.entity_id)
+                .subquery()
+            )
+            stmt = stmt.outerjoin(evidence, evidence.c.entity_id == EntityTable.id)
+            direction = desc if request.sort_order == SortOrder.DESC else asc
+            result = await self.session.execute(
+                stmt.order_by(
+                    direction(func.coalesce(evidence.c.is_correspondent, False)),
+                    direction(func.coalesce(evidence.c.file_count, 0)),
+                    direction(func.coalesce(evidence.c.mention_count, 0)),
+                    EntityTable.display_name_normalized,
+                )
+                .offset((request.page - 1) * request.limit)
+                .limit(request.limit)
+            )
+            return await self._list_page(request=request, total=total, rows=result.all(), mention_where=mention_where)
         elif request.sort_by == EntitySortField.RELEVANCE and request.query:
             # typeahead: exact name, then prefix, then substring, then closest trigram (typo) match
             floor = normalize_name(request.query)
@@ -515,13 +583,62 @@ class PostgresEntityRepository:
     ) -> PaginatedEntitiesResponse:
         entities = [_entity_with_selector(row) for row in rows]
         stats = await self._list_stats([e.id for e in entities], mention_where=mention_where)
-        data = [EntityListItem(**e.model_dump(), **stats.get(e.id, {})) for e in entities]
+        suggestions = await self._merge_suggestions([e.id for e in entities]) if request.provisional else {}
+        data = [
+            EntityListItem(**e.model_dump(), **stats.get(e.id, {}), merge_suggestions=suggestions.get(e.id, []))
+            for e in entities
+        ]
         return PaginatedEntitiesResponse(total=total, page=request.page, limit=request.limit, data=data)
 
-    async def entity_breakdown(self, *, dataset_id: str | None = None) -> EntityBreakdown:
-        """Counts of a dataset's entities by type / selector type / selector subtype."""
-        ent_where = [_in_dataset(dataset_id)] if dataset_id else []
-        sel_where = [SelectorTable.dataset_id == dataset_id] if dataset_id else []
+    async def _merge_suggestions(self, entity_ids: list[str]) -> dict[str, list[MergeSuggestion]]:
+        """Pending merge rows for these auto-created entities, best first, with the target's name."""
+        if not entity_ids:
+            return {}
+        target = EntityTable.__table__.alias("target")
+        canonical = or_(
+            target.c.person_id.is_not(None), target.c.location_id.is_not(None), target.c.source == EntitySource.MANUAL
+        )
+        rows = await self.session.execute(
+            select(EntityMatchTable, target.c.display_name, target.c.entity_type, canonical.label("canonical"))
+            .join(target, target.c.id == EntityMatchTable.entity_id)
+            .where(
+                EntityMatchTable.provisional_entity_id.in_(entity_ids),
+                EntityMatchTable.status == EntityMatchStatus.PENDING,
+            )
+            .order_by(desc(EntityMatchTable.similarity_score))
+        )
+        out: dict[str, list[MergeSuggestion]] = {}
+        for match, name, entity_type, is_canonical in rows.all():
+            features = sorted(
+                (
+                    f
+                    for f in (match.explanation or {}).get("features", [])
+                    if (f.get("contribution") or 0) > 0 or f.get("detail")
+                ),
+                key=lambda f: -(f.get("contribution") or 0),
+            )
+            reasons = [
+                f.get("detail") or f["name"].replace("_", " ")
+                for f in features
+                if f.get("level") not in ("none", "conflict")
+            ]
+            out.setdefault(match.provisional_entity_id, []).append(
+                MergeSuggestion(
+                    match_id=match.id,
+                    entity_id=match.entity_id,
+                    entity_name=name,
+                    entity_type=entity_type,
+                    entity_is_provisional=not is_canonical,
+                    similarity_score=match.similarity_score,
+                    reasons=reasons[:3],
+                )
+            )
+        return out
+
+    async def entity_breakdown(self, *, dataset_ids: list[str] | None = None) -> EntityBreakdown:
+        """Counts of these datasets' entities (all, if none) by type / selector type / selector subtype."""
+        ent_where = [_in_datasets(dataset_ids)] if dataset_ids else []
+        sel_where = [SelectorTable.dataset_id.in_(dataset_ids)] if dataset_ids else []
 
         by_type = (
             await self.session.execute(
@@ -758,6 +875,21 @@ class PostgresEntityRepository:
         ]
         return candidates[:limit]
 
+    async def owned_selectors(self, entity_ids: list[str]) -> list[tuple[str, str, str]]:
+        """`(owner_id, selector_id, selector display name)` for each `has_selector` edge out of `entity_ids`."""
+        if not entity_ids:
+            return []
+        rows = await self.session.execute(
+            select(EntityRelationshipTable.src_entity_id, EntityTable.id, EntityTable.display_name)
+            .join(EntityTable, EntityTable.id == EntityRelationshipTable.dst_entity_id)
+            .where(
+                EntityRelationshipTable.src_entity_id.in_(entity_ids),
+                EntityRelationshipTable.relationship_type == RelationshipType.HAS_SELECTOR,
+            )
+            .order_by(EntityTable.display_name)
+        )
+        return [tuple(row) for row in rows.all()]
+
     async def search_by_selector(
         self, *, dataset_id: str | None, normalized_value: str, selector_type: SelectorType | None = None
     ) -> Entity | None:
@@ -873,22 +1005,22 @@ class PostgresEntityRepository:
         return entity
 
     async def retype_entity(self, entity_id: str, entity_type: EntityType) -> dict[str, int] | None:
-        """Change an auto-created entity's type (person <-> organization). None if it's missing.
+        """Change an auto-created entity's type (person / organization / location). None if it's missing.
 
         Its name mentions take the new type, its name keys are rebuilt, an organization detail
         row is dropped when it stops being one, and edges the new type can't have (a person's
         `member_of` on an organization) are deleted.
 
         Raises:
-            ValueError: if the entity isn't auto-created or the type isn't person/organization.
+            ValueError: if the entity isn't auto-created or the type is a selector.
         """
         row = await self.session.get(EntityTable, entity_id)
         if row is None:
             return None
         if not Entity.model_validate(row).is_provisional:
             raise ValueError(f"{row.display_name} is verified; only auto-created entities can change type")
-        if entity_type not in (EntityType.PERSON, EntityType.ORGANIZATION):
-            raise ValueError("an auto-created entity can only become a person or an organization")
+        if entity_type not in (EntityType.PERSON, EntityType.ORGANIZATION, EntityType.LOCATION):
+            raise ValueError("an auto-created entity can only become a person, organization or location")
         if row.entity_type == entity_type:
             return {"mentions": 0, "edges_removed": 0}
 

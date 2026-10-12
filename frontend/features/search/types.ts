@@ -13,7 +13,7 @@ export type SortOrder = "asc" | "desc";
 // ─── Filters / Requests ─────────────────────────────────────────────────────
 
 export interface SearchFilters {
-  datasetId?: string;
+  datasetIds?: string[];
   fileId?: string;
   tags?: string[];
   /** What the data itself says (not a user or model tag): any-of include, any-of exclude. */
@@ -48,8 +48,21 @@ export interface BaseChunkSearchParameters {
   sortOrder?: SortOrder;
 }
 
+/** A person / thing plus what it links to (their addresses, phones) -- the chat assistant's person filter. */
+export interface GraphExpand {
+  seedEntityIds: string[];
+  seedNames: string[];
+  maxDepth: number;
+  minWeight?: number;
+  relationshipTypes?: string[] | null;
+}
+
 export interface ChunkTextSearchRequest extends BaseChunkSearchParameters {
   query: string;
+  /** Also restrict to `graphExpand`'s seeds and what they link to. */
+  graphExpand?: GraphExpand;
+  /** Only chunks containing `query` as an exact phrase; always keyword-ranked. */
+  exactMatch?: boolean;
   /** Only applied by the semantic/hybrid endpoints -- ignored for BM25 text search, which has no equivalent bounded score to threshold on. */
   minSimilarity?: number;
 }
@@ -67,6 +80,9 @@ export interface MentionSpan {
 interface TextChunkRawBase {
   id: string;
   fileId: string;
+  /** A generated description of the whole file (AI summary; offsets 0), not a slice of its text. */
+  isSummary?: boolean;
+  generatedBy?: string | null;
   chunkIndex: number;
   startOffset: number;
   endOffset: number;
@@ -128,6 +144,8 @@ export interface SearchChunk {
    * resolved separately via `useFile` once a file is actually opened, since
    * `EmailTextChunk` carries no filename field of its own. */
   displayName: string;
+  /** AI-written whole-file description, shown with the annotation marker rather than as the file's own text. */
+  isSummary: boolean;
   chunkIndex: number;
   startOffset: number;
   endOffset: number;

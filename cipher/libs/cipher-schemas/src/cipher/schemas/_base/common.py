@@ -1,11 +1,10 @@
 """Common base schemas for the Cipher application."""
 
-from enum import StrEnum
 from typing import Any
 
 from pydantic import Field, computed_field, field_validator
 
-from cipher.schemas._base.base import BaseModel
+from cipher.schemas._base.base import BaseModel, StrEnum
 
 
 class ModelDevice(StrEnum):
@@ -105,7 +104,7 @@ class TagsUpdate(BaseModel):
 
 
 class TagRequest(BaseModel):
-    tag: str = Field(..., min_length=1, example="political")
+    tag: str = Field(..., min_length=1, examples=["political"])
     type: ModelTagType = Field(
         ...,
         description="Whether to add to 'tags' (positive) or 'negative_tags' (negative)",

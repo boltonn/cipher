@@ -26,18 +26,15 @@ export const personsService = {
 
   // POST /persons/from-image - detect a face in an uploaded photo and create a person from it.
   //
-  // Multipart form fields don't go through the JSON camelCase-alias layer,
-  // so keys must match the backend's Form() parameter names (snake_case).
   createFromImage: (file: File, payload: PersonCreate & { faceIndex?: number }) => {
     const formData = new FormData();
     formData.append("file", file);
     if (payload.name) formData.append("name", payload.name);
     if (payload.sex) formData.append("sex", payload.sex);
-    if (payload.dateOfBirth) formData.append("date_of_birth", payload.dateOfBirth);
+    if (payload.dateOfBirth) formData.append("dateOfBirth", payload.dateOfBirth);
     if (payload.notes) formData.append("notes", payload.notes);
     if (payload.tags?.length) formData.append("tags", payload.tags.join(","));
-    if (payload.isVerified != null) formData.append("is_verified", String(payload.isVerified));
-    if (payload.faceIndex != null) formData.append("face_index", String(payload.faceIndex));
+    if (payload.faceIndex != null) formData.append("faceIndex", String(payload.faceIndex));
     return apiClient
       .post<Person>(`${personsBaseURL}/from-image`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
@@ -76,7 +73,7 @@ export const personsService = {
   addExample: (id: string, file: File, faceIndex: number) => {
     const formData = new FormData();
     formData.append("file", file);
-    formData.append("face_index", String(faceIndex));
+    formData.append("faceIndex", String(faceIndex));
     return apiClient
       .post(`${personsBaseURL}/${id}/examples`, formData, {
         headers: { "Content-Type": "multipart/form-data" },

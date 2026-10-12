@@ -13,19 +13,19 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
+import { humanize } from "@/lib/utils";
 
 interface EdgeInspectorProps {
   edge: EdgePick;
-  datasetId: string | undefined;
   onClose: () => void;
 }
 
 /** Read-only detail for a clicked edge: every relationship running between its
  * two nodes in that direction. All data comes from the graph edge attributes
  * -- no fetch. */
-export function EdgeInspector({ edge, datasetId, onClose }: EdgeInspectorProps) {
+export function EdgeInspector({ edge, onClose }: EdgeInspectorProps) {
   const isEventEdge = edge.relationships.some(
-    (r) => r.relationshipType === "participant_in"
+    (r) => r.relationshipType === "participantIn"
   );
 
   return (
@@ -65,7 +65,7 @@ export function EdgeInspector({ edge, datasetId, onClose }: EdgeInspectorProps) 
               className="h-8 gap-1.5 border-border bg-muted/40 text-xs"
             >
               <Link
-                href={`/search?entityId=${edge.srcId}&entityId=${edge.dstId}${datasetId ? `&datasetId=${datasetId}` : ""}`}
+                href={`/search/text?entityId=${edge.srcId}&entityId=${edge.dstId}`}
                 target="_blank"
               >
                 Search text mentioning both
@@ -126,7 +126,7 @@ function RelationshipBlock({
   return (
     <div className="space-y-2">
       <span className="inline-flex rounded-md border border-primary/40 bg-primary/10 px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-primary">
-        {rel.relationshipType.replace(/_/g, " ")}
+        {humanize(rel.relationshipType)}
       </span>
 
       <div className="flex items-center gap-2 text-xs text-foreground">
@@ -153,7 +153,7 @@ function RelationshipBlock({
         )}
         {attrEntries.map(([k, v]) => (
           <div key={k} className="flex justify-between gap-2">
-            <dt className="text-muted-foreground">{k.replace(/_/g, " ")}</dt>
+            <dt className="text-muted-foreground">{humanize(k)}</dt>
             <dd className="truncate text-right font-medium text-foreground">
               {String(v)}
             </dd>

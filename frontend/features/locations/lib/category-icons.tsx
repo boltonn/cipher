@@ -1,6 +1,6 @@
 "use client";
 
-import { cn } from "@/lib/utils";
+import { cn, humanize } from "@/lib/utils";
 import { createElement, type CSSProperties } from "react";
 import {
   Banknote,
@@ -62,18 +62,18 @@ export const FALLBACK_COLOR = "#8a9099";
  */
 const SOURCE_ICONS: Record<string, LucideIcon> = {
   exif: Camera,
-  coordinate_mention: FileText,
-  name_mention: MapPinned,
+  coordinateMention: FileText,
+  nameMention: MapPinned,
   geocoded: MapPin,
-  device_gps: Navigation,
+  deviceGps: Navigation,
 };
 
 const SOURCE_COLORS: Record<string, string> = {
   exif: "#4c6ef5", // blue
-  coordinate_mention: "#e8590c", // orange
-  name_mention: "#7048e8", // violet
+  coordinateMention: "#e8590c", // orange
+  nameMention: "#7048e8", // violet
   geocoded: "#0c8599", // teal
-  device_gps: "#2f9e44", // green
+  deviceGps: "#2f9e44", // green
 };
 
 // Gazetteer levels (`city` ... `country`) come from `resolve-locations`; the POI
@@ -169,11 +169,11 @@ const CATEGORY_COLORS: Record<string, string> = {
 };
 
 const SOURCE_LABELS: Record<string, string> = {
-  name_mention: "Place name in text",
-  coordinate_mention: "Coordinates in text",
+  nameMention: "Place name in text",
+  coordinateMention: "Coordinates in text",
   exif: "Photo EXIF",
   geocoded: "Geocoded address",
-  device_gps: "Device GPS",
+  deviceGps: "Device GPS",
 };
 
 function key(value: string | null | undefined): string | null {
@@ -191,7 +191,7 @@ export function iconFor(field: Field, value: string | null | undefined): LucideI
 /** Display label for a `source` / `category` value. */
 export function labelFor(field: Field, value: string): string {
   const label = field === "source" ? SOURCE_LABELS[value.toLowerCase()] : undefined;
-  return label ?? value.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
+  return label ?? humanize(value).replace(/^\w/, (c) => c.toUpperCase());
 }
 
 /** Fixed display colour for a `source` / `category` value. */

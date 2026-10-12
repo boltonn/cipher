@@ -1,9 +1,13 @@
+import { isAxiosError } from "axios";
 import type {
   FileBrowserRequest,
   FileBrowserResponse,
   FileRecord,
+  FileSummary,
   FileTables,
   FileText,
+  TextCorrectionRequest,
+  TextCorrectionSummary,
 } from "@/features/files/types";
 import { apiClient, baseURL } from "@/lib/api-client";
 import {
@@ -14,8 +18,30 @@ import {
 } from "@tanstack/react-query";
 
 export const filesService = {
+  /** Label many files' content with one tag, as the current user. */
+  tagMany: async (tag: string, fileIds: string[]): Promise<void> => {
+    await apiClient.post("/files/tag", { tag, fileIds });
+  },
   getById: async (id: string): Promise<FileRecord> => {
     const { data } = await apiClient.get<FileRecord>(`/files/${id}`);
+    return data;
+  },
+  /** The cached summary, or null when the file hasn't been summarized (404). */
+  getSummary: async (id: string): Promise<FileSummary | null> => {
+    try {
+      const { data } = await apiClient.get<FileSummary>(`/files/${id}/summary`, {
+        suppressErrorToast: true,
+      });
+      return data;
+    } catch (error) {
+      if (isAxiosError(error) && error.response?.status === 404) return null;
+      throw error;
+    }
+  },
+  summarize: async (id: string, force = false): Promise<FileSummary> => {
+    const { data } = await apiClient.post<FileSummary>(`/files/${id}/summary`, null, {
+      params: { force: force || undefined },
+    });
     return data;
   },
   setTags: async (id: string, tags: string[]): Promise<FileRecord> => {
@@ -33,6 +59,11 @@ export const filesService = {
     });
     return data;
   },
+  /** Files found inside it: an email's attachments, an archive's members (path order). */
+  getChildren: async (id: string): Promise<FileRecord[]> => {
+    const { data } = await apiClient.get<FileRecord[]>(`/files/${id}/children`);
+    return data;
+  },
   getFileUrl: (id: string) => `${baseURL}/files/${id}/view`,
   /** Browser-displayable JPEG (HEIC transcoded server-side); no Image pipeline row needed. */
   getPreviewUrl: (id: string, maxDim = 1600) => `${baseURL}/files/${id}/preview?max=${maxDim}`,
@@ -41,6 +72,11 @@ export const filesService = {
     const { data } = await apiClient.get<FileText>(`/files/${id}/text`, {
       suppressErrorToast: true,
     });
+    return data;
+  },
+  /** Replace an OCR'd text on every copy of the file; `dryRun` only reports what would change. */
+  correctText: async (id: string, body: TextCorrectionRequest): Promise<TextCorrectionSummary> => {
+    const { data } = await apiClient.put<TextCorrectionSummary>(`/files/${id}/text`, body);
     return data;
   },
   // A 404 here just means "not extracted yet, or nothing tabular in this file" -- not an error worth toasting.
@@ -61,10 +97,36 @@ export function useSetFileTags(fileId: string) {
   });
 }
 
+export function useFileSummary(fileId: string) {
+  return useQuery({
+    queryKey: ["files", fileId, "summary"],
+    queryFn: () => filesService.getSummary(fileId),
+    staleTime: 60_000,
+  });
+}
+
+/** Summarize a file with the LLM (slow: ~20s); the result is cached server-side as a summary chunk. */
+export function useSummarizeFile(fileId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (force: boolean) => filesService.summarize(fileId, force),
+    onSuccess: (summary) => queryClient.setQueryData(["files", fileId, "summary"], summary),
+  });
+}
+
 export function useFile(fileId: string | undefined) {
   return useQuery({
     queryKey: ["files", fileId],
     queryFn: () => filesService.getById(fileId as string),
+    enabled: !!fileId,
+    staleTime: 60_000,
+  });
+}
+
+export function useFileChildren(fileId: string | undefined) {
+  return useQuery({
+    queryKey: ["files", fileId, "children"],
+    queryFn: () => filesService.getChildren(fileId as string),
     enabled: !!fileId,
     staleTime: 60_000,
   });
@@ -78,6 +140,19 @@ export function useFileText(fileId: string | undefined) {
     enabled: !!fileId,
     staleTime: 60_000,
     retry: false,
+  });
+}
+
+/** Correct a file's OCR text; a saved correction refreshes its text and mentions (every copy shares them). */
+export function useCorrectFileText(fileId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: TextCorrectionRequest) => filesService.correctText(fileId, body),
+    onSuccess: (_, body) => {
+      if (body.dryRun) return;
+      qc.invalidateQueries({ queryKey: ["files"] });
+      qc.invalidateQueries({ queryKey: ["mentions"] });
+    },
   });
 }
 
@@ -105,5 +180,14 @@ export function useDatasetFileBrowser(datasetId: string | undefined, params: Fil
     enabled: !!datasetId,
     placeholderData: keepPreviousData,
     staleTime: 10_000,
+  });
+}
+
+/** Tag many files at once; cached file records are refetched so their tags show. */
+export function useTagFiles() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ tag, fileIds }: { tag: string; fileIds: string[] }) => filesService.tagMany(tag, fileIds),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["files"] }),
   });
 }

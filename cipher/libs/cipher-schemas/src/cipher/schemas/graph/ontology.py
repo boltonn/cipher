@@ -12,11 +12,10 @@ knows which types and relationships exist.
 
 import re
 from dataclasses import dataclass, field
-from enum import StrEnum
 
 from pydantic import Field
 
-from cipher.schemas._base.base import BaseModel
+from cipher.schemas._base.base import BaseModel, StrEnum
 
 
 class EntityType(StrEnum):
@@ -55,6 +54,7 @@ class SelectorType(StrEnum):
     NATIONAL_ID = "national_id"
     IMEI = "imei"
     IMSI = "imsi"
+    MAC_ADDRESS = "mac_address"  # a network interface's hardware address (Wi-Fi BSSID, device MAC)
     SOCIAL_HANDLE = "social_handle"
     CRYPTO_ADDRESS = "crypto_address"
     LICENSE_PLATE = "license_plate"
@@ -166,6 +166,9 @@ class RelationshipType(StrEnum):
     SUBSIDIARY_OF = "subsidiary_of"
     LOCATED_IN = "located_in"
     EMAILED = "emailed"
+    CALLED = "called"
+    MESSAGED = "messaged"
+    PAID = "paid"
     FAMILY_OF = "family_of"
     APPEARS_IN_PHOTO_WITH = "appears_in_photo_with"
     CO_MENTION_OF = "co_mention_of"
@@ -343,7 +346,7 @@ ONTOLOGY: dict[EntityType, TypeSpec] = {
         entity_type=EntityType.SELECTOR,
         label_singular="selector",
         label_plural="selectors",
-        description="A strong typed identifier (phone, email, passport, IMEI, IBAN, handle, ...).",
+        description="A strong typed identifier (phone, email, passport, IMEI, MAC, IBAN, plate, handle, ...).",
         # `selector_type` is the `.type` (phone/email/...); `normalized_value` is the `.value`.
         mention_attributes=frozenset({"value"}),
     ),
@@ -423,6 +426,36 @@ RELATIONSHIPS: dict[RelationshipType, RelationshipSpec] = {
             "people/orgs when resolved, otherwise the bare email selector."
         ),
         weight="emails sent source -> destination",
+    ),
+    RelationshipType.CALLED: RelationshipSpec(
+        relationship_type=RelationshipType.CALLED,
+        directed=True,
+        symmetric=False,
+        allowed_src=_COMMS_ENDPOINT_TYPES,
+        allowed_dst=_COMMS_ENDPOINT_TYPES,
+        inverse_label="called_by",
+        description="The source phoned the destination (call records). Endpoints may be bare phone selectors.",
+        weight="calls placed source -> destination",
+    ),
+    RelationshipType.MESSAGED: RelationshipSpec(
+        relationship_type=RelationshipType.MESSAGED,
+        directed=True,
+        symmetric=False,
+        allowed_src=_COMMS_ENDPOINT_TYPES,
+        allowed_dst=_COMMS_ENDPOINT_TYPES,
+        inverse_label="messaged_by",
+        description="The source sent the destination a message (SMS, chat). Endpoints may be bare selectors.",
+        weight="messages sent source -> destination",
+    ),
+    RelationshipType.PAID: RelationshipSpec(
+        relationship_type=RelationshipType.PAID,
+        directed=True,
+        symmetric=False,
+        allowed_src=_COMMS_ENDPOINT_TYPES,
+        allowed_dst=_COMMS_ENDPOINT_TYPES,
+        inverse_label="paid_by",
+        description="The source transferred money to the destination. Endpoints may be bare account selectors.",
+        weight="payments source -> destination",
     ),
     RelationshipType.FAMILY_OF: RelationshipSpec(
         relationship_type=RelationshipType.FAMILY_OF,
@@ -781,6 +814,9 @@ RELATIONSHIP_LABELS: dict[RelationshipType, str] = {
     RelationshipType.SUBSIDIARY_OF: "Subsidiary of",
     RelationshipType.LOCATED_IN: "Located in",
     RelationshipType.EMAILED: "Emailed",
+    RelationshipType.CALLED: "Called",
+    RelationshipType.MESSAGED: "Messaged",
+    RelationshipType.PAID: "Paid",
     RelationshipType.FAMILY_OF: "Family",
     RelationshipType.APPEARS_IN_PHOTO_WITH: "Appears in photo with",
     RelationshipType.CO_MENTION_OF: "Co-mentioned with",

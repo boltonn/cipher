@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from pyparse.parsers.calendar.ics import IcsParser, _parse_duration, _unescape_text
+from pyparse.parsers.calendar.ics import _parse_duration, _unescape_text, parse_events
 
 _FLIGHT = """BEGIN:VCALENDAR
 VERSION:2.0
@@ -39,7 +39,7 @@ END:VCALENDAR
 
 
 def test_parses_utc_event_with_participants_and_categories():
-    events = IcsParser.parse(_FLIGHT.encode())
+    events = parse_events(_FLIGHT.encode())
     assert len(events) == 1
     event = events[0]
     assert event.uid == "trip-001@example.com"
@@ -78,7 +78,7 @@ END:VCALENDAR
 
 
 def test_parses_ical_native_fields():
-    (event,) = IcsParser.parse(_ICAL_RICH.encode())
+    (event,) = parse_events(_ICAL_RICH.encode())
     assert event.event_class == "PRIVATE"
     assert event.url == "https://example.com/meet/xyz"
     assert event.sequence == 3
@@ -92,7 +92,7 @@ def test_parses_ical_native_fields():
 
 
 def test_all_day_and_tzid_and_duration():
-    hotel, dinner = IcsParser.parse(_TZ_AND_ALLDAY.encode())
+    hotel, dinner = parse_events(_TZ_AND_ALLDAY.encode())
 
     assert hotel.is_all_day is True
     assert hotel.date_start == datetime(2026, 9, 5, 0, 0)
@@ -117,4 +117,4 @@ def test_parse_duration_forms():
 
 
 def test_empty_payload_yields_nothing():
-    assert IcsParser.parse(b"not a calendar") == []
+    assert parse_events(b"not a calendar") == []

@@ -14,6 +14,25 @@ from cipher.schemas.content.email import ScoredEmailTextChunk
 ScoredTextChunk = ScoredDocumentTextChunk | ScoredEmailTextChunk
 
 
+class MonthCount(BaseModel):
+    """Files in one calendar month (by content date)."""
+
+    month: str = Field(description="`YYYY-MM`")
+    files: int
+
+
+class ResultShape(BaseModel):
+    """How a result set is spread: content-date histogram and `filetype_group` mix.
+
+    Computed over the ranked candidate pool (`sample_size` chunks), not the whole
+    match set -- "in the top N hits".
+    """
+
+    date_histogram: list[MonthCount] = Field(default_factory=list)
+    filetype_groups: dict[str, int] = Field(default_factory=dict, description="Files per `filetype_group`")
+    sample_size: int = Field(default=0, description="Candidate chunks the shape was computed over")
+
+
 class FileSearchResult(BaseModel):
     """One file's search hit: its matching chunks in reading order, plus the best one.
 
@@ -45,3 +64,4 @@ class PaginatedFileSearchResponse(PaginatedResponse):
 
     data: list[FileSearchResult]
     total_is_exact: bool = Field(default=True, description="False when `total` is only the candidate pool's files")
+    shape: ResultShape | None = Field(default=None, description="Set when the query asked for `include_shape`")

@@ -35,6 +35,9 @@ from cipher.datastores.postgres.tables.event_participant import EventParticipant
 from cipher.datastores.postgres.tables.event_place import EventPlaceTable
 from cipher.datastores.postgres.tables.tag import TagTable
 from cipher.datastores.postgres.tables.comment import CommentTable
+from cipher.datastores.postgres.tables.dataset_profile import DatasetProfileTable
+from cipher.datastores.postgres.tables.search import SearchTable
+from cipher.datastores.postgres.tables.table_mapping import TableMappingTable
 
 __all__ = [
     "FileTable",
@@ -66,4 +69,7 @@ __all__ = [
     "EventPlaceTable",
     "TagTable",
     "CommentTable",
+    "DatasetProfileTable",
+    "SearchTable",
+    "TableMappingTable",
 ]

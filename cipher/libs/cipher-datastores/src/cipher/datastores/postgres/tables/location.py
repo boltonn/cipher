@@ -66,6 +66,7 @@ class LocationTable(Base):
     source_id: Mapped[str | None] = mapped_column(String, nullable=True)
 
     date_recorded: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
     date_created: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
@@ -89,4 +90,5 @@ class LocationTable(Base):
         ),
         Index("ix_location_geom", "geom", postgresql_using="gist"),
         Index("ix_location_source_source_id", "source", "source_id"),
+        Index("ix_location_name_trgm", "name", postgresql_using="gin", postgresql_ops={"name": "gin_trgm_ops"}),
     )

@@ -1,4 +1,5 @@
 import axios, { AxiosError } from "axios";
+import { isPageError, toPageInterrupt } from "@/lib/api-errors";
 import { toast } from "sonner";
 
 declare module "axios" {
@@ -10,6 +11,11 @@ declare module "axios" {
      * already-handled failure doesn't surface as a Console Error.
      */
     suppressErrorToast?: boolean;
+    /**
+     * A 404 is an expected answer the caller handles (e.g. a remembered id that may be gone):
+     * no toast, no status page. Other failures still surface as usual.
+     */
+    expectNotFound?: boolean;
   }
 }
 
@@ -40,7 +46,7 @@ const LEAKED_INTERNALS =
  * message; anything long, multi-line, or carrying an internal exception is
  * replaced with a generic line and logged to the console for debugging.
  */
-function humanErrorMessage(error: AxiosError): string {
+export function humanErrorMessage(error: AxiosError): string {
   if (error.code === "ERR_NETWORK" || !error.response) {
     return "Can’t reach the server. Check your connection and try again.";
   }
@@ -77,10 +83,14 @@ apiClient.interceptors.response.use(
     // Keep the full error for developers, but downgrade to `debug` when the
     // caller has already said it's expected -- a suppressed error shouldn't
     // trip Next's Console Error overlay.
+    // Page errors (a read that's not found / forbidden / signed out) render a status page
+    // instead, so they don't toast or trip Next's Console Error overlay.
+    const quiet =
+      error.config?.suppressErrorToast ||
+      (error.config?.expectNotFound && error.response?.status === 404) ||
+      isPageError(error);
     if (typeof window !== "undefined") {
-      const log = error.config?.suppressErrorToast
-        ? console.debug
-        : console.error;
+      const log = quiet ? console.debug : console.error;
       log(
         "[api]",
         error.config?.method?.toUpperCase(),
@@ -89,9 +99,10 @@ apiClient.interceptors.response.use(
         error.response?.data ?? error.message
       );
     }
-    if (!error.config?.suppressErrorToast) {
+    if (!quiet) {
       toast.error(humanErrorMessage(error));
     }
-    return Promise.reject(error);
+    // A read the page can't be shown without: the query throws it during render (see the provider).
+    return Promise.reject(isPageError(error) ? toPageInterrupt(error) : error);
   }
 );

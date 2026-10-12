@@ -20,7 +20,7 @@ from cipher.orchestration.image_heads import DEFAULT_MIN_STORED_SCORE, write_hea
 from cipher.orchestration.image_size import DEFAULT_MIN_IMAGE_SIDE, is_below_min_side
 from cipher.schemas.content.image import ImageCreate
 from cipher.schemas.ingestion.enrichment import EnrichableType, EnrichmentType
-from cipher.utils.io import fetch_bytes_from_uri
+from cipher.utils.uri import read_bytes
 
 if TYPE_CHECKING:
     from setfitcv.heads import TagHeads
@@ -35,7 +35,7 @@ def _sync_prepare_image(uri: str, preprocessor, min_image_side: int):
     from setfitcv.utils import ImageMetadataExtractor
 
     try:
-        img_bytes = fetch_bytes_from_uri(uri)
+        img_bytes = read_bytes(uri)
         img = Image.open(BytesIO(img_bytes)).convert("RGB")
         if is_below_min_side(img, min_image_side):
             return None

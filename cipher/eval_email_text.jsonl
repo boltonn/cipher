@@ -1,0 +1,800 @@
+{"file": "00007507.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00026453.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00025194.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.5882352941176471}
+{"file": "00000741.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00012771.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00006188.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00011626.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00007471.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00001337.eml", "has_html": true, "has_plain": false, "empty": false, "residue": ["invisible_padding"], "duplicate_ratio": 0.0}
+{"file": "00025632.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00016722.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9666666666666667}
+{"file": "00001622.eml", "has_html": true, "has_plain": false, "empty": false, "residue": ["invisible_padding"], "duplicate_ratio": 0.0}
+{"file": "00016616.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.8928571428571429}
+{"file": "00004571.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00000398.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00007951.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00004647.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00022748.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9333333333333333}
+{"file": "00003098.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9315068493150684}
+{"file": "00002778.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00005671.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00012917.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00010269.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00012717.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00022365.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9775280898876404}
+{"file": "00014683.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9983818770226537}
+{"file": "00008490.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00012364.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9793103448275862}
+{"file": "00025022.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00001747.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00024046.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00028154.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.05882352941176472, "glue": [], "boundaries": [], "recall": 0.9555555555555556}
+{"file": "00006340.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.09090909090909094, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00010293.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00000505.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00011094.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": ["thread+message"], "boundaries": ["<span>"], "recall": 1.0}
+{"file": "00027793.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00015762.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9666666666666667}
+{"file": "00002479.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00017724.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9498069498069498}
+{"file": "00009719.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.24390243902439024, "glue": [], "boundaries": [], "recall": 0.9662447257383966}
+{"file": "00027030.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00024554.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.6357142857142857}
+{"file": "00023286.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9655172413793104}
+{"file": "00025650.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00008921.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00000032.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00019502.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9927007299270073}
+{"file": "00013928.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00027758.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00006147.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9951690821256038}
+{"file": "00014312.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9873949579831933}
+{"file": "00010056.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00028201.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00007760.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00018013.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.040000000000000036, "glue": [], "boundaries": [], "recall": 0.717391304347826}
+{"file": "00021714.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00025287.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.668997668997669}
+{"file": "00022758.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00024799.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00024359.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.6342592592592593}
+{"file": "00024585.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00026740.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00010862.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.25, "glue": [], "boundaries": [], "recall": 0.9671361502347418}
+{"file": "00015327.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9965397923875432}
+{"file": "00007455.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.04347826086956519, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00020150.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00012996.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00006197.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00005634.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.7840909090909091}
+{"file": "00020896.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9442231075697212}
+{"file": "00025332.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00005810.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.25}
+{"file": "00022532.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00012977.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00006734.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0714285714285714}
+{"file": "00015220.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": ["any+where"], "boundaries": [], "recall": 0.9958847736625515}
+{"file": "00019483.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00021788.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.36}
+{"file": "00025372.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00005529.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9419354838709677}
+{"file": "00007546.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00019674.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00013996.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00026910.eml", "has_html": false, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00004878.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9619047619047619}
+{"file": "00014896.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00004202.eml", "has_html": true, "has_plain": true, "empty": false, "residue": ["css_or_markup"], "duplicate_ratio": 0.0}
+{"file": "00026431.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00023178.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00028119.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.6385542168674698}
+{"file": "00015701.eml", "has_html": true, "has_plain": true, "empty": false, "residue": ["invisible_padding"], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.34782608695652173}
+{"file": "00012031.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.19999999999999996, "glue": [], "boundaries": [], "recall": 0.9571428571428572}
+{"file": "00005014.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00024567.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.33333333333333337, "glue": [], "boundaries": [], "recall": 0.4090909090909091}
+{"file": "00009708.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9884615384615385}
+{"file": "00001822.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00000249.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9759036144578314}
+{"file": "00008717.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00024643.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00012353.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00012152.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.6548672566371682}
+{"file": "00026966.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00010686.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00016845.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9966777408637874}
+{"file": "00022612.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.979381443298969}
+{"file": "00001573.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.6086956521739131}
+{"file": "00028063.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.15384615384615385, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00000397.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9871794871794872}
+{"file": "00011462.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00015165.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9957446808510638}
+{"file": "00004880.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00023007.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00009097.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.23076923076923073, "glue": [], "boundaries": [], "recall": 0.9638009049773756}
+{"file": "00010304.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00003117.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00009583.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00023171.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00007324.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.3125}
+{"file": "00004612.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.2222222222222222}
+{"file": "00006924.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00027785.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00021722.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00023814.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9701492537313433}
+{"file": "00022985.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00014518.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00016931.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.5714285714285714}
+{"file": "00022930.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00006464.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.0}
+{"file": "00000877.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9345794392523364}
+{"file": "00016719.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9961977186311787}
+{"file": "00014352.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00025026.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00023006.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00026591.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00004293.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00017086.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00027404.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00014053.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00025175.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00014993.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.25, "glue": [], "boundaries": [], "recall": 0.9891304347826086}
+{"file": "00015387.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00003390.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00007827.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00016961.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00013427.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00007346.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00004916.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00015574.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9959677419354839}
+{"file": "00016357.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.18181818181818177, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00018658.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.8695652173913043}
+{"file": "00000866.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.26086956521739135, "glue": [], "boundaries": [], "recall": 0.982532751091703}
+{"file": "00018895.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0714285714285714, "glue": [], "boundaries": [], "recall": 0.6818181818181818}
+{"file": "00014343.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00026716.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.09375, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00011992.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.03389830508474578, "glue": [], "boundaries": [], "recall": 0.9978947368421053}
+{"file": "00018037.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.8974358974358975}
+{"file": "00022367.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9210526315789473}
+{"file": "00003624.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00004448.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00005541.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.09999999999999998, "glue": [], "boundaries": [], "recall": 0.8203592814371258}
+{"file": "00020663.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9907407407407407}
+{"file": "00008563.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00002251.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00024097.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00024469.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9135802469135802}
+{"file": "00003094.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.06666666666666667}
+{"file": "00021892.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00027472.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.2272727272727273, "glue": [], "boundaries": [], "recall": 0.9947916666666666}
+{"file": "00009117.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00005789.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00024532.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00006840.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00012350.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00014969.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.6917808219178082}
+{"file": "00021562.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9905660377358491}
+{"file": "00004782.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00004288.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00024311.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.556390977443609}
+{"file": "00003580.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00013247.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00013156.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.16666666666666663}
+{"file": "00014478.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00003188.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00022497.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.989247311827957}
+{"file": "00012752.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00009417.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00011263.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.19999999999999996}
+{"file": "00000107.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9037037037037037}
+{"file": "00011625.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00013325.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00003184.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00002338.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00022046.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00021607.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.03703703703703709, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00003678.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00008453.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.5384615384615384}
+{"file": "00002204.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00012104.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00002710.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00022846.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9938271604938271}
+{"file": "00024186.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00020062.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00014064.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9545454545454546}
+{"file": "00010438.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00017001.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9583333333333334}
+{"file": "00026967.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00016673.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9961389961389961}
+{"file": "00001919.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9464285714285714}
+{"file": "00000376.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9844559585492227}
+{"file": "00020115.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00010250.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.8679245283018868}
+{"file": "00005887.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00027102.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00001998.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00007714.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00024854.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.5671641791044776}
+{"file": "00018813.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00020676.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9523809523809523}
+{"file": "00016620.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.957983193277311}
+{"file": "00019147.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9836065573770492}
+{"file": "00001823.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00016847.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9504504504504504}
+{"file": "00014784.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00000634.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00005178.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9875}
+{"file": "00018919.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9575289575289575}
+{"file": "00002691.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00002493.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9259259259259259}
+{"file": "00021682.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00017616.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": ["preferences+unsubscribe"], "boundaries": [], "recall": 0.9826086956521739}
+{"file": "00017819.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00024447.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.5, "glue": [], "boundaries": [], "recall": 0.8348623853211009}
+{"file": "00011003.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00028135.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00009529.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00013815.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00021326.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.4054054054054054}
+{"file": "00018006.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.09090909090909094, "glue": [], "boundaries": [], "recall": 0.7588235294117647}
+{"file": "00006644.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.88}
+{"file": "00005544.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.2142857142857143, "glue": [], "boundaries": [], "recall": 0.9824561403508771}
+{"file": "00005725.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00022749.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9920634920634921}
+{"file": "00002824.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00015854.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00003618.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00020646.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9710144927536232}
+{"file": "00008556.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00008203.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00011369.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9105691056910569}
+{"file": "00022801.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00003504.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.07692307692307687, "glue": [], "boundaries": [], "recall": 0.9702380952380952}
+{"file": "00007793.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00002470.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00010512.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00021998.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00000589.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00018994.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00010581.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.99644128113879}
+{"file": "00026787.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00013031.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.09090909090909094, "glue": [], "boundaries": [], "recall": 0.9887640449438202}
+{"file": "00023665.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9375}
+{"file": "00004187.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00026049.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00023619.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00023793.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00025925.eml", "has_html": false, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00016385.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9964539007092199}
+{"file": "00005007.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.8181818181818182}
+{"file": "00017479.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00002403.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00003360.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00004486.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00022357.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00012718.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00012747.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00027489.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00016836.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9968354430379747}
+{"file": "00022219.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00001012.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00019950.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9897959183673469}
+{"file": "00017134.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9957081545064378}
+{"file": "00005104.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00010119.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00012974.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00002210.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00003569.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.974025974025974}
+{"file": "00025191.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.6150121065375302}
+{"file": "00016132.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9963898916967509}
+{"file": "00021770.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.4117647058823529}
+{"file": "00003370.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00017555.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9464285714285714}
+{"file": "00017825.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00023158.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00012149.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00014891.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00026034.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00022926.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00001348.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00018384.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9927007299270073}
+{"file": "00010495.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00006396.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00004642.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00011028.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00003989.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00012105.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.05882352941176472, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00025603.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00024859.eml", "has_html": false, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00017610.eml", "has_html": true, "has_plain": true, "empty": false, "residue": ["css_or_markup"], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.948051948051948}
+{"file": "00022010.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00018578.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00023981.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00007620.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.03448275862068961, "glue": [], "boundaries": [], "recall": 0.9823943661971831}
+{"file": "00027180.eml", "has_html": false, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00021103.eml", "has_html": false, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00011899.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00021461.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00014330.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.44654088050314467}
+{"file": "00024115.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00011910.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9}
+{"file": "00021344.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00024934.eml", "has_html": false, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00016532.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00001727.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00015635.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00009767.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00000817.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00007270.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00027610.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00014237.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00017874.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9663865546218487}
+{"file": "00027227.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00015470.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00015764.eml", "has_html": true, "has_plain": false, "empty": false, "residue": ["invisible_padding"], "duplicate_ratio": 0.0}
+{"file": "00019923.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9973753280839895}
+{"file": "00007093.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.19999999999999996}
+{"file": "00008160.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00001430.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00026905.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.7}
+{"file": "00000471.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.2195121951219512, "glue": [], "boundaries": [], "recall": 0.990909090909091}
+{"file": "00025080.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00025638.eml", "has_html": false, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00008999.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00005474.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.25}
+{"file": "00014467.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00015995.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.8726415094339622}
+{"file": "00027778.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.1875, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00020182.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00000208.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00021161.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9468085106382979}
+{"file": "00011667.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.05882352941176472, "glue": [], "boundaries": [], "recall": 0.9689922480620154}
+{"file": "00011708.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00005628.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00003099.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00019439.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00006392.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00026820.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00009973.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00014521.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00007556.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00022590.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9259259259259259}
+{"file": "00006076.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.6170212765957447}
+{"file": "00018236.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00017078.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9951923076923077}
+{"file": "00007756.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00009505.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00020716.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00010674.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00002159.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9876543209876543}
+{"file": "00024489.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00000138.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00014610.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9710144927536232}
+{"file": "00005066.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00014713.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.05882352941176472, "glue": [], "boundaries": [], "recall": 0.9951690821256038}
+{"file": "00018171.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.967741935483871}
+{"file": "00020487.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.7419354838709677}
+{"file": "00000514.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00005113.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00000918.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9434889434889435}
+{"file": "00011934.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00009182.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00027082.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00017353.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00017726.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9494163424124513}
+{"file": "00013469.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00024771.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.032258064516129004, "glue": [], "boundaries": [], "recall": 0.6164383561643836}
+{"file": "00000966.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.22916666666666663, "glue": [], "boundaries": [], "recall": 0.9832635983263598}
+{"file": "00019508.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9963898916967509}
+{"file": "00023104.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.375, "glue": [], "boundaries": [], "recall": 0.41379310344827586}
+{"file": "00002172.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00016522.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00017509.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9191919191919192}
+{"file": "00020030.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9213483146067416}
+{"file": "00016849.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00004666.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00010700.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00003961.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00000915.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00019879.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00003499.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9615384615384616}
+{"file": "00014596.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.96}
+{"file": "00011277.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00006380.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00018956.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00010918.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00009162.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.26086956521739135, "glue": [], "boundaries": [], "recall": 0.9696969696969697}
+{"file": "00021120.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00000608.eml", "has_html": true, "has_plain": false, "empty": false, "residue": ["invisible_padding"], "duplicate_ratio": 0.0}
+{"file": "00001745.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00006830.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00011451.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00012399.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00012956.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00023585.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.8819444444444444}
+{"file": "00013008.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00022707.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0625, "glue": [], "boundaries": [], "recall": 0.9409282700421941}
+{"file": "00010505.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00001809.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00024335.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.032258064516129004, "glue": [], "boundaries": [], "recall": 0.6349614395886889}
+{"file": "00016006.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.7821782178217822}
+{"file": "00015228.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00004302.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00004012.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00007033.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00015672.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9962121212121212}
+{"file": "00023348.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00019139.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.39473684210526316}
+{"file": "00008039.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00014376.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9900990099009901}
+{"file": "00023949.eml", "has_html": false, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00014377.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00012125.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.1428571428571429, "glue": [], "boundaries": [], "recall": 0.7903225806451613}
+{"file": "00008988.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00020436.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00016987.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9962825278810409}
+{"file": "00002152.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00019851.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.33333333333333337}
+{"file": "00025435.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9393939393939394}
+{"file": "00017320.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00025096.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9491525423728814}
+{"file": "00017332.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00000554.eml", "has_html": true, "has_plain": true, "empty": false, "residue": ["invisible_padding"], "duplicate_ratio": 0.03448275862068961, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00021851.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00012688.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9704433497536946}
+{"file": "00015929.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.36}
+{"file": "00021235.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00008872.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00018149.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00009571.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00014005.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00018884.eml", "has_html": true, "has_plain": false, "empty": false, "residue": ["invisible_padding"], "duplicate_ratio": 0.0}
+{"file": "00014492.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9924242424242424}
+{"file": "00028008.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00003296.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00005489.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00002661.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00022537.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.05882352941176472, "glue": [], "boundaries": [], "recall": 0.9761904761904762}
+{"file": "00013510.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00016476.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9615384615384616}
+{"file": "00013532.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00010437.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00005139.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9863013698630136}
+{"file": "00018380.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": ["type+face"], "boundaries": [], "recall": 0.9481481481481482}
+{"file": "00016024.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00022215.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.5481481481481482}
+{"file": "00002820.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9305555555555556}
+{"file": "00015223.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00025819.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00000066.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00019933.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.032258064516129004, "glue": [], "boundaries": [], "recall": 0.9438202247191011}
+{"file": "00017045.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9838709677419355}
+{"file": "00002901.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00013280.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.125, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00002712.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00007618.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00025089.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00016509.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00017380.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9634146341463414}
+{"file": "00026724.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00013932.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00027427.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00023804.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9369747899159664}
+{"file": "00020944.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00016881.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.8785046728971962}
+{"file": "00013822.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00016023.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9959349593495935}
+{"file": "00001027.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00017564.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00017083.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00025490.eml", "has_html": false, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00007821.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00017594.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.23076923076923073}
+{"file": "00013698.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00001849.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.2790697674418605, "glue": [], "boundaries": [], "recall": 0.9821428571428571}
+{"file": "00027055.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9652173913043478}
+{"file": "00018730.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.07407407407407407, "glue": [], "boundaries": [], "recall": 0.7045454545454546}
+{"file": "00011169.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00022308.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.5172413793103449}
+{"file": "00019859.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9606299212598425}
+{"file": "00013444.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00002938.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00005053.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00015755.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9962406015037594}
+{"file": "00013831.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00013174.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.5833333333333334}
+{"file": "00009432.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.19999999999999996, "glue": [], "boundaries": [], "recall": 0.9684684684684685}
+{"file": "00018802.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.38235294117647056}
+{"file": "00014966.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9405940594059405}
+{"file": "00008915.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00001426.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00011333.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00027689.eml", "has_html": false, "has_plain": true, "empty": false, "residue": ["mojibake"], "duplicate_ratio": 0.0}
+{"file": "00008480.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00007896.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00025556.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00019479.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9945652173913043}
+{"file": "00018196.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00015487.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00020702.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.8878504672897196}
+{"file": "00028223.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.276595744680851, "glue": [], "boundaries": [], "recall": 0.9744680851063829}
+{"file": "00001928.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00001796.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.8787878787878788}
+{"file": "00012916.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.08333333333333337, "glue": [], "boundaries": [], "recall": 0.8103448275862069}
+{"file": "00019178.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00013858.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00012773.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9622641509433962}
+{"file": "00000359.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9908256880733946}
+{"file": "00027880.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.2777777777777778, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00009509.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00009675.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00024440.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00015713.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.7053571428571429}
+{"file": "00003941.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00001892.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00014280.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.8793103448275862}
+{"file": "00013081.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00019557.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.375}
+{"file": "00003663.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9827586206896551}
+{"file": "00017942.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9970414201183432}
+{"file": "00002913.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00020002.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00011838.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00000244.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.26, "glue": [], "boundaries": [], "recall": 0.9758064516129032}
+{"file": "00012251.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.19999999999999996, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00000370.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.19565217391304346, "glue": [], "boundaries": [], "recall": 0.9782608695652174}
+{"file": "00019381.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00021761.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00014727.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00004824.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00010637.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00026043.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.8774193548387097}
+{"file": "00021155.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9863013698630136}
+{"file": "00002335.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9491525423728814}
+{"file": "00008392.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.967828418230563}
+{"file": "00018419.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9782608695652174}
+{"file": "00010111.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00020912.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9541284403669725}
+{"file": "00003766.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00014118.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00023473.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00004541.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00018746.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.984251968503937}
+{"file": "00023933.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00012862.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9803921568627451}
+{"file": "00004845.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00000320.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00024104.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.96}
+{"file": "00019595.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00006222.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.978021978021978}
+{"file": "00001147.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9876543209876543}
+{"file": "00004059.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00001909.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00016366.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00000145.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00016771.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.995}
+{"file": "00010080.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00023840.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00012004.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00010883.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00011753.eml", "has_html": false, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00022068.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.967032967032967}
+{"file": "00008102.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.16666666666666663, "glue": [], "boundaries": [], "recall": 0.9710743801652892}
+{"file": "00005449.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00027291.eml", "has_html": false, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00025188.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00022878.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00026255.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00008245.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00021188.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00000693.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.2857142857142857, "glue": [], "boundaries": [], "recall": 0.979253112033195}
+{"file": "00020431.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.45999999999999996, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00023679.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.7325581395348837}
+{"file": "00022760.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00002389.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9294117647058824}
+{"file": "00018383.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00013846.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.987012987012987}
+{"file": "00002069.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00014468.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.967741935483871}
+{"file": "00023595.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00005271.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00024365.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.7727272727272727}
+{"file": "00015719.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00022753.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9523809523809523}
+{"file": "00001417.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.4285714285714286, "glue": [], "boundaries": [], "recall": 0.9947643979057592}
+{"file": "00020389.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9966777408637874}
+{"file": "00023830.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9694656488549618}
+{"file": "00024236.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.19999999999999996, "glue": [], "boundaries": [], "recall": 0.8958333333333334}
+{"file": "00019163.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00007219.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00001629.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00020579.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00026651.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9102564102564102}
+{"file": "00010439.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.6086956521739131}
+{"file": "00023975.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9555555555555556}
+{"file": "00018188.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00005633.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.8928571428571429}
+{"file": "00015088.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00022851.eml", "has_html": false, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00000063.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.18181818181818177, "glue": [], "boundaries": [], "recall": 0.8395061728395061}
+{"file": "00000192.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00016600.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9661016949152542}
+{"file": "00027064.eml", "has_html": false, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00005577.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.45}
+{"file": "00002757.eml", "has_html": true, "has_plain": true, "empty": false, "residue": ["invisible_padding"], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9379310344827586}
+{"file": "00010676.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00027095.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9952380952380953}
+{"file": "00015131.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00011030.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00012337.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9864864864864865}
+{"file": "00001062.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.17021276595744683, "glue": [], "boundaries": [], "recall": 0.9836065573770492}
+{"file": "00025054.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00003962.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00017152.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00015469.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9962406015037594}
+{"file": "00007191.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00027360.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00016372.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.996031746031746}
+{"file": "00006044.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.11111111111111116, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00027752.eml", "has_html": false, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00020474.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00000365.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00027600.eml", "has_html": false, "has_plain": true, "empty": false, "residue": ["quoted_printable"], "duplicate_ratio": 0.0}
+{"file": "00006055.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00027813.eml", "has_html": false, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00017432.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00014933.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.07692307692307687}
+{"file": "00027960.eml", "has_html": false, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00019430.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9943181818181818}
+{"file": "00012763.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00017248.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00006730.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00021283.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9801587301587301}
+{"file": "00003789.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9130434782608695}
+{"file": "00016853.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00028256.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.4137931034482759}
+{"file": "00015695.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9871794871794872}
+{"file": "00017428.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.125, "glue": [], "boundaries": [], "recall": 0.9278350515463918}
+{"file": "00011130.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00007089.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00009524.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9814814814814815}
+{"file": "00025679.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00025270.eml", "has_html": true, "has_plain": true, "empty": false, "residue": ["quoted_printable"], "duplicate_ratio": 0.09999999999999998, "glue": [], "boundaries": [], "recall": 0.9906542056074766}
+{"file": "00012078.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00025722.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00004002.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00026108.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00022913.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00006366.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00024915.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.6105769230769231}
+{"file": "00013520.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00009755.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00013359.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00020299.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9920634920634921}
+{"file": "00019485.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.974025974025974}
+{"file": "00022729.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9552238805970149}
+{"file": "00006632.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.07692307692307687}
+{"file": "00001131.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.2222222222222222, "glue": [], "boundaries": [], "recall": 0.9285714285714286}
+{"file": "00027115.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00018226.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9444444444444444}
+{"file": "00018335.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00022057.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00012136.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.978494623655914}
+{"file": "00020302.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00025007.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.09999999999999998, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00027927.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.18181818181818177, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00017106.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00002036.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00026155.eml", "has_html": false, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00025910.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00017165.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9953488372093023}
+{"file": "00005837.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.8617021276595744}
+{"file": "00001843.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00013961.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00006323.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0714285714285714}
+{"file": "00004385.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.7037037037037037}
+{"file": "00025787.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00018168.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.954954954954955}
+{"file": "00003200.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.22916666666666663, "glue": [], "boundaries": [], "recall": 0.974025974025974}
+{"file": "00023574.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9477611940298507}
+{"file": "00016999.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9829059829059829}
+{"file": "00008841.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00018173.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.42307692307692313}
+{"file": "00023170.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.967741935483871}
+{"file": "00002177.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9876543209876543}
+{"file": "00005204.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.25}
+{"file": "00027186.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00003512.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00000623.eml", "has_html": true, "has_plain": true, "empty": false, "residue": ["invisible_padding"], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9274193548387096}
+{"file": "00015507.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.8243243243243243}
+{"file": "00015594.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00003763.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00017275.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.4117647058823529}
+{"file": "00018780.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.4285714285714286, "glue": [], "boundaries": [], "recall": 0.8979591836734694}
+{"file": "00016959.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.96875}
+{"file": "00021206.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9791666666666666}
+{"file": "00005518.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.6976744186046512}
+{"file": "00000567.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00015163.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9960474308300395}
+{"file": "00028251.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9452554744525548}
+{"file": "00024632.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00008136.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00021308.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00023935.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.8535980148883374}
+{"file": "00008239.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00028067.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.1428571428571429, "glue": [], "boundaries": [], "recall": 0.9868421052631579}
+{"file": "00010323.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00017816.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00026392.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.07692307692307687, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00023342.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00003434.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.972972972972973}
+{"file": "00022220.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00004207.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00003072.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9864864864864865}
+{"file": "00011146.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9425287356321839}
+{"file": "00016583.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9714285714285714}
+{"file": "00012140.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00010623.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00022676.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.04347826086956519, "glue": [], "boundaries": [], "recall": 0.9512195121951219}
+{"file": "00013135.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00005274.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00016886.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00003436.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.2727272727272727}
+{"file": "00008343.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00016794.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9963369963369964}
+{"file": "00010815.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00023114.eml", "has_html": false, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00011744.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00009907.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00017233.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00021350.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.8412698412698413}
+{"file": "00004634.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.25}
+{"file": "00026224.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00006445.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.995049504950495}
+{"file": "00025101.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.8791946308724832}
+{"file": "00022703.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0625, "glue": [], "boundaries": [], "recall": 0.9512195121951219}
+{"file": "00011589.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00004705.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00005666.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.09090909090909094}
+{"file": "00019665.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9883720930232558}
+{"file": "00009473.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.25}
+{"file": "00013880.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00003913.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9611650485436893}
+{"file": "00004464.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00024919.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.8487394957983193}
+{"file": "00005483.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00015860.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9957446808510638}
+{"file": "00020987.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00010097.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00016557.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9655172413793104}
+{"file": "00014967.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9959677419354839}
+{"file": "00015707.eml", "has_html": false, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00009921.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00018879.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9832214765100671}
+{"file": "00000099.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00005916.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00022942.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00018087.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.967741935483871}
+{"file": "00018841.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.979757085020243}
+{"file": "00018861.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9537815126050421}
+{"file": "00014211.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00003959.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00017289.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00014387.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00021343.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.8181818181818182}
+{"file": "00019403.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00005143.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00028044.eml", "has_html": false, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00004515.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00008062.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00015560.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.25, "glue": [], "boundaries": [], "recall": 0.9302325581395349}
+{"file": "00008060.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9491525423728814}
+{"file": "00018015.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.48366013071895425}
+{"file": "00024624.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00008013.eml", "has_html": true, "has_plain": false, "empty": true, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00021511.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.40625}
+{"file": "00004591.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}
+{"file": "00025180.eml", "has_html": true, "has_plain": false, "empty": false, "residue": [], "duplicate_ratio": 0.0}
+{"file": "00020825.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.8666666666666667}
+{"file": "00021342.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 0.9939759036144579}
+{"file": "00019805.eml", "has_html": true, "has_plain": true, "empty": false, "residue": [], "duplicate_ratio": 0.0, "glue": [], "boundaries": [], "recall": 1.0}

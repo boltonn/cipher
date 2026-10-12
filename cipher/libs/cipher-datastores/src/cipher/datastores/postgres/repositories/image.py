@@ -22,6 +22,7 @@ from cipher.schemas.content.image import (
     PaginatedImageSimilarityResponse,
     PaginatedImagesResponse,
 )
+from cipher.schemas.content.results import MonthCount
 from cipher.schemas.ingestion.file import File
 from cipher.schemas.interaction.tag import TagSource, TagTargetType
 
@@ -280,6 +281,21 @@ class PostgresImageRepository:
             return None
         return Image.model_validate({**image_table.__dict__, "file_id": file_id})
 
+    async def capture_months(self, *, datasets: list[str] | None) -> tuple[list[MonthCount], int]:
+        """Distinct images per month they were taken (EXIF), oldest first, and how many have no capture date."""
+        month = func.to_char(ImageTable.date_taken, "YYYY-MM")
+        scoped = _file_scoped_expr(datasets, None)
+        rows = await self.session.execute(
+            select(month, func.count())
+            .where(scoped, ImageTable.date_taken.is_not(None))
+            .group_by(month)
+            .order_by(month)
+        )
+        undated = await self.session.execute(
+            select(func.count()).select_from(ImageTable).where(scoped, ImageTable.date_taken.is_(None))
+        )
+        return [MonthCount(month=m, files=n) for m, n in rows.tuples()], undated.scalar_one()
+
     async def get_files_for_image(self, image_id: str) -> list[File]:
         """List every file whose content is this image (matched on sha256)."""
         result = await self.session.execute(
@@ -488,6 +504,9 @@ class PostgresImageRepository:
         base_query = select(ImageTable, (-distance_expr).label("similarity_score")).where(*filters)
 
         if request.sort_by == ImageSortField.SIMILARITY:
+            # Without this, HNSW stops after `ef_search` candidates and a selective
+            # dataset/tag filter silently returns fewer rows than exist.
+            await self.session.execute(text("SET LOCAL hnsw.iterative_scan = strict_order"))
             primary_sort = asc(distance_expr)
         else:
             sort_col = ImageTable.date_taken

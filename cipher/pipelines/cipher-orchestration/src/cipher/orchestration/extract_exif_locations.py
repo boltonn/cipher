@@ -20,7 +20,7 @@ from cipher.datastores.postgres.repositories import (
 )
 from cipher.orchestration.exif_location import exif_location_create
 from cipher.schemas.ingestion.enrichment import EnrichableType, EnrichmentType
-from cipher.utils.io import fetch_bytes_from_uri
+from cipher.utils.uri import read_bytes
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,7 +33,7 @@ def _extract(uri: str) -> dict | None:
     from PIL import Image
     from setfitcv.utils import ImageMetadataExtractor
 
-    img = Image.open(BytesIO(fetch_bytes_from_uri(uri))).convert("RGB")
+    img = Image.open(BytesIO(read_bytes(uri))).convert("RGB")
     return ImageMetadataExtractor.extract_metadata(img) or {}
 
 

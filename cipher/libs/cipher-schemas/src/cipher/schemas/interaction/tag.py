@@ -6,11 +6,10 @@ repository, so filtering and display never pay for the provenance.
 """
 
 from datetime import datetime
-from enum import StrEnum
 
 from pydantic import Field
 
-from cipher.schemas._base.base import BaseModel
+from cipher.schemas._base.base import BaseModel, StrEnum
 from cipher.schemas._base.common import ModelTagType
 
 
@@ -81,3 +80,25 @@ class TagPublic(Tag):
     """A tag with a display name for its source."""
 
     source_display_name: str = Field(description="The user's name, or the model name")
+
+
+class TagStats(BaseModel):
+    """How one tag is used on one kind of target: analyst labels, model output, and your share."""
+
+    tag: str
+    target_type: TagTargetType
+    labelled: int = Field(description="Targets an analyst labelled with the tag")
+    rejected: int = Field(description="Targets an analyst said are not the tag")
+    predicted: int = Field(description="Targets a model tagged or scored")
+    by_you: int = Field(description="Of the analyst labels, how many are yours")
+    date_last_used: datetime
+
+
+class TagTrainingReadiness(BaseModel):
+    """Whether an image tag has enough analyst labels to train its classifier head."""
+
+    tag: str
+    positives: int = Field(description="Images an analyst labelled with the tag")
+    negatives: int = Field(description="Images an analyst said are not the tag (hard negatives)")
+    min_positives: int = Field(description="Positives a head needs before training includes the tag")
+    is_ready: bool

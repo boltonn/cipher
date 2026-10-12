@@ -20,9 +20,11 @@ walks through one email end to end):
    itself and a bare website given as "company" are dropped. Each value becomes a mention
    with offsets into the email, plus mention relations: person `employed_by` the most
    specific unit (`attributes.role`), each unit `part_of` the one above it, the company
-   `located_in` each address. Phones / emails sit in the person's `field_path`, websites
+   `located_in` each address, each address `located_in` the city (or state / country) the
+   gazetteer finds in it -- left out when the name is ambiguous. Phones are kept as written:
+   a country only when the number states it, never guessed. Phones / emails sit in the person's `field_path`, websites
    (as `domain` selectors) in the company's, so `resolve-entities` links them with
-   `has_selector`. A sub-unit's resolution key is qualified by its company, so "Finance"
+   `has_selector` (and each gets a `has_selector` relation to review). A sub-unit's resolution key is qualified by its company, so "Finance"
    at two companies never merges.
 
 `resolve-entities` then resolves the names; the relations show as suggestions on the
@@ -54,13 +56,15 @@ from cipher.datastores.postgres.utils import normalize_name
 from cipher.names import Level, address_name_agreement, compare_names, dominant_script, fold, to_latin, tokens
 from cipher.orchestration.signature_cues import FAREWELLS, REPLY_MARKERS
 from cipher.schemas.content.email import EmailMetadata
-from cipher.schemas.graph.mention import MentionCreate, MentionedType
+from cipher.schemas.graph.mention import Mention, MentionCreate, MentionedType
 from cipher.schemas.graph.mention_relationship import MentionRelationshipCreate
 from cipher.schemas.graph.ontology import EntityType, RelationshipType, SelectorType
 from cipher.schemas.ingestion.enrichment import EnrichableType, EnrichmentType
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
+
+    from cipher.places import Gazetteer
 
 EXTRACTOR = "signature"
 PERSON_FIELD = "signature.person"
@@ -84,7 +88,6 @@ _WEBSITE = re.compile(r"(?:https?://|www\.)\S+", re.IGNORECASE)
 BULK_TAGS = frozenset({"promotions", "updates", "social", "forums"})
 _FAREWELLS = frozenset(phrase.casefold() for phrases in FAREWELLS.values() for phrase in phrases)
 _NAME_DECORATION = re.compile(r"^[\s\-–—_*~]+|[\s,*_~]+$")
-_CCTLD_REGION = {"uk": "GB"}
 _DOMAIN_ONLY = re.compile(r"^(?:https?://)?(?:www\.)?[\w-]+(?:\.[\w-]+)+/?$", re.IGNORECASE)
 
 
@@ -341,8 +344,12 @@ def ground(
         return None
     whole = Span(candidate.text, candidate.start, candidate.start + len(candidate.text))
     region = _locate(whole, reading.signature) or whole
-    # a bare domain (`fourthbrain.ai`) is the website, not the organization's name
-    units = [u for u in (_locate(region, o) for o in reading.organizations) if u and not _DOMAIN_ONLY.match(u.text)]
+    units = [
+        u
+        for u in (_locate(region, o) for o in reading.organizations)
+        # a bare domain (`fourthbrain.ai`) is the website; an emoji or symbol (`🤗`) is a logo, not a name
+        if u and not _DOMAIN_ONLY.match(u.text) and any(ch.isalnum() for ch in u.text)
+    ]
     person = _locate(region, _NAME_DECORATION.sub("", reading.person_name or ""))
     if not units or person is None or is_organization_signer(person.text, [u.text for u in units]):
         return None
@@ -370,17 +377,12 @@ def ground(
 # ---- emission ------------------------------------------------------------------------- #
 
 
-def _region_hint(address: str | None) -> str | None:
-    """A phone region from the sender's country-code TLD (`.de` -> DE), for numbers written without `+`."""
-    tld = (address or "").rsplit(".", 1)[-1].lower()
-    return _CCTLD_REGION.get(tld, tld.upper()) if len(tld) == 2 else None
-
-
 @dataclass
 class _Emitter:
     session: "AsyncSession"
     dataset_id: str
     counts: dict[str, int]
+    gazetteer: "Gazetteer | None" = None
 
     def __post_init__(self):
         self.mentions = PostgresMentionRepository(session=self.session)
@@ -418,7 +420,7 @@ class _Emitter:
         region,
         context,
         mentioned_type: MentionedType = MentionedType.EXTRACTED_TEXT,
-    ) -> int:
+    ) -> list[Mention]:
         from pyselectors.normalize import normalize_selector
 
         rows = []
@@ -452,8 +454,7 @@ class _Emitter:
                     extraction_confidence=1.0,
                 )
             )
-        await self.mentions.add_mentions_batch(rows)
-        return len(rows)
+        return await self.mentions.add_mentions_returning(rows)
 
     async def emit(self, found: SignatureAffiliation, *, text_id: str, file_id: str, sender_address: str | None):
         common = dict(text_id=text_id, file_id=file_id, context=found.context, confidence=found.confidence)
@@ -480,8 +481,15 @@ class _Emitter:
                     **common,
                 )
             )
+        places = [(index, place) for index, address in enumerate(found.addresses) if (place := self._place_in(address))]
+        rows += [
+            self._name(span=place, entity_type=EntityType.LOCATION, field_path=ADDRESS_FIELD, **common)
+            for _, place in places
+        ]
         person, *rest = await self.mentions.add_mentions_returning(rows)
-        units, addresses = rest[: len(found.units)], rest[len(found.units) :]
+        units = rest[: len(found.units)]
+        addresses = rest[len(found.units) : len(found.units) + len(found.addresses)]
+        place_mentions = rest[len(found.units) + len(found.addresses) :]
 
         relation = dict(
             dataset_id=self.dataset_id,
@@ -516,33 +524,67 @@ class _Emitter:
                 )
                 for address in addresses
             ),
+            *(
+                MentionRelationshipCreate(
+                    src_mention_id=addresses[index].id,
+                    dst_mention_id=place.id,
+                    relationship_type=RelationshipType.LOCATED_IN,
+                    **relation,
+                )
+                for (index, _), place in zip(places, place_mentions, strict=True)
+            ),
         ]
         await self.relations.add_batch(relations)
 
-        region = _region_hint(sender_address)
-        selector = dict(text_id=text_id, file_id=file_id, region=region, context=found.context)
-        self.counts["selectors"] += await self._selectors(
-            spans=found.phones, selector_type=SelectorType.PHONE, field_path=PERSON_FIELD, **selector
-        )
-        self.counts["selectors"] += await self._selectors(
-            spans=found.emails, selector_type=SelectorType.EMAIL, field_path=PERSON_FIELD, **selector
-        )
+        selector = dict(text_id=text_id, file_id=file_id, region=None, context=found.context)
+        person_selectors = [
+            *await self._selectors(
+                spans=found.phones, selector_type=SelectorType.PHONE, field_path=PERSON_FIELD, **selector
+            ),
+            *await self._selectors(
+                spans=found.emails, selector_type=SelectorType.EMAIL, field_path=PERSON_FIELD, **selector
+            ),
+        ]
         if found.signer_is_sender and sender_address:
             # the confirmed signer owns the sending address: resolution links them (has_selector)
-            self.counts["selectors"] += await self._selectors(
+            person_selectors += await self._selectors(
                 spans=[Span(sender_address, -1, -1)],
                 selector_type=SelectorType.EMAIL,
                 field_path=PERSON_FIELD,
                 mentioned_type=MentionedType.STRUCTURED_FIELD,
                 **selector,
             )
-        self.counts["selectors"] += await self._selectors(
+        websites = await self._selectors(
             spans=found.websites, selector_type=SelectorType.DOMAIN, field_path="signature.unit.0", **selector
         )
+        # offered for review beside the other relations; resolution also links them by field_path
+        await self.relations.add_batch(
+            [
+                MentionRelationshipCreate(
+                    src_mention_id=owner.id,
+                    dst_mention_id=mention.id,
+                    relationship_type=RelationshipType.HAS_SELECTOR,
+                    **relation,
+                )
+                for owner, owned in ((person, person_selectors), (units[0], websites))
+                for mention in owned
+                if mention.start_offset is not None
+            ]
+        )
+        self.counts["selectors"] += len(person_selectors) + len(websites)
         self.counts["signatures"] += 1
         self.counts["sub_units"] += len(found.units) - 1
         self.counts["with_role"] += bool(found.role)
         self.counts["addresses"] += len(found.addresses)
+        self.counts["places"] += len(places)
+
+    def _place_in(self, address: Span) -> Span | None:
+        """The city (else state / country) the gazetteer finds in an address, as a span of the email."""
+        found = self.gazetteer.place_in_address(address.text) if self.gazetteer else None
+        if found is None:
+            return None
+        _, start, end = found
+        return Span(address.text[start:end], address.start + start, address.start + end)
 
 
 def _sender_label(sender) -> str:
@@ -660,10 +702,13 @@ async def extract_signatures_workflow(
             "with_role",
             "selectors",
             "addresses",
+            "places",
         ),
         0,
     )
-    emitter = _Emitter(session=session, dataset_id=dataset_id, counts=counts)
+    from cipher.places import Gazetteer
+
+    emitter = _Emitter(session=session, dataset_id=dataset_id, counts=counts, gazetteer=Gazetteer.load())
     llm_read = _llm_reader(model)
     cache = _ReadingCache()
     semaphore = asyncio.Semaphore(concurrency)

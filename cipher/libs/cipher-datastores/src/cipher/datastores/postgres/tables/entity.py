@@ -97,4 +97,3 @@ def is_canonical_entity(entity=EntityTable) -> ColumnElement[bool]:
         entity.location_id.is_not(None),
         entity.source == EntitySource.MANUAL,
     )
-

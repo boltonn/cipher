@@ -1,0 +1,144 @@
+{
+  "selector_type": "license_plate",
+  "priority": 40,
+  "base_confidence": 0.4,
+  "max_confidence": 0.9,
+  "normalizer": "license_plate",
+  "validator": "license_plate",
+  "patterns": [
+    {
+      "name": "ru",
+      "regex": "(?<![\\w])[АВЕКМНОРСТУХABEKMHOPCTYX][ \\t]?\\d{3}[ \\t]?[АВЕКМНОРСТУХABEKMHOPCTYX]{2}[ \\t]?\\d{2,3}(?:[ \\t]?RUS)?(?![\\w])",
+      "base_confidence": 0.6,
+      "hint": {
+        "country": "RU"
+      },
+      "requires_context": true
+    },
+    {
+      "name": "cn",
+      "regex": "(?<![\\w])[京津沪渝冀豫云辽黑湘皖鲁新苏浙赣鄂桂甘晋蒙陕吉闽贵粤青藏川宁琼][A-Z][·• ]?[A-Z0-9]{5,6}(?![\\w])",
+      "base_confidence": 0.7,
+      "hint": {
+        "country": "CN"
+      },
+      "requires_context": true
+    },
+    {
+      "name": "letters_digits_letters",
+      "regex": "(?<![\\w])[A-Z]{1,3}[ \\-]?\\d{1,4}[ \\-]?[A-Z]{1,3}(?![\\w])",
+      "requires_context": true
+    },
+    {
+      "name": "digits_letters_digits",
+      "regex": "(?<![\\w])\\d{1,3}[ \\-]?[A-Z]{1,3}[ \\-]?\\d{1,4}(?![\\w])",
+      "requires_context": true
+    }
+  ],
+  "context": {
+    "window_before": 30,
+    "window_after": 10,
+    "terms": {
+      "en": [
+        {
+          "term": "plate",
+          "weight": 0.3
+        },
+        {
+          "term": "license plate",
+          "weight": 0.35
+        },
+        {
+          "term": "registration",
+          "weight": 0.15
+        },
+        {
+          "term": "vehicle",
+          "weight": 0.15
+        },
+        {
+          "term": "car",
+          "weight": 0.1
+        }
+      ],
+      "ru": [
+        {
+          "term": "госномер",
+          "weight": 0.35
+        },
+        {
+          "term": "гос номер",
+          "weight": 0.35
+        },
+        {
+          "term": "номерной знак",
+          "weight": 0.35
+        },
+        {
+          "term": "номер автомобиля",
+          "weight": 0.3
+        },
+        {
+          "term": "автомобиль",
+          "weight": 0.15
+        },
+        {
+          "term": "грз",
+          "weight": 0.3
+        }
+      ],
+      "uk": [
+        {
+          "term": "номерний знак",
+          "weight": 0.35
+        },
+        {
+          "term": "автомобіль",
+          "weight": 0.15
+        }
+      ],
+      "zh": [
+        {
+          "term": "车牌",
+          "weight": 0.35
+        },
+        {
+          "term": "车牌号",
+          "weight": 0.35
+        }
+      ],
+      "ar": [
+        {
+          "term": "لوحة",
+          "weight": 0.3
+        }
+      ],
+      "fa": [
+        {
+          "term": "پلاک خودرو",
+          "weight": 0.35
+        }
+      ],
+      "fr": [
+        {
+          "term": "plaque",
+          "weight": 0.3
+        },
+        {
+          "term": "immatriculation",
+          "weight": 0.35
+        }
+      ],
+      "es": [
+        {
+          "term": "matrícula",
+          "weight": 0.35
+        },
+        {
+          "term": "placa",
+          "weight": 0.3
+        }
+      ]
+    }
+  }
+}

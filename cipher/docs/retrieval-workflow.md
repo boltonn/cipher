@@ -99,6 +99,8 @@ possible.
 ### 8. Resolve entities & relationships  — `resolve-entities`, `extract-relationships`
 Mentions get linked to canonical `entity` rows; typed edges
 (`emailed`, `has_selector`, …) are built in `entity_relationship`.
+`resolve-entities` is the whole stage in one call (same names, match names, match new
+entities, places, links -- see `docs/entity-resolution.md` §0).
 Search doesn't depend on this having run — an unresolved mention still filters by
 `selector_type` / `entity_type` — but graph-RAG (stage 9, `graph_expand`) does.
 

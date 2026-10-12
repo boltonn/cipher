@@ -94,9 +94,7 @@ class TextEmbeddingPytorchModel(Model):
             model_dir, use_fast=True, local_files_only=True, trust_remote_code=True
         )
 
-        self.default_max_seq_length = (
-            default_max_seq_length or self.tokenizer.model_max_length
-        )
+        self.default_max_seq_length = default_max_seq_length or self.tokenizer.model_max_length
 
     def unload(self) -> None:
         """Unload the model from memory."""
@@ -146,11 +144,7 @@ class TextEmbeddingPytorchModel(Model):
         batch_size = len(chunks)
 
         # Use the model's actual pad token
-        pad_id = (
-            self.tokenizer.pad_token_id
-            if self.tokenizer.pad_token_id is not None
-            else 0
-        )
+        pad_id = self.tokenizer.pad_token_id if self.tokenizer.pad_token_id is not None else 0
 
         input_ids = torch.full((batch_size, max_len), pad_id, dtype=torch.long)
         attention_mask = torch.zeros(batch_size, max_len, dtype=torch.long)

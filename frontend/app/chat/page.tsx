@@ -11,7 +11,9 @@ import { useAgentConfig } from "@/features/chat/api";
 import { ApiKeyDialog } from "@/features/chat/components/api-key-dialog";
 import { ChatInput } from "@/features/chat/components/chat-input";
 import { ChatMessages } from "@/features/chat/components/chat-messages";
-import type { ChatCitation } from "@/features/chat/types";
+import { RelevantSourcesBar } from "@/features/chat/components/relevant-sources-bar";
+import { sessionChat, useRelevanceJudgments } from "@/features/chat/hooks/use-session-chat";
+import { citationKey, type ChatCitation, type Relevance } from "@/features/chat/types";
 // Import both hooks from your store file
 import {
   useChatStore,
@@ -25,9 +27,9 @@ import type {
 } from "@/features/files/types";
 import { useModelOptions } from "@/features/chat/hooks/use-model-options";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { baseURL } from "@/lib/api-client";
 import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport } from "ai";
+import type { UIMessage } from "ai";
+import { readHandoff, type SearchHandoff } from "@/features/global-search/handoff";
 import { ChevronDownIcon, MessageSquareIcon } from "lucide-react";
 import { useState } from "react";
 
@@ -44,8 +46,31 @@ function splitErrorTrace(message: string): { summary: string; trace?: string } {
   };
 }
 
+/** A search question + its AI answer (with its sources as links), as the first two chat turns. */
+function searchConversation(handoff: SearchHandoff): UIMessage[] {
+  const sources = (handoff.citations ?? [])
+    .map((citation, index) => `${index + 1}. [${citation.title}](/files/${citation.fileId})`)
+    .join("\n");
+  const answer = [handoff.answer ?? "", sources && `Sources:\n${sources}`].filter(Boolean).join("\n\n");
+  return [
+    { id: "search-question", role: "user", parts: [{ type: "text", text: handoff.query }] },
+    { id: "search-answer", role: "assistant", parts: [{ type: "text", text: answer }] },
+  ];
+}
+
 export default function ChatPage() {
-  const { keys, model: storedModel, datasetIds, setDatasetIds } = useChatStore();
+  const { keys, model: storedModel, datasetIds, setDatasetIds, autonomy } = useChatStore();
+  // The analyst's judgments on sources this conversation, by `citationKey`; sent with every message.
+  const { judgments, setJudgments } = useRelevanceJudgments();
+  const judge = (citation: ChatCitation, relevance: Relevance | null) =>
+    setJudgments((current) => {
+      const { [citationKey(citation)]: _previous, ...rest } = current;
+      return relevance
+        ? { ...rest, [citationKey(citation)]: { relevance, displayName: citation.displayName, fileId: citation.fileId } }
+        : rest;
+    });
+  const judged = Object.values(judgments);
+  const relevantSources = judged.filter((source) => source.relevance === "relevant");
   const { labelFor, effectiveModel } = useModelOptions();
   const model = effectiveModel(storedModel);
   const isStoreHydrated = useChatStoreHydrated(); // Reusable hydration state
@@ -91,6 +116,13 @@ export default function ChatPage() {
       ? undefined
       : keys[currentProvider] || undefined;
 
+  // This tab's conversation (kept when the page is left); "Continue in chat" from search starts a new
+  // one from the question and its AI answer.
+  const [chat] = useState(() => {
+    const handoff = readHandoff("chat");
+    return sessionChat(handoff ? searchConversation(handoff) : undefined);
+  });
+
   const {
     messages,
     sendMessage,
@@ -99,11 +131,8 @@ export default function ChatPage() {
     status,
     error,
     clearError,
-  } = useChat({
-    transport: new DefaultChatTransport({
-      api: `${baseURL}/chat`,
-    }),
-  });
+    addToolOutput,
+  } = useChat({ chat });
 
   const isLoading = status === "submitted" || status === "streaming";
   const lastMessage = messages[messages.length - 1];
@@ -120,8 +149,24 @@ export default function ChatPage() {
     body: {
       model: model,
       datasetIds,
+      autonomy,
+      relevance: judged.length
+        ? {
+            relevant: relevantSources.map(({ displayName, fileId }) => ({ displayName, fileId })),
+            notRelevant: judged
+              .filter((source) => source.relevance === "notRelevant")
+              .map(({ displayName, fileId }) => ({ displayName, fileId })),
+          }
+        : undefined,
     },
   });
+
+  // An answered `ask_user` completes the turn's tool calls: send it back (with this page's
+  // settings) so the agent resumes.
+  const answerQuestion = async (toolCallId: string, answer: string) => {
+    await addToolOutput({ tool: "ask_user", toolCallId, output: { answer } });
+    sendMessage(undefined, requestOptions());
+  };
 
   const handleSubmit = (message: PromptInputMessage) => {
     if (needsClientKey) return;
@@ -155,6 +200,7 @@ export default function ChatPage() {
   const handleClear = () => {
     stop();
     setMessages([]);
+    setJudgments(() => ({}));
     clearError();
   };
 
@@ -193,6 +239,9 @@ export default function ChatPage() {
           onOpenCitation={handleOpenCitation}
           showThinking={showLoadingIndicator}
           onExamplePrompt={(text) => handleSubmit({ text, files: [] })}
+          onAnswerQuestion={answerQuestion}
+          judgments={Object.fromEntries(Object.entries(judgments).map(([key, source]) => [key, source.relevance]))}
+          onJudge={judge}
         />
       </div>
 
@@ -274,6 +323,10 @@ export default function ChatPage() {
           locationTarget={citationLocationTarget}
         />
 
+        <RelevantSourcesBar
+          sources={relevantSources}
+          onClear={() => setJudgments(() => ({}))}
+        />
         <ChatInput
           status={status}
           onSubmit={handleSubmit}

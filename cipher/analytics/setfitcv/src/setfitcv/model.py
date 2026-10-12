@@ -15,21 +15,15 @@ if TYPE_CHECKING:
 
 
 class CLIP:
-    def __init__(
-        self, model_dir: Path, device: ModelDevice = None, warmup: bool = True
-    ):
+    def __init__(self, model_dir: Path, device: ModelDevice = None, warmup: bool = True):
         if device is not None and device not in ModelDevice:
             raise ValueError(f"Invalid device specified: {device}")
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         logger.debug(f"Loading CLIP model on device: {self.device}")
         self.model_dir = model_dir
-        self.model = CLIPModel.from_pretrained(model_dir, local_files_only=True).to(
-            self.device
-        )
+        self.model = CLIPModel.from_pretrained(model_dir, local_files_only=True).to(self.device)
         self.tokenizer = CLIPTokenizer.from_pretrained(model_dir, local_files_only=True)
-        self.img_preprocessor = CLIPImageProcessor.from_pretrained(
-            model_dir, local_files_only=True
-        )
+        self.img_preprocessor = CLIPImageProcessor.from_pretrained(model_dir, local_files_only=True)
         if warmup:
             self.warmup()
 

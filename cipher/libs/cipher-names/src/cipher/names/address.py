@@ -21,12 +21,30 @@ FREEMAIL_LABELS = frozenset(
     }
 )  # fmt: skip
 _MAX_INITIALS = 3
+# Local parts of shared/automated mailboxes: they send under whoever the message is
+# about ("Nick Bolton <info@cvent.com>"), so the display name says nothing about the owner.
+ROLE_LOCAL_PARTS = frozenset(
+    {
+        "info", "contact", "hello", "hi", "help", "support", "sales", "billing", "accounts", "admin",
+        "office", "team", "service", "services", "customerservice", "care", "events", "registration",
+        "register", "rsvp", "tickets", "orders", "news", "newsletter", "marketing", "updates", "alerts",
+        "notifications", "notification", "notify", "mailer", "mailer-daemon", "postmaster", "webmaster",
+        "reply", "replies", "bounce", "bounces", "feedback", "jobs", "careers", "hr", "press", "media",
+    }
+)  # fmt: skip
+_NO_REPLY_RE = re.compile(r"^(?:no|do[-_.]?not|dont)[-_.]?reply|noreply|notifications?[-_.]")
 
 
 class AddressAgreement(StrEnum):
     MATCH = "match"  # the address spells this person's name or initials + surname
     CONFLICT = "conflict"  # it spells the surname with someone else's name/initials
     NEUTRAL = "neutral"  # no name signal (`bolton213`, `info@`, a company domain, ...)
+
+
+def is_role_address(address: str) -> bool:
+    """A shared or automated mailbox (`info@`, `noreply@`, `notifications-x@`) rather than one person's."""
+    local = fold(address).partition("@")[0].split("+")[0]
+    return local in ROLE_LOCAL_PARTS or bool(_NO_REPLY_RE.search(local))
 
 
 def _name_parts(address: str) -> list[str]:

@@ -4,6 +4,7 @@ import {
   Building2,
   CalendarDays,
   Database,
+  FileText,
   HelpCircle,
   Home,
   Image as ImageIcon,
@@ -14,6 +15,7 @@ import {
   Share2,
   ShieldCheck,
   Smile,
+  Tags,
   User,
   Users,
   Waypoints,
@@ -25,19 +27,22 @@ export interface NavItem {
   icon: IconComponent;
   /** One-line description, used by the Home launcher tiles. */
   blurb: string;
+  /** Sub-pages shown nested (and expandable) under this item in the sidebar. */
+  children?: NavItem[];
 }
 
 /**
- * The one navigation map for the app. The sidebar and the Home launcher both
- * read from this, so a group can never drift between the two surfaces.
+ * The one navigation map for the app. The sidebar, the Home launcher and quick
+ * search all read from this, so a group can never drift between surfaces.
  *
- * Grouping rule:
- *  - `workspace`  — corpus-level operations you *run* (ingest, search, ask).
- *  - `explore`    — the knowledge graph and its derived layers, as analytical
- *                   surfaces you read and annotate.
- *  - `media`      — raw visual assets you browse directly.
- *  - `admin`      — admin-only pages (`adminPages`), nested under the
- *                   sidebar's Admin entry (rendered only for admins).
+ * Grouping rule (review is built into every page, so it has no group of its own):
+ *  - `find`       — ways to ask: Search (one box; its children are the per-type
+ *                   searches it hands off to) and Chat.
+ *  - `knowledge`  — the record types built from the data: people, organizations,
+ *                   places, events.
+ *  - `manage`     — what you own and keep: datasets.
+ *  - `graph`      — no sidebar entry; opened from Entities, an entity, or quick search.
+ *  - `admin`      — admin-only pages (`adminPages`), nested under the sidebar's Admin entry.
  */
 export const NAV = {
   home: {
@@ -47,18 +52,38 @@ export const NAV = {
     blurb: "Where you left off — recent datasets and running enrichment.",
   } as NavItem,
 
-  workspace: [
-    {
-      title: "Datasets",
-      url: "/datasets",
-      icon: Database,
-      blurb: "Create and manage the raw ingests everything else is triaged from.",
-    },
+  find: [
     {
       title: "Search",
       url: "/search",
       icon: Search,
-      blurb: "Text, semantic, and hybrid search across every indexed record.",
+      blurb: "One box for everything — or start from an overview of what's in a dataset.",
+      children: [
+        {
+          title: "Emails & documents",
+          url: "/search/text",
+          icon: FileText,
+          blurb: "Keyword, semantic, and hybrid search over every email and document.",
+        },
+        {
+          title: "Images",
+          url: "/images",
+          icon: ImageIcon,
+          blurb: "Browse and search images by content or visual similarity.",
+        },
+        {
+          title: "Faces",
+          url: "/faces",
+          icon: Smile,
+          blurb: "Detected faces awaiting review or matched to a person.",
+        },
+        {
+          title: "Entities",
+          url: "/entities",
+          icon: Waypoints,
+          blurb: "People, organizations, selectors — find, resolve and verify them; open any in the graph.",
+        },
+      ],
     },
     {
       title: "Chat",
@@ -68,30 +93,18 @@ export const NAV = {
     },
   ] as NavItem[],
 
-  explore: [
+  knowledge: [
     {
-      title: "Entities",
-      url: "/entities",
-      icon: Waypoints,
-      blurb: "People, organizations, selectors — resolve, review, and manage them.",
-    },
-    {
-      title: "Graph",
-      url: "/graph",
-      icon: Share2,
-      blurb: "The same entities as a network — seed it, expand outward, follow links.",
+      title: "Persons",
+      url: "/persons",
+      icon: User,
+      blurb: "Identities clustered from faces and selectors across a dataset.",
     },
     {
       title: "Organizations",
       url: "/organizations",
       icon: Building2,
       blurb: "Org charts — click a unit to see who works there or is connected to it.",
-    },
-    {
-      title: "Persons",
-      url: "/persons",
-      icon: User,
-      blurb: "Identities clustered from faces and selectors across a dataset.",
     },
     {
       title: "Locations",
@@ -107,20 +120,21 @@ export const NAV = {
     },
   ] as NavItem[],
 
-  media: [
+  manage: [
     {
-      title: "Images",
-      url: "/images",
-      icon: ImageIcon,
-      blurb: "Browse and search images by content or visual similarity.",
-    },
-    {
-      title: "Faces",
-      url: "/faces",
-      icon: Smile,
-      blurb: "Detected faces awaiting review or matched to a person.",
+      title: "Datasets",
+      url: "/datasets",
+      icon: Database,
+      blurb: "Create and manage the raw ingests everything else is triaged from.",
     },
   ] as NavItem[],
+
+  graph: {
+    title: "Graph",
+    url: "/graph",
+    icon: Share2,
+    blurb: "Entities as a network — seed it, expand outward, follow links.",
+  } as NavItem,
 
   admin: {
     title: "Admin",
@@ -141,6 +155,12 @@ export const NAV = {
       url: "/admin/database",
       icon: Database,
       blurb: "Postgres size by table and by dataset.",
+    },
+    {
+      title: "Tag training",
+      url: "/admin/tag-training",
+      icon: Tags,
+      blurb: "Analyst labels per image tag, and which tags are ready to train a classifier.",
     },
   ] as NavItem[],
 

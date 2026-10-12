@@ -1,13 +1,6 @@
 import { PaginatedResponse, SortOrderType } from "@/types/common";
 
-const ImageSortField = {
-  Similarity: "similarity",
-  DateTaken: "dateTaken",
-  TagScore: "tagScore",
-} as const;
-
-export type ImageSortFieldType =
-  (typeof ImageSortField)[keyof typeof ImageSortField];
+export type ImageSortFieldType = "similarity" | "dateTaken" | "tagScore";
 
 /** `positive` -> `tags`, `negative` -> `negativeTags`; omitted clears the label. */
 export type ModelTagType = "positive" | "negative";

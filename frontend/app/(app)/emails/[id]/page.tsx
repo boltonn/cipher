@@ -33,7 +33,7 @@ export default function EmailDetailPage({ params }: { params: Promise<{ id: stri
     <div className="max-w-400 mx-auto px-6 pb-6 pt-5 h-full flex flex-col">
       <PageHeader eyebrow="Email" value={email.metadata.title ?? "(no subject)"} />
       <div className="flex-1 min-h-0 rounded-2xl overflow-hidden border border-border">
-        <EmailViewer email={email} />
+        <EmailViewer email={email} fileId={id} />
       </div>
     </div>
   );

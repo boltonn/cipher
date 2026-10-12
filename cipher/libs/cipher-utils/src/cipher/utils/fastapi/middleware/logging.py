@@ -52,9 +52,7 @@ def _create_error_response(exc: Exception, request_id: str) -> JSONResponse:
             }
         )
     else:
-        error_data["message"] = (
-            "An unexpected error occurred. Please contact support with the request ID."
-        )
+        error_data["message"] = "An unexpected error occurred. Please contact support with the request ID."
 
     return JSONResponse(content=error_data, status_code=500)
 

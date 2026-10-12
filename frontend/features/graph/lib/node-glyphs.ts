@@ -15,6 +15,7 @@ import {
   Network,
   Phone,
   Smartphone,
+  Wifi,
   User,
 } from "lucide";
 
@@ -41,14 +42,15 @@ const SELECTOR_ICON: Record<SelectorType, LucideNode> = {
   email: Mail as LucideNode,
   ip: Network as LucideNode,
   iban: Landmark as LucideNode,
-  bank_card: CreditCard as LucideNode,
+  bankCard: CreditCard as LucideNode,
   passport: IdCard as LucideNode,
-  national_id: IdCard as LucideNode,
+  nationalId: IdCard as LucideNode,
   imei: Smartphone as LucideNode,
   imsi: Smartphone as LucideNode,
-  social_handle: AtSign as LucideNode,
-  crypto_address: Bitcoin as LucideNode,
-  license_plate: Car as LucideNode,
+  macAddress: Wifi as LucideNode,
+  socialHandle: AtSign as LucideNode,
+  cryptoAddress: Bitcoin as LucideNode,
+  licensePlate: Car as LucideNode,
   domain: Globe as LucideNode,
 };
 
@@ -91,12 +93,12 @@ function badge(node: LucideNode): string {
  */
 export function guessSelectorType(displayName: string): SelectorType | null {
   const v = displayName.trim();
-  if (/^@[\w.]{2,}$/.test(v)) return "social_handle";
+  if (/^@[\w.]{2,}$/.test(v)) return "socialHandle";
   if (/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v)) return "email";
   if (/^\d{1,3}(\.\d{1,3}){3}$/.test(v)) return "ip";
   if (/^[0-9a-f]{1,4}(:[0-9a-f]{0,4}){2,7}$/i.test(v)) return "ip";
   if (/^(0x[a-fA-F0-9]{40}|bc1[a-z0-9]{20,80}|[13][a-km-zA-HJ-NP-Z1-9]{25,34}|4[0-9AB][0-9A-Za-z]{93})$/.test(v))
-    return "crypto_address";
+    return "cryptoAddress";
   if (/^[A-Z]{2}\d{2}[A-Z0-9]{8,30}$/i.test(v)) return "iban";
   if (/^\d{15}$/.test(v)) return "imei";
   const digits = v.replace(/[\s().+-]/g, "");

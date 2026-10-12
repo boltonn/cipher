@@ -98,3 +98,6 @@ class SelectorEvidence(BaseModel):
     email_count: int = Field(default=0, description="Emails with this address in a header")
     names: list[str] = Field(default_factory=list, description="Display names seen next to it in headers")
     linked_to: list[SelectorOwner] = Field(default_factory=list)
+    is_role_address: bool = Field(
+        default=False, description="Shared/automated mailbox (info@, noreply@) that sends under other people's names"
+    )

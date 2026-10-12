@@ -36,7 +36,14 @@ resolve_selector("bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4")  # type inferred
 
 `resolve_selector` (and `POST /resolve`) run stages 2-4 on one value with no
 surrounding text -- for an analyst pasting a raw selector, or the
-`cipher refresh-selectors` backfill that recomputes `attributes` on stored rows.
+`cipher rekey --selectors` sweep that brings stored selectors in line after a pyselectors
+change (refreshes `attributes`, re-keys values that now normalize differently).
+
+Phones: a number gets a country (and E.164) only when it states one (`+44 …`, `0044 …`,
+`T + 1 646 …`) or the caller passes a verified `region`; otherwise it keeps its national
+digits as written (`215.895.2372` -> `2158952372`, `number_format = national`) -- never a
+country guessed from the text's language. In free text such a number needs a phone cue
+(`Tel`, `Fax`, `phone` ...) nearby; extensions (`ext 8200`, `x12`) are dropped.
 
 Selector `type` is the broad family (`phone`, `email`, `ip`, `iban`, `imei`,
 `crypto_address`, `social_handle`, ...); `subtype` is the specific

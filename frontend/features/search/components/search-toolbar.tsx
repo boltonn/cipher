@@ -1,5 +1,6 @@
 "use client";
 
+import { ExactMatchToggle } from "@/components/exact-match-toggle";
 import { SearchBarShell } from "@/components/search-bar-shell";
 import { SearchInput } from "@/components/search-input";
 import { cn } from "@/lib/utils";
@@ -15,6 +16,9 @@ const SEARCH_MODE_LABELS: Record<SearchMode, string> = {
 interface SearchToolbarProps {
   isSearching: boolean;
   searchMode: SearchMode;
+  /** Exact phrase only; ranking is keyword-only while on, so the mode buttons sit out. */
+  exactMatch: boolean;
+  onExactMatchChange: (exactMatch: boolean) => void;
   /** The committed query -- clearing it back to "" is a real search (browse the full index). */
   query: string;
   onSearch: (query: string) => void;
@@ -24,6 +28,8 @@ interface SearchToolbarProps {
 export function SearchToolbar({
   isSearching,
   searchMode,
+  exactMatch,
+  onExactMatchChange,
   query,
   onSearch,
   onSearchModeChange,
@@ -39,17 +45,19 @@ export function SearchToolbar({
             onSearch={onSearch}
           />
           <div className="flex items-center gap-0.5 pr-1">
+            <ExactMatchToggle value={exactMatch} onChange={onExactMatchChange} />
             {(Object.keys(SEARCH_MODE_LABELS) as SearchMode[]).map((mode) => {
               const Icon = mode === "text" ? Type : mode === "semantic" ? Sparkles : Zap;
-              const isActive = searchMode === mode;
+              const isActive = !exactMatch && searchMode === mode;
               return (
                 <button
                   key={mode}
                   type="button"
+                  disabled={exactMatch}
                   onClick={() => onSearchModeChange(mode)}
                   title={SEARCH_MODE_LABELS[mode]}
                   className={cn(
-                    "flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium transition-colors",
+                    "flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium transition-colors disabled:opacity-40",
                     isActive
                       ? "bg-primary text-white hover:bg-primary"
                       : "text-muted-foreground hover:text-foreground"

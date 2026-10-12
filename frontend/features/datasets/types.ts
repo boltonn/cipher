@@ -114,6 +114,8 @@ export interface EnrichmentProgress {
   skipReasons: Record<string, number>;
   /** Dataset-wide passes with no per-file rows (face matching / clustering): when the latest run started. */
   dateLastRun: string | null;
+  /** A worker is on it (an open run or rows mid-processing); queued rows without one are just waiting. */
+  isRunning: boolean;
 }
 
 /** One pass of a multi-pass analytic (see backend `EnrichmentStageProgress`). */
@@ -159,4 +161,57 @@ export interface DatasetEnrichmentFailures {
   returned: number;
   reasons: EnrichmentFailureReason[];
   items: FailedEnrichment[];
+}
+
+/** An entity ranked in a dataset profile by how many (non-bulk) files mention it. */
+export interface ProfileEntity {
+  entityId: string;
+  displayName: string;
+  entityType: string;
+  files: number;
+}
+
+export interface ProfileCorrespondent {
+  srcEntityId: string;
+  srcName: string;
+  dstEntityId: string;
+  dstName: string;
+  emails: number;
+}
+
+/** Precomputed "what's in here" summary of one or more datasets (merged). */
+export interface DatasetProfile {
+  datasetIds: string[];
+  fileCount: number;
+  chunkCount: number;
+  filetypeGroupCounts: Record<string, number>;
+  languageCounts: Record<string, number>;
+  dateHistogram: { month: string; files: number }[];
+  topPeopleOrgs: ProfileEntity[];
+  topSelectors: ProfileEntity[];
+  topPlaces: ProfileEntity[];
+  topCorrespondents: ProfileCorrespondent[];
+  imageSampleIds: string[];
+  /** Requested datasets never profiled (run `cipher profile-dataset`). */
+  unprofiledDatasetIds: string[];
+  dateComputed: string | null;
+}
+
+/** One step of a dataset-wide sweep (entity resolution), reported by the run itself. */
+export interface SweepStep {
+  name: string;
+  label: string;
+  done: number;
+  total: number;
+  status: "pending" | "running" | "completed";
+}
+
+/** The latest run of a dataset-wide sweep: status plus each step's progress. */
+export interface SweepRun {
+  status: "running" | "completed" | "failed" | "stopped";
+  dateStarted: string;
+  dateCompleted?: string | null;
+  durationSeconds?: number | null;
+  errorMessage?: string | null;
+  steps: SweepStep[];
 }

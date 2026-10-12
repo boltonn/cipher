@@ -9,7 +9,7 @@ export function useImageFaces(imageId: string | undefined) {
     queryKey: ["faces", "by-image", imageId],
     queryFn: () =>
       facesService
-        .search({ imageId, sortBy: "detectionConfidence", sortOrder: "desc", limit: 100, page: 1 })
+        .search({ imageId, sortBy: "qualityScore", sortOrder: "desc", limit: 100, page: 1 })
         .then((res) => res.data),
     enabled: !!imageId,
     staleTime: 60_000,

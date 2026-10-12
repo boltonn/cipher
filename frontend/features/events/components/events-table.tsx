@@ -18,6 +18,7 @@ import {
 import { formatEventStart } from "@/features/events/lib/format";
 import type {
   CipherEvent,
+  EventFilters,
   EventSortField,
   SortOrder,
 } from "@/features/events/types";
@@ -29,6 +30,8 @@ interface EventsTableProps {
   sortBy: EventSortField;
   sortOrder: SortOrder;
   onSortChange: (key: EventSortField) => void;
+  /** Clicking a row's type or status narrows the filter bar to that value. */
+  onFilter: (patch: Partial<EventFilters>) => void;
   onSelect: (event: CipherEvent) => void;
   checkedIds: ReadonlySet<string>;
   onCheckedIdsChange: (next: Set<string>) => void;
@@ -71,10 +74,12 @@ export function EventsTable({
   sortBy,
   sortOrder,
   onSortChange,
+  onFilter,
   onSelect,
   checkedIds,
   onCheckedIdsChange,
 }: EventsTableProps) {
+  const sortProps = { sortBy, sortOrder, onSortChange };
   const checkedOnPage = events.filter((e) => checkedIds.has(e.id)).length;
   const setChecked = (ids: string[], checked: boolean) => {
     const next = new Set(checkedIds);
@@ -107,29 +112,11 @@ export function EventsTable({
                 aria-label="Select all on this page"
               />
             </TableHead>
-            <SortHead
-              label="When"
-              sortKey="date_start"
-              sortBy={sortBy}
-              sortOrder={sortOrder}
-              onSortChange={onSortChange}
-            />
-            <TableHead>
-              Event
-            </TableHead>
-            <TableHead>
-              Type
-            </TableHead>
-            <TableHead>
-              Status
-            </TableHead>
-            <SortHead
-              label="Added"
-              sortKey="date_created"
-              sortBy={sortBy}
-              sortOrder={sortOrder}
-              onSortChange={onSortChange}
-            />
+            <SortHead label="When" sortKey="dateStart" {...sortProps} />
+            <SortHead label="Event" sortKey="title" {...sortProps} />
+            <SortHead label="Type" sortKey="eventType" {...sortProps} />
+            <SortHead label="Status" sortKey="status" {...sortProps} />
+            <SortHead label="Added" sortKey="dateCreated" {...sortProps} />
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -169,21 +156,41 @@ export function EventsTable({
                   </span>
                 </TableCell>
                 <TableCell>
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      "h-6 gap-1.5 px-2 text-[11px] font-bold uppercase tracking-wide",
-                      cat.bgClass,
-                      cat.textClass,
-                      cat.borderClass
-                    )}
+                  <button
+                    type="button"
+                    title={`Show only ${meta.label.toLowerCase()} events`}
+                    onClick={(click) => {
+                      click.stopPropagation();
+                      onFilter({ eventType: e.eventType });
+                    }}
+                    className="rounded-md transition-opacity hover:opacity-80"
                   >
-                    <meta.Icon size={11} />
-                    {meta.label}
-                  </Badge>
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "h-6 gap-1.5 px-2 text-[11px] font-bold uppercase tracking-wide",
+                        cat.bgClass,
+                        cat.textClass,
+                        cat.borderClass
+                      )}
+                    >
+                      <meta.Icon size={11} />
+                      {meta.label}
+                    </Badge>
+                  </button>
                 </TableCell>
                 <TableCell className="text-xs text-muted-foreground">
-                  {EVENT_STATUS_LABELS[e.status]}
+                  <button
+                    type="button"
+                    title={`Show only ${EVENT_STATUS_LABELS[e.status].toLowerCase()} events`}
+                    onClick={(click) => {
+                      click.stopPropagation();
+                      onFilter({ status: e.status });
+                    }}
+                    className="rounded px-1 -mx-1 py-0.5 hover:bg-muted hover:text-foreground"
+                  >
+                    {EVENT_STATUS_LABELS[e.status]}
+                  </button>
                 </TableCell>
                 <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
                   {new Date(e.dateCreated).toLocaleDateString()}

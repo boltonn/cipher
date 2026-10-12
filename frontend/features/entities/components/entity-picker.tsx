@@ -25,11 +25,15 @@ interface EntityPickerProps {
   /** Restrict results to these entity types (e.g. ["organization"]). Empty = any. */
   entityTypes?: EntityType[];
   /** Scope results to one dataset (e.g. the search page's active dataset). */
-  datasetId?: string;
+  datasetIds?: string[];
   placeholder?: string;
   className?: string;
   /** Offer the typed text itself as a pick (e.g. "any mention of …" -- values with no entity). */
   onSelectText?: (text: string) => void;
+  /** Already-picked entities to leave out of the list (multi-select callers). */
+  excludeIds?: string[];
+  /** Already-picked mention values -- the "Any mention of …" pick is hidden for these. */
+  excludeTexts?: string[];
   /** Mirror the typed text to the caller (e.g. the graph highlights matching nodes). */
   onQueryChange?: (query: string) => void;
   disabled?: boolean;
@@ -41,10 +45,12 @@ export function EntityPicker({
   valueName,
   onSelect,
   entityTypes = [],
-  datasetId,
+  datasetIds,
   placeholder = "Search entities…",
   className,
   onSelectText,
+  excludeIds = [],
+  excludeTexts = [],
   onQueryChange,
   disabled = false,
 }: EntityPickerProps) {
@@ -60,19 +66,22 @@ export function EntityPicker({
   const { data, isFetching } = useEntityList({
     query: debouncedQuery || undefined,
     entityType: singleType,
-    datasetId,
+    datasetIds,
     // most-mentioned first, typing or not -- one-off spellings of a name sink to the bottom
-    sortBy: "mention_count",
+    sortBy: "mentionCount",
     sortOrder: "desc",
     limit: 20,
     page: 1,
   }, open); // closed pickers (three sit in the search filter bar) shouldn't load on page render
 
   const allow = new Set(entityTypes);
+  const excluded = new Set(excludeIds);
   const entities = (data?.data ?? []).filter(
-    (e) => allow.size === 0 || allow.has(e.entityType)
+    (e) => (allow.size === 0 || allow.has(e.entityType)) && !excluded.has(e.id)
   );
-  const typedText = onSelectText ? query.trim() : "";
+  const trimmed = query.trim();
+  const isTextPicked = excludeTexts.some((text) => text.toLowerCase() === trimmed.toLowerCase());
+  const typedText = onSelectText && !isTextPicked ? trimmed : "";
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -127,7 +136,7 @@ export function EntityPicker({
             )}
             {!isFetching && entities.length === 0 && !typedText && (
               <CommandEmpty className="py-4 text-xs text-muted-foreground">
-                {query ? "No match" : "Type to search"}
+                {isTextPicked ? "Already added" : query ? "No match" : "Type to search"}
               </CommandEmpty>
             )}
             <CommandGroup>

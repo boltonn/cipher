@@ -36,6 +36,4 @@ class BaseServiceSettings(BaseSettings):
     port: int = Field(8000, description="The port to run the cipher on")
     reload: bool = Field(True, description="Reload the server on changes")
     log: LogConfig = Field(LogConfig(), description="Log configuration object")
-    model_config = SettingsConfigDict(
-        env_file=".env", env_nested_delimiter="__", extra="allow"
-    )
+    model_config = SettingsConfigDict(env_file=".env", env_nested_delimiter="__", extra="allow")

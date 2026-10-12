@@ -27,6 +27,7 @@ _UPSERT_KEYS = (
     "vertical_accuracy",
     "name",
     "date_recorded",
+    "duration_seconds",
     "attributes",
 )
 

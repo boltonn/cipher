@@ -11,15 +11,15 @@ import Link from "next/link";
 import { useState } from "react";
 
 /**
- * "Events" block on the person dossier. Filters events by `participantEntityId`
+ * "Events" block on the person dossier. Filters events by `participantEntityIds`
  * (the person's bridge entity id). Renders nothing until participant resolution
  * has linked at least one event to this entity, so it stays quiet by default.
  */
 export function PersonEventsSection({ entityId }: { entityId: string }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const { data, isPending } = useEvents({
-    participantEntityId: entityId,
-    sortBy: "date_start",
+    participantEntityIds: [entityId],
+    sortBy: "dateStart",
     sortOrder: "desc",
     limit: 12,
   });

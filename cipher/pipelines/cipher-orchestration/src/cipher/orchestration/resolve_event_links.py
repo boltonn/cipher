@@ -4,8 +4,9 @@ The counterpart to `resolve-entities` for the event layer. `extract-events`
 leaves participants as `raw_name` / `raw_email` and places as `raw_text`; this
 dataset-wide pass connects them to what the graph already knows:
 
-* **participants** -- an email (iCalendar `mailto:`) is matched to the person /
-  org that owns that `selector` (precise); failing that, a normalized-name match
+* **participants** -- an email (iCalendar `mailto:`, or a bare address the
+  extractor put in `raw_name`) is matched to the entity that owns that
+  `selector` (precise); failing that, a normalized-name match
   against an existing `person` then `organization` entity. Rooms and resources
   (`is_resource`) are skipped. Never creates an entity -- an unmatched name is
   left for Review, exactly like `resolve-entities`' untyped-name rule.
@@ -36,15 +37,11 @@ _ACTOR_TYPES = (EntityType.PERSON, EntityType.ORGANIZATION)
 
 
 def _normalize_email(value: str) -> str | None:
-    """Best-effort email normalization; None when the address is unusable."""
-    try:
-        from pyselectors.normalize import normalize_email
-    except ImportError:
-        return value.strip().lower() or None
-    try:
-        return normalize_email(value) or None
-    except Exception:
-        return None
+    """Normalized address when the whole of `value` is a valid email, else None."""
+    from pyselectors import resolve_cell
+
+    span = resolve_cell(value, SelectorType.EMAIL)
+    return span.normalized_value if span else None
 
 
 async def resolve_event_links_workflow(session: "AsyncSession", dataset_id: str) -> dict[str, int]:
@@ -61,7 +58,8 @@ async def resolve_event_links_workflow(session: "AsyncSession", dataset_id: str)
             continue
 
         entity = None
-        normalized_email = _normalize_email(participant.raw_email) if participant.raw_email else None
+        address = participant.raw_email or participant.raw_name
+        normalized_email = _normalize_email(address) if address else None
         if normalized_email:
             entity = await entity_repo.search_by_selector(
                 dataset_id=dataset_id, normalized_value=normalized_email, selector_type=SelectorType.EMAIL

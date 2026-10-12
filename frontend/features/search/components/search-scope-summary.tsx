@@ -9,6 +9,8 @@ interface SearchScopeSummaryProps {
   query: string;
   searchMode: SearchMode;
   filters: SearchFilters;
+  /** Who a person filter (from the chat assistant) keeps the results to. */
+  about?: string;
   /** Exact matching-file count; null when the mode has none (semantic / hybrid rank without a cut-off). */
   total: number | null;
 }
@@ -27,7 +29,7 @@ function EntityList({ ids, joiner }: { ids: string[]; joiner: string }) {
 const day = (iso: string) => format(new Date(iso), "MMM d, yyyy");
 
 /** One plain-language sentence saying exactly what the result list is. */
-export function SearchScopeSummary({ query, searchMode, filters, total }: SearchScopeSummaryProps) {
+export function SearchScopeSummary({ query, searchMode, filters, about, total }: SearchScopeSummaryProps) {
   const { entityIds = [], mentionValues = [], sentFrom = [], sentTo = [], dateFrom, dateTo } = filters;
   const noun = filters.filetypeGroup === "email" ? "email" : filters.filetypeGroup === "document" ? "document" : "file";
   const trimmed = query.trim();
@@ -40,6 +42,7 @@ export function SearchScopeSummary({ query, searchMode, filters, total }: Search
       </>
     );
   }
+  if (about) clauses.push(<>about <span className="font-medium text-annotation">{about}</span></>);
   if (entityIds.length) clauses.push(<>with a passage that mentions <EntityList ids={entityIds} joiner="and" /></>);
   if (mentionValues.length) {
     clauses.push(
@@ -79,7 +82,7 @@ export function SearchScopeSummary({ query, searchMode, filters, total }: Search
         <Fragment key={index}> {clause}{index < clauses.length - 1 && ","}</Fragment>
       ))}
       {trimmed ? " — best match first." : " — newest first."}
-      {!trimmed && (entityIds.length > 0 || mentionValues.length > 0) && " Type a query to search within them."}
+      {!trimmed && (entityIds.length > 0 || mentionValues.length > 0 || !!about) && " Type a query to search within them."}
     </p>
   );
 }

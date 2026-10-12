@@ -1,0 +1,98 @@
+{
+  "selector_type": "mac_address",
+  "priority": 75,
+  "base_confidence": 0.85,
+  "max_confidence": 0.98,
+  "normalizer": "mac_address",
+  "validator": "mac_address",
+  "patterns": [
+    {
+      "name": "colon_or_dash",
+      "regex": "(?<![\\w:\\-])[0-9A-Fa-f]{2}([:\\-])(?:[0-9A-Fa-f]{2}\\1){4}[0-9A-Fa-f]{2}(?![\\w:\\-])"
+    },
+    {
+      "name": "dotted",
+      "regex": "(?<![\\w.])[0-9A-Fa-f]{4}\\.[0-9A-Fa-f]{4}\\.[0-9A-Fa-f]{4}(?![\\w.])"
+    },
+    {
+      "name": "bare12",
+      "regex": "(?<![\\w])[0-9A-Fa-f]{12}(?![\\w])",
+      "base_confidence": 0.4,
+      "requires_context": true
+    }
+  ],
+  "context": {
+    "window_before": 24,
+    "window_after": 8,
+    "terms": {
+      "en": [
+        {
+          "term": "mac",
+          "weight": 0.3
+        },
+        {
+          "term": "mac address",
+          "weight": 0.35
+        },
+        {
+          "term": "bssid",
+          "weight": 0.35
+        },
+        {
+          "term": "wifi",
+          "weight": 0.15
+        },
+        {
+          "term": "wi-fi",
+          "weight": 0.15
+        },
+        {
+          "term": "ethernet",
+          "weight": 0.15
+        }
+      ],
+      "ru": [
+        {
+          "term": "mac-адрес",
+          "weight": 0.35
+        },
+        {
+          "term": "мак",
+          "weight": 0.25
+        },
+        {
+          "term": "мак-адрес",
+          "weight": 0.35
+        }
+      ],
+      "zh": [
+        {
+          "term": "物理地址",
+          "weight": 0.35
+        },
+        {
+          "term": "MAC地址",
+          "weight": 0.35
+        }
+      ],
+      "fa": [
+        {
+          "term": "آدرس مک",
+          "weight": 0.35
+        }
+      ],
+      "fr": [
+        {
+          "term": "adresse mac",
+          "weight": 0.35
+        }
+      ],
+      "es": [
+        {
+          "term": "dirección mac",
+          "weight": 0.35
+        }
+      ]
+    }
+  }
+}

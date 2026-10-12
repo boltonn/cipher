@@ -16,6 +16,7 @@ UTC (``...Z``), floating local time with ``TZID=``, and all-day
 
 from __future__ import annotations
 
+import contextlib
 import io
 import re
 from collections.abc import Generator
@@ -171,112 +172,106 @@ def _parse_geo(value: str) -> tuple[float, float] | None:
         return None
 
 
-class IcsParser:
-    """Parser for iCalendar (`.ics`) payloads."""
+def _unfold(stream: io.TextIOBase) -> Generator[str, None, None]:
+    buffer = ""
+    for line in stream:
+        if not line:
+            continue
+        if line[0] in (" ", "\t"):
+            buffer += line[1:].rstrip("\r\n")
+        else:
+            if buffer:
+                yield buffer
+            buffer = line.rstrip("\r\n")
+    if buffer:
+        yield buffer
 
-    @staticmethod
-    def _unfold(stream: io.TextIOBase) -> Generator[str, None, None]:
-        buffer = ""
-        for line in stream:
-            if not line:
+
+def _split_line(line: str) -> tuple[str, dict[str, str], str]:
+    head, _, value = line.partition(":")
+    name, _, raw_params = head.partition(";")
+    return name.strip().upper(), _parse_params(raw_params), value
+
+
+def iter_events(stream: BinaryIO, *, encoding: str = "utf-8") -> Generator[ParsedCalendarEvent, None, None]:
+    """Yield each VEVENT from an `.ics` byte stream."""
+    text_stream = io.TextIOWrapper(stream, encoding=encoding, errors="ignore", newline="")
+    current: dict | None = None
+    try:
+        for line in _unfold(text_stream):
+            name, params, value = _split_line(line)
+
+            if name == "BEGIN" and value.strip().upper() == "VEVENT":
+                current = {"attendees": [], "categories": []}
                 continue
-            if line[0] in (" ", "\t"):
-                buffer += line[1:].rstrip("\r\n")
-            else:
-                if buffer:
-                    yield buffer
-                buffer = line.rstrip("\r\n")
-        if buffer:
-            yield buffer
+            if name == "END" and value.strip().upper() == "VEVENT":
+                if current is not None:
+                    yield _build(current)
+                current = None
+                continue
+            if current is None:
+                continue
 
-    @staticmethod
-    def _split_line(line: str) -> tuple[str, dict[str, str], str]:
-        head, _, value = line.partition(":")
-        name, _, raw_params = head.partition(";")
-        return name.strip().upper(), _parse_params(raw_params), value
+            _apply(current, name, params, value)
+    finally:
+        text_stream.detach()
 
-    @classmethod
-    def stream(cls, stream: BinaryIO, encoding: str = "utf-8") -> Generator[ParsedCalendarEvent, None, None]:
-        """Yield each VEVENT from an `.ics` byte stream."""
-        text_stream = io.TextIOWrapper(stream, encoding=encoding, errors="ignore", newline="")
-        current: dict | None = None
-        try:
-            for line in cls._unfold(text_stream):
-                name, params, value = cls._split_line(line)
 
-                if name == "BEGIN" and value.strip().upper() == "VEVENT":
-                    current = {"attendees": [], "categories": []}
-                    continue
-                if name == "END" and value.strip().upper() == "VEVENT":
-                    if current is not None:
-                        yield cls._build(current)
-                    current = None
-                    continue
-                if current is None:
-                    continue
+def _apply(current: dict, name: str, params: dict[str, str], value: str) -> None:
+    match name:
+        case "UID":
+            current["uid"] = value.strip()
+        case "SUMMARY":
+            current["summary"] = _unescape_text(value)
+        case "DESCRIPTION":
+            current["description"] = _unescape_text(value)
+        case "LOCATION":
+            current["location"] = _unescape_text(value)
+        case "DTSTART":
+            dt, tzid, all_day = _parse_datetime(value, params)
+            current["date_start"], current["timezone"], current["is_all_day"] = dt, tzid, all_day
+        case "DTEND":
+            dt, _, _ = _parse_datetime(value, params)
+            current["date_end"] = dt
+        case "DURATION":
+            current["_duration"] = _parse_duration(value)
+        case "STATUS":
+            current["status"] = value.strip().upper()
+        case "CLASS":
+            current["event_class"] = value.strip().upper()
+        case "URL":
+            current["url"] = value.strip()
+        case "GEO":
+            current["geo"] = _parse_geo(value)
+        case "SEQUENCE":
+            with contextlib.suppress(ValueError):
+                current["sequence"] = int(value.strip())
+        case "DTSTAMP":
+            current["date_stamp"], _, _ = _parse_datetime(value, params)
+        case "CREATED":
+            current["date_source_created"], _, _ = _parse_datetime(value, params)
+        case "LAST-MODIFIED":
+            current["date_source_modified"], _, _ = _parse_datetime(value, params)
+        case "ORGANIZER":
+            current["organizer"] = _parse_cal_person(value, params)
+        case "ATTENDEE":
+            current["attendees"].append(_parse_cal_person(value, params))
+        case "RRULE":
+            current["recurrence_rule"] = value.strip()
+        case "CATEGORIES":
+            current["categories"].extend(part.strip() for part in value.split(",") if part.strip())
 
-                cls._apply(current, name, params, value)
-        finally:
-            text_stream.detach()
 
-    @staticmethod
-    def _apply(current: dict, name: str, params: dict[str, str], value: str) -> None:
-        match name:
-            case "UID":
-                current["uid"] = value.strip()
-            case "SUMMARY":
-                current["summary"] = _unescape_text(value)
-            case "DESCRIPTION":
-                current["description"] = _unescape_text(value)
-            case "LOCATION":
-                current["location"] = _unescape_text(value)
-            case "DTSTART":
-                dt, tzid, all_day = _parse_datetime(value, params)
-                current["date_start"], current["timezone"], current["is_all_day"] = dt, tzid, all_day
-            case "DTEND":
-                dt, _, _ = _parse_datetime(value, params)
-                current["date_end"] = dt
-            case "DURATION":
-                current["_duration"] = _parse_duration(value)
-            case "STATUS":
-                current["status"] = value.strip().upper()
-            case "CLASS":
-                current["event_class"] = value.strip().upper()
-            case "URL":
-                current["url"] = value.strip()
-            case "GEO":
-                current["geo"] = _parse_geo(value)
-            case "SEQUENCE":
-                try:
-                    current["sequence"] = int(value.strip())
-                except ValueError:
-                    pass
-            case "DTSTAMP":
-                current["date_stamp"], _, _ = _parse_datetime(value, params)
-            case "CREATED":
-                current["date_source_created"], _, _ = _parse_datetime(value, params)
-            case "LAST-MODIFIED":
-                current["date_source_modified"], _, _ = _parse_datetime(value, params)
-            case "ORGANIZER":
-                current["organizer"] = _parse_cal_person(value, params)
-            case "ATTENDEE":
-                current["attendees"].append(_parse_cal_person(value, params))
-            case "RRULE":
-                current["recurrence_rule"] = value.strip()
-            case "CATEGORIES":
-                current["categories"].extend(part.strip() for part in value.split(",") if part.strip())
+def _build(current: dict) -> ParsedCalendarEvent:
+    if current.get("date_end") is None and current.get("date_start") is not None and current.get("_duration"):
+        current["date_end"] = current["date_start"] + current["_duration"]
+    current.pop("_duration", None)
+    return ParsedCalendarEvent.model_validate(current)
 
-    @staticmethod
-    def _build(current: dict) -> ParsedCalendarEvent:
-        if current.get("date_end") is None and current.get("date_start") is not None and current.get("_duration"):
-            current["date_end"] = current["date_start"] + current["_duration"]
-        current.pop("_duration", None)
-        return ParsedCalendarEvent.model_validate(current)
 
-    @classmethod
-    def parse(cls, file: bytes | str | Path, encoding: str = "utf-8") -> list[ParsedCalendarEvent]:
-        """Read every VEVENT from an `.ics` file path or byte payload."""
-        if isinstance(file, bytes):
-            return list(cls.stream(io.BytesIO(file), encoding))
-        with open(file, "rb") as handle:
-            return list(cls.stream(handle, encoding))
+def parse_events(file: bytes | str | Path, *, encoding: str = "utf-8") -> list[ParsedCalendarEvent]:
+    """Read every VEVENT from an `.ics` file path or byte payload."""
+    if isinstance(file, bytes):
+        return list(iter_events(io.BytesIO(file), encoding=encoding))
+    with open(file, "rb") as handle:
+        return list(iter_events(handle, encoding=encoding))

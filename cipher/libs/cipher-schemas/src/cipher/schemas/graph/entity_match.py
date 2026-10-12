@@ -8,11 +8,10 @@ with `face_match` and `entity_relationship` via `cipher.schemas._base.review`.
 """
 
 from datetime import datetime
-from enum import StrEnum
 
 from pydantic import Field
 
-from cipher.schemas._base.base import BaseModel
+from cipher.schemas._base.base import BaseModel, StrEnum
 from cipher.schemas._base.common import PageParams, PaginatedResponse
 from cipher.schemas._base.review import MatchSortField, ReviewableMixin, ReviewDecision, ReviewStatus
 from cipher.schemas.graph.entity_resolution import ResolutionExplanation
@@ -167,42 +166,12 @@ class PaginatedEntityMatchGroupsResponse(PaginatedResponse):
     )
 
 
-class EntityMergeGroup(BaseModel):
-    """One provisional entity in the merge-review queue.
-
-    The resolver-minted stub plus the canonical entities it may be a duplicate of.
-    """
-
-    dataset_id: str
-    provisional_entity_id: str
-    provisional_name: str
-    provisional_entity_type: str
-    mention_count: int = 0
-    status: ReviewStatus
-    candidates: list[EntityMatch] = Field(default_factory=list, description="Canonical merge targets, best first")
-
-
-class PaginatedEntityMergeGroupsResponse(PaginatedResponse):
-    """Merge-review queue -- one card per provisional entity."""
-
-    data: list[EntityMergeGroup] = Field(description="Provisional entities awaiting a merge decision")
-
-
-class EntityMergeSearchParameters(PageParams):
-    """Parameters for the entity-merge review queue."""
-
-    dataset_id: str | None = None
-    status: ReviewStatus | None = Field(default=ReviewStatus.PENDING)
-    limit: int = Field(default=25, ge=1, le=100)
-    sort_by: MatchSortField = Field(default=MatchSortField.SIMILARITY_SCORE)
-
-
 class EntityMatchSearchParameters(PageParams):
     """Parameters for the entity resolution review queue."""
 
     entity_id: str | None = None
     mention_id: str | None = None
-    dataset_id: str | None = None
+    dataset_ids: list[str] | None = Field(default=None, description="Matches in any of these datasets")
     status: ReviewStatus | None = Field(default=ReviewStatus.PENDING)
     min_similarity: float | None = Field(default=None, ge=0, le=1)
     include_provisional_entities: bool = Field(
@@ -230,4 +199,6 @@ class NameGroupInQueue(UnresolvedNameGroup):
 class PaginatedResolveQueueResponse(PaginatedResponse):
     """Paginated Resolve queue -- one row per unresolved name group."""
 
-    data: list[NameGroupInQueue] = Field(description="Name groups, most mentions first")
+    data: list[NameGroupInQueue] = Field(
+        description="Name groups, strongest evidence first: correspondents, then most files, then most mentions"
+    )

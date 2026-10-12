@@ -28,6 +28,15 @@ class AsyncTextEmbeddingModel:
         """Release the underlying text embedding model."""
         self._model.unload()
 
+    @property
+    def tokenizer(self):
+        """The model's tokenizer (copy it before chunking concurrently)."""
+        return self._model.tokenizer
+
+    async def encode_passages(self, texts: list[str]) -> list[list[float]]:
+        """Embed document passages exactly as `cipher embed-text` stores them (one vector per text)."""
+        return self._model.encode(texts, task="retrieval", is_query=False).tolist()
+
     async def infer(
         self,
         text: str,

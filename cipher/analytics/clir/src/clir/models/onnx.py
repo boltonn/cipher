@@ -31,9 +31,7 @@ class OnnxModel(Model):
         default_max_seq_length: int = None,
         **kwargs,
     ):
-        self.load(
-            model_dir=model_dir, device=device, warmup=warmup, quantized=quantized
-        )
+        self.load(model_dir=model_dir, device=device, warmup=warmup, quantized=quantized)
 
     def load(
         self,
@@ -43,19 +41,16 @@ class OnnxModel(Model):
         quantized: bool = False,
         default_max_seq_length: int = None,
     ):
+        """Load the ONNX model (quantized or not) and its tokenizer from `model_dir`."""
         file_name = None
         possible_files = [f.relative_to(model_dir) for f in model_dir.rglob("*.onnx")]
         desired_filename = "model_quantized.onnx" if quantized else "model.onnx"
         assert desired_filename in [f.name for f in possible_files], (
             f"Model {desired_filename} not found in {model_dir}"
         )
-        file_relative_path = next(
-            f for f in possible_files if f.name == desired_filename
-        )
+        file_relative_path = next(f for f in possible_files if f.name == desired_filename)
 
-        provider = (
-            "CPUExecutionProvider" if device == Device.cpu else "CUDAExecutionProvider"
-        )
+        provider = "CPUExecutionProvider" if device == Device.cpu else "CUDAExecutionProvider"
         logger.debug(f"Loading model from {model_dir} and {file_name=} onto {device}")
 
         self.model = ORTModelForFeatureExtraction.from_pretrained(
@@ -64,9 +59,7 @@ class OnnxModel(Model):
             local_files_only=True,
             execution_provider=provider,
         ).to(device)
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            model_dir, local_files_only=True, use_fast=True
-        )
+        self.tokenizer = AutoTokenizer.from_pretrained(model_dir, local_files_only=True, use_fast=True)
         self.model_dir = model_dir
         self.device = self.model.device
         logger.info(f"Loaded model from {model_dir} and {file_name=} onto {device}")
@@ -76,19 +69,18 @@ class OnnxModel(Model):
             self.infer(["Hello world!"])
 
         self.default_max_seq_length = (
-            default_max_seq_length
-            if default_max_seq_length
-            else self.tokenizer.model_max_length
+            default_max_seq_length if default_max_seq_length else self.tokenizer.model_max_length
         )
 
     def unload(self):
+        """Free the model and its GPU memory."""
         self.model.to("cpu")
         del self.model
         del self.tokenizer
         torch.cuda.empty_cache()
 
     def infer(self, batch: list[str], normalized: bool = True, max_length: int = None):
-        """Infer embeddings for a batch of passages"""
+        """Infer embeddings for a batch of passages."""
         max_length = max_length or self.default_max_seq_length
         with torch.inference_mode():
             inputs = self.tokenizer(
@@ -99,9 +91,7 @@ class OnnxModel(Model):
                 max_length=max_length,
             ).to(self.device)
             outputs = self.model(**inputs)
-            pooled = pool_pt(
-                outputs.last_hidden_state, inputs.attention_mask, method="avg"
-            )
+            pooled = pool_pt(outputs.last_hidden_state, inputs.attention_mask, method="avg")
             if normalized:
                 pooled = F.normalize(pooled, p=2, dim=1)
         return pooled.cpu().numpy()

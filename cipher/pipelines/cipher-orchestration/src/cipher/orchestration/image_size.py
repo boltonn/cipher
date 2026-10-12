@@ -7,7 +7,7 @@ from pathlib import Path
 
 from PIL import Image
 
-DEFAULT_MIN_IMAGE_SIDE = 16
+DEFAULT_MIN_IMAGE_SIDE = 64
 
 
 def is_below_min_side(image: Image.Image | Path, min_side: int) -> bool:

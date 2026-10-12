@@ -1,13 +1,82 @@
-from enum import StrEnum
-from typing import Any, get_args, get_origin
+import enum
+import re
+from typing import Annotated, Any
 
-from pydantic import BaseModel as PydanticBaseModel, ConfigDict, model_validator
+from pydantic import (
+    BaseModel as PydanticBaseModel,
+    BeforeValidator,
+    ConfigDict,
+    GetCoreSchemaHandler,
+    PlainSerializer,
+    SerializationInfo,
+)
 from pydantic.alias_generators import to_camel, to_snake
+from pydantic_core import CoreSchema, core_schema
 
 
 def camelize_keys(data: dict[str, Any]) -> dict[str, Any]:
-    """Top-level keys to camelCase -- for free-form dicts (e.g. a detail row) on the wire."""
-    return {to_camel(k): v for k, v in data.items()}
+    """Top-level keys (and `StrEnum` values) to camelCase -- for free-form dicts (e.g. a detail row) on the wire."""
+    return {to_camel(k): camelize_value(v.value) if isinstance(v, StrEnum) else v for k, v in data.items()}
+
+
+_SNAKE_CASE = re.compile(r"[a-z][a-z0-9]*(?:_[a-z0-9]+)+")
+
+
+def camelize_value(value: str) -> str:
+    """`face_clustering` -> `faceClustering`; values that aren't snake_case pass through untouched."""
+    if not _SNAKE_CASE.fullmatch(value):
+        return value
+    head, *rest = value.split("_")
+    return head + "".join(part.capitalize() for part in rest)
+
+
+def _enum_key(value: str) -> str:
+    return value.replace("_", "").replace("-", "").lower()
+
+
+class StrEnum(enum.StrEnum):
+    """StrEnum whose values are snake_case in Python/storage and camelCase on the API wire.
+
+    - Input: `_missing_` accepts any casing (`dateUpdated`, `DateUpdated`, `date_updated`) wherever the
+      enum is validated -- model fields, `list[...]`, dict keys, FastAPI `Query()`/`Depends()` params.
+    - Output: JSON dumps made *by alias* (every FastAPI response, `model_dump(mode="json", by_alias=True)`)
+      emit `dateUpdated`; python-mode and non-alias dumps (DB/ES writes) keep the stored `date_updated`.
+    """
+
+    @classmethod
+    def _missing_(cls, value: object) -> "StrEnum | None":
+        if not isinstance(value, str):
+            return None
+        key = _enum_key(value)
+        return next((member for member in cls if _enum_key(member.value) == key), None)
+
+    @classmethod
+    def __get_pydantic_core_schema__(cls, source: type[Any], handler: GetCoreSchemaHandler) -> CoreSchema:
+        schema = handler(source)
+        schema["serialization"] = core_schema.plain_serializer_function_ser_schema(cls._serialize, info_arg=True)
+        return schema
+
+    @staticmethod
+    def _serialize(value: "StrEnum", info: SerializationInfo) -> "StrEnum | str":
+        if not info.mode_is_json():
+            return value
+        return camelize_value(value.value) if info.by_alias else value.value
+
+
+def _wire_value(value: str, info: SerializationInfo) -> str:
+    return camelize_value(value) if info.mode_is_json() and info.by_alias else value
+
+
+EnumStr = Annotated[
+    str,
+    BeforeValidator(lambda value: to_snake(value) if isinstance(value, str) and not value.islower() else value),
+    PlainSerializer(_wire_value),
+]
+"""A snake_case vocabulary value from an open set (proposed verbs, feature ids, mixed-type breakdown keys).
+
+Behaves like a `StrEnum` value on the wire: accepts camelCase in, emits camelCase by alias, stays snake_case
+in storage. Prefer a real `StrEnum` whenever the set is closed.
+"""
 
 
 class BaseModel(PydanticBaseModel):
@@ -24,57 +93,3 @@ class BaseModel(PydanticBaseModel):
         populate_by_name=True,
         from_attributes=True,
     )
-
-    @model_validator(mode="before")
-    @classmethod
-    def normalize_enums(cls, data: Any) -> Any:
-        """Global normalization for any field that is a StrEnum.
-
-        Converts camelCase/PascalCase strings to the Enum's snake_case values.
-        """
-        if not isinstance(data, dict):
-            return data
-
-        for field_name, field_info in cls.model_fields.items():
-            # Get the actual name used in the input (could be alias or snake_case)
-            input_key = field_info.alias or field_name
-            # `or` would truth-test `value` itself once found -- ambiguous/exception-raising
-            # for a non-empty numpy array (e.g. a pgvector embedding column), which every
-            # model here can carry even though only StrEnum fields end up used below.
-            value = data.get(input_key)
-            if value is None:
-                value = data.get(field_name)
-
-            if value is None or not isinstance(value, str):
-                continue
-
-            # Detect if the field is a StrEnum
-            enum_type = cls._get_str_enum_type(field_info.annotation)
-
-            if enum_type:
-                # Normalize the input string
-                normalized_input = to_snake(value).lower()
-                for member in enum_type:
-                    if member.value.lower() == normalized_input:
-                        # Update the data dict with the correct enum value
-                        # We update the key that was actually present
-                        target_key = input_key if input_key in data else field_name
-                        data[target_key] = member.value
-                        break
-        return data
-
-    @staticmethod
-    def _get_str_enum_type(annotation: Any) -> type[StrEnum] | None:
-        """Helper to extract StrEnum from Type annotations."""
-        origin = get_origin(annotation)
-        args = get_args(annotation)
-
-        if origin is None:
-            if isinstance(annotation, type) and issubclass(annotation, StrEnum):
-                return annotation
-        else:
-            # Handle Optional/Union
-            for arg in args:
-                if arg is not type(None) and isinstance(arg, type) and issubclass(arg, StrEnum):
-                    return arg
-        return None

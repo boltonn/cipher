@@ -70,7 +70,7 @@ export function pathTo(index: OrgIndex, id: string): OrganizationTreeNode[] {
 }
 
 /**
- * Top-down org chart: every unit is a clickable card, connected to its `part_of` parent.
+ * Top-down org chart: every unit is a clickable card, connected to its `partOf` parent.
  * Selecting a unit is the parent's state -- it drives the people table underneath.
  */
 export function OrgChart({

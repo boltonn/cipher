@@ -1,6 +1,6 @@
 from clir.api.deps import TextEmbeddingModelDep
 from fastapi import APIRouter, HTTPException, UploadFile
-from pyparse.parsers.email import EmlParser
+from pyparse.parsers.email import parse_email as parse_email_file
 
 from cipher.api.deps.access import DatasetAccess, DatasetAccessDep
 from cipher.api.deps.elasticsearch import TextChunkDatastoreDep
@@ -32,10 +32,7 @@ async def parse_email(
     file: UploadFile,
 ):
     """Parse an email file and return its structured representation for display."""
-    email_bytes = await file.read()
-    parser = EmlParser()
-    email = parser.parse(email_bytes)
-    return email
+    return parse_email_file(source=await file.read(), filetype="eml")
 
 
 @router.get(
@@ -101,9 +98,7 @@ async def search_hybrid(
     if embedding is None:
         raise HTTPException(status_code=503, detail="Embedding model unavailable")
 
-    request = ChunkHybridSearchRequest.model_validate(
-        {**params.model_dump(exclude_none=True), "embedding": embedding}
-    )
+    request = ChunkHybridSearchRequest.model_validate({**params.model_dump(exclude_none=True), "embedding": embedding})
     request.filters = _scoped_to_emails(request.filters, access)
     return await datastore.search_hybrid(request=request)
 

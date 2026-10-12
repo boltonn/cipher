@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from sqlalchemy import DateTime, Enum, Index, Integer, String, Text
+from sqlalchemy import DateTime, Enum, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import text
 
@@ -36,6 +36,9 @@ class EnrichmentTable(Base):
     date_completed: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    run_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("enrichment_run.id", ondelete="SET NULL"), nullable=True
+    )  # the run that last claimed it
     retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     date_created: Mapped[datetime] = mapped_column(
@@ -61,7 +64,7 @@ class EnrichmentTable(Base):
             "enrichment_type",
             "enrichable_type",
             "date_created",
-            postgresql_where=text("status IN ('pending', 'failed')"),
+            postgresql_where=text("status IN ('PENDING', 'FAILED')"),
         ),
         Index(
             "idx_enrichment_type_status_retry",
@@ -70,4 +73,5 @@ class EnrichmentTable(Base):
             "retry_count",
         ),
         Index("idx_enrichment_polymorphic", "enrichable_type", "enrichable_id"),
+        Index("ix_enrichment_processing_run", "run_id", postgresql_where=text("status = 'PROCESSING'")),
     )

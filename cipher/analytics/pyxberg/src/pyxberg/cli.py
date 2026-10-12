@@ -43,9 +43,7 @@ def benchmark(
     disable_ocr: Annotated[bool, typer.Option(help="Skip OCR entirely")] = False,
     ocr_language: Annotated[str, typer.Option(help="OCR language code, e.g. 'eng', 'deu'")] = "eng",
     glob: Annotated[str, typer.Option(help="Glob pattern for files to include")] = "**/*",
-    report: Annotated[
-        Path | None, typer.Option(help="Write a per-file JSON report to this path")
-    ] = None,
+    report: Annotated[Path | None, typer.Option(help="Write a per-file JSON report to this path")] = None,
 ):
     """Measure xberg's per-file extraction time over a directory.
 
@@ -108,7 +106,9 @@ def benchmark(
         )
 
     if report is not None:
-        report.write_text(json.dumps({"config": {"disable_ocr": disable_ocr, "ocr_language": ocr_language}, "files": rows}, indent=2))
+        report.write_text(
+            json.dumps({"config": {"disable_ocr": disable_ocr, "ocr_language": ocr_language}, "files": rows}, indent=2)
+        )
         typer.echo(f"\nWrote per-file report to {report}")
 
 

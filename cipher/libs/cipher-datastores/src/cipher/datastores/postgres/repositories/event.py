@@ -1,19 +1,22 @@
-from datetime import datetime
-
-from sqlalchemy import asc, delete, desc, exists, func, select, update
+from sqlalchemy import asc, delete, desc, exists, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cipher.datastores.postgres.repositories.tag import PostgresTagRepository
+from cipher.datastores.postgres.tables.entity import EntityTable, is_canonical_entity
 from cipher.datastores.postgres.tables.event import EventTable
 from cipher.datastores.postgres.tables.event_participant import EventParticipantTable
 from cipher.datastores.postgres.tables.event_place import EventPlaceTable
 from cipher.datastores.postgres.tables.file import FileTable
+from cipher.datastores.postgres.tables.location import LocationTable
 from cipher.datastores.postgres.utils import strip_null_bytes
 from cipher.schemas._base.common import ModelTagType, SortOrder
 from cipher.schemas.graph.event import (
     EVENT_FILE_TAG,
     Event,
     EventCreate,
+    EventMonthCount,
+    EventParticipantOption,
+    EventPlaceOption,
     EventSearchParameters,
     EventSortField,
     EventUpdate,
@@ -28,6 +31,9 @@ _SORT_COLUMN = {
     EventSortField.DATE_START: EventTable.date_start,
     EventSortField.DATE_CREATED: EventTable.date_created,
     EventSortField.DATE_UPDATED: EventTable.date_updated,
+    EventSortField.TITLE: func.lower(EventTable.title),
+    EventSortField.EVENT_TYPE: EventTable.event_type,
+    EventSortField.STATUS: EventTable.status,
 }
 
 
@@ -90,7 +96,7 @@ class PostgresEventRepository:
         stmt = (
             select(EventTable)
             .where(*where)
-            .order_by(order)
+            .order_by(order, EventTable.date_start.asc(), EventTable.id)
             .offset((params.page - 1) * params.limit)
             .limit(params.limit)
         )
@@ -103,7 +109,7 @@ class PostgresEventRepository:
         )
 
     async def list_category_values(
-        self, *, dataset_id: str | None = None, q: str | None = None, limit: int = 50
+        self, *, dataset_ids: list[str] | None = None, q: str | None = None, limit: int = 50
     ) -> list[str]:
         """Distinct raw source labels (`event.categories`, i.e. iCalendar CATEGORIES) in use.
 
@@ -112,8 +118,8 @@ class PostgresEventRepository:
         """
         elem = func.jsonb_array_elements_text(EventTable.categories).label("value")
         inner = select(elem).select_from(EventTable)
-        if dataset_id:
-            inner = inner.where(EventTable.dataset_id == dataset_id)
+        if dataset_ids:
+            inner = inner.where(EventTable.dataset_id.in_(dataset_ids))
         sub = inner.subquery()
 
         stmt = select(sub.c.value).distinct().order_by(sub.c.value).limit(limit)
@@ -122,7 +128,7 @@ class PostgresEventRepository:
         return list((await self.session.execute(stmt)).scalars().all())
 
     async def list_tag_values(
-        self, *, dataset_id: str | None = None, q: str | None = None, limit: int = 50
+        self, *, dataset_ids: list[str] | None = None, q: str | None = None, limit: int = 50
     ) -> list[str]:
         """Distinct analyst `tags` in use, most-used first.
 
@@ -131,8 +137,8 @@ class PostgresEventRepository:
         """
         elem = func.jsonb_array_elements_text(EventTable.tags).label("value")
         inner = select(elem).select_from(EventTable)
-        if dataset_id:
-            inner = inner.where(EventTable.dataset_id == dataset_id)
+        if dataset_ids:
+            inner = inner.where(EventTable.dataset_id.in_(dataset_ids))
         sub = inner.subquery()
 
         stmt = select(sub.c.value).group_by(sub.c.value)
@@ -141,16 +147,115 @@ class PostgresEventRepository:
         stmt = stmt.order_by(func.count().desc(), sub.c.value.asc()).limit(limit)
         return list((await self.session.execute(stmt)).scalars().all())
 
-    async def calendar_events(
-        self, *, date_from: datetime, date_to: datetime, dataset_id: str | None = None
-    ) -> list[Event]:
-        """Every event whose `date_start` falls in [date_from, date_to], ascending."""
-        where = [EventTable.date_start >= date_from, EventTable.date_start <= date_to]
-        if dataset_id:
-            where.append(EventTable.dataset_id == dataset_id)
-        stmt = select(EventTable).where(*where).order_by(EventTable.date_start.asc()).limit(2000)
+    async def list_participant_options(
+        self, *, dataset_ids: list[str] | None = None, q: str | None = None, limit: int = 50
+    ) -> list[EventParticipantOption]:
+        """Who appears on events -- linked entities (incl. provisional) and unresolved raw names -- by event count.
+
+        Unresolved names group case-insensitively, shown in their most common spelling.
+        """
+        event_count = func.count(func.distinct(EventParticipantTable.event_id))
+        scope = [EventTable.dataset_id.in_(dataset_ids)] if dataset_ids else []
+
+        linked = (
+            select(
+                EntityTable.id,
+                EntityTable.person_id,
+                EntityTable.display_name,
+                EntityTable.entity_type,
+                is_canonical_entity(),
+                event_count,
+            )
+            .select_from(EventParticipantTable)
+            .join(EventTable, EventTable.id == EventParticipantTable.event_id)
+            .join(EntityTable, EntityTable.id == EventParticipantTable.entity_id)
+            .where(*scope)
+            .group_by(EntityTable.id)
+            .order_by(event_count.desc())
+            .limit(limit)
+        )
+        raw_name = func.coalesce(EventParticipantTable.raw_name, EventParticipantTable.raw_email)
+        unresolved = (
+            select(func.mode().within_group(raw_name), event_count)
+            .join(EventTable, EventTable.id == EventParticipantTable.event_id)
+            .where(*scope, EventParticipantTable.entity_id.is_(None), raw_name.is_not(None))
+            .group_by(func.lower(func.trim(raw_name)))
+            .order_by(event_count.desc())
+            .limit(limit)
+        )
+        if q:
+            linked = linked.where(EntityTable.display_name.ilike(f"%{q}%"))
+            unresolved = unresolved.where(raw_name.ilike(f"%{q}%"))
+
+        options = [
+            EventParticipantOption(
+                entity_id=entity_id,
+                person_id=person_id,
+                name=name,
+                entity_type=entity_type,
+                is_provisional=not canonical,
+                event_count=count,
+            )
+            for entity_id, person_id, name, entity_type, canonical, count in (await self.session.execute(linked)).all()
+        ] + [
+            EventParticipantOption(name=name, event_count=count)
+            for name, count in (await self.session.execute(unresolved)).all()
+        ]
+        return sorted(options, key=lambda o: (-o.event_count, o.name.lower()))[:limit]
+
+    async def list_place_options(
+        self, *, dataset_ids: list[str] | None = None, q: str | None = None, limit: int = 50
+    ) -> list[EventPlaceOption]:
+        """Where events happen -- linked locations and unresolved raw place text -- by event count."""
+        event_count = func.count(func.distinct(EventPlaceTable.event_id))
+        scope = [EventTable.dataset_id.in_(dataset_ids)] if dataset_ids else []
+        location_name = func.coalesce(LocationTable.name, LocationTable.address, LocationTable.city)
+
+        linked = (
+            select(LocationTable.id, location_name, event_count)
+            .select_from(EventPlaceTable)
+            .join(EventTable, EventTable.id == EventPlaceTable.event_id)
+            .join(LocationTable, LocationTable.id == EventPlaceTable.location_id)
+            .where(*scope, location_name.is_not(None))
+            .group_by(LocationTable.id)
+            .order_by(event_count.desc())
+            .limit(limit)
+        )
+        unresolved = (
+            select(func.mode().within_group(EventPlaceTable.raw_text), event_count)
+            .join(EventTable, EventTable.id == EventPlaceTable.event_id)
+            .where(*scope, EventPlaceTable.location_id.is_(None), EventPlaceTable.raw_text.is_not(None))
+            .group_by(func.lower(func.trim(EventPlaceTable.raw_text)))
+            .order_by(event_count.desc())
+            .limit(limit)
+        )
+        if q:
+            linked = linked.where(location_name.ilike(f"%{q}%"))
+            unresolved = unresolved.where(EventPlaceTable.raw_text.ilike(f"%{q}%"))
+
+        options = [
+            EventPlaceOption(location_id=location_id, name=name, event_count=count)
+            for location_id, name, count in (await self.session.execute(linked)).all()
+        ] + [
+            EventPlaceOption(name=name, event_count=count)
+            for name, count in (await self.session.execute(unresolved)).all()
+        ]
+        return sorted(options, key=lambda o: (-o.event_count, o.name.lower()))[:limit]
+
+    async def calendar_events(self, params: EventSearchParameters) -> list[Event]:
+        """Every matching event in the `date_from`..`date_to` window, ascending (no paging, capped)."""
+        stmt = select(EventTable).where(*self._filters(params)).order_by(EventTable.date_start.asc()).limit(2000)
         rows = (await self.session.execute(stmt)).scalars().all()
         return [Event.model_validate(r) for r in rows]
+
+    async def month_counts(self, *, dataset_ids: list[str] | None = None) -> list[EventMonthCount]:
+        """Event counts per `date_start` month (UTC), ascending."""
+        month = func.to_char(func.timezone("UTC", EventTable.date_start), "YYYY-MM")
+        stmt = select(month, func.count())
+        if dataset_ids:
+            stmt = stmt.where(EventTable.dataset_id.in_(dataset_ids))
+        rows = (await self.session.execute(stmt.group_by(month).order_by(month))).all()
+        return [EventMonthCount(month=m, count=c) for m, c in rows]
 
     async def update_event(self, event_id: str, data: EventUpdate, *, user_id: str) -> Event | None:
         """Patch an event row; a `tags` list is recorded as `user_id`'s edit."""
@@ -179,7 +284,9 @@ class PostgresEventRepository:
         )
         rows = deleted.tuples().all()
         tag_repo = PostgresTagRepository(self.session)
-        await tag_repo.delete_for_targets(target_type=TagTargetType.EVENT, target_ids=[event_id for event_id, _ in rows])
+        await tag_repo.delete_for_targets(
+            target_type=TagTargetType.EVENT, target_ids=[event_id for event_id, _ in rows]
+        )
         emptied = await self.session.execute(
             select(FileTable.sha256)
             .where(
@@ -324,8 +431,8 @@ class PostgresEventRepository:
     def _filters(params: EventSearchParameters) -> list:
         """Build the WHERE clause shared by list + count."""
         where = []
-        if params.dataset_id:
-            where.append(EventTable.dataset_id == params.dataset_id)
+        if params.dataset_ids:
+            where.append(EventTable.dataset_id.in_(params.dataset_ids))
         if params.file_id:
             where.append(EventTable.file_id == params.file_id)
         if params.query:
@@ -346,17 +453,22 @@ class PostgresEventRepository:
             where.append(EventTable.is_verified.is_(params.is_verified))
         if params.min_confidence is not None:
             where.append(EventTable.confidence >= params.min_confidence)
-        if params.participant_entity_id:
-            where.append(
-                exists().where(
-                    (EventParticipantTable.event_id == EventTable.id)
-                    & (EventParticipantTable.entity_id == params.participant_entity_id)
+        if params.participant_entity_ids or params.participant_names:
+            entity_name = select(EntityTable.display_name).where(EntityTable.id == EventParticipantTable.entity_id)
+            matches = [EventParticipantTable.entity_id.in_(params.participant_entity_ids or [])] + [
+                or_(
+                    EventParticipantTable.raw_name.ilike(f"%{name}%"),
+                    EventParticipantTable.raw_email.ilike(f"%{name}%"),
+                    entity_name.scalar_subquery().ilike(f"%{name}%"),
                 )
-            )
-        if params.location_id:
-            where.append(
-                exists().where(
-                    (EventPlaceTable.event_id == EventTable.id) & (EventPlaceTable.location_id == params.location_id)
-                )
-            )
+                for name in params.participant_names or []
+            ]
+            where.append(exists().where(EventParticipantTable.event_id == EventTable.id, or_(*matches)))
+        if params.location_ids or params.place_names:
+            location_name = select(LocationTable.name).where(LocationTable.id == EventPlaceTable.location_id)
+            matches = [EventPlaceTable.location_id.in_(params.location_ids or [])] + [
+                or_(EventPlaceTable.raw_text.ilike(f"%{name}%"), location_name.scalar_subquery().ilike(f"%{name}%"))
+                for name in params.place_names or []
+            ]
+            where.append(exists().where(EventPlaceTable.event_id == EventTable.id, or_(*matches)))
         return where

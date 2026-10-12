@@ -19,6 +19,7 @@ stall the GPU queue and a one-chunk email doesn't underfill a batch.
 
 import asyncio
 import re
+from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -34,12 +35,19 @@ from cipher.datastores.postgres.repositories import (
     PostgresFileRepository,
 )
 from cipher.orchestration.extract_documents import DEFAULT_CHUNK_SIZE
+from cipher.orchestration.settings import settings
 from cipher.schemas.content.document import DocumentMetadata, DocumentTextChunk
 from cipher.schemas.content.email import EmailMetadata, EmailTextChunk, MessageState
 from cipher.schemas.content.extraction import ExtractedText
 from cipher.schemas.content.search import TextChunk
-from cipher.schemas.ingestion.enrichment import EnrichableType, EnrichmentBatchItem, EnrichmentType
-from cipher.utils.retrieval import RetrievalBackend, load_retrieval_config
+from cipher.schemas.ingestion.enrichment import (
+    DEFAULT_FILETYPE_GROUPS,
+    TEXT_NATIVE_GROUPS,
+    EnrichableType,
+    EnrichmentBatchItem,
+    EnrichmentType,
+)
+from cipher.utils.retrieval import RetrievalBackend
 
 if TYPE_CHECKING:
     from clir.models.pytorch import TextEmbeddingPytorchModel
@@ -49,9 +57,8 @@ if TYPE_CHECKING:
 
 # Both document and email files land here once their respective extraction
 # workflow (extract_emails.py / extract_documents.py) has completed.
-_TEXT_GROUPS = ("document", "email")
 # OCR'd images carry text too, but only `ocr` queues them (most images have none).
-_EMBED_GROUPS = (*_TEXT_GROUPS, "image")
+_DEFAULT_GROUPS = DEFAULT_FILETYPE_GROUPS[EnrichmentType.TEXT_EMBEDDING]
 
 # Tokenizing (CPU) is what the producer offloads here -- HF's fast (Rust)
 # tokenizers release the GIL during encode, so threads (not processes) give
@@ -252,6 +259,7 @@ async def dedupe_pending_text_embeddings(
     dataset_id: str | None = None,
     batch_size: int = 100,
     skip_email_states: frozenset[MessageState] = DEFAULT_SKIP_EMAIL_STATES,
+    filetype_groups: Sequence[str] = _DEFAULT_GROUPS,
 ) -> int:
     """Resolve pending text embeddings whose content has already been embedded elsewhere.
 
@@ -272,7 +280,7 @@ async def dedupe_pending_text_embeddings(
     extracted_text_repo = PostgresExtractedTextRepository(session=session)
 
     total = 0
-    for group in _EMBED_GROUPS:
+    for group in filetype_groups:
         while True:
             batch = await enrichment_repo.get_pending_batch(
                 enrichment_type=EnrichmentType.TEXT_EMBEDDING,
@@ -345,16 +353,19 @@ async def dedupe_pending_text_embeddings(
     return total
 
 
-async def queue_text_embedding_enrichments(session: "AsyncSession", dataset_id: str) -> int:
-    """Queue TEXT_EMBEDDING enrichments for a dataset's document + email files."""
+async def queue_text_embedding_enrichments(
+    session: "AsyncSession", dataset_id: str, filetype_groups: Sequence[str] = _DEFAULT_GROUPS
+) -> int:
+    """Queue TEXT_EMBEDDING enrichments for a dataset's files in `filetype_groups`."""
     enrichment_repo = PostgresEnrichmentRepository(session=session)
     total = 0
-    for group in _TEXT_GROUPS:
-        total += await enrichment_repo.queue_enrichments_by_filter(
-            dataset_id=dataset_id,
-            enrichment_type=EnrichmentType.TEXT_EMBEDDING,
-            filetype_group=group,
+    for group in filetype_groups:
+        queue = (
+            enrichment_repo.queue_enrichments_by_filter
+            if group in TEXT_NATIVE_GROUPS
+            else enrichment_repo.queue_files_with_text
         )
+        total += await queue(dataset_id=dataset_id, enrichment_type=EnrichmentType.TEXT_EMBEDDING, filetype_group=group)
     await session.commit()
     return total
 
@@ -539,6 +550,21 @@ async def _consumer(
     await _flush()
 
 
+async def embed_summary_chunks(
+    session: "AsyncSession", chunk_store, *, dataset_id: str, model: "TextEmbeddingPytorchModel", batch_size: int = 64
+) -> int:
+    """Embed summary chunks written without one (`cipher summarize` doesn't load the embedding model)."""
+    done = 0
+    while pending := await chunk_store.summaries_missing_embedding(dataset_id, limit=batch_size):
+        texts = [text for _, text in pending]
+        embeddings = await asyncio.to_thread(model.encode, texts, task="retrieval", is_query=False)
+        for (chunk_id, _), embedding in zip(pending, embeddings, strict=True):
+            await chunk_store.set_embedding(chunk_id, [float(x) for x in embedding])
+        await session.commit()
+        done += len(pending)
+    return done
+
+
 async def embed_text_workflow(
     session: "AsyncSession",
     dataset_id: str,
@@ -552,6 +578,7 @@ async def embed_text_workflow(
     commit_batch_size: int = 20,
     max_pages: int | None = None,
     skip_email_states: frozenset[MessageState] = DEFAULT_SKIP_EMAIL_STATES,
+    filetype_groups: Sequence[str] = _DEFAULT_GROUPS,
 ) -> int:
     """Chunk (if needed) and embed a dataset's extracted text into the chunk store (`RETRIEVAL__BACKEND`).
 
@@ -567,7 +594,7 @@ async def embed_text_workflow(
     """
     from clir.utils.text_chunk import PlainTextChunker
 
-    _cfg = load_retrieval_config()
+    _cfg = settings.retrieval
     _use_pg = _cfg.backend == RetrievalBackend.POSTGRES
     _ranker = _cfg.text_ranker.value
     chunk_store = _chunk_store(session, es_repo, use_pg=_use_pg, ranker=_ranker)
@@ -591,9 +618,13 @@ async def embed_text_workflow(
             "Consider running extract-text first (or again after)."
         )
 
-    await queue_text_embedding_enrichments(session=session, dataset_id=dataset_id)
+    await queue_text_embedding_enrichments(session=session, dataset_id=dataset_id, filetype_groups=filetype_groups)
     await dedupe_pending_text_embeddings(
-        session=session, es_repo=chunk_store, dataset_id=dataset_id, skip_email_states=skip_email_states
+        session=session,
+        es_repo=chunk_store,
+        dataset_id=dataset_id,
+        skip_email_states=skip_email_states,
+        filetype_groups=filetype_groups,
     )
 
     # Drop HNSW / tsvector / BM25 before a real load (rebuilt after): per-batch
@@ -601,7 +632,7 @@ async def embed_text_workflow(
     # write can leave HNSW / pg_search structures corrupt. Only when there's work.
     if _use_pg and hasattr(chunk_store, "drop_search_indexes"):
         pending_total = 0
-        for g in _EMBED_GROUPS:
+        for g in filetype_groups:
             pending_total += await enrichment_repo.count_pending(
                 enrichment_type=EnrichmentType.TEXT_EMBEDDING,
                 enrichable_type=EnrichableType.FILE,
@@ -626,7 +657,7 @@ async def embed_text_workflow(
     engine = session.bind
     total_count = total_failed = total_chunks = 0
 
-    for group in _EMBED_GROUPS:
+    for group in filetype_groups:
         pending = await enrichment_repo.count_pending(
             enrichment_type=EnrichmentType.TEXT_EMBEDDING,
             enrichable_type=EnrichableType.FILE,
@@ -644,33 +675,35 @@ async def embed_text_workflow(
         # use and will corrupt its transaction state under interleaved
         # commits/queries (see embed_images.py).
         with tqdm(total=pending, desc=f"Embedding {group}s", unit=" file") as pbar:
-            async with AsyncSession(engine, expire_on_commit=False) as producer_session:
-                async with AsyncSession(engine, expire_on_commit=False) as consumer_session:
-                    await asyncio.gather(
-                        _producer(
-                            queue=queue,
-                            session=producer_session,
-                            chunker=chunker,
-                            dataset_id=dataset_id,
-                            group=group,
-                            batch_size=batch_size,
-                            embed_batch_size=embed_batch_size,
-                            max_pages=max_pages,
-                            skip_email_states=skip_email_states,
-                            stats=stats,
-                            pbar=pbar,
-                        ),
-                        _consumer(
-                            queue=queue,
-                            session=consumer_session,
-                            model=model,
-                            # rebind to the consumer's own session (see _chunk_store)
-                            es_repo=_chunk_store(consumer_session, es_repo, use_pg=_use_pg, ranker=_ranker),
-                            commit_batch_size=commit_batch_size,
-                            stats=stats,
-                            pbar=pbar,
-                        ),
-                    )
+            async with (
+                AsyncSession(engine, expire_on_commit=False) as producer_session,
+                AsyncSession(engine, expire_on_commit=False) as consumer_session,
+            ):
+                await asyncio.gather(
+                    _producer(
+                        queue=queue,
+                        session=producer_session,
+                        chunker=chunker,
+                        dataset_id=dataset_id,
+                        group=group,
+                        batch_size=batch_size,
+                        embed_batch_size=embed_batch_size,
+                        max_pages=max_pages,
+                        skip_email_states=skip_email_states,
+                        stats=stats,
+                        pbar=pbar,
+                    ),
+                    _consumer(
+                        queue=queue,
+                        session=consumer_session,
+                        model=model,
+                        # rebind to the consumer's own session (see _chunk_store)
+                        es_repo=_chunk_store(consumer_session, es_repo, use_pg=_use_pg, ranker=_ranker),
+                        commit_batch_size=commit_batch_size,
+                        stats=stats,
+                        pbar=pbar,
+                    ),
+                )
 
         logger.success(
             f"Embedded {stats['files']} {group}s into {stats['chunks']} chunks "
@@ -683,6 +716,16 @@ async def embed_text_workflow(
     logger.success(f"Embedded text for {total_count} files into {total_chunks} chunks ({total_failed} failed)")
     if _rebuild_search_indexes and hasattr(chunk_store, "ensure_schema"):
         await chunk_store.ensure_schema()  # rebuild HNSW / tsvector / BM25 now that the load is done
+    if _use_pg:
+        summaries = await embed_summary_chunks(session, chunk_store, dataset_id=dataset_id, model=model)
+        if summaries:
+            logger.success(f"Embedded {summaries} summary chunks")
+        # mentions extracted before these chunks existed (or whose chunk a re-embed replaced)
+        from cipher.datastores.postgres.repositories.mention import PostgresMentionRepository
+
+        anchored = await PostgresMentionRepository(session=session).backfill_chunk_ids(dataset_id=dataset_id)
+        if anchored:
+            logger.success(f"Anchored {anchored} mentions to their chunks")
     return total_count
 
 

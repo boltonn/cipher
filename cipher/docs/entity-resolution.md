@@ -20,12 +20,105 @@ make every decision inspectable. **R5** (Splink weight calibration) and **R6**
 `--use-embeddings`) below are the plan. A per-group concurrency pass is the noted
 scale-out for large mailboxes.
 
-**Using it (2026-09-29):** the Entities page has a **Verify** tab (check auto-created
-entities: verify / edit / merge) and a **Resolve** tab (one card per name group: accept or
-reject a suggested resolution, another entity, create a new entity, not an entity). The
-analyst-facing terms are in [`glossary.md`](./glossary.md#resolution-workflow-entities-page)
-and the workflow in [`entities.md`](./entities.md#the-analyst-workflow-verify-then-resolve).
-The UI steps in §12.1 below predate that merge of the old Review and Resolve tabs.
+## 0. The resolution stage (as built, 2026-10-07)
+
+**Why this section exists.** Resolution grew one fix at a time: `resolve-entities` decided
+each `(type, name)` group alone and in parallel, so every unmatched spelling and every type
+guess got its own auto-created entity (rag: 28.5k auto-created vs 10 verified); then
+`dedupe-entities` (auto-created → verified, 27 min for 12 proposals on rag) and
+`group-duplicates` (fold the spellings back together) cleaned up after it, each with its own
+matcher, suggestion rows and review tab. Three matchers answered one question -- *is this the
+same thing?* -- and the analyst answered it once per spelling. This replaces them. One
+call, `cipher resolve-entities` (`resolution.resolution_workflow` →
+`resolve_entities.resolve_entities_workflow`), three steps:
+
+### Match -- one unit per name key, one scorer
+
+* **Unit = name key.** `normalize_name` folds everything that never distinguishes two things:
+  case, accents, quotes, possessives, punctuation, initials, invisible characters, trailing
+  legal forms (`, Inc`, `LLC`, `GmbH`), mailbox labels (`(no reply)`), a leading title
+  (`Mr.`, `Dr.`) and surname-first order (`Strosser, Stephen`). A unit is
+  every unresolved name mention with that key **plus** every person/organization entity whose
+  display name or alias has it. Type is not part of the key -- `Adaire` the person and
+  `Adaire` the organization are one unit, and type becomes a scoring signal.
+* **Score the unit, not each spelling**, against entities outside it with the one
+  Fellegi–Sunter scorer (`entity_resolution.py`; company names compared by
+  `compare_org_names`, people by `compare_names`). Its review band *is* "possibly the same"
+  (`Matt` / `Matthew Regan`, `AWS` / `Amazon Web Services`, a shared address).
+* Units that are a single auto-created entity with no new mentions are only re-scored when
+  the entity is new since the last run (`--full` rescores all).
+* **Short names in context** (within-document coreference, after the names are scored): a
+  one-word person mention -- `Nick`, `Mr. Bolton` -- unresolved or sitting on a one-word
+  auto-created person, takes the entity of the **one** fuller person name in the same file it
+  can stand for (first name, nickname or surname; a title means surname). Two candidates
+  (`Nick Bolton`, `Nick Jones`) decide nothing. Emptied auto-created entities are dropped.
+  This also covers greetings: `Hi Nick` sits in an email whose header names the recipient.
+
+**Name details the scorer reads** (`cipher.names.compare_names`): given and surname apart
+(culture-aware order: `Surname, Given`, family-first cultures, Russian document order);
+initials, including run-together ones (`EF Bolton` = `E. F. Bolton`); nicknames
+(`Matt` / `Matthew`); a **middle name** or initial, **patronymic**, **Jr / Sr** or **Mr / Ms**
+that disagree veto the match, a Jr on one side only caps it at moderate (parent or child?);
+a double-barrelled or maiden surname counts (`Mary Smith Jones` / `Mary Jones`); a lone word
+the dataset uses as a surname (`Bolton`, learned from its full names) is compared as one.
+Company names are compared by their distinctive words (`compare_org_names`). The scorer also
+reads whether an **email address spells the name** (`nbolton04@` / Nick Bolton: +2.0;
+someone else's: -1.5, soft because family mailboxes are shared).
+
+### Decide -- once per unit
+
+| unit holds | and | then |
+|---|---|---|
+| auto-created entities of the same type | -- | fold into the biggest of that type (one name, nobody said otherwise) |
+| names tagged with a type | an auto-created entity of that type is in the unit | attach the names to it |
+| untyped names | the unit has a single type | attach to its keeper (verified first, else most mentions) |
+| a verified keeper | the safe rule fires (exact header identifier + name agreement) | attach; else suggest |
+| entities of different types | -- | one merge suggestion per type, onto the keeper (Verify) |
+| no entity | a candidate clears the safe rule | attach |
+| no entity | candidates in the review band | one review card with suggestions |
+| no entity | nothing matched, typed and trustworthy | create **one** auto-created entity for the unit |
+| anything | scorer finds a candidate outside the unit | suggestion on the unit's card ("possibly the same") |
+
+Rule of thumb: **an auto-created entity is defined by its name; a verified entity by its
+identity.** Same-name evidence settles the first, never the second.
+
+### Derive -- once identities are settled
+
+Places (gazetteer, its own matcher), header identifier links (`has_selector`), relationship
+suggestions from extractor relations, email-domain suggestions, event participant links
+(`resolve-event-links`), **family suggestions from patronymics** (`family_links.py`:
+`Ivan Petrovich Sidorov` → parent `Pyotr Sidorov`, `Ahmed bin Khalid Al-Saud` → parent
+`Khalid Al-Saud`, shared patronymic + surname → siblings; `family_of` suggestions, reviewed
+on the entity page), then closing suggestions whose names are now resolved.
+
+### Review -- two questions, two tabs
+
+* **Resolve** -- *which entity is this name?* One card per unit that still has unresolved
+  names; its suggestions are name-group `entity_match` rows (same-name entities appear there
+  as exact-name suggestions).
+* **Verify** -- *is this auto-created entity real, or a duplicate?* Each row lists its merge
+  suggestions inline (`EntityListItem.merge_suggestions`: same name / other type, or the
+  scorer's review band) with **Merge** / **Keep apart**; a merge row always sits on the
+  smaller, auto-created side.
+
+Suggestions stay `entity_match` rows -- no new tables.
+
+### Progress
+
+One `enrichment_run` row per run (`enrichment_type = entity_resolution`) with
+`progress = {"steps": [...]}` (migration 0049): *Same names*, *Match names*, *Short names in
+context*, *Match new entities*, *Places*, *Links and suggestions*, each done / total, written
+at most every 2 s.
+`GET /enrichments/resolution?datasetId=` serves it; the dataset page shows it under the
+enrichments as **Entity resolution** with a bar per step. The last completed run's start time
+is also what "new since the last run" means for step 3.
+
+### Replaced
+
+`dedupe-entities` (auto-created vs verified only, serial: 27 min on rag) and `group-duplicates`
+(clean-up after the fact) and its Duplicates tab, the `(type, name)` grouping in
+`unresolved_name_groups`, and the `GET /entities/merges` queue. `cipher rekey --names` (was `refold-names`) stays: it
+re-keys stored names after a `normalize_name` change.
 
 ---
 
@@ -77,7 +170,7 @@ Nothing needs to be invented for storage, review, or merge — only for
 | `guess_actor_type(name)` — regex person-vs-org heuristic (`_ORG_WORD_RE`, `_PERSON_RE`) | `schemas/graph/ontology.py` | exists |
 | `repoint_entity_references()` — the robust shared merge (mentions, edges, candidates, matches, event participants, comments) | `repositories/_merge.py` | exists; used by person merge and `PostgresEntityRepository.merge_entities` |
 | `entity_match.resolve_match._merge` — a **simplified** local merge (mentions + edge endpoints only) | `repositories/entity_match.py` | exists; **should call `repoint_entity_references` instead** |
-| Face-match subsystem: single candidate primitive (`get_potential_person_matches`), `DEFAULT_FACE_MATCH_SIMILARITY = 0.61` module constant, pending `face_match` rows, sibling auto-reject on confirm, `delete_automatic_pending` for `--reset`, reactive + batch both calling the one primitive | `repositories/face.py`, `orchestration/match_faces.py`, `routes/persons.py` | **the template to mirror** |
+| Face-match subsystem: single candidate primitive (`get_potential_person_matches`), `DEFAULT_FACE_SIMILARITY = 0.61` module constant, pending `face_match` rows, sibling auto-reject on confirm, `delete_automatic_pending` for `--reset`, reactive + batch both calling the one primitive | `repositories/face.py`, `orchestration/match_faces.py`, `routes/persons.py` | **the template to mirror** |
 
 ---
 
@@ -96,9 +189,10 @@ extract-selectors / extract-entities  →  unresolved mention rows
                     values)     pair)    provis.)  edges)        reasons)  │
                     └────────────────────────────────────────────────────┘
                                               │
-                              dedupe-entities (periodic, optional)
-                          BLOCK ──► COMPARE ──► SCORE ──► SAME_AS / merge
 ```
+
+(As built the sweep runs per **unit** -- one name key, any type -- with a same-names step
+before scoring and a new-entities step after it; see §0.)
 
 Each stage below is an options menu. The recommended default is called out; the
 config knob that switches it is named.
@@ -175,7 +269,7 @@ counts that structured features compare better.
   keyed (they resolve by exact value), which on an email-heavy dataset like `rag`
   keeps thousands of rows out of the table.
 - **Speed — keying**: `cipher.names.entity_keys` is pure-CPU, ~10 µs/entity, no
-  I/O. `backfill-entity-name-keys` keyset-paginates and chunks inserts at 5k rows;
+  I/O. `cipher rekey --name-keys` keyset-paginates and chunks inserts at 5k rows;
   100k entities is a few seconds, 1M ~a minute. Inline refresh on an entity write
   is one `DELETE` + one small `INSERT` in the same txn — negligible, and entity
   writes are not a hot path (extraction creates them in a sweep).
@@ -194,7 +288,7 @@ counts that structured features compare better.
   `display_name + aliases`, versioned by `cipher.names.KEYS_VERSION`. They refresh
   inline on `create_entity` / `update_entity` (name or aliases changed) /
   `upsert_person_entity` / `merge_entities`, drop by `ON DELETE CASCADE`, and a
-  `backfill-entity-name-keys` re-run heals any drift (e.g. after a `cipher-names`
+  `cipher rekey --name-keys` re-run heals any drift (e.g. after a `cipher-names`
   upgrade). The blocker is additive — R1 does **not** change `resolve-entities`
   output, so there is no behavioural regression risk until R3 opts in.
 
@@ -381,12 +475,19 @@ that proposed both entities.
 
 **Provisional candidates.** When a canonical candidate reaches the review band,
 the sweep drops provisional candidates for that group and re-bands the rest
-(`_drop_provisional_if_canonical`) -- the stub-vs-canonical question belongs to
-`dedupe-entities`. The Resolve queue also hides provisional candidates unless
-`include_provisional_entities`. Recommended order: `resolve-entities` →
-`dedupe-entities` → settle **Possible duplicate entities** (merge / promote /
-not an entity) → `resolve-entities` again, so the folded aliases send the
-remaining spellings straight to the canonical entity.
+(`_drop_provisional_if_canonical`) -- the stub-vs-canonical question is asked on the
+stub's Verify row (step 3 of §0). Recommended order: `resolve-entities` → **Verify**
+(verify / merge the big auto-created entities) → **Resolve** → `resolve-entities` again,
+so the folded aliases send the remaining spellings straight to the surviving entity.
+
+### Organization names (2026-10-07)
+
+**Organization names are not person names.** `name_structure` used to run
+`compare_names` on organizations, so `Amazon Web Services, Inc` parsed as surname +
+given `Inc` and scored as an exact match for every other `…, Inc` (`HBO Digital
+Services, Inc` at 87%). For an organization candidate it now uses `compare_org_names`:
+same core → exact, acronym → strong, one name extends the other → moderate, no
+distinctive word in common (generic words like *Services* don't count) → conflict.
 
 ### Sweep cost (as built)
 
@@ -583,7 +684,7 @@ batch job built for it.
 | # | component | where | notes |
 |---|---|---|---|
 | 1 | **`libs/cipher-names`** — `script`, `translit` (ICU + unidecode fallback), `phonetic` (jellyfish), `parse` (culture registry), `compare` (`compare_names → NameComparison`), `keys` (`blocking_keys`), `nicknames` | new workspace lib | pure CPU; table-driven tests with real multilingual pairs |
-| 2 ✅ | **`entity_name_key`** table + `backfill-entity-name-keys` sweep + inline refresh | `cipher-datastores`, `cipher-orchestration` | materializes translit / phonetic / sorted-token / surname / given+surname keys; `(key_type,key)` btree; refreshed inline on every entity write, CASCADE on delete. *(Built as a CLI sweep, not an `EnrichableType` — entities aren't one; avoids touching the enrichment enum/endpoints.)* |
+| 2 ✅ | **`entity_name_key`** table + name-key sweep (now `cipher rekey --name-keys`) + inline refresh | `cipher-datastores`, `cipher-orchestration` | materializes translit / phonetic / sorted-token / surname / given+surname keys; `(key_type,key)` btree; refreshed inline on every entity write, CASCADE on delete. *(Built as a CLI sweep, not an `EnrichableType` — entities aren't one; avoids touching the enrichment enum/endpoints.)* |
 | 3 ✅ | **`EntityResolutionConfig`** schema (§8 knobs, incl. the `weights` m/u table + `base_prior`) | `cipher-schemas` (`graph/entity_resolution.py`) | `DEFAULT_RESOLUTION_CONFIG`; R3 overrides via CLI flags |
 | 4 ✅ | **`get_resolution_candidates()`** — the one candidate primitive | `PostgresEntityRepository` | mirrors `get_potential_person_matches`; unions selector ∪ exact-name ∪ `entity_name_key` ∪ trigram → `ResolutionCandidate` with `blocked_by` set. Scoring fields filled by R2. |
 | 5 ✅ | **Fellegi–Sunter scorer** — `score_candidate` / `decide` / `build_explanation` / `dominant_method`; 9 features (§5), provenance prior, TF-adjusted name weights, `conflict` veto | `cipher-orchestration/entity_resolution.py` | pure, no I/O; 10 fixture tests. R3 builds the `*ScoringInput`s and persists. |
@@ -666,7 +767,7 @@ pace to the one that carries explanations.
 | phase | scope | unlocks |
 |---|---|---|
 | **R0** ✅ | `libs/cipher-names` (translit, phonetic, script, parse, compare, keys, nicknames) + tests | multilingual matching primitives, standalone |
-| **R1** ✅ | `entity_name_key` table (migration 0015) + `backfill-entity-name-keys` sweep + inline refresh on entity writes; `get_resolution_candidates` blocking primitive + `ResolutionCandidate` schema | high-recall CPU blocking |
+| **R1** ✅ | `entity_name_key` table (migration 0015) + name-key sweep (now `cipher rekey --name-keys`) + inline refresh on entity writes; `get_resolution_candidates` blocking primitive + `ResolutionCandidate` schema | high-recall CPU blocking |
 | **R2** ✅ | Fellegi–Sunter scorer (`cipher.orchestration.entity_resolution`) + 9 features + `EntityResolutionConfig`/`DEFAULT_RESOLUTION_CONFIG` + `entity_match.explanation` JSONB (migration 0017) + `ResolutionExplanation`/`FeatureLevel`/`ResolutionBand` schema | scored, explainable candidates (engine only) |
 | **R3** ✅ | `resolve_entities` rewrite (block→score→decide→emit) + CLI config flags; group-level `entity_match` (migration 0018); `resolve_match` group-attach branch + shared-`_merge` fix; **first `entity_match` writer** | the review queue fills; auto-resolve on the one safe rule |
 | **R4** ✅ | `GET /mentions/{id}/resolution` (`MentionResolution`/`EntityMatchRef`, negative case included) + agent tool `explain_entity_resolution` + `ChatDeps.entity_matches`. *Polish deferred: `resolution` badge on mention rows, `match_reason` enrichment.* | analyst + agent can interrogate any decision |

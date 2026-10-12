@@ -30,8 +30,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { DatasetSelect } from "@/features/datasets/components/dataset-select";
+import { useDatasetScope } from "@/features/datasets/hooks/use-selected-datasets";
 import { EntitiesTable } from "@/features/entities/components/entities-table";
 import { EntityGraph } from "@/features/entities/components/entity-graph";
 import { ENTITY_TYPE_META } from "@/features/entities/components/entity-type-meta";
@@ -56,7 +61,6 @@ import {
 } from "@/features/entities/types";
 import { cn, formatCompactNumber } from "@/lib/utils";
 import { useDebounce } from "@/hooks/use-debounce";
-import { useLocalStorageState } from "@/hooks/use-local-storage-state";
 import {
   ChevronsUpDown,
   ClipboardCheck,
@@ -69,10 +73,13 @@ import {
   Shapes,
   Share2,
   Table2,
+  PenLine,
 } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { readHandoff } from "@/features/global-search/handoff";
 import { useState } from "react";
+import { EmailSignaturesQueue } from "@/features/email-signatures/components/email-signatures-queue";
 
 const LIMIT = 15;
 const ALL_TYPES = "__all__";
@@ -81,19 +88,13 @@ export default function EntitiesPage() {
   // A deep link from the dataset breakdown (?datasetId=&entityType=&selectorType=&selectorSubtype=)
   // seeds the initial view; after mount it behaves like any other filter (not URL-synced).
   const initialParams = useSearchParams();
-  const linkedDatasetId = initialParams.get("datasetId") ?? undefined;
-  const [storedDatasetId, setStoredDatasetId] = useLocalStorageState<
-    string | undefined
-  >("entities:datasetId", undefined);
-  const [datasetOverride, setDatasetOverride] = useState<string | undefined>(
-    linkedDatasetId
+  // "See all" from global search: its query and dataset, not URL-synced.
+  const [handoff] = useState(() => readHandoff("entities"));
+  const linkedDatasetId = initialParams.get("datasetId") ?? handoff?.datasetId;
+  const { datasetIds, setDatasetIds } = useDatasetScope(
+    linkedDatasetId ? [linkedDatasetId] : undefined
   );
-  const datasetId = datasetOverride ?? storedDatasetId;
-  const setDatasetId = (id: string | undefined) => {
-    setDatasetOverride(id);
-    setStoredDatasetId(id);
-  };
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(handoff?.query ?? "");
   const [filters, setFilters] = useState<EntityFilters>(() => {
     const f: EntityFilters = {};
     const et = initialParams.get("entityType");
@@ -108,7 +109,7 @@ export default function EntitiesPage() {
   const [sort, setSort] = useState<{
     by: EntitySortKey;
     order: "asc" | "desc";
-  }>({ by: "mention_count", order: "desc" });
+  }>({ by: "mentionCount", order: "desc" });
   const [tab, setTab] = useState<EntityTab>("table");
   const [resolveFocus, setResolveFocus] = useState<{
     id: string;
@@ -116,7 +117,7 @@ export default function EntitiesPage() {
   } | null>(null);
 
   const listQuery = useEntityList({
-    datasetId,
+    datasetIds,
     query: query || undefined,
     entityType: filters.entityType,
     selectorType: filters.selectorType,
@@ -135,7 +136,7 @@ export default function EntitiesPage() {
     setSort((prev) =>
       prev.by === by
         ? { by, order: prev.order === "asc" ? "desc" : "asc" }
-        : { by, order: by === "display_name" ? "asc" : "desc" }
+        : { by, order: by === "displayName" ? "asc" : "desc" }
     );
     setPage(1);
   };
@@ -146,11 +147,16 @@ export default function EntitiesPage() {
     resetPage();
   };
 
-  const unresolved = useUnresolvedNameGroups({ datasetId, page: 1 });
+  const unresolved = useUnresolvedNameGroups({ datasetIds, page: 1 });
   const resolveCount = unresolved.data?.total ?? 0;
-  const autoCreated = useEntityList({ datasetId, provisional: true, limit: 1, page: 1 });
+  const autoCreated = useEntityList({
+    datasetIds,
+    provisional: true,
+    limit: 1,
+    page: 1,
+  });
   const verifyCount = autoCreated.data?.total ?? 0;
-  const breakdown = useEntityBreakdown(datasetId);
+  const breakdown = useEntityBreakdown(datasetIds);
 
   const entities = listQuery.data?.data ?? [];
   const total = listQuery.data?.total ?? 0;
@@ -181,25 +187,31 @@ export default function EntitiesPage() {
     <div className="relative mx-auto max-w-400 px-6 pb-20 pt-5">
       <PageHeader
         eyebrow="Entities"
-        value={!datasetId ? "No dataset selected" : listQuery.data ? `${total.toLocaleString()} ${total === 1 ? "entity" : "entities"}` : undefined}
+        value={
+          datasetIds.length === 0
+            ? "No dataset selected"
+            : listQuery.data
+              ? `${total.toLocaleString()} ${total === 1 ? "entity" : "entities"}`
+              : undefined
+        }
         icon={<Network size={13} className="text-primary/70" />}
         actions={
           <DatasetSelect
-            datasetId={datasetId}
-            onChange={(id) => {
-              setDatasetId(id);
+            datasetIds={datasetIds}
+            onChange={(ids) => {
+              setDatasetIds(ids);
               resetPage();
             }}
           />
         }
       />
 
-      {!datasetId ? (
+      {datasetIds.length === 0 ? (
         <EmptyState
           className="mt-6"
           icon={Database}
-          title="Choose a dataset"
-          body="Entities, mentions, and the relationship graph are scoped to one dataset. Pick one from the selector in the top bar to start exploring."
+          title="Choose datasets"
+          body="Entities, mentions, and the relationship graph are scoped to the datasets you pick. Choose one or more from the selector in the top bar to start exploring."
         />
       ) : (
         <div className="mt-4">
@@ -226,6 +238,13 @@ export default function EntitiesPage() {
                       {formatCompactNumber(verifyCount)}
                     </Badge>
                   )}
+                </TabsTrigger>
+                <TabsTrigger
+                  value="emailSignatures"
+                  className="gap-1.5 px-3 text-xs"
+                >
+                  <PenLine size={13} />
+                  Email signatures
                 </TabsTrigger>
                 <TabsTrigger value="resolve" className="gap-1.5 px-3 text-xs">
                   <GitMerge size={13} />
@@ -378,17 +397,21 @@ export default function EntitiesPage() {
             </TabsContent>
 
             <TabsContent value="graph">
-              <GraphExplorer datasetId={datasetId} />
+              <GraphExplorer datasetIds={datasetIds} />
             </TabsContent>
 
             <TabsContent value="verify">
-              <EntityVerifyList datasetId={datasetId} />
+              <EntityVerifyList datasetIds={datasetIds} />
+            </TabsContent>
+
+            <TabsContent value="emailSignatures">
+              <EmailSignaturesQueue datasetIds={datasetIds} />
             </TabsContent>
 
             <TabsContent value="resolve">
               <NameResolutionQueue
                 key={resolveFocus?.id ?? "all"}
-                datasetId={datasetId}
+                datasetIds={datasetIds}
                 focus={resolveFocus}
                 onClearFocus={() => setResolveFocus(null)}
               />
@@ -400,7 +423,12 @@ export default function EntitiesPage() {
   );
 }
 
-type EntityTab = "table" | "graph" | "verify" | "resolve";
+type EntityTab =
+  | "table"
+  | "graph"
+  | "verify"
+  | "emailSignatures"
+  | "resolve";
 
 const TAB_EXPLAINERS: Record<EntityTab, { question: string; body: string }> = {
   table: {
@@ -414,6 +442,10 @@ const TAB_EXPLAINERS: Record<EntityTab, { question: string; body: string }> = {
   verify: {
     question: "Are these entities real?",
     body: "Entities the resolver auto-created for names that matched nothing. Verify the big ones (keep, rename, or merge a duplicate) before resolving more names to them.",
+  },
+  emailSignatures: {
+    question: "Who works where?",
+    body: "Emails whose sender’s email signature was read: the person, their organization and units, role, address and contact details, and the relationships proposed between them. Fix the labels in the text, then accept, correct or reject each relationship — or add one it missed.",
   },
   resolve: {
     question: "Which entity is this name?",
@@ -486,13 +518,16 @@ function TypeSummary({
   );
 }
 
-function GraphExplorer({ datasetId }: { datasetId: string }) {
+function GraphExplorer({ datasetIds }: { datasetIds: string[] }) {
   const [focus, setFocus] = useState<{ id: string; name: string } | null>(null);
   const [depth, setDepth] = useState(2);
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const debouncedQ = useDebounce(q, 250);
-  const { data: results, isFetching } = useEntitySearch({ datasetId, q: debouncedQ });
+  const { data: results, isFetching } = useEntitySearch({
+    datasetIds,
+    q: debouncedQ,
+  });
 
   return (
     <div className="space-y-3">
@@ -570,13 +605,7 @@ function GraphExplorer({ datasetId }: { datasetId: string }) {
           size="sm"
           className="ml-auto h-9 gap-1.5 text-xs font-medium text-muted-foreground hover:text-primary"
         >
-          <Link
-            href={
-              focus
-                ? `/graph?dataset=${datasetId}&seed=${focus.id}`
-                : `/graph?dataset=${datasetId}`
-            }
-          >
+          <Link href={focus ? `/graph?seed=${focus.id}` : "/graph"}>
             <Share2 size={13} />
             Full graph viewer
           </Link>

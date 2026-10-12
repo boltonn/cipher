@@ -210,6 +210,57 @@ class LlmSignatureOutput(BaseModel):
     addresses: list[str] = Field(default_factory=list)
 
 
+class LlmFileSummary(BaseModel):
+    """A short factual summary of one file."""
+
+    summary: str = Field(default="", description="2-4 sentences: what the file is and what it records")
+
+
+class LlmTableColumn(BaseModel):
+    """One column's type and the party it describes."""
+
+    index: int
+    field_type: str
+    role: str | None = Field(default=None, description="Lowercase English party name, e.g. `sender`")
+
+
+class LlmTableRelationship(BaseModel):
+    """A relationship each row records between two roles."""
+
+    from_role: str
+    to_role: str
+    verb: str
+
+
+class LlmTableColumnsOutput(BaseModel):
+    """Column typing for the `columns` pack."""
+
+    columns: list[LlmTableColumn] = Field(default_factory=list)
+    relationships: list[LlmTableRelationship] = Field(default_factory=list)
+
+
+@lru_cache(maxsize=8)
+def build_table_columns_output_model(field_types: tuple[str, ...], verbs: tuple[str, ...]) -> type[BaseModel]:
+    """`LlmTableColumnsOutput` with `field_type` and `verb` enum-locked to the given vocabularies."""
+    column_model = create_model(
+        "LlmTableColumnStrict",
+        index=(int, Field(description="0-based column index")),
+        field_type=(Literal[field_types], Field(description="Exactly one of the provided field types")),  # type: ignore
+        role=(str | None, Field(default=None, description="Lowercase English party name, or null")),
+    )
+    relationship_model = create_model(
+        "LlmTableRelationshipStrict",
+        from_role=(str, Field()),
+        to_role=(str, Field()),
+        verb=(Literal[verbs], Field(description="Exactly one of the provided verbs")),  # type: ignore
+    )
+    return create_model(
+        "LlmTableColumnsOutputStrict",
+        columns=(list[column_model], Field(default_factory=list)),  # type: ignore
+        relationships=(list[relationship_model], Field(default_factory=list)),  # type: ignore
+    )
+
+
 class EntityExtraction(BaseModel):
     """Entities + relations, offsets resolved against the analyzed text."""
 
@@ -273,6 +324,9 @@ class EventRequest(BaseModel):
     reference_date: str | None = Field(
         default=None, description="ISO date the text was authored, to anchor relative dates ('next Tuesday')"
     )
+    author: str | None = Field(
+        default=None, description="Who wrote the text (an email's From), so 'I' / 'we' get a name"
+    )
     prompt: str | None = Field(default=None, description="Override the events prompt template")
     model: str | None = Field(default=None, description="Override the configured model id")
 
@@ -288,6 +342,9 @@ class ExtractRequest(BaseModel):
     relation_labels: list[str] = Field(default_factory=default_relation_labels)
     reference_date: str | None = Field(
         default=None, description="ISO date the text was authored, to anchor relative dates"
+    )
+    author: str | None = Field(
+        default=None, description="Who wrote the text (an email's From), so 'I' / 'we' get a name"
     )
     model: str | None = Field(default=None, description="Override the configured model id")
 

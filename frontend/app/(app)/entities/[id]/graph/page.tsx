@@ -18,7 +18,7 @@ import {
   type RelationshipType,
   type TraversalDirection,
 } from "@/features/entities/types";
-import { cn } from "@/lib/utils";
+import { cn, humanize } from "@/lib/utils";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { use, useState } from "react";
@@ -160,7 +160,7 @@ export default function EntityGraphPage({
                   : "border-border bg-muted/30 text-muted-foreground hover:text-foreground"
               )}
             >
-              {t.replace(/_/g, " ")}
+              {humanize(t)}
             </button>
           );
         })}

@@ -81,14 +81,6 @@ export function useNameSuggestions(unitId: string) {
   });
 }
 
-/** Signature employers that are not an organization yet (no entity, no resolver guess). */
-export function useUnplacedNameSuggestions() {
-  return useQuery({
-    queryKey: ["name-suggestions", "unplaced"],
-    queryFn: organizationsService.getUnplacedNameSuggestions,
-  });
-}
-
 export function useNameSuggestionEvidence(ids: string[] | undefined) {
   return useQuery({
     queryKey: ["name-suggestions", "evidence", ids],

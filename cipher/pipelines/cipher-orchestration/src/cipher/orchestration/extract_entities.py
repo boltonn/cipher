@@ -25,30 +25,44 @@ Re-runnable: a file with a completed ENTITY_EXTRACTION row is skipped until
 """
 
 import asyncio
+from collections import Counter, defaultdict
+from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING, Protocol
 
 from loguru import logger
+from pyselectors import extract_selectors
 from pyselectors.domains import web_host_containing
+from sqlalchemy import select
 from tqdm import tqdm
 
 from cipher.datastores.postgres.repositories import (
     PostgresEnrichmentRepository,
+    PostgresEntityRepository,
     PostgresExtractedTextRepository,
     PostgresMentionRelationshipRepository,
     PostgresMentionRepository,
 )
-from cipher.datastores.postgres.utils import normalize_name
+from cipher.datastores.postgres.tables.file import FileTable
+from cipher.datastores.postgres.utils import normalize_name, trim_name_span
+from cipher.orchestration.quoted_copies import QuotedCopies
 from cipher.schemas._base.common import ModelDevice
-from cipher.schemas.graph.mention import MentionCreate, MentionedType
+from cipher.schemas.content.text_correction import correction_filter
+from cipher.schemas.graph.mention import Mention, MentionCreate, MentionedType
 from cipher.schemas.graph.mention_relationship import MentionRelationshipCreate
 from cipher.schemas.graph.ontology import (
     RELATION_LABEL_TO_TYPE,
     EntityType,
     ResolutionPolicy,
+    SelectorType,
     mention_target,
 )
 from cipher.schemas.graph.spans import EntitySpan, RelationSpan
-from cipher.schemas.ingestion.enrichment import EnrichableType, EnrichmentType
+from cipher.schemas.ingestion.enrichment import (
+    DEFAULT_FILETYPE_GROUPS,
+    TEXT_NATIVE_GROUPS,
+    EnrichableType,
+    EnrichmentType,
+)
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -56,14 +70,13 @@ if TYPE_CHECKING:
 _CONTEXT_WINDOW = 80
 _PERSISTED_TYPES = {EntityType.PERSON, EntityType.ORGANIZATION, EntityType.LOCATION}
 _EXTRACTORS = ("llm", "gliner", "nerd")
+_CONTACT_SELECTORS = {SelectorType.PHONE, SelectorType.EMAIL, SelectorType.DOMAIN}
 
 # Default span-score floor per extractor, used when --threshold is not passed.
-# Measured against real production data + gold multilingual corpora: nerd's
-# score is well-calibrated only once its span decoding is correct (see
-# `nerd.model.NerdModel`'s word-pooled merge) and gains nothing from a floor
-# above 0.5 -- precision is already 88-99% there and only recall drops as the
-# floor rises. gliner is zero-shot and genuinely under-confident on a lot of
-# real spans; 0.65 trades a bit of recall for meaningfully higher precision.
+# nerd is 88-99% precise at 0.5 on gold multilingual corpora, so 0.5 stays its floor
+# for person names; on noisy real email, organization and place names need more
+# (`nerd.model.LABEL_FLOORS`). gliner is zero-shot and genuinely under-confident on
+# a lot of real spans; 0.65 trades a bit of recall for meaningfully higher precision.
 _DEFAULT_THRESHOLD = {"gliner": 0.65, "nerd": 0.5}
 
 
@@ -175,6 +188,16 @@ def _context(content: str, start: int, end: int) -> str:
     return content[lo:hi].replace("\n", " ").strip()
 
 
+def address_length(surface: str) -> int:
+    """Length of an address span up to the first line of contact details (`Tel: …`, an email, a website)."""
+    offset = 0
+    for line in surface.splitlines(keepends=True):
+        if offset and extract_selectors(line, types=_CONTACT_SELECTORS):
+            return len(surface[:offset].rstrip())
+        offset += len(line)
+    return len(surface)
+
+
 def _to_mention(
     span: EntitySpan,
     *,
@@ -192,12 +215,20 @@ def _to_mention(
     if target.selector_type is not None or target.resolution == ResolutionPolicy.BY_VALUE:
         return None
 
-    surface = span.surface_text.strip()
+    surface, start_offset, end_offset = span.surface_text.strip(), span.start_offset, span.end_offset
     if not surface:
         return None
+    # `"Nick Bolton's"` -> `Nick Bolton`: quotes and a possessive aren't part of the name
+    if target.attribute == "name" and end_offset - start_offset == len(span.surface_text):
+        lead, trail = trim_name_span(span.surface_text)
+        surface, start_offset, end_offset = span.surface_text[lead:trail], start_offset + lead, start_offset + trail
+    # an address runs to its postal lines, not on into the phone / email lines under it
+    if target.attribute == "address" and end_offset - start_offset == len(surface):
+        surface = surface[: address_length(surface)]
+        end_offset = start_offset + len(surface)
     # `Udemy.com`, or `Towards` cut from `towardsdatascience.com`: a website is a `domain`
     # selector (the pattern pass records it), never a person/organization name
-    if target.attribute == "name" and web_host_containing(content, span.start_offset, span.end_offset):
+    if target.attribute == "name" and web_host_containing(content, start_offset, end_offset):
         return None
 
     return MentionCreate(
@@ -209,13 +240,38 @@ def _to_mention(
         entity_type=target.entity_type,
         entity_attribute=target.attribute,
         normalized_value=normalize_name(surface) if target.attribute == "name" else surface,
-        start_offset=span.start_offset,
-        end_offset=span.end_offset,
-        context=_context(content, span.start_offset, span.end_offset),
+        start_offset=start_offset,
+        end_offset=end_offset,
+        context=_context(content, start_offset, end_offset),
         extractor=extractor,
         extraction_model=model,
         extraction_confidence=span.score,
     )
+
+
+def entity_inheritance(
+    old: list[Mention], dataset_names: dict[tuple[str, str], str]
+) -> Callable[[MentionCreate], str | None]:
+    """How a re-extracted mention keeps the entity its predecessor was resolved to.
+
+    Same span and type first, then the same name in the same text, then a name that
+    resolves to exactly one entity across the dataset -- so a rescan never undoes resolution.
+    """
+    by_span = {(m.start_offset, m.end_offset, str(m.entity_type)): m.entity_id for m in old if m.entity_id}
+    by_name: dict[tuple[str, str], Counter] = defaultdict(Counter)
+    for m in old:
+        if m.entity_id and m.normalized_value:
+            by_name[(str(m.entity_type), m.normalized_value)][m.entity_id] += 1
+
+    def entity_for(mention: MentionCreate) -> str | None:
+        name = (str(mention.entity_type), mention.normalized_value)
+        if hit := by_span.get((mention.start_offset, mention.end_offset, str(mention.entity_type))):
+            return hit
+        if name in by_name:
+            return by_name[name].most_common(1)[0][0]
+        return dataset_names.get(name)
+
+    return entity_for
 
 
 class MentionRowRef:
@@ -285,12 +341,18 @@ async def persist_file_entities(
     mention_repo: PostgresMentionRepository,
     relation_repo: PostgresMentionRelationshipRepository,
     persist_relations: bool = True,
+    entity_for: Callable[[MentionCreate], str | None] | None = None,
+    keep: Callable[[int, int], bool] | None = None,
 ) -> tuple[int, int]:
     """Write one file's entity spans + relations as `mention` / `mention_relationship` rows.
 
     Returns `(mentions_written, relations_written)`. Shared by
-    `extract_entities_workflow` and the combined `extract_llm_workflow`.
+    `extract_entities_workflow` and the combined `extract_llm_workflow`. ``entity_for``
+    pre-resolves each mention (a rescan inheriting its predecessors' entities); ``keep``
+    filters spans by offset (a corrected text: `correction_filter`).
     """
+    if keep is not None:
+        spans = [span for span in spans if keep(span.start_offset, span.end_offset)]
     mentions = [
         m
         for span in spans
@@ -307,6 +369,9 @@ async def persist_file_entities(
         )
         is not None
     ]
+    if entity_for is not None:
+        for mention in mentions:
+            mention.entity_id = entity_for(mention)
     saved = await mention_repo.add_mentions_returning(mentions)
 
     relation_count = 0
@@ -329,13 +394,23 @@ async def persist_file_entities(
     return len(saved), relation_count
 
 
-async def queue_entity_extraction_enrichments(session: "AsyncSession", dataset_id: str) -> int:
-    """Queue ENTITY_EXTRACTION enrichments for every file in the dataset without one."""
+async def queue_entity_extraction_enrichments(
+    session: "AsyncSession",
+    dataset_id: str,
+    filetype_groups: Sequence[str] = DEFAULT_FILETYPE_GROUPS[EnrichmentType.ENTITY_EXTRACTION],
+) -> int:
+    """Queue ENTITY_EXTRACTION enrichments for the dataset's files in `filetype_groups` (tables only when listed)."""
     enrichment_repo = PostgresEnrichmentRepository(session=session)
-    count = await enrichment_repo.queue_enrichments_by_filter(
-        dataset_id=dataset_id,
-        enrichment_type=EnrichmentType.ENTITY_EXTRACTION,
-    )
+    count = 0
+    for group in filetype_groups:
+        queue = (
+            enrichment_repo.queue_enrichments_by_filter
+            if group in TEXT_NATIVE_GROUPS
+            else enrichment_repo.queue_files_with_text
+        )
+        count += await queue(
+            dataset_id=dataset_id, enrichment_type=EnrichmentType.ENTITY_EXTRACTION, filetype_group=group
+        )
     await session.commit()
     return count
 
@@ -352,8 +427,19 @@ async def extract_entities_workflow(
     threshold: float | None = None,
     persist_relations: bool = True,
     device: ModelDevice = ModelDevice.CPU,
+    filetype_groups: Sequence[str] = DEFAULT_FILETYPE_GROUPS[EnrichmentType.ENTITY_EXTRACTION],
+    rescan: bool = False,
 ) -> int:
-    """Run NER + relation extraction over a dataset's text. Returns files processed."""
+    """Run NER + relation extraction over a dataset's text. Returns files processed.
+
+    Quoted copies of emails the dataset holds as files of their own are skipped
+    (`QuotedCopies`), so a thread's names count once, not once per reply.
+
+    ``rescan`` re-extracts already-processed files: each text's mentions from this
+    extractor are replaced (atomically, per file) by fresh ones that inherit their
+    predecessors' entities (`entity_inheritance`); hand-corrected texts are left alone,
+    and auto-created entities left with no evidence are dropped at the end.
+    """
     engine = _build_extractor(
         extractor,
         model=model,
@@ -364,12 +450,22 @@ async def extract_entities_workflow(
         device=device,
     )
 
-    await queue_entity_extraction_enrichments(session=session, dataset_id=dataset_id)
+    await queue_entity_extraction_enrichments(session=session, dataset_id=dataset_id, filetype_groups=filetype_groups)
 
     enrichment_repo = PostgresEnrichmentRepository(session=session)
     extracted_text_repo = PostgresExtractedTextRepository(session=session)
     mention_repo = PostgresMentionRepository(session=session)
     relation_repo = PostgresMentionRelationshipRepository(session=session)
+    dataset_names: dict[tuple[str, str], str] = {}
+    if rescan:
+        file_ids = list(
+            (await session.execute(select(FileTable.id).where(FileTable.dataset_id == dataset_id))).scalars()
+        )
+        for start in range(0, len(file_ids), 10_000):
+            await enrichment_repo.requeue(file_ids[start : start + 10_000], EnrichmentType.ENTITY_EXTRACTION)
+        await session.commit()
+        dataset_names = await mention_repo.unambiguous_name_entities(dataset_id=dataset_id, extractor=engine.name)
+    quoted_copies = await QuotedCopies.load(session, dataset_id)
 
     total = await enrichment_repo.count_pending(
         enrichment_type=EnrichmentType.ENTITY_EXTRACTION,
@@ -395,7 +491,7 @@ async def extract_entities_workflow(
             texts = await extracted_text_repo.get_by_file_ids([item.resource["id"] for item in batch])
             precomputed: dict[str, tuple[list[EntitySpan], list[RelationSpan]]] = {}
             if isinstance(engine, _NerdExtractor):
-                todo = {fid: t.content for fid, t in texts.items() if t.content and t.content.strip()}
+                todo = {fid: quoted_copies.mask(t) for fid, t in texts.items() if t.content and t.content.strip()}
                 try:
                     precomputed = dict(zip(todo, await engine.extract_batch(list(todo.values())), strict=True))
                 except Exception as e:
@@ -407,11 +503,22 @@ async def extract_entities_workflow(
                 try:
                     extracted = texts.get(file_id)
                     content = (extracted.content or "") if extracted is not None else ""
-                    if not content.strip():
+                    if not content.strip() or (rescan and extracted.is_mentions_corrected):
                         completed.append(item.enrichment.id)
                         continue
 
-                    spans, relations = precomputed.get(file_id) or await engine.extract(content)
+                    entity_for = keep = None
+                    if extracted.is_content_corrected and not rescan:
+                        keep = correction_filter(
+                            corrected_ranges=extracted.corrected_ranges or [],
+                            taken=await mention_repo.text_spans(mentioned_id=extracted.id),
+                        )
+                    if rescan:
+                        old = await mention_repo.extractor_mentions(mentioned_id=extracted.id, extractor=engine.name)
+                        await mention_repo.delete_extractor_mentions(mentioned_id=extracted.id, extractor=engine.name)
+                        entity_for = entity_inheritance(old, dataset_names)
+
+                    spans, relations = precomputed.get(file_id) or await engine.extract(quoted_copies.mask(extracted))
                     written_mentions, written_relations = await persist_file_entities(
                         spans=spans,
                         relations=relations,
@@ -424,6 +531,8 @@ async def extract_entities_workflow(
                         mention_repo=mention_repo,
                         relation_repo=relation_repo,
                         persist_relations=persist_relations,
+                        entity_for=entity_for,
+                        keep=keep,
                     )
                     mention_count += written_mentions
                     relation_count += written_relations
@@ -444,6 +553,9 @@ async def extract_entities_workflow(
             pbar.set_postfix(failed=failed_count, mentions=mention_count, relations=relation_count)
             pbar.update(len(completed) + len(failed))
 
+    if rescan:
+        emptied = await PostgresEntityRepository(session=session).delete_empty_provisional(dataset_id)
+        logger.info(f"Dropped {emptied} auto-created entities left with no evidence")
     logger.success(
         f"Extracted {mention_count} name/address mentions and {relation_count} mention relations "
         f"from {count} files ({failed_count} failed)"

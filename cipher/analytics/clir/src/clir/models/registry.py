@@ -40,6 +40,5 @@ def get_model_config_from_name(model_dir: Path) -> ModelConfig:
         if key.value in name:
             return config
     raise ValueError(
-        f"Model config not found for directory: {model_dir}"
-        f" (tried keys: {sorted(key.value for key in MODEL_REGISTRY)})"
+        f"Model config not found for directory: {model_dir} (tried keys: {sorted(key.value for key in MODEL_REGISTRY)})"
     )

@@ -1,9 +1,8 @@
 from datetime import UTC, datetime
-from enum import StrEnum
 
 from pydantic import Field, computed_field
 
-from cipher.schemas._base.base import BaseModel
+from cipher.schemas._base.base import BaseModel, StrEnum
 
 
 class CommentableType(StrEnum):

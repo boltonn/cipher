@@ -13,6 +13,24 @@
     {
       "name": "mrz_td2",
       "regex": "P[A-Z0-9<]{35}[\\r\\n\\s]{1,3}[A-Z0-9<]{36}"
+    },
+    {
+      "name": "ru_series_number",
+      "regex": "(?<![\\w])\\d{2}[ \\t]?\\d{2}[ \\t]?(?:№[ \\t]?)?\\d{6}(?![\\w])",
+      "base_confidence": 0.4,
+      "requires_context": true
+    },
+    {
+      "name": "letters_digits",
+      "regex": "(?<![\\w])[A-Z]{1,2}[ \\t]?\\d{6,8}(?![\\w])",
+      "base_confidence": 0.4,
+      "requires_context": true
+    },
+    {
+      "name": "digits9",
+      "regex": "(?<![\\w])\\d{9}(?![\\w])",
+      "base_confidence": 0.3,
+      "requires_context": true
     }
   ],
   "context": {
@@ -21,8 +39,20 @@
     "terms": {
       "en": [
         {"term": "passport", "weight": 0.15},
-        {"term": "mrz", "weight": 0.15}
-      ]
+        {"term": "mrz", "weight": 0.15},
+        {"term": "passport no", "weight": 0.2}
+      ],
+      "ru": [
+        {"term": "паспорт", "weight": 0.2},
+        {"term": "загранпаспорт", "weight": 0.2},
+        {"term": "серия", "weight": 0.1}
+      ],
+      "uk": [{"term": "паспорт", "weight": 0.2}],
+      "zh": [{"term": "护照", "weight": 0.2}],
+      "ar": [{"term": "جواز", "weight": 0.2}],
+      "fa": [{"term": "گذرنامه", "weight": 0.2}, {"term": "پاسپورت", "weight": 0.2}],
+      "fr": [{"term": "passeport", "weight": 0.2}],
+      "es": [{"term": "pasaporte", "weight": 0.2}]
     }
   }
 }

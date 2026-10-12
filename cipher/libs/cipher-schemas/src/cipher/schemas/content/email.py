@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime
-from enum import StrEnum
-from pathlib import Path
 from typing import Literal, Self, TypedDict
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
-from cipher.schemas._base.base import BaseModel
+from cipher.schemas._base.base import BaseModel, StrEnum
 from cipher.schemas.content.search import CorrespondenceFilters, MentionSpan, TextChunk
 from cipher.schemas.ingestion.file import FileBase
 
@@ -159,6 +157,16 @@ class NamedParticipant(BaseModel):
     type: ParticipantType
     value: str
 
+    @field_validator("name", mode="before")
+    @classmethod
+    def _clean_name(cls, name: str | None) -> str | None:
+        """Strip wrapping quotes (Outlook's `'Nick Bolton'`); none when the name is just an address.
+
+        `"bolton213@yahoo.com" <bolton213@yahoo.com>` carries no name.
+        """
+        name = " ".join((name or "").split()).strip("'\"`").strip()
+        return None if not name or ("@" in name and " " not in name) else name
+
 
 class EmailAddress(NamedParticipant):
     """A participant whose contact string is an email address.
@@ -176,6 +184,39 @@ class NamedParticipantDict(TypedDict, total=False):
     value: str
 
 
+class MeaningfulHashSource(StrEnum):
+    """What an email's meaningful hash was computed from."""
+
+    MESSAGE_ID = "message_id"
+    CONTENT = "content"
+
+
+class QuoteKind(StrEnum):
+    """How an earlier message came to sit inside this email's text."""
+
+    REPLY = "reply"
+    FORWARD = "forward"
+
+
+class QuotedBlock(BaseModel):
+    """An earlier message carried inside this email's text -- a reply's quoted history or a forward.
+
+    Offsets index the extracted text; the block runs from its attribution
+    ("On Mon, Megan <m@x.com> wrote:", "-----Original Message-----", "От: ...")
+    to where the next quoted message starts or the quote ends.
+    """
+
+    start_offset: int
+    end_offset: int
+    kind: QuoteKind
+    attribution: str | None = Field(default=None, description="The line(s) introducing the quote, as written")
+    from_name: str | None = None
+    from_address: str | None = None
+    date_sent: datetime | None = Field(
+        default=None, description="Parsed only when the attribution writes it in English/RFC form"
+    )
+
+
 class EmailMetadata(BaseModel):
     """Email-specific metadata, denormalized onto every chunk of that email."""
 
@@ -191,12 +232,24 @@ class EmailMetadata(BaseModel):
     cc: list[EmailAddress] = Field(default_factory=list)
     bcc: list[EmailAddress] = Field(default_factory=list)
     date_sent: datetime | None = None
-    conversation_id: str | None = None
+    conversation_id: str | None = Field(
+        default=None,
+        description="The client's thread id (Gmail/Outlook), else the thread's root Message-ID from References/In-Reply-To",
+    )
+    in_reply_to: str | None = None
+    references: list[str] = Field(default_factory=list, description="Message-IDs of the thread so far, oldest first")
+    quoted_blocks: list[QuotedBlock] = Field(default_factory=list)
     email_client: EmailClient = Field(
         default=EmailClient.UNKNOWN, description="Mailbox export this email's status/label headers follow"
     )
     state: MessageState | None = None
     message_id: str | None = None
+    meaningful_hash: str | None = Field(
+        default=None,
+        description="Same for every copy of one message (an inbox and a Sent folder, two mailboxes): "
+        "from the Message-ID, else from sender, To/Cc, date, subject and opening text",
+    )
+    meaningful_hash_source: MeaningfulHashSource | None = Field(default=None)
     labels: list[str] = Field(default_factory=list, description="Labels or folders associated with the email")
     categories: list[EmailCategory] = Field(
         default_factory=list, description="The mail client's inbox categories (promotions, social, ...)"
@@ -226,14 +279,46 @@ class EmailBase(BaseModel):
     plain: str | None = None
     html: str | None = None
     metadata: EmailMetadata
+    is_encrypted: bool = Field(
+        default=False,
+        description="Its body needs a key (S/MIME encrypted, IPM.Note.SMIME); its headers were still read",
+    )
 
-    # Polymorphic: enriched objects if file_typer is used, else Paths
-    attachments: list[FileBase | Path] = Field(default_factory=list)
+    attachments: list[FileBase] = Field(
+        default_factory=list,
+        description="True attachments, as the parser's sink returned them (path / uri set when stored); "
+        "not the images the body shows inline",
+    )
 
-    meaningful_hash: str | None = None
     raw_header: dict[str, str] | None = None
 
     model_config = {"populate_by_name": True}
+
+
+class ConversationSource(StrEnum):
+    """How a conversation's emails were found."""
+
+    HEADERS = "headers"  # `conversation_id` from the client's thread id / References / In-Reply-To
+    QUOTED_TEXT = "quoted_text"  # also emails the headers miss: same subject, within 30 days, one quotes the other
+
+
+class ConversationEmail(BaseModel):
+    """One email in a conversation, as listed beside the open email."""
+
+    file_id: str
+    title: str | None = None
+    from_name: str | None = None
+    from_address: str | None = None
+    date_sent: datetime | None = None
+    preview: str = Field(default="", description="Opening of the text this email adds, quoted history excluded")
+
+
+class EmailConversation(BaseModel):
+    """The emails of one conversation in `date_sent` order, copies of one message listed once."""
+
+    conversation_id: str | None = None
+    source: ConversationSource = ConversationSource.HEADERS
+    emails: list[ConversationEmail] = Field(default_factory=list)
 
 
 class EmailTextChunk(EmailMetadata, TextChunk):

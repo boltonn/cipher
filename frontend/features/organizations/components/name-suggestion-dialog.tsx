@@ -43,6 +43,11 @@ const SOURCE_LABEL = {
   signature: "email signature",
   membership: "membership email",
 } as const;
+/** Why the address owner is offered for the person end. */
+const OWNER_REASON = {
+  signature: "which this signature was confirmed against",
+  membership: "the address the membership email was sent to",
+} as const;
 
 /** The pick that needs no decision: already resolved, or the owner of the sending address. */
 function initialPick(side: NameSuggestionSide): Pick | null {
@@ -120,14 +125,19 @@ function Review({
         </DialogTitle>
         <DialogDescription className="text-xs text-muted-foreground">
           {s.role ? `${s.role} · ` : ""}from{" "}
-          {plural(s.sightings, SOURCE_LABEL[s.extractor])} · the names are not settled
-          yet, so choose who each one is
+          {plural(s.sightings, SOURCE_LABEL[s.extractor])} · the names are not
+          settled yet, so choose who each one is
         </DialogDescription>
       </DialogHeader>
 
       <div className="max-h-[60vh] space-y-4 overflow-y-auto pr-1">
         <div className="grid gap-3 sm:grid-cols-2">
-          <SidePicker side={s.source} pick={source} onPick={setSource} />
+          <SidePicker
+            side={s.source}
+            ownerReason={OWNER_REASON[s.extractor]}
+            pick={source}
+            onPick={setSource}
+          />
           <SidePicker side={s.target} pick={target} onPick={setTarget} />
         </div>
 
@@ -192,10 +202,12 @@ function Review({
 
 function SidePicker({
   side,
+  ownerReason,
   pick,
   onPick,
 }: {
   side: NameSuggestionSide;
+  ownerReason?: string;
   pick: Pick | null;
   onPick: (pick: Pick) => void;
 }) {
@@ -203,7 +215,7 @@ function SidePicker({
   if (side.owner) {
     options.push({
       pick: { entityId: side.owner.id, label: side.owner.displayName },
-      reason: `owns ${side.ownerAddress ?? "the sending address"}, which this signature was confirmed against`,
+      reason: `owns ${side.ownerAddress ?? "the address"}, ${ownerReason}`,
     });
   }
   if (side.guess && side.guess.id !== side.owner?.id) {
@@ -212,10 +224,12 @@ function SidePicker({
       reason: `the resolver's best guess${side.guessScore != null ? ` (${Math.round(side.guessScore * 100)}%)` : ""}`,
     });
   }
-  options.push({
-    pick: { entityId: null, label: side.name },
-    reason: `create a new ${side.entityType}`,
-  });
+  // a bare address is no name to create someone under -- pick who owns it instead
+  if (!side.name.includes("@"))
+    options.push({
+      pick: { entityId: null, label: side.name },
+      reason: `create a new ${side.entityType}`,
+    });
   const isChosen = (option: Pick) =>
     pick?.entityId === option.entityId && pick?.label === option.label;
 
@@ -302,7 +316,7 @@ function Effects({
     Boolean
   );
   const edge =
-    s.relationshipType === "part_of"
+    s.relationshipType === "partOf"
       ? `make ${target.label} the parent of ${source.label}`
       : `add ${source.label} employed by ${target.label}${s.role ? ` (${s.role})` : ""}`;
 

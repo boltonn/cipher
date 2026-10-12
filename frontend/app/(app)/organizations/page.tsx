@@ -7,7 +7,6 @@ import { Pagination } from "@/components/pagination";
 import { SearchBarShell } from "@/components/search-bar-shell";
 import { SearchInput } from "@/components/search-input";
 import { useEntityList } from "@/features/entities/hooks/use-entities";
-import { UnplacedOrganizations } from "@/features/organizations/components/unplaced-organizations";
 import type { EntitySearchParameters } from "@/features/entities/types";
 import { BadgeCheck, Building2, Search } from "lucide-react";
 import Link from "next/link";
@@ -18,7 +17,7 @@ const LIMIT = 48;
 export default function OrganizationsPage() {
   const [params, setParams] = useState<EntitySearchParameters>({
     entityType: "organization",
-    sortBy: "mention_count",
+    sortBy: "mentionCount",
     sortOrder: "desc",
     limit: LIMIT,
     page: 1,
@@ -53,10 +52,6 @@ export default function OrganizationsPage() {
             }
           />
         </SearchBarShell>
-      </div>
-
-      <div className="mt-4">
-        <UnplacedOrganizations />
       </div>
 
       <main className="mt-6">

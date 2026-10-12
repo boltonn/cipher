@@ -34,7 +34,7 @@ from cipher.orchestration.image_size import DEFAULT_MIN_IMAGE_SIDE, is_below_min
 from cipher.schemas.content.image import ImageCreate
 from cipher.schemas.identity.face import face_annotation_to_face_create
 from cipher.schemas.ingestion.enrichment import EnrichableType, EnrichmentType
-from cipher.utils.io import fetch_bytes_from_uri
+from cipher.utils.uri import read_bytes
 
 if TYPE_CHECKING:
     from face.api.deps import AsyncInsightFaceModel
@@ -71,7 +71,7 @@ async def _get_or_create_image(image_repo: PostgresImageRepository, file_id: str
 
 def _sync_load_image(uri: str) -> PILImage.Image:
     """CPU worker: fetch and decode an image."""
-    return PILImage.open(BytesIO(fetch_bytes_from_uri(uri))).convert("RGB")
+    return PILImage.open(BytesIO(read_bytes(uri))).convert("RGB")
 
 
 async def _producer(
@@ -307,4 +307,26 @@ async def get_face_detection_stats(
         enrichable_type=EnrichableType.FILE,
         dataset_id=dataset_id,
         enrichment_type=EnrichmentType.FACE_DETECTION,
+    )
+
+
+_LANDMARK_KEYS = {"left_eye": "lefteye", "right_eye": "righteye", "nose_tip": "nose"}
+
+
+def _stored_face_quality(image, bounding_box: dict, landmarks: list[dict], confidence: float | None) -> float:
+    """Quality of a stored face from its saved bbox/landmarks (no re-detection)."""
+    import numpy as np
+    from face.utils.quality import face_quality
+
+    points = {f"{_LANDMARK_KEYS[p['label']]}_x": p["x"] for p in landmarks if p.get("label") in _LANDMARK_KEYS}
+    return face_quality(
+        image=np.asarray(image),
+        bbox={
+            "xmin": bounding_box["x"],
+            "ymin": bounding_box["y"],
+            "xmax": bounding_box["x"] + bounding_box["width"],
+            "ymax": bounding_box["y"] + bounding_box["height"],
+        },
+        landmarks=points,
+        confidence=confidence or 0.0,
     )

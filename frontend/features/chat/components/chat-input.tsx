@@ -15,6 +15,7 @@ import { DatasetMultiSelectCombobox } from "@/features/datasets/components/datas
 import type { ChatStatus, UIMessage } from "ai";
 import { Trash2Icon } from "lucide-react";
 import { useState } from "react";
+import { AutonomyToggle } from "./autonomy-toggle";
 import { ModelConfigPopover } from "./model-config-popover";
 
 interface ChatInputProps {
@@ -56,6 +57,7 @@ export function ChatInput({
       <PromptInputFooter>
         <PromptInputTools>
           <ModelConfigPopover />
+          <AutonomyToggle />
           <DatasetMultiSelectCombobox
             compact
             value={datasetIds}

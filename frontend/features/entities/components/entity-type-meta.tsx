@@ -20,6 +20,7 @@ import {
   Network,
   Phone,
   Smartphone,
+  Wifi,
   User,
   type LucideIcon,
 } from "lucide-react";
@@ -110,14 +111,15 @@ export const SELECTOR_TYPE_META: Record<
   email: { label: SELECTOR_TYPE_LABELS.email, Icon: Mail },
   ip: { label: SELECTOR_TYPE_LABELS.ip, Icon: Network },
   iban: { label: SELECTOR_TYPE_LABELS.iban, Icon: Landmark },
-  bank_card: { label: SELECTOR_TYPE_LABELS.bank_card, Icon: CreditCard },
+  bankCard: { label: SELECTOR_TYPE_LABELS.bankCard, Icon: CreditCard },
   passport: { label: SELECTOR_TYPE_LABELS.passport, Icon: IdCard },
-  national_id: { label: SELECTOR_TYPE_LABELS.national_id, Icon: IdCard },
+  nationalId: { label: SELECTOR_TYPE_LABELS.nationalId, Icon: IdCard },
   imei: { label: SELECTOR_TYPE_LABELS.imei, Icon: Smartphone },
   imsi: { label: SELECTOR_TYPE_LABELS.imsi, Icon: Smartphone },
-  social_handle: { label: SELECTOR_TYPE_LABELS.social_handle, Icon: AtSign },
-  crypto_address: { label: SELECTOR_TYPE_LABELS.crypto_address, Icon: Bitcoin },
-  license_plate: { label: SELECTOR_TYPE_LABELS.license_plate, Icon: Car },
+  macAddress: { label: SELECTOR_TYPE_LABELS.macAddress, Icon: Wifi },
+  socialHandle: { label: SELECTOR_TYPE_LABELS.socialHandle, Icon: AtSign },
+  cryptoAddress: { label: SELECTOR_TYPE_LABELS.cryptoAddress, Icon: Bitcoin },
+  licensePlate: { label: SELECTOR_TYPE_LABELS.licensePlate, Icon: Car },
   domain: { label: SELECTOR_TYPE_LABELS.domain, Icon: Globe },
 };
 

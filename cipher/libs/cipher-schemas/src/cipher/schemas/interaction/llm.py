@@ -1,10 +1,8 @@
 """Chat-model provider configuration and the agent-config payload sent to the frontend."""
 
-from enum import StrEnum
-
 from pydantic import BaseModel, Field, field_validator
 
-from cipher.schemas._base.base import BaseModel as CamelModel
+from cipher.schemas._base.base import BaseModel as CamelModel, StrEnum
 
 
 class LLMProvider(StrEnum):

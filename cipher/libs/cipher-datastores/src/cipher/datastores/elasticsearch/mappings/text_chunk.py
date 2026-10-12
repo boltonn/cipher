@@ -65,9 +65,8 @@ def build_text_chunk_mapping(
                 "tags": {"type": "keyword"},
                 "keywords": {"type": "keyword"},
                 "date_created": {"type": "date"},
-                # Entity/selector denormalization (written post-hoc by
-                # sync-chunk-entities after extract-selectors / extract-entities;
-                # lets an entity filter compose with BM25/kNN and be faceted).
+                # Entity/selector denormalization -- unused since `sync-chunk-entities`
+                # was retired; entity filters resolve live from `mention.chunk_id`.
                 "entity_ids": {"type": "keyword"},
                 "entity_types": {"type": "keyword"},
                 "selector_types": {"type": "keyword"},

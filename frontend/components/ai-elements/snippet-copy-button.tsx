@@ -1,7 +1,6 @@
 "use client";
 
 import { InputGroupButton } from "@/components/ui/input-group";
-import { cn } from "@/lib/utils";
 import { CheckIcon, CopyIcon } from "lucide-react";
 import type { ComponentProps } from "react";
 import { useCallback, use, useEffect, useRef, useState } from "react";

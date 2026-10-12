@@ -54,8 +54,9 @@ from cipher.datastores.postgres.tables.extracted_text import ExtractedTextTable
 from cipher.datastores.postgres.tables.file import FileTable
 from cipher.datastores.postgres.utils import normalize_name
 from cipher.orchestration.memberships import persist_memberships
+from cipher.orchestration.run_recorder import RunStoppedError
 from cipher.schemas._base.common import ModelTagType
-from cipher.schemas.content.email import EmailCategory, EmailMetadata, MessageState
+from cipher.schemas.content.email import EmailCategory, EmailMetadata, MessageState, NamedParticipant
 from cipher.schemas.graph.event import (
     EVENT_FILE_TAG,
     DatePrecision,
@@ -67,10 +68,10 @@ from cipher.schemas.graph.event import (
 from cipher.schemas.graph.event_participant import EventParticipantCreate, EventParticipantRole, RsvpStatus
 from cipher.schemas.graph.event_place import EventPlaceCreate, EventPlaceRole
 from cipher.schemas.graph.location import LocationCreate
-from cipher.schemas.graph.ontology import LocationSource
+from cipher.schemas.graph.ontology import LocationSource, SelectorType
 from cipher.schemas.ingestion.enrichment import EnrichableType, EnrichmentType, ProcessingStatus
 from cipher.schemas.interaction.tag import TagSource
-from cipher.utils.io import fetch_bytes_from_uri
+from cipher.utils.uri import read_bytes
 
 if TYPE_CHECKING:
     from pyparse.parsers.calendar.ics import ParsedCalendarEvent, ParsedCalendarPerson
@@ -163,10 +164,36 @@ def _to_event_create(parsed: "ParsedCalendarEvent", *, dataset_id: str, file_id:
     )
 
 
+def _participant_identity(name: str | None, email: str | None) -> tuple[str | None, str | None]:
+    """(raw_name, raw_email): the address normalized as a selector; a bare address given as the name moves to email."""
+    from pyselectors import resolve_cell
+
+    name = (name or "").strip() or None
+    if not email and name and (span := resolve_cell(name, SelectorType.EMAIL)):
+        return None, span.normalized_value
+    if email and (span := resolve_cell(email, SelectorType.EMAIL)):
+        email = span.normalized_value
+    return name, (email or "").strip().lower() or None
+
+
+# What a model writes when the passage names nobody: the author's own words for themselves, else nobody.
+_AUTHOR_STAND_INS = frozenset({"sender", "author", "writer", "i", "me", "we", "us", "myself", "self"})
+_NOBODY_STAND_INS = frozenset({"recipient", "you", "reader", "unknown", "someone", "user", "n/a", "none"})
+
+
+def _llm_participant_identity(name: str, author: NamedParticipant | None) -> tuple[str | None, str | None]:
+    """(raw_name, raw_email) for a model-read participant; a stand-in for the author becomes the email's From."""
+    key = name.strip().strip(".\"'").lower()
+    if key in _NOBODY_STAND_INS or (key in _AUTHOR_STAND_INS and author is None):
+        return None, None
+    if key in _AUTHOR_STAND_INS:
+        return _participant_identity(author.name, author.value)
+    return _participant_identity(name, None)
+
+
 def _cal_participant(person: "ParsedCalendarPerson", role: EventParticipantRole) -> EventParticipantCreate | None:
     """Map an `.ics` ORGANIZER/ATTENDEE to an unresolved `EventParticipantCreate`."""
-    name = (person.name or "").strip() or None
-    email = (person.email or "").strip().lower() or None
+    name, email = _participant_identity(person.name, person.email)
     if not name and not email:
         return None
     return EventParticipantCreate(
@@ -184,14 +211,14 @@ async def _extract_calendar_file(
     location_repo: PostgresLocationRepository,
 ) -> int:
     """Parse one `.ics` file into event rows (+ unresolved participant/place links). Returns events written."""
-    from pyparse.parsers.calendar.ics import IcsParser
+    from pyparse.parsers.calendar.ics import parse_events
 
     file_id = file_resource["id"]
     dataset_id = file_resource["dataset_id"]
 
-    payload = fetch_bytes_from_uri(file_resource["uri"])
+    payload = read_bytes(file_resource["uri"])
     written = 0
-    for parsed in IcsParser.parse(payload):
+    for parsed in parse_events(payload):
         create = _to_event_create(parsed, dataset_id=dataset_id, file_id=file_id)
         if create is None:
             continue
@@ -441,10 +468,12 @@ async def persist_llm_events(
     model: str | None,
     seen: set[str],
     event_repo: PostgresEventRepository,
+    author: NamedParticipant | None = None,
 ) -> int:
     """Write one file's LLM `ParsedEvent`s as `event` (+ participant/place) rows.
 
     Skips an event whose dedup keys are already in `seen` (mutated in place).
+    `author` (the email's From) stands in for "Sender" / "me"; other stand-in names are dropped.
     Returns events written. Shared by `extract_text_events_workflow` and the
     combined `extract_llm_workflow`.
     """
@@ -466,14 +495,15 @@ async def persist_llm_events(
 
         event = await event_repo.add_event(create)
         for participant in parsed.participants:
-            name = participant.name.strip()
-            if not name:
+            name, email = _llm_participant_identity(participant.name, author)
+            if not name and not email:
                 continue
             role = participant.role.strip().lower()
             await event_repo.add_participant(
                 event_id=event.id,
                 payload=EventParticipantCreate(
                     raw_name=name,
+                    raw_email=email,
                     role=role if role in _PARTICIPANT_ROLES else EventParticipantRole.ATTENDEE,
                 ),
             )
@@ -498,7 +528,7 @@ async def persist_llm_events(
 # --------------------------------------------------------------------------- #
 EVENT_GATE_LABELS: dict[str, str] = {
     "personal_event": "booking confirmation, itinerary, reservation, or arranging to meet",
-    "membership": "membership or account welcome, activation, renewal, or dues receipt",
+    "membership": "club, gym, team, association, or school membership welcome, renewal, or dues receipt",
     "marketing": "marketing, promotion, or newsletter",
 }
 # The LLM pass also reads memberships, so either label lets an email through.
@@ -722,6 +752,18 @@ def _reference_date(extracted) -> str | None:
     return authored.date().isoformat() if authored is not None else None
 
 
+def _author(extracted) -> NamedParticipant | None:
+    """The email's From, so the LLM pass can name "I" / "we" (None for non-email text)."""
+    metadata = getattr(extracted, "metadata", None)
+    return getattr(metadata, "sent_from", None) if metadata is not None else None
+
+
+def _author_label(author: NamedParticipant | None) -> str | None:
+    if author is None:
+        return None
+    return " ".join(part for part in (author.name, f"<{author.value}>" if author.value else None) if part) or None
+
+
 async def _load_event_dedup_keys(session: "AsyncSession", dataset_id: str) -> set[str]:
     """Every dedup key for the dataset's existing events, so the LLM pass never re-adds one."""
     rows = (
@@ -807,7 +849,11 @@ async def extract_text_events_workflow(
     async def _call(item, extracted):
         async with semaphore:
             try:
-                return item, await runner.extract_events(extracted.content, reference_date=_reference_date(extracted))
+                return item, await runner.extract_events(
+                    extracted.content,
+                    reference_date=_reference_date(extracted),
+                    author=_author_label(_author(extracted)),
+                )
             except Exception as e:  # noqa: BLE001 -- reported per file below
                 return item, e
 
@@ -868,6 +914,7 @@ async def extract_text_events_workflow(
                             model=resolved_model,
                             seen=seen,
                             event_repo=event_repo,
+                            author=_author(extracted_by_file[file_id]),
                         )
                         await persist_memberships(
                             session,
@@ -883,6 +930,15 @@ async def extract_text_events_workflow(
                         await session.rollback()
                         failed[item.enrichment.id] = e
 
+                # A whole batch failing is the server, not the files: requeue it untouched and stop.
+                if failed and not completed:
+                    await enrichment_repo.release_claims(list(failed))
+                    await session.commit()
+                    raise RunStoppedError(
+                        f"Every file in a batch failed ({len(failed)}); stopped after {count} files and put the "
+                        f"batch back in the queue. Check the LLM server and the last error above, then re-run."
+                    )
+
                 await tag_event_files(
                     session, with_events=with_events, without_events=without_events, model=resolved_model
                 )
@@ -895,10 +951,6 @@ async def extract_text_events_workflow(
                 failed_count += len(failed)
                 pbar.set_postfix(failed=failed_count, events=event_count)
                 pbar.update(len(completed) + len(failed))
-
-                if failed and not completed:
-                    logger.error(f"Every file in the batch failed ({len(failed)}); stopping. Check the LLM server.")
-                    return count
 
     logger.success(f"Extracted {event_count} events from {count} text files ({failed_count} failed)")
     return count

@@ -2,7 +2,7 @@
  * vectors and clamps very long text so a raw `entity_profile` / `read_file`
  * payload doesn't dump kilobytes of numbers or prose inline. */
 
-const DROP_KEYS = new Set(["embedding", "name_embedding", "nameEmbedding", "vector"]);
+const DROP_KEYS = new Set(["embedding", "nameEmbedding", "nameEmbedding", "vector"]);
 const MAX_STRING = 600;
 
 // Keyed by object/array reference so re-renders that walk the same finished

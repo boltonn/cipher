@@ -16,6 +16,7 @@ export function toSearchChunk(raw: SearchChunkRaw): SearchChunk {
     fileId: raw.fileId,
     filetypeGroup: raw.filetypeGroup,
     displayName: raw.filetypeGroup === "document" ? raw.filename : (raw.title ?? "(no subject)"),
+    isSummary: raw.isSummary ?? false,
     chunkIndex: raw.chunkIndex,
     startOffset: raw.startOffset,
     endOffset: raw.endOffset,

@@ -1,15 +1,9 @@
 import { PaginatedResponse, SortOrderType } from "@/types/common";
 
-export type PersonSourceType = "manual" | "face_clustering";
+export type PersonSourceType = "manual" | "faceClustering";
 export type SexType = "female" | "male";
 
-const PersonSortField = {
-  Name: "name",
-  DateCreated: "dateCreated",
-  DateUpdated: "dateUpdated",
-} as const;
-
-export type PersonSortFieldType = (typeof PersonSortField)[keyof typeof PersonSortField];
+export type PersonSortFieldType = "relevance" | "name" | "dateCreated" | "dateUpdated";
 
 export interface Person {
   id: string;

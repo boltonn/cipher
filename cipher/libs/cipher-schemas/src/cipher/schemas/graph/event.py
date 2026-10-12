@@ -12,15 +12,15 @@ runs.
 """
 
 from datetime import datetime
-from enum import StrEnum
 from typing import Annotated, Literal
 
 from pydantic import Field, computed_field
 
-from cipher.schemas._base.base import BaseModel
+from cipher.schemas._base.base import BaseModel, StrEnum
 from cipher.schemas._base.common import PageParams, PaginatedResponse
 from cipher.schemas.graph.event_participant import EventParticipant
 from cipher.schemas.graph.event_place import EventPlace
+from cipher.schemas.graph.ontology import EntityType
 
 # `file.tags` / `file.negative_tags` label: the file does / does not describe an event someone takes part in.
 EVENT_FILE_TAG = "event"
@@ -73,6 +73,9 @@ class EventSortField(StrEnum):
     DATE_START = "date_start"
     DATE_CREATED = "date_created"
     DATE_UPDATED = "date_updated"
+    TITLE = "title"
+    EVENT_TYPE = "event_type"
+    STATUS = "status"
 
 
 EVENT_CATEGORY: dict[EventType, str] = {
@@ -101,11 +104,20 @@ def event_category(event_type: EventType) -> str:
     return EVENT_CATEGORY.get(event_type, "other")
 
 
+class TravelMode(StrEnum):
+    FLIGHT = "flight"
+    TRAIN = "train"
+    BUS = "bus"
+    FERRY = "ferry"
+    CAR_RENTAL = "car_rental"
+    OTHER = "other"
+
+
 class TravelDetails(BaseModel):
     """Type-specific fields for `event_type == travel`."""
 
     kind: Literal["travel"] = "travel"
-    mode: Literal["flight", "train", "bus", "ferry", "car_rental", "other"] | None = Field(default=None)
+    mode: TravelMode | None = Field(default=None)
     operator: str | None = Field(default=None, description="Carrier or rental company")
     number: str | None = Field(default=None, description="Flight / train / booking number")
     confirmation: str | None = Field(default=None, description="Confirmation code or record locator")
@@ -258,15 +270,25 @@ class EventWithLinks(Event):
 class EventSearchParameters(PageParams):
     """Filter surface for the events table."""
 
-    dataset_id: str | None = Field(default=None)
+    dataset_ids: list[str] | None = Field(default=None, description="Events from any of these datasets")
     file_id: str | None = Field(default=None)
     query: str | None = Field(default=None, description="Substring match on title")
     event_type: EventType | None = Field(default=None)
     category: str | None = Field(default=None, description="Match a raw source label (iCalendar `CATEGORIES`)")
     uid: str | None = Field(default=None, description="Exact match on the source identifier")
     status: EventStatus | None = Field(default=None)
-    participant_entity_id: str | None = Field(default=None, description="Events this entity takes part in")
-    location_id: str | None = Field(default=None, description="Events attached to this place")
+    participant_entity_ids: list[str] | None = Field(
+        default=None, description="Events any of these entities take part in (OR with participant_names)"
+    )
+    participant_names: list[str] | None = Field(
+        default=None, description="Substring match on a participant's raw name/email or linked entity name"
+    )
+    location_ids: list[str] | None = Field(
+        default=None, description="Events attached to any of these locations (OR with place_names)"
+    )
+    place_names: list[str] | None = Field(
+        default=None, description="Substring match on a place's raw text or linked location name"
+    )
     date_from: datetime | None = Field(default=None, description="Keep events with date_start at/after this")
     date_to: datetime | None = Field(default=None, description="Keep events with date_start at/before this")
     is_verified: bool | None = Field(default=None)
@@ -279,3 +301,29 @@ class PaginatedEventsResponse(PaginatedResponse):
     """Paginated response for events."""
 
     data: list[Event] = Field(description="List of events")
+
+
+class EventParticipantOption(BaseModel):
+    """A participant on events: a linked entity, or raw text not yet resolved (`entity_id` null)."""
+
+    entity_id: str | None = Field(default=None)
+    person_id: str | None = Field(default=None, description="Bridged person, for a face thumbnail")
+    name: str
+    entity_type: EntityType | None = Field(default=None)
+    is_provisional: bool = Field(default=False, description="Linked entity was auto-created, not yet confirmed")
+    event_count: int
+
+
+class EventPlaceOption(BaseModel):
+    """A place on events: a linked location, or raw text not yet geocoded (`location_id` null)."""
+
+    location_id: str | None = Field(default=None)
+    name: str
+    event_count: int
+
+
+class EventMonthCount(BaseModel):
+    """How many events start in one calendar month -- drives calendar month/year navigation."""
+
+    month: str = Field(description="Month as YYYY-MM")
+    count: int = Field(description="Events whose date_start falls in the month")

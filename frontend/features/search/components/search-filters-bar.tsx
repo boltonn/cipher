@@ -22,6 +22,8 @@ import type { SearchFilters, SearchFiletypeGroup } from "../types";
 import { SourceFilter } from "./source-filter";
 
 interface SearchFiltersBarProps {
+  /** the page's dataset scope -- entity suggestions and source counts come from these */
+  datasetIds: string[];
   filters: SearchFilters;
   onFiltersChange: (filters: SearchFilters) => void;
 }
@@ -97,7 +99,7 @@ function EntityChip({ entityId, onRemove }: { entityId: string; onRemove: () => 
 const MENTION_WHERE: { key: string; label: string; title: string; provenance?: MentionProvenance[] }[] = [
   { key: "any", label: "Anywhere", title: "Body text, email headers or other metadata" },
   { key: "text", label: "In text", title: "Written in the body", provenance: ["text", "pattern"] },
-  { key: "header", label: "In headers", title: "Email From / To / Cc / Bcc", provenance: ["email_header"] },
+  { key: "header", label: "In headers", title: "Email From / To / Cc / Bcc", provenance: ["emailHeader"] },
   { key: "metadata", label: "In metadata", title: "Other structured fields (vCard, document properties)", provenance: ["metadata"] },
 ];
 
@@ -119,7 +121,7 @@ function MentionValueChip({ value, onRemove }: { value: string; onRemove: () => 
 }
 
 /** Type, entity-mention, sender/recipient, date and from-the-data filters -- all compose with every search mode (and an empty-query browse). */
-export function SearchFiltersBar({ filters, onFiltersChange }: SearchFiltersBarProps) {
+export function SearchFiltersBar({ datasetIds, filters, onFiltersChange }: SearchFiltersBarProps) {
   const selectorType = filters.selectorTypes?.[0] as SelectorType | undefined;
   const setIds = (key: EntityFilterKey, next: string[]) =>
     onFiltersChange({ ...filters, [key]: next.length ? next : undefined });
@@ -190,7 +192,7 @@ export function SearchFiltersBar({ filters, onFiltersChange }: SearchFiltersBarP
               </div>
             )}
             <EntityPicker
-              datasetId={filters.datasetId}
+              datasetIds={datasetIds.length ? datasetIds : undefined}
               placeholder={
                 ids.length || (key === "entityIds" && mentionValues.length)
                   ? key === "entityIds"
@@ -199,6 +201,8 @@ export function SearchFiltersBar({ filters, onFiltersChange }: SearchFiltersBarP
                   : placeholder
               }
               className="h-7 w-36"
+              excludeIds={ids}
+              excludeTexts={key === "entityIds" ? mentionValues : undefined}
               onSelect={(id) => !ids.includes(id) && setIds(key, [...ids, id])}
               onSelectText={
                 key === "entityIds"
@@ -219,7 +223,7 @@ export function SearchFiltersBar({ filters, onFiltersChange }: SearchFiltersBarP
         />
       </FilterGroup>
 
-      <SourceFilter filters={filters} onFiltersChange={onFiltersChange} />
+      <SourceFilter datasetIds={datasetIds} filters={filters} onFiltersChange={onFiltersChange} />
 
       {selectorType && (
         <FilterGroup label="Selector">

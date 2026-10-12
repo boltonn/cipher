@@ -12,31 +12,20 @@ import {
 } from "@/components/viewers/document-viewer-sidebar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import { CopyableId } from "@/components/copyable-id";
-import { CommentSection } from "@/features/comments/components/comment-section";
-import { EntityMentionText } from "@/features/entities/components/entity-mention-text";
 import { cn } from "@/lib/utils";
-import {
-  ChevronLeft,
-  ChevronRight,
-  ExternalLink,
-  HardDrive,
-  Loader2,
-  MessageSquare,
-  ScanText,
-  ScrollText,
-  Waypoints,
-} from "lucide-react";
+import { ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
-import { filesService, useFile, useFileText } from "../api";
+import { filesService } from "../api";
 import type { FileBrowserItem, FileLocationTarget } from "../types";
-import { FileTagsEditor } from "./file-tags-editor";
-import { FileMetadataPanel } from "./file-metadata-panel";
+import type { OverlayBox } from "@/features/faces/components/face-image-overlay";
+import {
+  FileImageDetails,
+  useFileImageDetails,
+} from "@/features/images/components/image-details";
+import { FileSidePanel } from "./file-side-panel";
 import { FileViewerContent, useFileViewerData } from "./file-viewer-content";
 
 interface FileViewerDialogProps {
@@ -64,10 +53,19 @@ export function FileViewerDialog({
 }: FileViewerDialogProps) {
   const fileUrl = file?.id ? filesService.getFileUrl(file.id) : undefined;
 
-  const { textContent, isTextLoading, email, isEmailLoading, table, isTableLoading } = useFileViewerData(
-    file,
-    fileUrl
-  );
+  const {
+    textContent,
+    isTextLoading,
+    email,
+    isEmailLoading,
+    table,
+    isTableLoading,
+  } = useFileViewerData(file, fileUrl);
+
+  const { image, selection } = useFileImageDetails({
+    id: file?.id,
+    filetypeGroup: file?.filetypeGroup ?? "",
+  });
 
   if (!file) return null;
 
@@ -96,6 +94,7 @@ export function FileViewerDialog({
           hasNext={hasNext}
           hasPrev={hasPrev}
           locationTarget={locationTarget}
+          imageOverlayBoxes={selection.overlayBoxes}
         />
 
         {/* Right: Metadata Sidebar */}
@@ -113,10 +112,17 @@ export function FileViewerDialog({
               <div className="flex items-center justify-between gap-2">
                 <CopyableId id={file.id} />
                 <Link
-                  href={`/files/${file.id}`}
+                  href={
+                    file.filetypeGroup === "table"
+                      ? `/tables/${file.sha256}`
+                      : `/files/${file.id}`
+                  }
                   className="inline-flex items-center gap-1 text-xs text-primary hover:underline shrink-0"
                 >
-                  Open file page <ExternalLink size={10} />
+                  {file.filetypeGroup === "table"
+                    ? "Open table"
+                    : "Open file page"}{" "}
+                  <ExternalLink size={10} />
                 </Link>
               </div>
             )}
@@ -126,51 +132,14 @@ export function FileViewerDialog({
 
           <ScrollArea className="min-h-0 flex-1">
             <div className="p-4">
-              <Tabs defaultValue="details" className="w-full">
-                <TabsList className="w-full bg-muted/50 border border-border/50 h-10 p-1">
-                  <TabsTrigger
-                    value="details"
-                    className="flex-1 text-xs font-medium data-[state=active]:bg-primary"
-                  >
-                    <HardDrive size={12} className="mr-2" /> Details
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="text"
-                    className="flex-1 text-xs font-medium data-[state=active]:bg-primary"
-                    disabled={!file.id}
-                  >
-                    <ScrollText size={12} className="mr-2" /> Text
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="comments"
-                    className="flex-1 text-xs font-medium data-[state=active]:bg-primary"
-                    disabled={!file.id}
-                  >
-                    <MessageSquare size={12} className="mr-2" /> Comments
-                  </TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="details" className="mt-4">
-                  <div className="space-y-4">
-                    <FileMetadataPanel file={file} />
-                    {file.id && <FileTagsEditor fileId={file.id} />}
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="text" className="mt-4">
-                  <FileTextTab fileId={file.id} />
-                </TabsContent>
-
-                <TabsContent value="comments" className="mt-4">
-                  {file.id ? (
-                    <CommentSection commentableType="file" commentableId={file.id} />
-                  ) : (
-                    <p className="text-[11px] text-muted-foreground text-center italic py-4">
-                      Comments unavailable.
-                    </p>
-                  )}
-                </TabsContent>
-              </Tabs>
+              <FileSidePanel
+                file={file}
+                imageDetails={
+                  image && (
+                    <FileImageDetails image={image} selection={selection} />
+                  )
+                }
+              />
             </div>
           </ScrollArea>
         </aside>
@@ -193,6 +162,7 @@ interface ViewerPaneProps {
   hasNext: boolean;
   hasPrev: boolean;
   locationTarget?: import("../types").FileLocationTarget;
+  imageOverlayBoxes?: OverlayBox[];
 }
 
 function ViewerPane({
@@ -209,12 +179,16 @@ function ViewerPane({
   hasNext,
   hasPrev,
   locationTarget,
+  imageOverlayBoxes,
 }: ViewerPaneProps) {
   const [viewerRef, viewerWidth] = useElementWidth<HTMLDivElement>();
   const sidebarFitsInline = useInlineThumbnailSidebar(viewerWidth);
 
   return (
-    <div ref={viewerRef} className="flex-1 bg-black relative flex flex-col overflow-hidden group/viewer">
+    <div
+      ref={viewerRef}
+      className="flex-1 bg-black relative flex flex-col overflow-hidden group/viewer"
+    >
       <FileViewerContent
         file={file}
         fileUrl={fileUrl}
@@ -226,6 +200,7 @@ function ViewerPane({
         isTableLoading={isTableLoading}
         sidebarFitsInline={sidebarFitsInline}
         locationTarget={locationTarget}
+        imageOverlayBoxes={imageOverlayBoxes}
       />
 
       <div className="absolute inset-0 flex items-center justify-between px-4 pointer-events-none">
@@ -257,58 +232,3 @@ function ViewerPane({
     </div>
   );
 }
-
-function FileTextTab({ fileId }: { fileId?: string }) {
-  const { data, isPending, isError } = useFileText(fileId);
-  const { data: file } = useFile(fileId);
-  const [showEntities, setShowEntities] = useState(false);
-
-  if (!fileId) {
-    return (
-      <p className="text-[11px] text-muted-foreground text-center italic py-4">Text unavailable.</p>
-    );
-  }
-  if (isPending) {
-    return (
-      <div className="flex items-center justify-center gap-2 py-8 text-xs text-muted-foreground">
-        <Loader2 size={14} className="animate-spin" /> Loading extracted text...
-      </div>
-    );
-  }
-  if (isError || !data) {
-    return (
-      <p className="text-[11px] text-muted-foreground text-center italic py-4">
-        Not extracted yet.
-      </p>
-    );
-  }
-
-  return (
-    <div className="space-y-2">
-      {data.imagePages.length > 0 && (
-        <p className="flex items-center gap-1.5 text-[11px] text-annotation">
-          <ScanText size={12} />
-          {data.imagePages.length} image-based page{data.imagePages.length === 1 ? "" : "s"} (
-          {data.imagePages.join(", ")}) ·{" "}
-          {data.ocrModel ? `text by OCR (${data.ocrModel})` : "no OCR text yet"}
-        </p>
-      )}
-      {file?.datasetId && (
-        <label className="flex items-center justify-end gap-2 text-[11px] uppercase tracking-wide text-muted-foreground">
-          <Waypoints size={12} /> Entities
-          <Switch checked={showEntities} onCheckedChange={setShowEntities} />
-        </label>
-      )}
-      {showEntities && file?.datasetId ? (
-        <div className="max-h-125 overflow-auto rounded-lg border border-border/50 bg-black/40 text-[11px]">
-          <EntityMentionText fileId={fileId} datasetId={file.datasetId} />
-        </div>
-      ) : (
-        <pre className="text-[11px] font-mono text-foreground leading-relaxed whitespace-pre-wrap break-words p-3 rounded-lg bg-black/40 border border-border/50 max-h-125 overflow-auto">
-          {data.text}
-        </pre>
-      )}
-    </div>
-  );
-}
-

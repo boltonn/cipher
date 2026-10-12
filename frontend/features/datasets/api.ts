@@ -1,14 +1,19 @@
 import type {
   Dataset,
   DatasetEnrichmentFailures,
+  DatasetProfile,
   DatasetRequest,
   DatasetStatsRequest,
   DatasetStatsResponse,
   DatasetSummary,
   DatasetUpdate,
   EnrichmentProgress,
+  SweepRun,
 } from "@/features/datasets/types";
-import type { DatasetEnrichmentEstimates } from "@/features/datasets/request-types";
+import type {
+  DatasetEnrichmentEstimates,
+  EnrichmentConfig,
+} from "@/features/datasets/request-types";
 import type { User } from "@/features/users/types";
 import { apiClient } from "@/lib/api-client";
 import type { PaginatedResponse } from "@/types/common";
@@ -64,6 +69,12 @@ const datasetService = {
   },
   delete: async (id: string): Promise<void> => {
     await apiClient.delete(`/datasets/${id}`);
+  },
+  getProfile: async (datasetIds: string[]): Promise<DatasetProfile> => {
+    const { data } = await apiClient.get<DatasetProfile>("/datasets/profile", {
+      params: { datasetIds },
+    });
+    return data;
   },
   getUsers: async (id: string): Promise<User[]> => {
     const { data } = await apiClient.get<User[]>(`/datasets/${id}/users`);
@@ -139,13 +150,27 @@ export function useEnrichmentProgress(id: string | undefined) {
     },
     enabled: !!id,
     staleTime: 15_000,
-    // Poll while any step still has queued/processing work so the bars animate.
+    // Poll while a worker is on any step so the bars animate; stopped queues don't move.
     refetchInterval: (query) =>
-      (query.state.data ?? []).some(
-        (p) => (p.counts.pending ?? 0) + (p.counts.processing ?? 0) > 0
-      )
-        ? 4000
-        : false,
+      (query.state.data ?? []).some((p) => p.isRunning) ? 4000 : false,
+  });
+}
+
+/** The latest entity-resolution run (`cipher resolve-entities`) with its steps; polls while it runs. */
+export function useResolutionRun(id: string | undefined) {
+  return useQuery({
+    queryKey: ["datasets", id, "resolution-run"],
+    queryFn: async () => {
+      const { data } = await apiClient.get<SweepRun | null>(
+        "/enrichments/resolution",
+        { params: { datasetId: id }, suppressErrorToast: true }
+      );
+      return data;
+    },
+    enabled: !!id,
+    staleTime: 15_000,
+    refetchInterval: (query) =>
+      query.state.data?.status === "running" ? 3000 : false,
   });
 }
 
@@ -167,6 +192,18 @@ export function useEnrichmentEstimates(datasetId: string | undefined) {
 }
 
 /** Trigger a model-free enrichment (e.g. EXIF location extraction) to run in the background. */
+/** Static pipeline metadata (order + hard prerequisites); never changes at runtime. */
+export function useEnrichmentConfig() {
+  return useQuery({
+    queryKey: ["enrichments", "config"],
+    queryFn: async () => {
+      const { data } = await apiClient.get<EnrichmentConfig>("/enrichments/config");
+      return data;
+    },
+    staleTime: Infinity,
+  });
+}
+
 export function useRunEnrichment(datasetId: string | undefined) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -251,5 +288,14 @@ export function useDeleteDataset(onSuccess?: () => void) {
       });
       onSuccess?.();
     },
+  });
+}
+
+/** Merged profile of `datasetIds` (empty = every accessible dataset): the search briefing. */
+export function useDatasetProfile(datasetIds: string[]) {
+  return useQuery({
+    queryKey: ["datasets", "profile", datasetIds],
+    queryFn: () => datasetService.getProfile(datasetIds),
+    staleTime: 5 * 60_000,
   });
 }

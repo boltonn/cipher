@@ -12,29 +12,29 @@ import type {
   OrganizationPerson,
   RelationshipSource,
 } from "@/features/organizations/types";
-import { cn } from "@/lib/utils";
+import { cn, humanize } from "@/lib/utils";
 import { BadgeCheck } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-const label = (value: string) => value.replace(/_/g, " ");
+const label = (value: string) => humanize(value);
 
 const RELATIONSHIP_OPTIONS: RelationshipType[] = [
-  "employed_by",
-  "member_of",
+  "employedBy",
+  "memberOf",
   "emailed",
-  "co_mention_of",
+  "coMentionOf",
   "owns",
 ];
 const SOURCE_OPTIONS: RelationshipSource[] = [
   "manual",
   "import",
   "extraction",
-  "selector_inference",
-  "co_mention",
+  "selectorInference",
+  "coMention",
 ];
 /** Edges a model proposed rather than a person or a structured record. */
-const AI_SOURCES = new Set<RelationshipSource>(["extraction", "co_mention"]);
+const AI_SOURCES = new Set<RelationshipSource>(["extraction", "coMention"]);
 
 const formatDate = (value: string | null) =>
   value
@@ -49,7 +49,7 @@ function columns(
 ): DataTableColumn<OrganizationPerson>[] {
   return [
     {
-      key: "display_name",
+      key: "displayName",
       header: "Person",
       type: "text",
       sortable: true,
@@ -103,7 +103,7 @@ function columns(
       ),
     },
     {
-      key: "relationship_type",
+      key: "relationshipType",
       header: "Relationship",
       type: "enum",
       sortable: true,
@@ -152,7 +152,7 @@ function columns(
       ),
     },
     {
-      key: "mention_count",
+      key: "mentionCount",
       header: "Mentions",
       type: "number",
       sortable: true,
@@ -161,7 +161,7 @@ function columns(
       render: (row) => row.mentionCount.toLocaleString(),
     },
     {
-      key: "file_count",
+      key: "fileCount",
       header: "Files",
       type: "number",
       sortable: true,
@@ -170,7 +170,7 @@ function columns(
       render: (row) => row.fileCount.toLocaleString(),
     },
     {
-      key: "date_observed_end",
+      key: "dateObservedEnd",
       header: "Last seen",
       type: "date",
       sortable: true,
@@ -221,7 +221,7 @@ export function OrganizationPeopleTable({
       limit={limit}
       sortBy={sortBy}
       sortOrder={sortOrder}
-      defaultSortBy="display_name"
+      defaultSortBy="displayName"
       defaultSortOrder="asc"
       filters={filters}
       isLoading={isLoading}

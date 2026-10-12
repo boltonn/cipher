@@ -2,8 +2,8 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, String, UniqueConstraint
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import BigInteger, Boolean, ColumnElement, DateTime, ForeignKey, Index, String, UniqueConstraint, select
+from sqlalchemy.dialects.postgresql import JSONB, array
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from cipher.datastores.postgres.tables.base import Base
@@ -50,6 +50,11 @@ class FileTable(Base):
     # From the data, not a decision: copied from the extracted-text metadata on every extraction upsert.
     source_tags: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
     message_states: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
+    # Found compressed (`CompressionInfo`): the encoding plus the as-found bytes' hashes and size.
+    compression: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    is_encrypted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    # Tabular files: each sheet's layout (`TableSheetLayout`); null until `cipher map-tables` has profiled it.
+    table_sheets: Mapped[list[dict] | None] = mapped_column(JSONB, nullable=True)
 
     # Relationships (only defined if dependencies are available)
     dataset: Mapped["DatasetTable"] = relationship(back_populates="files")
@@ -64,12 +69,27 @@ class FileTable(Base):
     )
 
     __table_args__ = (
-        # Prevent exact duplicates within a dataset
-        UniqueConstraint("dataset_id", "uri", name="uq_dataset_uri"),
+        # One row per place a file was found; many rows may share a `uri` (content-addressed blobs).
+        UniqueConstraint("dataset_id", "path", name="uq_dataset_path"),
         # Index for finding duplicates across datasets
         Index("ix_file_sha256_dataset", "sha256", "dataset_id"),
         Index("ix_file_tags_gin", "tags", postgresql_using="gin"),
         Index("ix_file_negative_tags_gin", "negative_tags", postgresql_using="gin"),
         Index("ix_file_source_tags_gin", "source_tags", postgresql_using="gin"),
         Index("ix_file_message_states_gin", "message_states", postgresql_using="gin"),
+        Index(
+            "ix_file_table_sheets_gin",
+            "table_sheets",
+            postgresql_using="gin",
+            postgresql_ops={"table_sheets": "jsonb_path_ops"},
+        ),
+        Index("ix_file_filename_trgm", "filename", postgresql_using="gin", postgresql_ops={"filename": "gin_trgm_ops"}),
     )
+
+
+def outside_source_tags(file_id: ColumnElement[str], tags: list[str]) -> ColumnElement[bool]:
+    """SQL test that the file behind ``file_id`` carries none of these source tags (any-of exclude).
+
+    A row with no file (``file_id`` NULL) passes.
+    """
+    return ~(select(FileTable.id).where(FileTable.id == file_id, FileTable.source_tags.has_any(array(tags))).exists())

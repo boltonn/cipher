@@ -1,9 +1,9 @@
+from collections import defaultdict
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
-from pyselectors.normalize import normalize_selector
 
-from cipher.api.deps.access import DatasetAccessDep, DatasetIdQueryDep, MentionDep, require_mention
+from cipher.api.deps.access import DatasetAccessDep, DatasetIdsQueryDep, MentionDep, require_mention
 from cipher.api.deps.authentication import CurrentUserDep
 from cipher.api.deps.postgres import (
     EntityDatastoreDep,
@@ -11,7 +11,7 @@ from cipher.api.deps.postgres import (
     GraphDatastoreDep,
     MentionDatastoreDep,
 )
-from cipher.datastores.postgres.utils import normalize_name
+from cipher.orchestration.correct_text import normalized_value_for
 from cipher.schemas._base.exceptions import EntityNotFoundError
 from cipher.schemas.graph.entity import EntityCreate
 from cipher.schemas.graph.entity_match import PaginatedResolveQueueResponse
@@ -20,6 +20,7 @@ from cipher.schemas.graph.location import LocationCreate
 from cipher.schemas.graph.mention import (
     MANUAL_EXTRACTOR,
     DismissNameGroupRequest,
+    DismissNameGroupsRequest,
     Mention,
     MentionCreate,
     MentionResolve,
@@ -28,8 +29,10 @@ from cipher.schemas.graph.mention import (
     PaginatedMentionsResponse,
     ResolveNameGroupRequest,
     ResolveNameGroupResult,
+    ResolveNameGroupsRequest,
+    ResolveNameGroupsResult,
 )
-from cipher.schemas.graph.ontology import EntitySource, EntityType, SelectorType, guess_actor_type
+from cipher.schemas.graph.ontology import EntitySource, EntityType, guess_actor_type
 from cipher.schemas.graph.organization import OrganizationCreate
 from cipher.schemas.graph.selector import SelectorCreate
 from cipher.schemas.interaction.tag import TagSource
@@ -43,14 +46,6 @@ _DETAIL_CREATE_MODEL = {
     EntityType.LOCATION: LocationCreate,
     EntityType.SELECTOR: SelectorCreate,
 }
-
-
-def _normalized_value(*, surface_text: str, selector_type: SelectorType | None) -> str:
-    """The name-group / selector key an analyst-drawn span joins -- same folding the extractors apply."""
-    if selector_type is not None:
-        value, _ = normalize_selector(selector_type, surface_text)
-        return value or surface_text.strip()
-    return normalize_name(surface_text)
 
 
 def _trimmed_span(*, surface_text: str, start_offset: int | None, end_offset: int | None) -> dict:
@@ -86,7 +81,7 @@ async def create_mention(mention: MentionCreate, access: DatasetAccessDep, datas
     mention = mention.model_copy(
         update={
             "normalized_value": mention.normalized_value
-            or _normalized_value(surface_text=mention.surface_text, selector_type=mention.selector_type),
+            or normalized_value_for(surface_text=mention.surface_text, selector_type=mention.selector_type),
             "entity_attribute": mention.entity_attribute or ("value" if is_selector else "name"),
             "extractor": mention.extractor or MANUAL_EXTRACTOR,
         }
@@ -102,7 +97,7 @@ async def create_mention(mention: MentionCreate, access: DatasetAccessDep, datas
 )
 async def list_unresolved_names(
     datastore: MentionDatastoreDep,
-    dataset_id: DatasetIdQueryDep,
+    dataset_ids: DatasetIdsQueryDep,
     matches: EntityMatchDatastoreDep,
     q: Annotated[str | None, Query(description="Filter by name substring")] = None,
     has_resolution: Annotated[
@@ -112,25 +107,39 @@ async def list_unresolved_names(
     entity_id: Annotated[
         str | None, Query(alias="entityId", description="Only names with a pending resolution to this entity")
     ] = None,
+    exclude_source_tags: Annotated[
+        list[str] | None,
+        Query(alias="excludeSourceTags", description="Count only mentions in files carrying none of these source tags"),
+    ] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 25,
     page: Annotated[int, Query(ge=1)] = 1,
 ) -> PaginatedResolveQueueResponse:
     """The Resolve queue: distinct unresolved names, each with its pending resolutions.
 
     One row per name group (not per mention), so "Nick Bolton" seen in 900 emails is a
-    single item. `resolutions` are the entities the resolver proposes the name is, best
+    single item -- per dataset, since resolution runs per dataset. `resolutions` are the entities the resolver proposes the name is, best
     first -- accept or reject them, or create a new entity. `suggestedType` is a
     heuristic guess only.
     """
     result = await datastore.unresolved_name_group_page(
-        dataset_id=dataset_id, query=q, has_resolution=has_resolution, entity_id=entity_id, limit=limit, page=page
+        dataset_ids=dataset_ids,
+        query=q,
+        has_resolution=has_resolution,
+        entity_id=entity_id,
+        exclude_source_tags=exclude_source_tags,
+        limit=limit,
+        page=page,
     )
-    resolutions = await matches.pending_resolutions(
-        dataset_id=dataset_id, names=[row["normalized_value"] for row in result["data"]]
-    )
+    names_by_dataset: dict[str, list[str]] = defaultdict(list)
+    for row in result["data"]:
+        names_by_dataset[row["dataset_id"]].append(row["normalized_value"])
+    resolutions = {
+        dataset_id: await matches.pending_resolutions(dataset_id=dataset_id, names=names)
+        for dataset_id, names in names_by_dataset.items()
+    }
     for row in result["data"]:
         row["suggested_type"] = guess_actor_type(row["surface"])
-        row["resolutions"] = resolutions.get(row["normalized_value"], [])[:3]
+        row["resolutions"] = resolutions[row["dataset_id"]].get(row["normalized_value"], [])[:3]
     return PaginatedResolveQueueResponse.model_validate(result)
 
 
@@ -180,6 +189,57 @@ async def dismiss_name_group(
     """Delete every unresolved `name` mention of one value -- 'this isn't an entity'."""
     access.require(body.dataset_id)
     deleted = await mentions.delete_names(dataset_id=body.dataset_id, normalized_value=body.normalized_value)
+    return {"deleted": deleted}
+
+
+@router.post(
+    "/resolve-names/batch",
+    summary="Resolve several name groups at once",
+    response_model=ResolveNameGroupsResult,
+    **_BY_ALIAS,
+)
+async def resolve_name_groups(
+    body: ResolveNameGroupsRequest,
+    mentions: MentionDatastoreDep,
+    entities: EntityDatastoreDep,
+    graph: GraphDatastoreDep,
+    access: DatasetAccessDep,
+) -> ResolveNameGroupsResult:
+    """Attach each name group to `entity_id`, or to a new entity of `entity_type` of its own; relink header selectors once per dataset."""
+    for dataset_id in {g.dataset_id for g in body.groups}:
+        access.require(dataset_id)
+    entity_ids, attached = [], 0
+    for group in body.groups:
+        entity_id = body.entity_id
+        if entity_id is None:
+            created = await entities.create_entity(
+                EntityCreate(
+                    dataset_id=group.dataset_id,
+                    entity_type=body.entity_type,
+                    display_name=(group.display_name or group.normalized_value).strip()[:200],
+                    source=EntitySource.EXTRACTION,
+                )
+            )
+            entity_id = created.id
+        attached += await mentions.attach_names(
+            dataset_id=group.dataset_id, normalized_value=group.normalized_value, entity_id=entity_id
+        )
+        entity_ids.append(entity_id)
+    for dataset_id in {g.dataset_id for g in body.groups}:
+        await graph.link_header_selectors(dataset_id)
+    return ResolveNameGroupsResult(entity_ids=entity_ids, mentions_attached=attached)
+
+
+@router.post("/dismiss-names/batch", summary="Discard several name groups")
+async def dismiss_name_groups(
+    body: DismissNameGroupsRequest, access: DatasetAccessDep, mentions: MentionDatastoreDep
+) -> dict:
+    """Delete every unresolved `name` mention of each group -- 'these aren't entities'."""
+    for dataset_id in {g.dataset_id for g in body.groups}:
+        access.require(dataset_id)
+    deleted = 0
+    for group in body.groups:
+        deleted += await mentions.delete_names(dataset_id=group.dataset_id, normalized_value=group.normalized_value)
     return {"deleted": deleted}
 
 
@@ -250,7 +310,7 @@ async def update_mention(
         for field, value in trimmed.items():
             setattr(data, field, value)
     if data.surface_text is not None and "normalized_value" not in data.model_fields_set:
-        data.normalized_value = _normalized_value(
+        data.normalized_value = normalized_value_for(
             surface_text=data.surface_text, selector_type=data.selector_type or current.selector_type
         )
     mention = await datastore.update_mention(mention_id, data, reviewed_by=user.id)

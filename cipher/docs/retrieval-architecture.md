@@ -101,20 +101,20 @@ One model; the existing `ChunkTextSearchRequest` / `ChunkSemanticSearchRequest` 
 class RetrievalQuery(BaseModel):
     mode: Literal["keyword", "semantic", "hybrid"] = "hybrid"
 
-    text: str | None = None                 # keyword / hybrid
-    embedding: list[float] | None = None    # semantic / hybrid (pre-computed)
-    query_language: str | None = None       # picks the FTS config for `text`
+    text: str | None = None  # keyword / hybrid
+    embedding: list[float] | None = None  # semantic / hybrid (pre-computed)
+    query_language: str | None = None  # picks the FTS config for `text`
 
     filters: ChunkFilters = ChunkFilters()  # dataset_id, file_id, filetype_group,
-                                            # filetype, tags, and the entity fields
-                                            # already on ChunkFilters:
-                                            #   entity_ids, entity_types,
-                                            #   selector_types, selector_subtypes
+    # filetype, tags, and the entity fields
+    # already on ChunkFilters:
+    #   entity_ids, entity_types,
+    #   selector_types, selector_subtypes
 
-    graph_expand: GraphExpand | None = None # multi-hop: expand a seed entity, then
-                                            # restrict to chunks mentioning any of it
+    graph_expand: GraphExpand | None = None  # multi-hop: expand a seed entity, then
+    # restrict to chunks mentioning any of it
 
-    min_similarity: float | None = None     # semantic / hybrid only
+    min_similarity: float | None = None  # semantic / hybrid only
     page: int = 1
     limit: int = 10
     sort_by: ChunkSortField = ChunkSortField.SCORE
@@ -342,8 +342,8 @@ not scale). Not built; no evidence yet that it's needed.
 
 ```python
 class RetrievalConfig(BaseModel):
-    backend: RetrievalBackend = "postgres"          # postgres | elasticsearch
-    text_ranker: TextRanker = "pg_search"           # pg_search | pgroonga | bigm | core
+    backend: RetrievalBackend = "postgres"  # postgres | elasticsearch
+    text_ranker: TextRanker = "pg_search"  # pg_search | pgroonga | bigm | core
     graph_expand_entity_cap: int = 10_000
 ```
 
@@ -382,14 +382,14 @@ configured ranker whose extension is missing downgrades silently, visible at
 | **P0** | `chunk` table, `mention.chunk_id`, `chunk_id_for` wired into `TextChunk.id`, migration `0019`. |
 | **P1a** | `RetrievalConfig` (`RETRIEVAL__*`), startup log, `GET /search/config`, extension bootstrap. |
 | **P1b** | `chunk.embedding`/`text_tsv` + HNSW/GIN/BM25 indexes (migration `0023`); `RetrievalQuery`/`GraphExpand` schema; `ChunkRetrievalRepository` ABC; `PostgresChunkRetrievalRepository`; embed pipeline writes `chunk` rows; `TextChunkDatastoreDep` factory. |
-| **P2** | `mention.chunk_id` set inline at extraction time (`_assign_chunk_ids`, works for either backend); `backfill-mention-chunks` for pre-existing data; `graph_expand` agent tool (now `search_passages(entity_id, connected_hops)`; correspondence filters + `count_emails` added 2026-09-29). |
+| **P2** | `mention.chunk_id` set inline at extraction time (`_assign_chunk_ids`, works for either backend); `embed-text` re-anchors any mention without one when it finishes; `graph_expand` agent tool (now `search_passages(entity_id, connected_hops)`; correspondence filters + `count_emails` added 2026-09-29). |
 | **P3** | Re-embedded `rag` into Postgres end-to-end; found and fixed real bugs under real load (§10); `ElasticsearchChunkRetrievalRepository` built to the same ABC, live-resolved entity/graph filtering (§6), validated against a live ES cluster; both backends now switch with one setting. |
 
 Switching backends is a **re-embed**, not a migration: reset the `TEXT_EMBEDDING`
 enrichment for the dataset (clears its old chunks / the enrichment record, not
 `extracted_text`), flip `RETRIEVAL__BACKEND`, re-run `embed-text`. Both backends'
 `chunk`-table span mirror means `mention.chunk_id` doesn't need re-extraction —
-`backfill-mention-chunks` (set-based) catches anything the inline assignment
+the end of `embed-text` (set-based) catches anything the inline assignment
 missed.
 
 ### DB migrations (Alembic + raw SQL for the unstamped dev DB — [[dev-db-unstamped]])
@@ -452,6 +452,10 @@ larger) scan, it degrades with corpus size — resolve to an id list via an
 index-driven `mention` scan first instead, the same move both adapters now make.
 
 ### 10.3 Known unknowns at real 1M-file / multi-dataset scale
+
+> **Update 2026-10-03:** measured at 875k chunks / 55 datasets in `docs/global-search.md` §10.3. HNSW with a selective
+> `dataset_id` filter holds up (44–55 ms p50 with iterative scan). Two real issues were found and fixed there: generic
+> prepared-statement plans (8× slower keyword search) and the uncapped keyword `total` count.
 
 - **pgvector HNSW + `dataset_id` pre-filter.** `rag` is effectively the only
   populated dataset here, so the `WHERE dataset_id = ...` clause on the kNN

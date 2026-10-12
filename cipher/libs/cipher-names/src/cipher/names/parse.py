@@ -83,6 +83,20 @@ class ParsedName:
         return tuple(parts)
 
 
+def _spread_initials(raw: str) -> str:
+    """`EF Bolton` -> `E F Bolton`: a 2-3 capital-letter word before the last is run-together initials.
+
+    Not when the whole name is capitals (`NICK BOLTON`), where case says nothing.
+    """
+    words = raw.split()
+    if len(words) < 2 or all(w.isupper() for w in words if any(c.isalpha() for c in w)):
+        return raw
+    return " ".join(
+        " ".join(w) if i < len(words) - 1 and 2 <= len(w) <= 3 and w.isalpha() and w.isupper() else w
+        for i, w in enumerate(words)
+    )
+
+
 def _is_initial(token: str) -> bool:
     return len(token) == 1 and token.isalpha()
 
@@ -211,20 +225,24 @@ def _parse_lusophone(body: list[str], culture: Culture, script: Script, raw: str
 
 
 def _parse_arabic(body: list[str], culture: Culture, script: Script, raw: str) -> ParsedName:
+    """`Ahmed bin Khalid Al-Saud`: given `ahmed`, patronymic `khalid` (the father), surname `saud`."""
     articles = frozenset({"al", "el"})
+    nasab = next((i for i, t in enumerate(body) if t in ("bin", "ibn", "bint")), None)
+    father = body[nasab + 1] if nasab is not None and nasab + 1 < len(body) else None
     cleaned = [t for t in body if t not in articles]
     keep = [t for t in cleaned if t not in _ARABIC_NASAB]
     particles = [t for t in body if t in _ARABIC_NASAB or t in articles]
     if not keep:
         return ParsedName(raw=raw, culture=culture, script=script, particles=tuple(particles))
     given = (keep[0],)
-    surnames = tuple(keep[1:])
+    surnames = tuple(t for t in keep[1:] if t != father)
     return ParsedName(
         raw=raw,
         culture=culture,
         script=script,
         given=given,
         surnames=surnames,
+        patronymic=father,
         particles=tuple(particles),
         primary_surname=surnames[-1] if surnames else None,
     )
@@ -294,7 +312,7 @@ def parse_name(
     script = dominant_script(raw)
     resolved = culture or infer_culture(region_hint=region_hint, language=language, text=raw)
 
-    folded = fold(raw)
+    folded = fold(_spread_initials(raw))
     # "Surname, Given ..." -> tokens in "Given ... Surname" order
     if "," in folded:
         left, _, right = folded.partition(",")

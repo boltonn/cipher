@@ -20,11 +20,8 @@ from cipher.schemas.graph.entity_match import (
     EntityMatchSearchParameters,
     EntityMatchSortField,
     EntityMatchStatus,
-    EntityMergeGroup,
-    EntityMergeSearchParameters,
     PaginatedEntityMatchesResponse,
     PaginatedEntityMatchGroupsResponse,
-    PaginatedEntityMergeGroupsResponse,
 )
 
 
@@ -231,92 +228,6 @@ class PostgresEntityMatchRepository:
             out.append(m)
         return out
 
-    async def list_merge_groups(self, request: EntityMergeSearchParameters) -> PaginatedEntityMergeGroupsResponse:
-        """Grouped merge-review queue: one card per provisional entity, canonical targets nested."""
-        base = [EntityMatchTable.provisional_entity_id.is_not(None)]
-        if request.dataset_id:
-            base.append(EntityMatchTable.dataset_id == request.dataset_id)
-        if request.status:
-            base.append(EntityMatchTable.status == request.status)
-
-        grp = (
-            select(
-                EntityMatchTable.dataset_id,
-                EntityMatchTable.provisional_entity_id,
-                func.max(EntityMatchTable.similarity_score).label("best"),
-                func.min(EntityMatchTable.status).label("st"),
-            )
-            .where(*base)
-            .group_by(EntityMatchTable.dataset_id, EntityMatchTable.provisional_entity_id)
-        )
-        total = (await self.session.execute(select(func.count()).select_from(grp.subquery()))).scalar_one()
-        page_rows = (
-            await self.session.execute(
-                grp.order_by(desc("best")).offset((request.page - 1) * request.limit).limit(request.limit)
-            )
-        ).all()
-        stub_ids = [r.provisional_entity_id for r in page_rows]
-        if not stub_ids:
-            return PaginatedEntityMergeGroupsResponse(total=total, page=request.page, limit=request.limit, data=[])
-
-        canon = EntityTable.__table__.alias("canon")
-        cand_rows = (
-            await self.session.execute(
-                select(EntityMatchTable, canon.c.display_name, canon.c.entity_type, canon.c.person_id)
-                .join(canon, canon.c.id == EntityMatchTable.entity_id)
-                .where(*base, EntityMatchTable.provisional_entity_id.in_(stub_ids))
-                .order_by(desc(EntityMatchTable.similarity_score))
-            )
-        ).all()
-        by_stub: dict[str, list[EntityMatch]] = defaultdict(list)
-        for row, dname, etype, pid in cand_rows:
-            by_stub[row.provisional_entity_id].append(
-                EntityMatch.model_validate(row).model_copy(
-                    update={
-                        "entity_name": dname,
-                        "entity_type": str(etype) if etype is not None else None,
-                        "entity_person_id": str(pid) if pid is not None else None,
-                    }
-                )
-            )
-
-        stub_meta = {
-            r.id: (r.display_name, r.entity_type, r.mc)
-            for r in (
-                await self.session.execute(
-                    select(
-                        EntityTable.id,
-                        EntityTable.display_name,
-                        EntityTable.entity_type,
-                        select(func.count())
-                        .select_from(MentionTable)
-                        .where(MentionTable.entity_id == EntityTable.id)
-                        .scalar_subquery()
-                        .label("mc"),
-                    ).where(EntityTable.id.in_(stub_ids))
-                )
-            ).all()
-        }
-
-        data = []
-        for r in page_rows:
-            cands = by_stub.get(r.provisional_entity_id, [])
-            if not cands:
-                continue
-            name, etype, mc = stub_meta.get(r.provisional_entity_id, (r.provisional_entity_id, "person", 0))
-            data.append(
-                EntityMergeGroup(
-                    dataset_id=r.dataset_id,
-                    provisional_entity_id=r.provisional_entity_id,
-                    provisional_name=name,
-                    provisional_entity_type=str(etype),
-                    mention_count=int(mc or 0),
-                    status=r.st,
-                    candidates=cands,
-                )
-            )
-        return PaginatedEntityMergeGroupsResponse(total=total, page=request.page, limit=request.limit, data=data)
-
     async def list_for_name_group(self, *, dataset_id: str, normalized_value: str) -> list[EntityMatch]:
         """Every group-level candidate row for one name group, best score first."""
         rows = await self.session.execute(
@@ -384,8 +295,8 @@ class PostgresEntityMatchRepository:
         The shape a fast bulk-annotation UI wants -- not N flat rows to group client-side.
         """
         base = [EntityMatchTable.mention_id.is_(None), EntityMatchTable.normalized_value.is_not(None)]
-        if request.dataset_id:
-            base.append(EntityMatchTable.dataset_id == request.dataset_id)
+        if request.dataset_ids:
+            base.append(EntityMatchTable.dataset_id.in_(request.dataset_ids))
         if request.status:
             base.append(EntityMatchTable.status == request.status)
         if request.min_similarity is not None:
@@ -515,8 +426,8 @@ class PostgresEntityMatchRepository:
             where.append(EntityMatchTable.entity_id == request.entity_id)
         if request.mention_id:
             where.append(EntityMatchTable.mention_id == request.mention_id)
-        if request.dataset_id:
-            where.append(EntityMatchTable.dataset_id == request.dataset_id)
+        if request.dataset_ids:
+            where.append(EntityMatchTable.dataset_id.in_(request.dataset_ids))
         if request.status:
             where.append(EntityMatchTable.status == request.status)
         if request.min_similarity is not None:

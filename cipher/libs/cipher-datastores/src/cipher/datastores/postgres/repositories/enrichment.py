@@ -1,11 +1,13 @@
 from collections import defaultdict
+from contextvars import ContextVar
 from datetime import UTC, datetime, timedelta
 
 from loguru import logger
-from sqlalchemy import case, delete, func, literal, or_, select, update
+from sqlalchemy import and_, case, delete, func, literal, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cipher.datastores.postgres.tables.enrichment import EnrichmentTable
+from cipher.datastores.postgres.tables.enrichment_run import EnrichmentRunTable
 from cipher.datastores.postgres.tables.face import FaceTable
 from cipher.datastores.postgres.tables.file import FileTable
 from cipher.datastores.postgres.tables.message import MessageTable
@@ -16,6 +18,47 @@ from cipher.schemas.ingestion.enrichment import (
     EnrichmentType,
     ProcessingStatus,
 )
+from cipher.schemas.ingestion.run_plan import HEARTBEAT_TIMEOUT_SECONDS, LIVE
+
+claiming_run_id: ContextVar[str | None] = ContextVar("claiming_run_id", default=None)
+"""The `enrichment_run` this process is recording; `mark_processing` stamps it on each claim."""
+
+
+def live_run_ids():
+    """Ids of runs whose process is still alive (running, with a fresh heartbeat)."""
+    fresh = datetime.now(UTC) - timedelta(seconds=HEARTBEAT_TIMEOUT_SECONDS)
+    return select(EnrichmentRunTable.id).where(
+        EnrichmentRunTable.status.in_([status.value for status in LIVE]), EnrichmentRunTable.date_heartbeat >= fresh
+    )
+
+
+# Skip reason for a file that needs a password; `rekey --filetypes` clears it if the file turns out readable.
+ENCRYPTED_SKIP = "encrypted: needs a password to read"
+# Analytics that handle encryption themselves (archive extraction tries known passwords).
+READS_ENCRYPTED = frozenset({EnrichmentType.ARCHIVE_EXTRACTION})
+# An encrypted email's headers are still readable, so email parsing (text extraction) still runs.
+READS_ENCRYPTED_GROUPS = {EnrichmentType.TEXT_EXTRACTION: frozenset({"email"})}
+
+
+def reads_encrypted(enrichment_type: EnrichmentType, filetype_group: str) -> bool:
+    """Whether this analytic gets something from an encrypted file of this group."""
+    return enrichment_type in READS_ENCRYPTED or filetype_group in READS_ENCRYPTED_GROUPS.get(
+        enrichment_type, frozenset()
+    )
+
+
+def _file_enrichment(
+    file_id: str, enrichment_type: EnrichmentType, *, is_encrypted: bool, filetype_group: str
+) -> EnrichmentTable:
+    """A new row for a file: PENDING, or SKIPPED when the file is encrypted and the analytic can't read it."""
+    skip = is_encrypted and not reads_encrypted(enrichment_type, filetype_group)
+    return EnrichmentTable(
+        enrichable_type=EnrichableType.FILE,
+        enrichable_id=file_id,
+        enrichment_type=enrichment_type,
+        status=ProcessingStatus.SKIPPED if skip else ProcessingStatus.PENDING,
+        error_message=ENCRYPTED_SKIP if skip else None,
+    )
 
 
 class PostgresEnrichmentRepository:
@@ -131,6 +174,7 @@ class PostgresEnrichmentRepository:
             .where(EnrichmentTable.id.in_(enrichment_ids))
             .values(
                 status=ProcessingStatus.PROCESSING,
+                run_id=claiming_run_id.get(),
                 date_started=datetime.now(UTC),
                 date_updated=datetime.now(UTC),
             )
@@ -201,6 +245,14 @@ class PostgresEnrichmentRepository:
                 update(EnrichmentTable).where(EnrichmentTable.id.in_(enrichment_ids)).values(**values)
             )
 
+    async def release_claims(self, enrichment_ids: list[str]) -> None:
+        """Return this run's claims to PENDING untouched (no error, no retry spent): the run stopped, the files didn't fail."""
+        await self.session.execute(
+            update(EnrichmentTable)
+            .where(EnrichmentTable.id.in_(enrichment_ids))
+            .values(status=ProcessingStatus.PENDING, date_started=None, date_updated=datetime.now(UTC))
+        )
+
     async def reset_stuck_enrichments(
         self,
         stuck_threshold_minutes: int = 60,
@@ -209,8 +261,11 @@ class PostgresEnrichmentRepository:
     ) -> int:
         """Return orphaned PROCESSING claims (from an interrupted run) to PENDING.
 
+        A claim is orphaned when the run that made it is no longer alive (no fresh heartbeat).
+        Claims made outside any recorded run fall back to their age.
+
         Args:
-            stuck_threshold_minutes: Only reset claims older than this, so live runs keep theirs.
+            stuck_threshold_minutes: Age past which a claim with no run is reset.
             enrichment_type: Limit to one analytic.
             dataset_id: Limit to file enrichments in one dataset.
 
@@ -222,10 +277,14 @@ class PostgresEnrichmentRepository:
             update(EnrichmentTable)
             .where(
                 EnrichmentTable.status == ProcessingStatus.PROCESSING,
-                EnrichmentTable.date_started < threshold,
+                or_(
+                    and_(EnrichmentTable.run_id.is_(None), EnrichmentTable.date_started < threshold),
+                    and_(EnrichmentTable.run_id.is_not(None), EnrichmentTable.run_id.not_in(live_run_ids())),
+                ),
             )
             .values(
                 status=ProcessingStatus.PENDING,
+                run_id=None,
                 date_started=None,
                 date_updated=datetime.now(UTC),
             )
@@ -528,18 +587,44 @@ class PostgresEnrichmentRepository:
 
         count = 0
         for file in files:
-            enrichment = EnrichmentTable(
-                enrichable_type=EnrichableType.FILE,
-                enrichable_id=file.id,
-                enrichment_type=enrichment_type,
-                status=ProcessingStatus.PENDING,
+            self.session.add(
+                _file_enrichment(
+                    file.id, enrichment_type, is_encrypted=file.is_encrypted, filetype_group=file.filetype_group
+                )
             )
-            self.session.add(enrichment)
             count += 1
 
         await self.session.flush()
         logger.info(f"Queued {count} {enrichment_type.value} enrichments")
         return count
+
+    async def queue_files_with_text(
+        self, *, dataset_id: str, enrichment_type: EnrichmentType, filetype_group: str
+    ) -> int:
+        """Queue `enrichment_type` for files of `filetype_group` that have extracted text and no row yet.
+
+        For groups where text is the exception (images only have it after OCR; tables only when
+        their text extraction was opted into), so text consumers don't queue files they'd skip.
+        """
+        from cipher.datastores.postgres.tables.extracted_text import ExtractedTextTable
+
+        query = (
+            select(FileTable.id)
+            .join(ExtractedTextTable, ExtractedTextTable.file_id == FileTable.id)
+            .outerjoin(
+                EnrichmentTable,
+                (EnrichmentTable.enrichable_id == FileTable.id)
+                & (EnrichmentTable.enrichable_type == EnrichableType.FILE)
+                & (EnrichmentTable.enrichment_type == enrichment_type),
+            )
+            .where(
+                EnrichmentTable.id.is_(None),
+                FileTable.dataset_id == dataset_id,
+                FileTable.filetype_group == filetype_group,
+            )
+        )
+        file_ids = [file_id for (file_id,) in (await self.session.execute(query)).all()]
+        return await self.queue_enrichments_for_files(file_ids=file_ids, enrichment_type=enrichment_type)
 
     async def get_unqueued_files(
         self, dataset_id: str, enrichment_type: EnrichmentType, filetypes: list[str]
@@ -562,13 +647,23 @@ class PostgresEnrichmentRepository:
         return [dict(row._mapping) for row in (await self.session.execute(query)).all()]
 
     async def queue_enrichments_for_files(self, file_ids: list[str], enrichment_type: EnrichmentType) -> int:
-        """Queue PENDING `enrichment_type` rows for exactly these files (callers pass unqueued ids)."""
+        """Queue PENDING `enrichment_type` rows for exactly these files (callers pass unqueued ids).
+
+        An encrypted file (`is_encrypted`: reading it needs a password) is recorded SKIPPED with
+        `ENCRYPTED_SKIP` instead, so no analytic tries to read it; archive extraction is exempt.
+        """
+        encrypted: dict[str, str] = {}
+        if file_ids and enrichment_type not in READS_ENCRYPTED:
+            rows = await self.session.execute(
+                select(FileTable.id, FileTable.filetype_group).where(FileTable.id.in_(file_ids), FileTable.is_encrypted)
+            )
+            encrypted = dict(rows.tuples().all())
         self.session.add_all(
-            EnrichmentTable(
-                enrichable_type=EnrichableType.FILE,
-                enrichable_id=file_id,
-                enrichment_type=enrichment_type,
-                status=ProcessingStatus.PENDING,
+            _file_enrichment(
+                file_id,
+                enrichment_type,
+                is_encrypted=file_id in encrypted,
+                filetype_group=encrypted.get(file_id, ""),
             )
             for file_id in file_ids
         )

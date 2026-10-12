@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi_offline import FastAPIOffline
 from loguru import logger
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from cipher.api.deps.elasticsearch import elasticsearch_lifespan
@@ -18,7 +19,6 @@ from cipher.api.routes import (
     admin,
     chat,
     comments,
-    dataset_requests,
     datasets,
     documents,
     emails,
@@ -29,9 +29,12 @@ from cipher.api.routes import (
     files,
     images,
     locations,
+    mention_relationships,
     mentions,
     persons,
+    runs,
     search,
+    tables,
     tags,
     users,
 )
@@ -43,6 +46,7 @@ from cipher.utils.fastapi.middleware import (
     QueryCaseMiddleware,
     entity_exists_handler,
     entity_not_found_handler,
+    http_exception_handler,
     log_middleware,
     python_exception_handler,
     validation_exception_handler,
@@ -82,9 +86,7 @@ async def lifespan(app: FastAPI):
             )
 
             async with get_session() as _s:
-                await ElasticsearchChunkRetrievalRepository(
-                    client=app.state.es_client, session=_s
-                ).ensure_schema()
+                await ElasticsearchChunkRetrievalRepository(client=app.state.es_client, session=_s).ensure_schema()
         yield
 
 
@@ -100,6 +102,7 @@ app.add_middleware(QueryCaseMiddleware)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(EntityAlreadyExistsError, entity_exists_handler)
 app.add_exception_handler(EntityNotFoundError, entity_not_found_handler)
+app.add_exception_handler(StarletteHTTPException, http_exception_handler)
 app.add_exception_handler(Exception, python_exception_handler)
 app.add_middleware(
     CORSMiddleware,
@@ -112,7 +115,7 @@ app.add_middleware(
 app.include_router(chat.router)
 app.include_router(documents.router)
 app.include_router(emails.router)
-app.include_router(dataset_requests.router)
+app.include_router(runs.router)
 app.include_router(datasets.router)
 app.include_router(enrichments.router)
 app.include_router(files.router)
@@ -127,8 +130,10 @@ app.include_router(faces.router)
 app.include_router(persons.router)
 app.include_router(entities.router)
 app.include_router(mentions.router)
+app.include_router(mention_relationships.router)
 app.include_router(events.router)
 app.include_router(comments.router)
+app.include_router(tables.router)
 static_path = Path(__file__).parent / "assets"
 app.mount(f"/{static_path.name}", StaticFiles(directory=static_path), name="static")
 

@@ -1,3 +1,5 @@
+import asyncio
+from functools import cache
 from typing import Annotated
 
 import phonenumbers
@@ -44,11 +46,9 @@ from cipher.schemas.graph.entity_match import (
     EntityMatchBatchReview,
     EntityMatchReview,
     EntityMatchSearchParameters,
-    EntityMergeSearchParameters,
     NameGroupDismissRequest,
     PaginatedEntityMatchesResponse,
     PaginatedEntityMatchGroupsResponse,
-    PaginatedEntityMergeGroupsResponse,
 )
 from cipher.schemas.graph.entity_relationship import (
     EntityRelationship,
@@ -139,26 +139,31 @@ async def list_entities(
 )
 async def search_entities(
     datastore: EntityDatastoreDep,
-    dataset_id: Annotated[str, Query(alias="datasetId", description="Dataset to search within")],
+    dataset_ids: Annotated[list[str], Query(alias="datasetIds", min_length=1, description="Datasets to search within")],
     q: Annotated[str | None, Query(description="Name/alias to fuzzy-match")] = None,
     selector: Annotated[str | None, Query(description="Normalized selector value for exact match")] = None,
     limit: Annotated[int, Query(ge=1, le=50)] = 5,
 ) -> list[EntitySearchResult]:
-    """Fast entity resolution: exact selector lookup and/or trigram name match."""
-    results: list[EntitySearchResult] = []
-    if selector:
-        hit = await datastore.search_by_selector(dataset_id=dataset_id, normalized_value=selector)
-        if hit:
-            results.append(
-                EntitySearchResult(
-                    **EntitySummary.model_validate(hit.model_dump()).model_dump(),
-                    match_reason="exact selector",
-                    score=1.0,
+    """Fast entity resolution: exact selector lookup and/or trigram name match, best score per entity."""
+    best: dict[str, EntitySearchResult] = {}
+    for dataset_id in dict.fromkeys(dataset_ids):
+        found: list[EntitySearchResult] = []
+        if selector:
+            hit = await datastore.search_by_selector(dataset_id=dataset_id, normalized_value=selector)
+            if hit:
+                found.append(
+                    EntitySearchResult(
+                        **EntitySummary.model_validate(hit.model_dump()).model_dump(),
+                        match_reason="exact selector",
+                        score=1.0,
+                    )
                 )
-            )
-    if q:
-        results.extend(await datastore.search_by_name(dataset_id=dataset_id, query=q, limit=limit))
-    return results[:limit]
+        if q:
+            found.extend(await datastore.search_by_name(dataset_id=dataset_id, query=q, limit=limit))
+        for result in found:
+            if result.id not in best or result.score > best[result.id].score:
+                best[result.id] = result
+    return sorted(best.values(), key=lambda result: result.score, reverse=True)[:limit]
 
 
 @router.get(
@@ -177,12 +182,12 @@ async def get_ontology() -> Ontology:
 )
 async def get_entity_breakdown(
     datastore: EntityDatastoreDep,
-    dataset_id: Annotated[
-        str | None, Query(alias="datasetId", description="Scope to one dataset; omit for all")
+    dataset_ids: Annotated[
+        list[str] | None, Query(alias="datasetIds", description="Scope to these datasets; omit for all")
     ] = None,
 ) -> EntityBreakdown:
     """Counts by entity type, selector type, and selector subtype -- feeds the dataset-view chart."""
-    return await datastore.entity_breakdown(dataset_id=dataset_id)
+    return await datastore.entity_breakdown(dataset_ids=dataset_ids)
 
 
 @router.get(
@@ -260,23 +265,6 @@ async def dismiss_entity_match_name_group(
         review_note=body.review_note,
     )
     return {"rejected": rejected}
-
-
-@router.get(
-    "/merges",
-    summary="Grouped entity-merge review queue",
-    response_model=PaginatedEntityMergeGroupsResponse,
-    **_BY_ALIAS,
-)
-async def list_entity_merge_groups(
-    params: Annotated[EntityMergeSearchParameters, Query()], datastore: EntityMatchDatastoreDep
-) -> PaginatedEntityMergeGroupsResponse:
-    """One card per provisional entity -- the canonical entities it may duplicate.
-
-    Populate with `cipher dedupe-entities`. Confirm a row via
-    `POST /entities/matches/{id}/resolve` (it runs the merge).
-    """
-    return await datastore.list_merge_groups(params)
 
 
 @router.get(
@@ -364,9 +352,11 @@ async def accept_name_suggestion(
 
 
 @router.post("/name-suggestions/dismiss", summary="Dismiss a name-level suggestion")
-async def dismiss_name_suggestion(body: NameSuggestionDismiss, names: NameSuggestionDatastoreDep) -> dict:
+async def dismiss_name_suggestion(
+    body: NameSuggestionDismiss, user: CurrentUserDep, names: NameSuggestionDatastoreDep
+) -> dict:
     """Never offer it again; the names stay in the Resolve queue."""
-    return camelize_keys({"dismissed": await names.dismiss(body.mention_relationship_ids)})
+    return camelize_keys({"dismissed": await names.dismiss(body.mention_relationship_ids, reviewed_by=user.id)})
 
 
 @router.post(
@@ -579,24 +569,41 @@ async def promote_entities_batch(body: EntityBatchRequest, user: CurrentUserDep,
     return {"promoted": sum(entity is not None for entity in promoted)}
 
 
+@cache
+def _gazetteer():
+    from cipher.places import Gazetteer
+
+    return Gazetteer.load()
+
+
 @router.post("/retype", summary="Change the type of auto-created entities")
 async def retype_entities(body: EntityRetypeRequest, datastore: EntityDatastoreDep) -> dict:
-    """Person <-> organization for auto-created entities (e.g. `Idylwood Towers` minted as a person).
+    """Person / organization / location for auto-created entities (e.g. `Idylwood Towers` minted as a person).
 
-    Their name mentions follow; edges the new type can't have are removed. Verified entities
-    are refused -- edit those by hand.
+    Their name mentions follow; edges the new type can't have are removed. One that becomes a
+    location the gazetteer knows (`DELAWARE`) is folded into that shared place entity. Verified
+    entities are refused -- edit those by hand.
     """
-    totals = {"retyped": 0, "mentions": 0, "edges_removed": 0}
+    from cipher.orchestration.resolve_locations import place_entities
+
+    totals = {"retyped": 0, "mentions": 0, "edges_removed": 0, "places_matched": 0}
     for entity_id in dict.fromkeys(body.entity_ids):
+        entity = await datastore.get_entity(entity_id)
+        if entity is None:
+            raise EntityNotFoundError("Entity", entity_id)
         try:
             counts = await datastore.retype_entity(entity_id, body.entity_type)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        if counts is None:
-            raise EntityNotFoundError("Entity", entity_id)
         totals["retyped"] += 1
         totals["mentions"] += counts["mentions"]
         totals["edges_removed"] += counts["edges_removed"]
+        if body.entity_type == EntityType.LOCATION:
+            gazetteer = await asyncio.to_thread(_gazetteer)
+            if place := gazetteer.resolve(entity.display_name):
+                place_id = (await place_entities(datastore.session, [place]))[place.id]
+                await datastore.merge_entities(canonical_id=place_id, provisional_id=entity_id)
+                totals["places_matched"] += 1
     return camelize_keys(totals)
 
 

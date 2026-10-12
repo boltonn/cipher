@@ -21,9 +21,19 @@ def test_to_mention_maps_org_span():
     assert m is not None
     assert m.entity_type == EntityType.ORGANIZATION
     assert m.entity_attribute == "name"
-    assert m.normalized_value == "acme corp"
+    assert m.normalized_value == "acme"  # legal form is not part of the name key
     assert (m.start_offset, m.end_offset) == (10, 19)
     assert m.extractor == "gliner"
+
+
+@pytest.mark.parametrize("written", ["Nick Bolton's", '"Nick Bolton"', "«Nick Bolton»", "'Nick Bolton’s'"])
+def test_to_mention_trims_quotes_and_possessive_into_one_name_group(written):
+    content = f"met {written} today"
+    span = EntitySpan(surface_text=written, label="person", start_offset=4, end_offset=4 + len(written), score=0.9)
+    m = _to_mention(span, dataset_id="d", file_id="f", extracted_id="x", content=content, extractor="g", model="g")
+    assert m is not None
+    assert m.surface_text == "Nick Bolton" == content[m.start_offset : m.end_offset]
+    assert m.normalized_value == "nick bolton"
 
 
 def test_to_mention_skips_selector_and_unknown_labels():
@@ -96,17 +106,11 @@ def test_relations_dropped_when_endpoint_missing_or_label_unknown():
 
 def test_build_extractor_requires_model_dirs():
     with pytest.raises(ValueError, match="gliner-model-dir"):
-        _build_extractor(
-            "gliner", model=None, gliner_model_dir=None, nerd_model_dir=None, threshold=0.5
-        )
+        _build_extractor("gliner", model=None, gliner_model_dir=None, nerd_model_dir=None, threshold=0.5)
     with pytest.raises(ValueError, match="nerd-model-dir"):
-        _build_extractor(
-            "nerd", model=None, gliner_model_dir=None, nerd_model_dir=None, threshold=0.5
-        )
+        _build_extractor("nerd", model=None, gliner_model_dir=None, nerd_model_dir=None, threshold=0.5)
     with pytest.raises(ValueError, match="Unknown"):
-        _build_extractor(
-            "bogus", model=None, gliner_model_dir=None, nerd_model_dir=None, threshold=0.5
-        )
+        _build_extractor("bogus", model=None, gliner_model_dir=None, nerd_model_dir=None, threshold=0.5)
 
 
 def test_legal_endpoints_direction_and_symmetry():
@@ -121,3 +125,64 @@ def test_legal_endpoints_direction_and_symmetry():
     assert _legal_endpoints(RelationshipType.FAMILY_OF, "a", "b", EntityType.PERSON, EntityType.PERSON) == ("a", "b")
     # endpoints not permitted for the type at all
     assert _legal_endpoints(RelationshipType.FAMILY_OF, "a", "b", EntityType.PERSON, EntityType.ORGANIZATION) is None
+
+
+def _old(start, end, value, entity_id, entity_type="person"):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        start_offset=start, end_offset=end, normalized_value=value, entity_id=entity_id, entity_type=entity_type
+    )
+
+
+def _new(start, end, value, entity_type="person"):
+    from cipher.schemas.graph.mention import MentionCreate
+
+    return MentionCreate(
+        dataset_id="d",
+        mentioned_type="EXTRACTED_TEXT",
+        mentioned_id="x",
+        surface_text=value,
+        entity_type=entity_type,
+        entity_attribute="name",
+        normalized_value=value,
+        start_offset=start,
+        end_offset=end,
+    )
+
+
+def test_rescan_keeps_entity_of_the_same_span():
+    """A span re-found at the same offsets keeps its entity."""
+    from cipher.orchestration.extract_entities import entity_inheritance
+
+    entity_for = entity_inheritance([_old(10, 21, "megan flick", "megan")], {})
+    assert entity_for(_new(10, 21, "megan flick")) == "megan"
+
+
+def test_rescan_repairs_a_fragment_to_the_names_entity():
+    """`n Flick` (unresolved) and `Megan Flick` (resolved) become one whole `Megan Flick` on that entity."""
+    from cipher.orchestration.extract_entities import entity_inheritance
+
+    old = [_old(10, 21, "megan flick", "megan"), _old(54, 61, "n flick", None), _old(50, 61, "megan flick", "megan")]
+    entity_for = entity_inheritance(old, {})
+    assert entity_for(_new(50, 61, "megan flick")) == "megan"
+    assert entity_for(_new(90, 101, "megan flick")) == "megan"  # same name elsewhere in the text
+
+
+def test_rescan_falls_back_to_dataset_wide_unambiguous_name():
+    """A name new to this text takes the one entity it resolves to dataset-wide; type must match."""
+    from cipher.orchestration.extract_entities import entity_inheritance
+
+    entity_for = entity_inheritance([], {("person", "liz hughes"): "liz"})
+    assert entity_for(_new(0, 10, "liz hughes")) == "liz"
+    assert entity_for(_new(0, 10, "liz hughes", entity_type="organization")) is None
+    assert entity_for(_new(0, 5, "dolce")) is None
+
+
+def test_address_stops_at_contact_lines():
+    """An address span ends before the phone / email lines under it."""
+    from cipher.orchestration.extract_entities import address_length
+
+    surface = "3141 Chestnut Street\n\nPhiladelphia, PA 19104\n\nTel: 215.895.2372"
+    assert surface[: address_length(surface)] == "3141 Chestnut Street\n\nPhiladelphia, PA 19104"
+    assert address_length("Unter den Linden 77\n10117 Berlin") == len("Unter den Linden 77\n10117 Berlin")

@@ -1,5 +1,7 @@
 import json
+import re
 import zipfile
+from io import BytesIO
 from pathlib import Path
 from typing import BinaryIO
 
@@ -16,6 +18,11 @@ _OOXML_ZIP_MARKERS = {
     "xl/workbook.xml": "xlsx",
     "ppt/presentation.xml": "pptx",
 }
+
+# An mbox opens with its first message's `From <sender> <asctime>` separator line (an .eml never does).
+MBOX_FROM_LINE = re.compile(
+    rb"From \S+ +(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun) +(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) "
+)
 
 
 class MagicNumberFilterTyper:
@@ -69,20 +76,31 @@ class MagicNumberFilterTyper:
         )
 
     def infer_bytes(self, data: bytes) -> FileTypeInfo | None:
-        """Infer file type from raw bytes using magic numbers and extensions."""
+        """Infer file type from raw bytes using magic numbers (no bytes at all: `empty`)."""
+        if not data:
+            return self._name_map.get("empty")
         for rule in self._magic_rules:
             magic = rule["magic"]
             offset = rule["offset"]
 
             # Match-case is still fine, but a simple slice comparison is very fast
             if data[offset : offset + len(magic)] == magic:
+                if rule["info"]["filetype"] == "zip" and (ooxml_info := self._disambiguate_ooxml(BytesIO(data))):
+                    return ooxml_info
                 return rule["info"]
+        if MBOX_FROM_LINE.match(data):
+            return self._name_map.get("mbox")
         return None
 
-    def infer_path(self, path: Path, n: int | None = None) -> FileTypeInfo | None:
-        """Infer type by reading the file and checking extension."""
+    def infer_path(self, path: Path, n: int | None = None, name: str | None = None) -> FileTypeInfo | None:
+        """Infer type from magic bytes, then the extension of `name` (default: the path's own name).
+
+        Pass `name` when the bytes live somewhere their name doesn't (a blob named by its hash).
+        """
         n = n or self.max_magic_length
         try:
+            if path.stat().st_size == 0:
+                return self._name_map.get("empty")
             with path.open("rb") as f:
                 header = f.read(n)
                 if info := self.infer_bytes(header):
@@ -95,12 +113,15 @@ class MagicNumberFilterTyper:
         # 2. Try Extension Matching (Fallback)
         # O(1) lookup in our pre-compiled map
         # logger.debug(f"Falling back to extension matching for {path.name}")
-        return self.match_extension(path.suffix)
+        return self.match_extension(Path(name or path.name).suffix)
 
-    def _disambiguate_ooxml(self, path: Path) -> FileTypeInfo | None:
-        """Peek at a zip-matched file's internal listing to tell docx/xlsx/pptx apart from a plain zip."""
+    def _disambiguate_ooxml(self, file: Path | BinaryIO) -> FileTypeInfo | None:
+        """Peek at a zip-matched file's internal listing to tell docx/xlsx/pptx apart from a plain zip.
+
+        A header-only prefix (no central directory) can't be told apart and returns None.
+        """
         try:
-            with zipfile.ZipFile(path) as archive:
+            with zipfile.ZipFile(file) as archive:
                 names = set(archive.namelist())
         except zipfile.BadZipFile:
             return None

@@ -7,7 +7,6 @@ Feeds the calendar and table views. Events link to people via `event_participant
 surface text until resolution runs.
 """
 
-from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Query, Response
@@ -19,6 +18,9 @@ from cipher.schemas.graph.event import (
     Event,
     EventCreate,
     EventIdsRequest,
+    EventMonthCount,
+    EventParticipantOption,
+    EventPlaceOption,
     EventSearchParameters,
     EventUpdate,
     EventWithLinks,
@@ -43,35 +45,63 @@ async def list_events(
 
 @router.get("/calendar", summary="Events in a date window", response_model=list[Event], **_BY_ALIAS)
 async def calendar_events(
-    datastore: EventDatastoreDep,
-    date_from: Annotated[datetime, Query(alias="dateFrom")],
-    date_to: Annotated[datetime, Query(alias="dateTo")],
-    dataset_id: Annotated[str | None, Query(alias="datasetId")] = None,
+    params: Annotated[EventSearchParameters, Query()], datastore: EventDatastoreDep
 ) -> list[Event]:
-    """Every event whose `date_start` falls in [dateFrom, dateTo], ordered ascending."""
-    return await datastore.calendar_events(date_from=date_from, date_to=date_to, dataset_id=dataset_id)
+    """Every matching event whose `date_start` falls in [dateFrom, dateTo], ordered ascending (paging ignored)."""
+    return await datastore.calendar_events(params)
+
+
+@router.get("/months", summary="Event counts per month", response_model=list[EventMonthCount], **_BY_ALIAS)
+async def event_months(
+    datastore: EventDatastoreDep,
+    dataset_ids: Annotated[list[str] | None, Query(alias="datasetIds")] = None,
+) -> list[EventMonthCount]:
+    """How many events start in each month, so the calendar can jump to months with data."""
+    return await datastore.month_counts(dataset_ids=dataset_ids)
 
 
 @router.get("/categories", summary="Distinct source labels in use", response_model=list[str])
 async def category_values(
     datastore: EventDatastoreDep,
-    dataset_id: Annotated[str | None, Query(alias="datasetId")] = None,
+    dataset_ids: Annotated[list[str] | None, Query(alias="datasetIds")] = None,
     q: Annotated[str | None, Query(description="Substring filter")] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> list[str]:
     """The raw iCalendar `CATEGORIES` values present on events, for the filter combobox."""
-    return await datastore.list_category_values(dataset_id=dataset_id, q=q, limit=limit)
+    return await datastore.list_category_values(dataset_ids=dataset_ids, q=q, limit=limit)
+
+
+@router.get("/participants", summary="Participants on events", response_model=list[EventParticipantOption], **_BY_ALIAS)
+async def participant_options(
+    datastore: EventDatastoreDep,
+    dataset_ids: Annotated[list[str] | None, Query(alias="datasetIds")] = None,
+    q: Annotated[str | None, Query(description="Substring filter")] = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+) -> list[EventParticipantOption]:
+    """Linked entities (incl. provisional) and unresolved names on events, most events first."""
+    return await datastore.list_participant_options(dataset_ids=dataset_ids, q=q, limit=limit)
+
+
+@router.get("/places", summary="Places on events", response_model=list[EventPlaceOption], **_BY_ALIAS)
+async def place_options(
+    datastore: EventDatastoreDep,
+    dataset_ids: Annotated[list[str] | None, Query(alias="datasetIds")] = None,
+    q: Annotated[str | None, Query(description="Substring filter")] = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+) -> list[EventPlaceOption]:
+    """Linked locations and unresolved place text on events, most events first."""
+    return await datastore.list_place_options(dataset_ids=dataset_ids, q=q, limit=limit)
 
 
 @router.get("/tags", summary="Distinct tags in use", response_model=list[str])
 async def tag_values(
     datastore: EventDatastoreDep,
-    dataset_id: Annotated[str | None, Query(alias="datasetId")] = None,
+    dataset_ids: Annotated[list[str] | None, Query(alias="datasetIds")] = None,
     q: Annotated[str | None, Query(description="Substring filter")] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> list[str]:
     """Analyst `tags` present on events, most-used first -- powers tag-input suggestions."""
-    return await datastore.list_tag_values(dataset_id=dataset_id, q=q, limit=limit)
+    return await datastore.list_tag_values(dataset_ids=dataset_ids, q=q, limit=limit)
 
 
 @router.post("", summary="Create an event", response_model=Event, **_BY_ALIAS)
@@ -81,9 +111,7 @@ async def create_event(payload: EventCreate, user: CurrentUserDep, datastore: Ev
 
 
 @router.post("/mark-invalid", summary="Mark events invalid", status_code=204)
-async def mark_events_invalid(
-    payload: EventIdsRequest, user: CurrentUserDep, datastore: EventDatastoreDep
-) -> Response:
+async def mark_events_invalid(payload: EventIdsRequest, user: CurrentUserDep, datastore: EventDatastoreDep) -> Response:
     """Delete events that are not real; a source file left with none is tagged `event` negative by you."""
     await datastore.delete_events(payload.event_ids, user_id=user.id)
     return Response(status_code=204)
@@ -99,9 +127,7 @@ async def get_event(event_id: str, datastore: EventDatastoreDep) -> EventWithLin
 
 
 @router.patch("/{event_id}", summary="Update an event", response_model=Event, **_BY_ALIAS)
-async def update_event(
-    event_id: str, data: EventUpdate, user: CurrentUserDep, datastore: EventDatastoreDep
-) -> Event:
+async def update_event(event_id: str, data: EventUpdate, user: CurrentUserDep, datastore: EventDatastoreDep) -> Event:
     """Patch an event's fields (time, status, details, verification, tags)."""
     event = await datastore.update_event(event_id, data, user_id=user.id)
     if event is None:

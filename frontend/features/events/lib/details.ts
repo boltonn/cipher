@@ -21,7 +21,7 @@ export const DETAIL_FIELDS: Partial<Record<EventType, readonly DetailField[]>> =
       name: "mode",
       label: "Mode",
       kind: "select",
-      options: ["flight", "train", "bus", "ferry", "car_rental", "other"] as const,
+      options: ["flight", "train", "bus", "ferry", "carRental", "other"] as const,
     },
     { name: "operator", label: "Operator", kind: "text" },
     { name: "number", label: "Number", kind: "text" },

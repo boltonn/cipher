@@ -1,5 +1,5 @@
 import { apiClient } from "@/lib/api-client";
-import type { Tag, TagTarget, TagTargetType } from "./types";
+import type { Tag, TagStats, TagTarget, TagTargetType, TagTrainingReadiness } from "./types";
 
 export const tagService = {
   /** Every user's and model's decision on a target's tags, newest first. */
@@ -14,6 +14,16 @@ export const tagService = {
     const { data } = await apiClient.get<string[]>("/tags/names", {
       params: { targetType, limit },
     });
+    return data;
+  },
+  /** Per tag and target kind: analyst labels, model coverage, and yours. */
+  stats: async (): Promise<TagStats[]> => {
+    const { data } = await apiClient.get<TagStats[]>("/tags/stats");
+    return data;
+  },
+  /** Admin only: analyst labels per image tag and which are ready to train. */
+  trainingReadiness: async (): Promise<TagTrainingReadiness[]> => {
+    const { data } = await apiClient.get<TagTrainingReadiness[]>("/admin/tag-training");
     return data;
   },
   /** Other users whose labels clearing `tag` on these targets would remove. */

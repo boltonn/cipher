@@ -49,6 +49,8 @@ class SelectorRejected(Exception):
 
 
 def _v_phone(value: str, country: str | None) -> dict[str, str]:
+    if not value.startswith("+"):  # national: no country stated, so nothing to check it against
+        return {"number_format": "national"}
     try:
         parsed = phonenumbers.parse(value, None)
     except phonenumbers.NumberParseException as exc:
@@ -288,6 +290,30 @@ def _v_passport_mrz(value: str, country: str | None) -> dict[str, str]:
     return attrs
 
 
+def _v_passport(value: str, country: str | None) -> dict[str, str]:
+    """An MRZ block is checked digit by digit; a bare number only has its shape (the pattern) to go on."""
+    if "\n" in value:
+        return _v_passport_mrz(value, country)
+    return {"format": "number"}
+
+
+def _v_license_plate(value: str, country: str | None) -> dict[str, str]:
+    if not any(c.isdigit() for c in value) or not any(c.isalpha() for c in value):
+        raise SelectorRejected("a plate has letters and digits")
+    return {}
+
+
+def _v_mac_address(value: str, country: str | None) -> dict[str, str]:
+    if value in ("00:00:00:00:00:00", "ff:ff:ff:ff:ff:ff"):
+        raise SelectorRejected("null / broadcast MAC")
+    first = int(value[:2], 16)
+    return {
+        "oui": value[:8],
+        "administration": "local" if first & 2 else "universal",
+        "cast": "multicast" if first & 1 else "unicast",
+    }
+
+
 VALIDATORS = {
     "phone": _v_phone,
     "email": _v_email,
@@ -296,7 +322,9 @@ VALIDATORS = {
     "imei": _v_imei,
     "imsi": _v_imsi,
     "bank_card": _v_bank_card,
-    "passport": _v_passport_mrz,
+    "passport": _v_passport,
+    "license_plate": _v_license_plate,
+    "mac_address": _v_mac_address,
     "crypto_address": _v_crypto,
     "social_handle": _v_social_handle,
     "national_id_ru": _v_national_id_ru,

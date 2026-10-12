@@ -40,7 +40,7 @@ packages/
 * each feature should be able to used as a stand-alone (ie. fastapi analytic services)
 * orchestration can be standalone scripts that are easy to use until an orchestation architecture is designed from the ground up
 * consistent terminology between schemas, tables, etc. with the frontend where appropriate besides casing
-* API casing: the backend accepts camelCase **or** snake_case for query params and JSON bodies (shared `BaseModel` has `populate_by_name`; `QueryCaseMiddleware` mirrors query keys) and always serializes camelCase -- no raw snake_case dict responses (use `camelize_keys` for free-form dicts); give plain `Query()` params a camelCase `alias=`
+* API casing: the backend accepts camelCase **or** snake_case for query params, JSON bodies and enum values (shared `BaseModel` has `populate_by_name`; `QueryCaseMiddleware` mirrors query keys) and always serializes camelCase keys **and** enum values -- enums subclass `StrEnum` from `cipher.schemas._base.base` (snake in storage, camel on the wire), open vocabularies use `EnumStr`, free-form dicts go through `camelize_keys`; give plain `Query()`/`Form()` params a camelCase `alias=`
 * who-did-it fields (`reviewed_by`, `user_id`) come from the authenticated user (`CurrentUserDep`), never the request body
 * if you need to test a new feature with fake data always create a new dataset and name appropriately
 * keep code brief

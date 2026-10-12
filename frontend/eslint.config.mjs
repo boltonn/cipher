@@ -9,6 +9,12 @@ const eslintConfig = defineConfig([
     rules: {
       "import/no-anonymous-default-export": "off",
       "import/prefer-default-export": "off",
+      // React Compiler isn't enabled (next.config.ts); TanStack's useVirtualizer is fine without it.
+      "react-hooks/incompatible-library": "off",
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_", ignoreRestSiblings: true },
+      ],
     },
   },
   globalIgnores([

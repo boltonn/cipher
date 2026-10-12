@@ -3,7 +3,11 @@ import type {
   EventParticipant,
   EventParticipantCreatePayload,
   EventPlace,
+  EventLinkPick,
+  EventMonthCount,
+  EventParticipantOption,
   EventPlaceCreatePayload,
+  EventPlaceOption,
   EventSearchParams,
   EventUpdatePayload,
   EventWithLinks,
@@ -20,15 +24,26 @@ import { toast } from "sonner";
 
 const eventsBaseURL = "/events";
 
+const ids = (picks: EventLinkPick[] = [], extra: string[] = []) => {
+  const all = [...extra, ...picks.flatMap((p) => (p.id ? [p.id] : []))];
+  return all.length ? all : undefined;
+};
+const names = (picks: EventLinkPick[] = []) => {
+  const all = picks.flatMap((p) => (p.id ? [] : [p.name]));
+  return all.length ? all : undefined;
+};
+
 function toQuery(params: EventSearchParams) {
   return {
-    datasetId: params.datasetId,
+    datasetIds: params.datasetIds,
+    participantEntityIds: ids(params.participants, params.participantEntityIds),
+    participantNames: names(params.participants),
+    locationIds: ids(params.places, params.locationIds),
+    placeNames: names(params.places),
     query: params.query || undefined,
     eventType: params.eventType,
     category: params.category || undefined,
     status: params.status,
-    participantEntityId: params.participantEntityId,
-    locationId: params.locationId,
     isVerified: params.isVerified,
     dateFrom: params.dateFrom,
     dateTo: params.dateTo,
@@ -45,18 +60,22 @@ export const eventsService = {
       .get<PaginatedEvents>(eventsBaseURL, { params: toQuery(params) })
       .then((res) => res.data),
 
-  calendar: (args: {
-    dateFrom: string;
-    dateTo: string;
-    datasetId?: string;
-  }): Promise<CipherEvent[]> =>
+  calendar: (params: EventSearchParams): Promise<CipherEvent[]> =>
     apiClient
-      .get<CipherEvent[]>(`${eventsBaseURL}/calendar`, {
-        params: {
-          dateFrom: args.dateFrom,
-          dateTo: args.dateTo,
-          datasetId: args.datasetId,
-        },
+      .get<CipherEvent[]>(`${eventsBaseURL}/calendar`, { params: toQuery(params) })
+      .then((res) => res.data),
+
+  participants: (args: { datasetIds?: string[]; q?: string }): Promise<EventParticipantOption[]> =>
+    apiClient
+      .get<EventParticipantOption[]>(`${eventsBaseURL}/participants`, {
+        params: { datasetIds: args.datasetIds, q: args.q || undefined },
+      })
+      .then((res) => res.data),
+
+  places: (args: { datasetIds?: string[]; q?: string }): Promise<EventPlaceOption[]> =>
+    apiClient
+      .get<EventPlaceOption[]>(`${eventsBaseURL}/places`, {
+        params: { datasetIds: args.datasetIds, q: args.q || undefined },
       })
       .then((res) => res.data),
 
@@ -97,26 +116,31 @@ export const eventsService = {
   removePlace: (placeId: string): Promise<void> =>
     apiClient.delete(`${eventsBaseURL}/places/${placeId}`).then(() => undefined),
 
+  months: (datasetIds?: string[]): Promise<EventMonthCount[]> =>
+    apiClient
+      .get<EventMonthCount[]>(`${eventsBaseURL}/months`, { params: { datasetIds } })
+      .then((res) => res.data),
+
   categories: (args: {
-    datasetId?: string;
+    datasetIds?: string[];
     q?: string;
     limit?: number;
   }): Promise<string[]> =>
     apiClient
       .get<string[]>(`${eventsBaseURL}/categories`, {
         params: {
-          datasetId: args.datasetId,
+          datasetIds: args.datasetIds,
           q: args.q || undefined,
           limit: args.limit ?? 50,
         },
       })
       .then((res) => res.data),
 
-  tags: (args: { datasetId?: string; q?: string; limit?: number }): Promise<string[]> =>
+  tags: (args: { datasetIds?: string[]; q?: string; limit?: number }): Promise<string[]> =>
     apiClient
       .get<string[]>(`${eventsBaseURL}/tags`, {
         params: {
-          datasetId: args.datasetId,
+          datasetIds: args.datasetIds,
           q: args.q || undefined,
           limit: args.limit ?? 50,
         },
@@ -133,25 +157,49 @@ export function useEvents(params: EventSearchParams, enabled = true) {
   });
 }
 
-/** Events whose `dateStart` falls in a window — the calendar feed. */
-export function useEventsCalendar(args: {
-  dateFrom: string;
-  dateTo: string;
-  datasetId?: string;
-  enabled?: boolean;
-}) {
-  const { enabled = true, ...rest } = args;
+/** Matching events whose `dateStart` falls in the `dateFrom`..`dateTo` window — the calendar feed. */
+export function useEventsCalendar(params: EventSearchParams & { dateFrom: string; dateTo: string }) {
   return useQuery({
-    queryKey: ["events", "calendar", rest],
-    queryFn: () => eventsService.calendar(rest),
-    enabled,
+    queryKey: ["events", "calendar", params],
+    queryFn: () => eventsService.calendar(params),
     placeholderData: keepPreviousData,
     staleTime: 30_000,
   });
 }
 
+/** Event counts per month — the calendar's month/year jump picker. */
+export function useEventMonths(datasetIds?: string[]) {
+  return useQuery({
+    queryKey: ["events", "months", datasetIds],
+    queryFn: () => eventsService.months(datasetIds),
+    staleTime: 60_000,
+  });
+}
+
+/** Who is on events (linked entities + unresolved names), most events first. */
+export function useEventParticipantOptions(args: { datasetIds?: string[]; q?: string }, enabled = true) {
+  return useQuery({
+    queryKey: ["events", "participants", args],
+    queryFn: () => eventsService.participants(args),
+    enabled,
+    placeholderData: keepPreviousData,
+    staleTime: 60_000,
+  });
+}
+
+/** Where events happen (linked locations + unresolved place text), most events first. */
+export function useEventPlaceOptions(args: { datasetIds?: string[]; q?: string }, enabled = true) {
+  return useQuery({
+    queryKey: ["events", "places", args],
+    queryFn: () => eventsService.places(args),
+    enabled,
+    placeholderData: keepPreviousData,
+    staleTime: 60_000,
+  });
+}
+
 /** Distinct source-label (iCalendar CATEGORIES) values for the filter combobox. */
-export function useEventCategoryOptions(args: { datasetId?: string; q?: string }) {
+export function useEventCategoryOptions(args: { datasetIds?: string[]; q?: string }) {
   return useQuery({
     queryKey: ["events", "categories", args],
     queryFn: () => eventsService.categories(args),
@@ -161,7 +209,7 @@ export function useEventCategoryOptions(args: { datasetId?: string; q?: string }
 }
 
 /** Distinct analyst `tags` in use, most-used first -- powers the tag input's suggestions. */
-export function useEventTagOptions(args: { datasetId?: string; q?: string }, enabled = true) {
+export function useEventTagOptions(args: { datasetIds?: string[]; q?: string }, enabled = true) {
   return useQuery({
     queryKey: ["events", "tags", args],
     queryFn: () => eventsService.tags(args),

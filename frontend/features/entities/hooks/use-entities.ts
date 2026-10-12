@@ -7,13 +7,17 @@ import type {
   EntityType,
   EntityUpdatePayload,
   MentionProvenance,
+  PaginatedRelatedEntitiesResponse,
+  RelatedEntity,
   RelatedEntitySort,
   RelationshipType,
+  SelectorEvidence,
   SelectorLinkPayload,
   SelectorMention,
   TraversalDirection,
 } from "@/features/entities/types";
 import {
+  type InfiniteData,
   keepPreviousData,
   useInfiniteQuery,
   useMutation,
@@ -34,14 +38,14 @@ export function useEntityList(params: EntitySearchParameters, enabled = true) {
 }
 
 export function useEntitySearch(
-  opts: { datasetId?: string; q?: string; selector?: string; limit?: number },
+  opts: { datasetIds: string[]; q?: string; selector?: string; limit?: number },
   enabled = true
 ) {
   return useQuery({
     queryKey: ["entities", "search", opts],
-    queryFn: () =>
-      entitiesService.search({ ...opts, datasetId: opts.datasetId as string }),
-    enabled: enabled && !!opts.datasetId && !!(opts.q || opts.selector),
+    queryFn: () => entitiesService.search(opts),
+    enabled:
+      enabled && opts.datasetIds.length > 0 && !!(opts.q || opts.selector),
     staleTime: 15_000,
     // Keep the previous matches visible while the next query loads so the
     // dropdown doesn't flash "no matches" between keystrokes.
@@ -139,6 +143,30 @@ export function useEntityRelationships(entityId: string | undefined) {
 
 const RELATED_PAGE_SIZE = 25;
 
+/** Pending relationship suggestions naming this entity, at either end. */
+export function useRelationshipSuggestions(entityId: string | undefined) {
+  return useQuery({
+    queryKey: ["entities", entityId, "relationship-suggestions"],
+    queryFn: () =>
+      entitiesService.listRelationshipSuggestions(entityId as string),
+    enabled: !!entityId,
+  });
+}
+
+export function useResolveRelationshipSuggestion() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      status,
+    }: {
+      id: string;
+      status: "confirmed" | "rejected";
+    }) => entitiesService.resolveRelationshipSuggestion(id, status),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["entities"] }),
+  });
+}
+
 /** Paginated neighbours of an entity with sort/filter controls. */
 export function useEntityRelatedInfinite(
   entityId: string | undefined,
@@ -206,7 +234,10 @@ export function useUpdateEntityDetail(
 }
 
 /** Invalidate every cached view of one entity (profile, graph, relationships, detail). */
-function invalidateEntity(qc: ReturnType<typeof useQueryClient>, entityId: string) {
+function invalidateEntity(
+  qc: ReturnType<typeof useQueryClient>,
+  entityId: string
+) {
   qc.invalidateQueries({ queryKey: ["entities", entityId] });
 }
 
@@ -248,12 +279,12 @@ export function useOntology() {
   });
 }
 
-/** Entity / selector counts for one dataset -- the dataset-view breakdown chart. */
-export function useEntityBreakdown(datasetId: string | undefined) {
+/** Entity / selector counts for these datasets -- the dataset-view breakdown chart. */
+export function useEntityBreakdown(datasetIds: string[]) {
   return useQuery({
-    queryKey: ["entities", "breakdown", datasetId ?? null],
-    queryFn: () => entitiesService.getBreakdown(datasetId),
-    enabled: !!datasetId,
+    queryKey: ["entities", "breakdown", datasetIds],
+    queryFn: () => entitiesService.getBreakdown(datasetIds),
+    enabled: datasetIds.length > 0,
     staleTime: 60_000,
   });
 }
@@ -305,28 +336,108 @@ export function useSelectorEvidence(entityId: string, selectorIds: string[]) {
     queryKey: ["entities", entityId, "selector-evidence", selectorIds],
     queryFn: () => entitiesService.getSelectorEvidence(entityId, selectorIds),
     enabled: selectorIds.length > 0,
+    // Resolving a row shrinks `selectorIds`; keep the rest on screen instead of blanking the panel.
+    placeholderData: keepPreviousData,
   });
 }
 
+type RelatedPages = InfiniteData<PaginatedRelatedEntitiesResponse>;
+
 /**
  * Link an existing selector node to `entityId` (manual edge). `moveFrom` detaches it from
- * those owners first -- for fixing an address wrongly linked to someone else.
+ * those owners -- for fixing an address wrongly linked to someone else. Optimistic: the
+ * address joins this entity's selector list at once and `onApply` runs; a failure rolls
+ * both back (`onRevert`).
  */
-export function useLinkSelector(entityId: string, onSuccess?: (selectorId: string) => void) {
+export function useLinkSelector(
+  entityId: string,
+  {
+    onApply,
+    onRevert,
+  }: {
+    onApply?: (selectorId: string) => void;
+    onRevert?: (selectorId: string) => void;
+  } = {}
+) {
   const qc = useQueryClient();
+  const selectorPages = {
+    queryKey: ["entities", entityId, "related"],
+    predicate: isSelectorListQuery,
+  };
   return useMutation({
-    mutationFn: async ({ selectorId, moveFrom = [] }: { selectorId: string; moveFrom?: string[] }) => {
-      for (const ownerId of moveFrom) await entitiesService.detachSelector(ownerId, selectorId);
-      await entitiesService.linkSelector(entityId, selectorId);
-      return { selectorId, moveFrom };
+    mutationFn: async ({
+      selector,
+      moveFrom = [],
+    }: {
+      selector: SelectorEvidence;
+      moveFrom?: string[];
+    }) => {
+      // Link before detaching so a failure never leaves the address with no owner.
+      await entitiesService.linkSelector(entityId, selector.entityId);
+      await Promise.all(
+        moveFrom.map((ownerId) =>
+          entitiesService.detachSelector(ownerId, selector.entityId, {
+            ignoreMissing: true,
+          })
+        )
+      );
     },
-    onSuccess: ({ selectorId, moveFrom }) => {
+    onMutate: async ({ selector }) => {
+      await qc.cancelQueries(selectorPages);
+      const previous = qc.getQueriesData<RelatedPages>(selectorPages);
+      const row: RelatedEntity = {
+        relationshipType: "hasSelector",
+        direction: "out",
+        attributes: {},
+        entity: {
+          id: selector.entityId,
+          entityType: "selector",
+          displayName: selector.displayName,
+          isVerified: false,
+        },
+        mentionCount: selector.emailCount,
+        selectorType: selector.displayName.includes("@") ? "email" : null,
+        normalizedValue: selector.displayName,
+      };
+      qc.setQueriesData<RelatedPages>(selectorPages, (data) => {
+        const [first, ...rest] = data?.pages ?? [];
+        if (
+          !data ||
+          !first ||
+          first.data.some((r) => r.entity.id === row.entity.id)
+        )
+          return data;
+        return {
+          ...data,
+          pages: [
+            { ...first, data: [row, ...first.data], total: first.total + 1 },
+            ...rest,
+          ],
+        };
+      });
+      onApply?.(selector.entityId);
+      return { previous };
+    },
+    onError: (_error, { selector }, context) => {
+      for (const [key, data] of context?.previous ?? [])
+        qc.setQueryData(key, data);
+      onRevert?.(selector.entityId);
+    },
+    onSuccess: (_result, { moveFrom = [] }) => {
+      toast.success(moveFrom.length ? "Address moved" : "Address added");
+    },
+    onSettled: (_result, _error, { moveFrom = [] }) => {
       invalidateEntity(qc, entityId);
       for (const ownerId of moveFrom) invalidateEntity(qc, ownerId);
-      toast.success(moveFrom.length ? "Address moved" : "Address added");
-      onSuccess?.(selectorId);
     },
   });
+}
+
+function isSelectorListQuery(query: { queryKey: readonly unknown[] }) {
+  return (
+    (query.queryKey[3] as { entityType?: EntityType } | undefined)
+      ?.entityType === "selector"
+  );
 }
 
 export function useDetachSelector(entityId: string, onSuccess?: () => void) {
@@ -361,7 +472,10 @@ export function useDeleteEntity(onSuccess?: () => void) {
       // invalidation stops that live observer from refetching a 404 for the id
       // we just removeQueries'd.
       qc.removeQueries({ queryKey: ["entities", entityId] });
-      qc.invalidateQueries({ queryKey: ["entities"], predicate: (q) => q.queryKey[1] !== entityId });
+      qc.invalidateQueries({
+        queryKey: ["entities"],
+        predicate: (q) => q.queryKey[1] !== entityId,
+      });
       qc.invalidateQueries({ queryKey: ["comments"] });
       qc.invalidateQueries({ queryKey: ["mentions"] });
       qc.invalidateQueries({ queryKey: ["entity-matches"] });

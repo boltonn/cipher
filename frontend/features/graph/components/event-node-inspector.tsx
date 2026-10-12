@@ -32,7 +32,7 @@ interface EventNodeInspectorProps {
   onIsolate: (id: string) => void;
 }
 
-/** Side panel for an event node (reached through `participant_in` edges); expanding it pulls in every participant. */
+/** Side panel for an event node (reached through `participantIn` edges); expanding it pulls in every participant. */
 export function EventNodeInspector({
   eventId,
   isExpanded,

@@ -27,13 +27,14 @@ import type { OntologyRelationship } from "@/features/entities/types";
 import { PersonPicker } from "@/features/persons/components/person-picker";
 import { Loader2 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { humanize } from "@/lib/utils";
 
 /** Edge types that aren't "connections" you add here. */
-const EXCLUDED = new Set(["has_selector", "same_as", "appears_in_photo_with"]);
+const EXCLUDED = new Set(["hasSelector", "sameAs", "appearsInPhotoWith"]);
 
 const titleCase = (s: string) =>
-  s
-    .split("_")
+  humanize(s)
+    .split(" ")
     .map((w) => w[0].toUpperCase() + w.slice(1))
     .join(" ");
 
@@ -96,7 +97,7 @@ function AddConnectionForm({
     [ontology]
   );
 
-  const [type, setType] = useState<string>("family_of");
+  const [type, setType] = useState<string>("familyOf");
   const [targetId, setTargetId] = useState<string | undefined>(undefined);
   const [targetName, setTargetName] = useState<string | undefined>(undefined);
   const [role, setRole] = useState<string | undefined>(undefined);

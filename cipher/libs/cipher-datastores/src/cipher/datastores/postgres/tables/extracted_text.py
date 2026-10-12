@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -21,6 +21,20 @@ class ExtractedTextTable(Base):
     """
 
     __tablename__ = "extracted_text"
+    # an email's other copies (`EmailMetadata.meaningful_hash`), for "same message as N other copies"
+    __table_args__ = (
+        Index(
+            "ix_extracted_text_meaningful_hash",
+            text("(metadata->>'meaningful_hash')"),
+            postgresql_where=text("metadata ? 'meaningful_hash'"),
+        ),
+        # an email's conversation (`EmailMetadata.conversation_id`), for the email viewer's conversation list
+        Index(
+            "ix_extracted_text_conversation_id",
+            text("(metadata->>'conversation_id')"),
+            postgresql_where=text("metadata ? 'conversation_id'"),
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
 
@@ -48,5 +62,12 @@ class ExtractedTextTable(Base):
     mentions_reviewed_by: Mapped[str | None] = mapped_column(
         String, ForeignKey("user.id", ondelete="SET NULL"), nullable=True
     )
+    # An analyst corrected the text itself (OCR mistakes) -- pipelines never overwrite it after that.
+    is_content_corrected: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    content_corrected_by: Mapped[str | None] = mapped_column(
+        String, ForeignKey("user.id", ondelete="SET NULL"), nullable=True
+    )
+    # `[start, end)` stretches of `content` a person wrote; re-run extractors only add mentions there.
+    corrected_ranges: Mapped[list | None] = mapped_column(JSONB, nullable=True)
 
     file: Mapped["FileTable"] = relationship(back_populates="extracted_text")

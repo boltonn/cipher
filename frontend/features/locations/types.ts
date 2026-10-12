@@ -1,10 +1,10 @@
 /** Mirrors `cipher.schemas.graph.ontology.LocationSource`. */
 export type LocationSource =
-  | "name_mention"
-  | "coordinate_mention"
+  | "nameMention"
+  | "coordinateMention"
   | "exif"
   | "geocoded"
-  | "device_gps";
+  | "deviceGps";
 
 export interface LocationProperties {
   id: string;
@@ -12,6 +12,8 @@ export interface LocationProperties {
   category: string | null;
   source: LocationSource;
   dateRecorded: string | null;
+  /** How long the observation lasted from `dateRecorded` (a call, a stay). */
+  durationSeconds: number | null;
   bearing: number | null;
   velocity: number | null;
   altitude: number | null;
@@ -35,11 +37,11 @@ export interface LocationFeatureCollection {
 }
 
 export const LOCATION_SOURCES: LocationSource[] = [
-  "name_mention",
-  "coordinate_mention",
+  "nameMention",
+  "coordinateMention",
   "exif",
   "geocoded",
-  "device_gps",
+  "deviceGps",
 ];
 
 /** One object for the whole filter surface, per the app's schema-object convention. */

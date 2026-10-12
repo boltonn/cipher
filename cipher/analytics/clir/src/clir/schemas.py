@@ -30,18 +30,12 @@ class ConversationChunkTokenized:
 
 class EmbeddingsRequest(BaseModel):
     text: str = Field(..., description="Text to embed")
-    normalized: bool = Field(
-        False, description="Whether to normalize the embedding vector"
-    )
+    normalized: bool = Field(False, description="Whether to normalize the embedding vector")
     chunk_size: int = Field(None, description="Chunk size for text splitting")
     chunk_overlap: int = Field(0, description="Chunk overlap for text splitting")
     max_chunks: int = Field(5, description="Maximum number of chunks to generate")
-    is_query: bool = Field(
-        True, description="Embed as a search query; False to embed as a document passage"
-    )
-    average: bool = Field(
-        True, description="Whether to average the embeddings of all chunks"
-    )
+    is_query: bool = Field(True, description="Embed as a search query; False to embed as a document passage")
+    average: bool = Field(True, description="Whether to average the embeddings of all chunks")
     model_config: ConfigDict = {
         "json_schema_extra": {
             "examples": [

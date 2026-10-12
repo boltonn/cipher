@@ -13,8 +13,7 @@ from cipher.datastores.postgres.tables.person import PersonTable
 from cipher.schemas._base.common import SortOrder, UriResponse
 from cipher.schemas._base.exceptions import ValidationError
 from cipher.schemas.identity.face import (
-    DEFAULT_FACE_MATCH_SIMILARITY,
-    DEFAULT_FACE_REJECT_SIMILARITY,
+    DEFAULT_FACE_SIMILARITY,
     BaseFaceSearchParameters,
     Face,
     FaceAssignment,
@@ -320,9 +319,7 @@ class PostgresFaceRepository:
         await self.session.commit()
         return result.rowcount or 0
 
-    async def unreject_faces(
-        self, face_ids: list[str], *, min_similarity: float = DEFAULT_FACE_REJECT_SIMILARITY
-    ) -> int:
+    async def unreject_faces(self, face_ids: list[str], *, min_similarity: float = DEFAULT_FACE_SIMILARITY) -> int:
         """Clear not-a-face on these faces, then release auto-rejections nothing supports any more."""
         result = await self.session.execute(
             update(FaceTable)
@@ -340,9 +337,7 @@ class PostgresFaceRepository:
             FaceTable.embedding.is_not(None),
         )
 
-    async def release_unsupported_auto_rejections(
-        self, *, min_similarity: float = DEFAULT_FACE_REJECT_SIMILARITY
-    ) -> int:
+    async def release_unsupported_auto_rejections(self, *, min_similarity: float = DEFAULT_FACE_SIMILARITY) -> int:
         """Un-reject automatic rejections no longer within `min_similarity` of any manual exemplar."""
         exemplars = self._manual_exemplars().subquery("ex")
         supported = exists(
@@ -361,7 +356,7 @@ class PostgresFaceRepository:
         *,
         exemplar_ids: list[str] | None = None,
         image_ids: list[str] | None = None,
-        min_similarity: float = DEFAULT_FACE_REJECT_SIMILARITY,
+        min_similarity: float = DEFAULT_FACE_SIMILARITY,
     ) -> list[str]:
         """Auto-reject unassigned faces within `min_similarity` of a manually rejected face.
 
@@ -583,7 +578,7 @@ class PostgresFaceRepository:
             FaceSortField.DATE_CREATED: FaceTable.date_created,
             FaceSortField.QUALITY: FaceTable.quality_score,
             FaceSortField.DETECTION_CONFIDENCE: FaceTable.detection_confidence,
-        }.get(request.sort_by, FaceTable.detection_confidence)
+        }.get(request.sort_by, FaceTable.quality_score)
         direction = desc if request.sort_order == SortOrder.DESC else asc
 
         data_stmt = (
@@ -686,7 +681,7 @@ class PostgresFaceRepository:
     async def get_potential_person_matches(
         self,
         face_id: str,
-        min_similarity: float = DEFAULT_FACE_MATCH_SIMILARITY,
+        min_similarity: float = DEFAULT_FACE_SIMILARITY,
         limit: int = 10_000,
         dataset_id: str | None = None,
     ) -> list[tuple[str, float]]:
@@ -743,7 +738,7 @@ class PostgresFaceRepository:
         *,
         dataset_id: str | None = None,
         k: int = 20,
-        min_similarity: float = DEFAULT_FACE_MATCH_SIMILARITY,
+        min_similarity: float = DEFAULT_FACE_SIMILARITY,
         max_faces: int = 200_000,
     ) -> list[tuple[str, str, float]]:
         """Similarity edges among still-unassigned faces, for clustering.
@@ -812,7 +807,7 @@ class PostgresFaceRepository:
         return [(r[0], r[1], r[2], r[3]) for r in rows]
 
     async def nearest_assigned_person(
-        self, face_ids: list[str], *, min_similarity: float = DEFAULT_FACE_MATCH_SIMILARITY
+        self, face_ids: list[str], *, min_similarity: float = DEFAULT_FACE_SIMILARITY
     ) -> tuple[str, str, bool, float] | None:
         """Closest already-assigned face to any face in the set -> its person.
 

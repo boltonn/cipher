@@ -53,10 +53,11 @@ def is_web_address(text: str) -> bool:
 
 
 def web_host_containing(content: str, start: int, end: int) -> str | None:
-    """The registrable domain whose host ``content[start:end]`` sits in, else None.
+    """The registrable domain whose host ``content[start:end]`` starts in, else None.
 
-    `Towards` at its offsets in `read towardsdatascience.com today` -> `towardsdatascience.com`;
-    a word in the path (`upenn.edu/usa`) or a standalone `Dell` -> None.
+    `Towards` at its offsets in `read towardsdatascience.com today` -> `towardsdatascience.com`,
+    as is `Dell.com/giftcard` running on into the path; a word only in the path (`upenn.edu/usa`)
+    or a standalone `Dell` -> None.
     """
     lo, hi = start, end
     while lo > 0 and not content[lo - 1].isspace():
@@ -71,4 +72,4 @@ def web_host_containing(content: str, start: int, end: int) -> str | None:
     scheme = token.find("://")
     host_from = scheme + 3 if scheme >= 0 else 0
     host_end = next((i for i in range(host_from, len(token)) if token[i] in "/?#:"), len(token))
-    return registrable_domain(token) if end <= lo + host_end else None
+    return registrable_domain(token) if start < lo + host_end else None

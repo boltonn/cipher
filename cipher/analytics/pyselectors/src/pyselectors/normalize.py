@@ -12,8 +12,8 @@ import phonenumbers
 from cipher.schemas.graph.ontology import SelectorSubtype, SelectorType
 from pyselectors.domains import registrable_domain
 
-# Loose language -> default phone region. Only used when no explicit region is
-# given and a number carries no country code of its own.
+# Loose language -> region, for country pattern overlays and validators (national ids).
+# Never a phone's country: a number without its own country code stays national.
 _LANGUAGE_REGION = {
     "en": "US",
     "ru": "RU",
@@ -45,13 +45,24 @@ _HANDLE_URL_RE = re.compile(
 _CASE_SENSITIVE_HANDLES = frozenset()
 
 
+_PHONE_LABEL_RE = re.compile(r"^[^\d+(]+")
+# a trailing extension (`ext 8200`, `x12`, `доб. 3`) is not part of the number
+_EXTENSION_RE = re.compile(r"\s*(?:ext\.?|extension|x|#|доб\.?|вн\.?)\s*\d{1,6}\s*$", re.IGNORECASE)
+_DATE_RE = re.compile(r"\b(?:\d{4}[-./]\d{1,2}[-./]\d{1,2}|\d{1,2}[-./]\d{1,2}[-./]\d{4})\b")
+
+
+def is_national_phone(value: str) -> bool:
+    """A normalized phone with no country of its own (`normalize_phone` kept its digits)."""
+    return not value.startswith("+")
+
+
 def fold_digits(text: str) -> str:
     """Map Arabic-Indic / Persian digits to ASCII, preserving length and every offset."""
     return text.translate(_DIGIT_FOLD)
 
 
 def region_for(*, language: str | None, region: str | None) -> str | None:
-    """Resolve the phone-parsing region from an explicit value or a language hint."""
+    """Resolve the overlay region from an explicit value or a language hint (never used to parse a phone)."""
     if region:
         return region.upper()
     if language:
@@ -60,10 +71,20 @@ def region_for(*, language: str | None, region: str | None) -> str | None:
 
 
 def normalize_phone(raw: str, *, region: str | None) -> str | None:
-    """Return an E.164 string, or None if the number is not valid."""
-    candidate = raw.strip()
+    """E.164 when the number states its country or the caller verified `region`, else its digits as written.
+
+    `+44 20 7946 0958` / `0044 …` -> `+442079460958`; `215.895.2372` with no region -> `2158952372`
+    (national, country unknown -- never guessed). None for an invalid international number, a
+    national one outside 7-15 digits, or a date.
+    """
+    # a leading label (`T`, `Tel:`, `Phone`) and `+ 1` spacing hide a stated country code
+    candidate = _PHONE_LABEL_RE.sub("", raw.strip())
+    candidate = re.sub(r"^\+\s+", "+", candidate)
     if candidate.startswith("00"):
         candidate = "+" + candidate[2:]
+    if not candidate.startswith("+") and not region:
+        digits = "".join(ch for ch in _EXTENSION_RE.sub("", candidate) if ch.isdigit())
+        return digits if 7 <= len(digits) <= 15 and not _DATE_RE.search(candidate) else None
     try:
         parsed = phonenumbers.parse(candidate, region)
     except phonenumbers.NumberParseException:
@@ -158,6 +179,29 @@ def normalize_passport_mrz(raw: str) -> str | None:
     return None
 
 
+def normalize_passport(raw: str) -> str | None:
+    """An MRZ block re-laid into fixed-width lines, or a passport number compacted (`45 06 123456` -> `4506123456`)."""
+    if "<" in raw:
+        return normalize_passport_mrz(raw)
+    value = re.sub(r"[\s.\-№#]", "", raw).upper()
+    return value if 6 <= len(value) <= 10 and value.isalnum() and any(c.isdigit() for c in value) else None
+
+
+_PLATE_LOOKALIKES = str.maketrans("АВЕКМНОРСТУХ", "ABEKMHOPCTYX")
+
+
+def normalize_license_plate(raw: str) -> str | None:
+    """Uppercase, separators dropped, Cyrillic letters that plates share with Latin mapped to Latin (`А123ВС 77` -> `A123BC77`)."""
+    value = re.sub(r"[\s\-·.|]", "", raw).upper().translate(_PLATE_LOOKALIKES)
+    return value if 4 <= len(value) <= 10 else None
+
+
+def normalize_mac_address(raw: str) -> str | None:
+    """Any of `AA-BB-CC-DD-EE-FF`, `aabb.ccdd.eeff`, `aa:bb:...` -> `aa:bb:cc:dd:ee:ff`."""
+    digits = re.sub(r"[^0-9A-Fa-f]", "", raw).lower()
+    return ":".join(digits[i : i + 2] for i in range(0, 12, 2)) if len(digits) == 12 else None
+
+
 NORMALIZERS = {
     "phone": lambda raw, *, country=None, subtype=None: normalize_phone(raw, region=country),
     "email": lambda raw, *, country=None, subtype=None: normalize_email(raw),
@@ -165,7 +209,9 @@ NORMALIZERS = {
     "imei": lambda raw, *, country=None, subtype=None: normalize_imei(raw),
     "imsi": lambda raw, *, country=None, subtype=None: normalize_digits_only(raw),
     "bank_card": lambda raw, *, country=None, subtype=None: normalize_digits_only(raw),
-    "passport": lambda raw, *, country=None, subtype=None: normalize_passport_mrz(raw),
+    "passport": lambda raw, *, country=None, subtype=None: normalize_passport(raw),
+    "license_plate": lambda raw, *, country=None, subtype=None: normalize_license_plate(raw),
+    "mac_address": lambda raw, *, country=None, subtype=None: normalize_mac_address(raw),
     "ip": lambda raw, *, country=None, subtype=None: normalize_ip(raw),
     "national_id": lambda raw, *, country=None, subtype=None: normalize_national_id(raw),
     "crypto_address": lambda raw, *, country=None, subtype=None: normalize_crypto_address(raw, subtype=subtype),

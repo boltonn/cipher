@@ -1,4 +1,5 @@
 import { AppSidebar } from "@/components/app-sidebar";
+import { QuickSearch } from "@/features/global-search/components/quick-search";
 import { PageHeaderProvider } from "@/components/page-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -63,6 +64,7 @@ export default function RootLayout({
             <ReactQueryProvider>
               <SidebarProvider>
                 <AppSidebar />
+                <QuickSearch />
                 <PageHeaderProvider>
                   <SidebarInset id="main-content" className="h-screen overflow-hidden">
                     {children}

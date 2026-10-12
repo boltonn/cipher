@@ -4,6 +4,7 @@ import numpy as np
 import torch
 from clir.models.pytorch import TextEmbeddingPytorchModel
 from clir.utils.chunk import get_chunker
+from clir.utils.embedding import normalize
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 model_dir = Path.home() / "models" / "transformers" / "jina-embeddings-v5-text-small"
@@ -34,6 +35,5 @@ embeddings = model.infer(model_inputs)
 
 embedding = embeddings[0]
 np.linalg.norm(embedding)
-from clir.utils.embedding import normalize
 
 np.linalg.norm(normalize(embedding))

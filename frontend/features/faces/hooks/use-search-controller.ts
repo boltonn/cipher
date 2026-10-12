@@ -14,6 +14,10 @@ import {
 } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 
+/** Most faces one bulk action takes (the API's `faceIds` cap). */
+export const MAX_BULK_FACES = 1000;
+const MAX_PAGE_SIZE = 100;
+
 export type FaceFilters = Omit<FaceSimilaritySearchParameters, "page">;
 
 type FaceSearchKey = [
@@ -49,9 +53,10 @@ export const useSearchController = (mode: PaginationModeType = "infinite") => {
 
   const isSimilarityMode = !!(queryEmbedding || similarId);
 
-  const runQuery = (currentPage: number) => {
+  const runQuery = (currentPage: number, limit = filters.limit) => {
     const currentParams: FaceSimilaritySearchParameters = {
       ...filters,
+      limit,
       page: currentPage,
       // minSimilarity only makes sense once there's a query face to rank against
       minSimilarity: isSimilarityMode ? filters.minSimilarity : undefined,
@@ -105,6 +110,17 @@ export const useSearchController = (mode: PaginationModeType = "infinite") => {
     queryFn: () => runQuery(page),
     enabled: mode === "normal",
   });
+
+  // Every result id of the current search (not just the loaded pages), for "select all".
+  const fetchAllIds = async () => {
+    const ids: string[] = [];
+    for (let p = 1; ids.length < MAX_BULK_FACES; p++) {
+      const result = await runQuery(p, MAX_PAGE_SIZE);
+      ids.push(...result.data.map((face) => face.id));
+      if (!result.hasMore) break;
+    }
+    return ids.slice(0, MAX_BULK_FACES);
+  };
 
   const currentPage = useMemo(() => {
     if (mode === "infinite") {
@@ -161,6 +177,7 @@ export const useSearchController = (mode: PaginationModeType = "infinite") => {
     error: mode === "infinite" ? infiniteError : paginatedError,
 
     actions,
+    fetchAllIds,
     currentPage,
     filters,
     setFilters,

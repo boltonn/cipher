@@ -1,0 +1,360 @@
+{
+ "AF": [
+  "afghan"
+ ],
+ "AL": [
+  "albanian"
+ ],
+ "DZ": [
+  "algerian"
+ ],
+ "AR": [
+  "argentine",
+  "argentinian"
+ ],
+ "AM": [
+  "armenian",
+  "армянин",
+  "армянка",
+  "армянское"
+ ],
+ "AU": [
+  "australian"
+ ],
+ "AT": [
+  "austrian"
+ ],
+ "AZ": [
+  "azerbaijani",
+  "azeri",
+  "азербайджанец",
+  "азербайджанка"
+ ],
+ "BH": [
+  "bahraini"
+ ],
+ "BD": [
+  "bangladeshi"
+ ],
+ "BY": [
+  "belarusian",
+  "белорус",
+  "белоруска",
+  "білорус"
+ ],
+ "BE": [
+  "belgian"
+ ],
+ "BR": [
+  "brazilian"
+ ],
+ "BG": [
+  "bulgarian"
+ ],
+ "CA": [
+  "canadian"
+ ],
+ "CL": [
+  "chilean"
+ ],
+ "CN": [
+  "chinese",
+  "китаец",
+  "китаянка",
+  "中国",
+  "中国籍",
+  "中国人"
+ ],
+ "CO": [
+  "colombian"
+ ],
+ "HR": [
+  "croatian"
+ ],
+ "CU": [
+  "cuban"
+ ],
+ "CY": [
+  "cypriot"
+ ],
+ "CZ": [
+  "czech"
+ ],
+ "DK": [
+  "danish"
+ ],
+ "EG": [
+  "egyptian",
+  "مصري"
+ ],
+ "EE": [
+  "estonian"
+ ],
+ "FI": [
+  "finnish"
+ ],
+ "FR": [
+  "french",
+  "française",
+  "français",
+  "француз"
+ ],
+ "GE": [
+  "georgian",
+  "грузин",
+  "грузинка"
+ ],
+ "DE": [
+  "german",
+  "немец",
+  "немка",
+  "allemand",
+  "alemán"
+ ],
+ "GR": [
+  "greek"
+ ],
+ "HU": [
+  "hungarian"
+ ],
+ "IN": [
+  "indian"
+ ],
+ "ID": [
+  "indonesian"
+ ],
+ "IR": [
+  "iranian",
+  "persian",
+  "ایرانی",
+  "ایران",
+  "إيراني",
+  "иранец"
+ ],
+ "IQ": [
+  "iraqi",
+  "عراقي"
+ ],
+ "IE": [
+  "irish"
+ ],
+ "IL": [
+  "israeli"
+ ],
+ "IT": [
+  "italian"
+ ],
+ "JP": [
+  "japanese",
+  "日本"
+ ],
+ "JO": [
+  "jordanian",
+  "أردني"
+ ],
+ "KZ": [
+  "kazakh",
+  "kazakhstani",
+  "казах",
+  "казашка"
+ ],
+ "KE": [
+  "kenyan"
+ ],
+ "KG": [
+  "kyrgyz",
+  "киргиз",
+  "кыргыз"
+ ],
+ "KW": [
+  "kuwaiti",
+  "كويتي"
+ ],
+ "LV": [
+  "latvian"
+ ],
+ "LB": [
+  "lebanese",
+  "لبناني"
+ ],
+ "LY": [
+  "libyan",
+  "ليبي"
+ ],
+ "LT": [
+  "lithuanian"
+ ],
+ "MY": [
+  "malaysian"
+ ],
+ "MX": [
+  "mexican",
+  "mexicano"
+ ],
+ "MD": [
+  "moldovan",
+  "молдаванин"
+ ],
+ "MA": [
+  "moroccan",
+  "مغربي"
+ ],
+ "NL": [
+  "dutch"
+ ],
+ "NZ": [
+  "new zealander"
+ ],
+ "NG": [
+  "nigerian"
+ ],
+ "KP": [
+  "north korean"
+ ],
+ "NO": [
+  "norwegian"
+ ],
+ "OM": [
+  "omani",
+  "عماني"
+ ],
+ "PK": [
+  "pakistani"
+ ],
+ "PS": [
+  "palestinian",
+  "فلسطيني"
+ ],
+ "PH": [
+  "filipino",
+  "philippine"
+ ],
+ "PL": [
+  "polish",
+  "поляк"
+ ],
+ "PT": [
+  "portuguese"
+ ],
+ "QA": [
+  "qatari",
+  "قطري"
+ ],
+ "RO": [
+  "romanian"
+ ],
+ "RU": [
+  "russian",
+  "русский",
+  "русская",
+  "россиянин",
+  "россиянка",
+  "рф",
+  "российская федерация",
+  "гражданин рф",
+  "российское",
+  "росіянин",
+  "俄罗斯",
+  "روسي",
+  "روس",
+  "russe",
+  "ruso"
+ ],
+ "SA": [
+  "saudi",
+  "سعودي"
+ ],
+ "RS": [
+  "serbian"
+ ],
+ "SG": [
+  "singaporean"
+ ],
+ "SK": [
+  "slovak"
+ ],
+ "ZA": [
+  "south african"
+ ],
+ "KR": [
+  "south korean",
+  "korean"
+ ],
+ "ES": [
+  "spanish",
+  "español",
+  "espagnol"
+ ],
+ "SE": [
+  "swedish"
+ ],
+ "CH": [
+  "swiss"
+ ],
+ "SY": [
+  "syrian",
+  "سوري"
+ ],
+ "TW": [
+  "taiwanese"
+ ],
+ "TJ": [
+  "tajik",
+  "таджик",
+  "таджичка"
+ ],
+ "TH": [
+  "thai"
+ ],
+ "TN": [
+  "tunisian"
+ ],
+ "TR": [
+  "turkish",
+  "турок",
+  "турчанка"
+ ],
+ "TM": [
+  "turkmen",
+  "туркмен"
+ ],
+ "AE": [
+  "emirati",
+  "إماراتي"
+ ],
+ "GB": [
+  "british",
+  "english",
+  "scottish",
+  "welsh",
+  "uk citizen"
+ ],
+ "UA": [
+  "ukrainian",
+  "украинец",
+  "украинка",
+  "українець",
+  "українка",
+  "乌克兰"
+ ],
+ "US": [
+  "american",
+  "us citizen",
+  "美国"
+ ],
+ "UZ": [
+  "uzbek",
+  "узбек",
+  "узбечка"
+ ],
+ "VE": [
+  "venezuelan"
+ ],
+ "VN": [
+  "vietnamese"
+ ],
+ "YE": [
+  "yemeni",
+  "يمني"
+ ]
+}

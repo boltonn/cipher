@@ -6,21 +6,40 @@ import {
   HoverCardTrigger,
 } from "@/components/ui/hover-card";
 import { cn } from "@/lib/utils";
-import { ClipboardCheck, Database, FileText, Mail, User, Waypoints } from "lucide-react";
+import {
+  CalendarDays,
+  ClipboardCheck,
+  Database,
+  File,
+  FileText,
+  Image as ImageIcon,
+  Mail,
+  ThumbsDown,
+  ThumbsUp,
+  User,
+  Waypoints,
+} from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
-import type { ChatCitation, CitationKind } from "../types";
-import { isNavigableCitation } from "../types";
+import type { ChatCitation, CitationKind, Relevance } from "../types";
+import { citationKey, isNavigableCitation } from "../types";
 
 interface CitationsProps {
   citations: ChatCitation[];
   /** Called for passage citations (document/email) -- opens the file viewer at the span. */
   onOpen: (citation: ChatCitation) => void;
+  /** The analyst's judgments so far, by `citationKey`. */
+  judgments: Record<string, Relevance>;
+  /** Mark a source relevant / not relevant (null clears); sent with the next message. */
+  onJudge: (citation: ChatCitation, relevance: Relevance | null) => void;
 }
 
 const KIND_ICON: Record<CitationKind, typeof FileText> = {
   document: FileText,
   email: Mail,
+  file: File,
+  image: ImageIcon,
+  event: CalendarDays,
   person: User,
   dataset: Database,
   entity: Waypoints,
@@ -76,14 +95,63 @@ function CitationBody({ citation }: { citation: ChatCitation }) {
   );
 }
 
+const RELEVANCE_PILL: Record<Relevance, string> = {
+  relevant: "border-primary/50 text-primary",
+  notRelevant: "line-through opacity-60",
+};
+
+/** Relevant / not relevant toggles for one source -- the analyst's say on what the answer rests on. */
+function RelevanceButtons({
+  relevance,
+  onJudge,
+}: {
+  relevance: Relevance | undefined;
+  onJudge: (relevance: Relevance | null) => void;
+}) {
+  const options: { value: Relevance; label: string; Icon: typeof ThumbsUp }[] = [
+    { value: "relevant", label: "Relevant", Icon: ThumbsUp },
+    { value: "notRelevant", label: "Not relevant", Icon: ThumbsDown },
+  ];
+  return (
+    <div className="mt-2 flex items-center gap-1.5 border-t border-border pt-2">
+      {options.map(({ value, label, Icon }) => (
+        <button
+          key={value}
+          type="button"
+          aria-pressed={relevance === value}
+          onClick={() => onJudge(relevance === value ? null : value)}
+          className={cn(
+            "inline-flex h-6 items-center gap-1 whitespace-nowrap rounded-md border px-2 text-[11px] transition-colors",
+            relevance === value
+              ? "border-primary/50 bg-primary/10 text-primary"
+              : "border-border text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <Icon className="size-3" />
+          {label}
+        </button>
+      ))}
+      <span className="ml-auto text-right text-[11px] leading-tight text-muted-foreground">
+        The assistant
+        <br />
+        sees this next turn
+      </span>
+    </div>
+  );
+}
+
 function CitationPill({
   citation,
   index,
   onOpen,
+  relevance,
+  onJudge,
 }: {
   citation: ChatCitation;
   index: number;
   onOpen: (citation: ChatCitation) => void;
+  relevance: Relevance | undefined;
+  onJudge: (relevance: Relevance | null) => void;
 }) {
   const Icon = KIND_ICON[citation.kind] ?? FileText;
   const inner = (
@@ -103,17 +171,22 @@ function CitationPill({
     <HoverCard openDelay={120} closeDelay={0}>
       <HoverCardTrigger asChild>
         {isNavigableCitation(citation) ? (
-          <Link href={citation.href} className={pillClass}>
+          <Link href={citation.href} className={cn(pillClass, relevance && RELEVANCE_PILL[relevance])}>
             {inner}
           </Link>
         ) : (
-          <button type="button" onClick={() => onOpen(citation)} className={pillClass}>
+          <button
+            type="button"
+            onClick={() => onOpen(citation)}
+            className={cn(pillClass, relevance && RELEVANCE_PILL[relevance])}
+          >
             {inner}
           </button>
         )}
       </HoverCardTrigger>
       <HoverCardContent side="top" collisionPadding={16} className="w-80 overflow-hidden p-3">
         <CitationBody citation={citation} />
+        <RelevanceButtons relevance={relevance} onJudge={onJudge} />
       </HoverCardContent>
     </HoverCard>
   );
@@ -125,7 +198,7 @@ function CitationPill({
  * navigates to the record (person/dataset/entity) or opens the file viewer at
  * the cited span (document/email).
  */
-export function Citations({ citations: all, onOpen }: CitationsProps) {
+export function Citations({ citations: all, onOpen, judgments, onJudge }: CitationsProps) {
   const [expanded, setExpanded] = useState(false);
   const actions = all.filter((c) => c.kind === "action" && isNavigableCitation(c));
   const citations = all.filter((c) => c.kind !== "action");
@@ -158,10 +231,12 @@ export function Citations({ citations: all, onOpen }: CitationsProps) {
           </span>
           {visible.map((citation, i) => (
             <CitationPill
-              key={citation.chunkId ?? citation.targetId ?? `${citation.kind}-${i}`}
+              key={citationKey(citation)}
               citation={citation}
               index={i + 1}
               onOpen={onOpen}
+              relevance={judgments[citationKey(citation)]}
+              onJudge={(relevance) => onJudge(citation, relevance)}
             />
           ))}
           {overflow > 0 && !expanded && (

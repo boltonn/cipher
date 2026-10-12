@@ -10,6 +10,7 @@ import { SearchInput } from "@/components/search-input";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DatasetSelect } from "@/features/datasets/components/dataset-select";
+import { useDatasetScope } from "@/features/datasets/hooks/use-selected-datasets";
 import {
   useEvents,
   useEventsCalendar,
@@ -17,36 +18,39 @@ import {
 } from "@/features/events/api";
 import { EventDetailSheet } from "@/features/events/components/event-detail-sheet";
 import { EventFiltersBar } from "@/features/events/components/event-filters";
-import { EventsCalendar, monthGridRange } from "@/features/events/components/events-calendar";
+import {
+  EventsCalendar,
+  monthGridRange,
+} from "@/features/events/components/events-calendar";
 import { EventsTable } from "@/features/events/components/events-table";
-import { matchesEventFilters } from "@/features/events/lib/filter";
 import {
   EMPTY_EVENT_FILTERS,
   type EventFilters,
   type EventSortField,
   type SortOrder,
 } from "@/features/events/types";
-import { useLocalStorageState } from "@/hooks/use-local-storage-state";
 import { startOfMonth } from "date-fns";
-import { CalendarDays, CalendarRange, Search, Table2, Trash2, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import {
+  CalendarDays,
+  CalendarRange,
+  Search,
+  Table2,
+  Trash2,
+  X,
+} from "lucide-react";
+import { readHandoff } from "@/features/global-search/handoff";
+import { useState } from "react";
 
 const LIMIT = 25;
 
 export default function EventsPage() {
-  const [datasetId, setDatasetId] = useLocalStorageState<string | undefined>(
-    "events:datasetId",
-    undefined
-  );
-  const [view, setView] = useLocalStorageState<"calendar" | "table">(
-    "events:view",
-    "table"
-  );
-  const [query, setQuery] = useState("");
+  const { datasetIds, setDatasetIds } = useDatasetScope();
+  const [view, setView] = useState<"calendar" | "table">("table");
+  const [query, setQuery] = useState(() => readHandoff("events")?.query ?? "");
   const [filters, setFilters] = useState<EventFilters>(EMPTY_EVENT_FILTERS);
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState<{ by: EventSortField; order: SortOrder }>({
-    by: "date_start",
+    by: "dateStart",
     order: "asc",
   });
   const [month, setMonth] = useState(() => startOfMonth(new Date()));
@@ -58,7 +62,7 @@ export default function EventsPage() {
   const resetPage = () => setPage(1);
 
   const listQuery = useEvents({
-    datasetId,
+    datasetIds,
     query: query || undefined,
     ...filters,
     sortBy: sort.by,
@@ -69,9 +73,11 @@ export default function EventsPage() {
 
   const range = monthGridRange(month);
   const calendarQuery = useEventsCalendar({
+    datasetIds,
+    query: query || undefined,
+    ...filters,
     dateFrom: range.from,
     dateTo: range.to,
-    datasetId,
   });
 
   const events = listQuery.data?.data ?? [];
@@ -89,20 +95,11 @@ export default function EventsPage() {
     }
   }
 
-  // `/events/calendar` only takes a date window; narrow type/status/verified +
-  // the title query here so the shared filter bar drives both views.
-  const calendarEvents = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return (calendarQuery.data ?? []).filter(
-      (e) =>
-        matchesEventFilters(e, filters) &&
-        (!q || e.title.toLowerCase().includes(q))
-    );
-  }, [calendarQuery.data, filters, query]);
-
   const changeSort = (by: EventSortField) => {
     setSort((prev) =>
-      prev.by === by ? { by, order: prev.order === "asc" ? "desc" : "asc" } : { by, order: "asc" }
+      prev.by === by
+        ? { by, order: prev.order === "asc" ? "desc" : "asc" }
+        : { by, order: "asc" }
     );
     resetPage();
   };
@@ -115,6 +112,8 @@ export default function EventsPage() {
 
   const refined =
     !!query ||
+    !!filters.participants?.length ||
+    !!filters.places?.length ||
     !!filters.eventType ||
     !!filters.category ||
     !!filters.status ||
@@ -126,13 +125,18 @@ export default function EventsPage() {
     <div className="relative mx-auto max-w-400 px-6 pb-20">
       <PageHeader
         eyebrow="Events"
-        value={listQuery.data ? `${total.toLocaleString()} ${total === 1 ? "event" : "events"}` : undefined}
+        value={
+          listQuery.data
+            ? `${total.toLocaleString()} ${total === 1 ? "event" : "events"}`
+            : undefined
+        }
         icon={<CalendarDays size={13} className="text-primary/70" />}
         actions={
           <DatasetSelect
-            datasetId={datasetId}
-            onChange={(id) => {
-              setDatasetId(id);
+            datasetIds={datasetIds}
+            placeholder="All datasets"
+            onChange={(ids) => {
+              setDatasetIds(ids);
               resetPage();
             }}
           />
@@ -180,9 +184,13 @@ export default function EventsPage() {
               setFilters(next);
               resetPage();
             }}
-            queryActive={!!query}
+            query={query}
+            onClearQuery={() => {
+              setQuery("");
+              resetPage();
+            }}
             onClear={clearAll}
-            datasetId={datasetId}
+            datasetIds={datasetIds}
             showDateRange={view === "table"}
           />
 
@@ -190,7 +198,8 @@ export default function EventsPage() {
             <EventsCalendar
               monthStart={month}
               onMonthChange={setMonth}
-              events={calendarEvents}
+              datasetIds={datasetIds}
+              events={calendarQuery.data ?? []}
               onSelect={(e) => setSelectedId(e.id)}
               isLoading={calendarQuery.isFetching}
             />
@@ -250,6 +259,10 @@ export default function EventsPage() {
                   sortBy={sort.by}
                   sortOrder={sort.order}
                   onSortChange={changeSort}
+                  onFilter={(patch) => {
+                    setFilters((prev) => ({ ...prev, ...patch }));
+                    resetPage();
+                  }}
                   onSelect={(e) => setSelectedId(e.id)}
                   checkedIds={checkedIds}
                   onCheckedIdsChange={setCheckedIds}

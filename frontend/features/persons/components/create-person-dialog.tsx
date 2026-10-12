@@ -25,6 +25,7 @@ import { TagsInput } from "@/components/tags-input";
 import { facesService } from "@/features/faces/api";
 import { FaceImageWithOverlay } from "@/features/faces/components/face-image-overlay";
 import { FacePickerContent } from "@/features/faces/components/face-picker";
+import { useAssignFaces } from "@/features/faces/hooks/use-assign-face";
 import { DetectedFace, FacePublic, FaceSimilarityResult } from "@/features/faces/types";
 import {
   useCreatePerson,
@@ -43,9 +44,18 @@ interface CreatePersonDialogProps {
   onOpenChange: (open: boolean) => void;
   /** Skip the upload/detect step and create the person straight from this already-detected face. */
   sourceFace?: FacePublic | FaceSimilarityResult;
+  /** More faces (e.g. the rest of a selection) to assign to the new person alongside `sourceFace`. */
+  extraFaceIds?: string[];
+  onCreated?: () => void;
 }
 
-export function CreatePersonDialog({ isOpen, onOpenChange, sourceFace }: CreatePersonDialogProps) {
+export function CreatePersonDialog({
+  isOpen,
+  onOpenChange,
+  sourceFace,
+  extraFaceIds,
+  onCreated: onCreatedProp,
+}: CreatePersonDialogProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -74,9 +84,15 @@ export function CreatePersonDialog({ isOpen, onOpenChange, sourceFace }: CreateP
   const onCreated = () => {
     resetForm();
     onOpenChange(false);
+    onCreatedProp?.();
   };
+  const assignFaces = useAssignFaces();
   const createPersonFromImage = useCreatePersonFromImage(onCreated);
-  const createPersonFromFace = useCreatePersonFromFace(onCreated);
+  const createPersonFromFace = useCreatePersonFromFace((personId) => {
+    if (extraFaceIds?.length)
+      assignFaces.mutate({ faceIds: extraFaceIds, personId, personName: name.trim() || undefined });
+    onCreated();
+  });
   const createPerson = useCreatePerson(onCreated);
   const isPending = createPersonFromImage.isPending || createPersonFromFace.isPending || createPerson.isPending;
   const isError = createPersonFromImage.isError || createPersonFromFace.isError || createPerson.isError;
@@ -146,7 +162,11 @@ export function CreatePersonDialog({ isOpen, onOpenChange, sourceFace }: CreateP
           </DialogTitle>
           <DialogDescription className="text-muted-foreground text-xs">
             {sourceFace
-              ? "This face will become the new person's primary reference photo."
+              ? `This face will become the new person's primary reference photo.${
+                  extraFaceIds?.length
+                    ? ` ${extraFaceIds.length.toLocaleString()} more selected face${extraFaceIds.length === 1 ? "" : "s"} will be assigned to them too.`
+                    : ""
+                }`
               : "A reference photo is optional -- add one now or assign faces to this person later."}
           </DialogDescription>
         </DialogHeader>

@@ -180,9 +180,7 @@ class ElasticsearchChunkRetrievalRepository(ChunkRetrievalRepository):
         )
         common = dict(filters=clean_filters, page=query.page, limit=query.limit, sort_order=query.sort_order)
         if mode == RetrievalMode.SEMANTIC and has_vec:
-            req = ChunkSemanticSearchRequest(
-                embedding=query.embedding, min_similarity=query.min_similarity, **common
-            )
+            req = ChunkSemanticSearchRequest(embedding=query.embedding, min_similarity=query.min_similarity, **common)
             return await self._with_tags(await self.es.search_semantic(req, extra_filter=extra_filter))
         if mode == RetrievalMode.HYBRID and has_vec:
             req = ChunkHybridSearchRequest(
@@ -205,8 +203,13 @@ class ElasticsearchChunkRetrievalRepository(ChunkRetrievalRepository):
         """`ChunkTextSearchRequest` -> `search(mode=keyword)`."""
         return await self.search(
             RetrievalQuery(
-                mode=RetrievalMode.KEYWORD, text=request.query, filters=request.filters,
-                page=request.page, limit=request.limit, sort_order=request.sort_order,
+                mode=RetrievalMode.KEYWORD,
+                text=request.query,
+                filters=request.filters,
+                graph_expand=request.graph_expand,
+                page=request.page,
+                limit=request.limit,
+                sort_order=request.sort_order,
             )
         )
 
@@ -214,8 +217,13 @@ class ElasticsearchChunkRetrievalRepository(ChunkRetrievalRepository):
         """`ChunkSemanticSearchRequest` -> `search(mode=semantic)`."""
         return await self.search(
             RetrievalQuery(
-                mode=RetrievalMode.SEMANTIC, embedding=list(request.embedding), filters=request.filters,
-                min_similarity=request.min_similarity, page=request.page, limit=request.limit,
+                mode=RetrievalMode.SEMANTIC,
+                embedding=list(request.embedding),
+                filters=request.filters,
+                graph_expand=request.graph_expand,
+                min_similarity=request.min_similarity,
+                page=request.page,
+                limit=request.limit,
                 sort_order=request.sort_order,
             )
         )
@@ -224,8 +232,14 @@ class ElasticsearchChunkRetrievalRepository(ChunkRetrievalRepository):
         """`ChunkHybridSearchRequest` -> `search(mode=hybrid)`."""
         return await self.search(
             RetrievalQuery(
-                mode=RetrievalMode.HYBRID, text=request.query, embedding=list(request.embedding),
-                filters=request.filters, min_similarity=request.min_similarity, page=request.page,
-                limit=request.limit, sort_order=request.sort_order,
+                mode=RetrievalMode.HYBRID,
+                text=request.query,
+                embedding=list(request.embedding),
+                filters=request.filters,
+                graph_expand=request.graph_expand,
+                min_similarity=request.min_similarity,
+                page=request.page,
+                limit=request.limit,
+                sort_order=request.sort_order,
             )
         )

@@ -1,11 +1,10 @@
 """Type-specific detail for an `entity` of type organization (1:1 with `entity`)."""
 
 from datetime import datetime
-from enum import StrEnum
 
 from pydantic import Field, SerializationInfo, field_serializer
 
-from cipher.schemas._base.base import BaseModel, camelize_keys
+from cipher.schemas._base.base import BaseModel, StrEnum, camelize_keys
 from cipher.schemas._base.common import PageParams, PaginatedResponse, SortOrder
 from cipher.schemas.graph.entity import EntitySummary
 from cipher.schemas.graph.entity_relationship import RelationshipCandidateMethod

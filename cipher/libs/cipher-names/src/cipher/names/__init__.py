@@ -5,12 +5,13 @@ parsing, comparison, and blocking-key generation. See
 ``docs/entity-resolution.md`` §7.
 """
 
-from cipher.names.address import AddressAgreement, address_name_agreement
+from cipher.names.address import AddressAgreement, address_name_agreement, is_role_address
 from cipher.names.compare import Level, NameComparison, compare_names
 from cipher.names.culture import Culture, infer_culture
 from cipher.names.keys import KEY_TYPES, KEYS_VERSION, blocking_keys, entity_keys
 from cipher.names.nicknames import canonical_forms, share_nickname_root
 from cipher.names.normalize import fold, tokens
+from cipher.names.org import compare_org_names, org_acronym, org_core, org_distinctive
 from cipher.names.parse import ParsedName, parse_name
 from cipher.names.phonetic import phonetic_key
 from cipher.names.script import Script, dominant_script
@@ -19,6 +20,7 @@ from cipher.names.translit import to_latin
 __all__ = [
     "AddressAgreement",
     "address_name_agreement",
+    "is_role_address",
     "KEYS_VERSION",
     "KEY_TYPES",
     "Culture",
@@ -29,6 +31,10 @@ __all__ = [
     "blocking_keys",
     "canonical_forms",
     "compare_names",
+    "compare_org_names",
+    "org_acronym",
+    "org_core",
+    "org_distinctive",
     "dominant_script",
     "entity_keys",
     "fold",

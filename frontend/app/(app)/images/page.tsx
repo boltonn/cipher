@@ -133,8 +133,11 @@ function ImageSearchPageInner() {
         actions={
           <div className="flex items-center gap-2">
             <DatasetSelect
-              datasetId={filters.datasets?.[0]}
-              onChange={(datasetId) => setFilters((prev) => ({ ...prev, datasets: datasetId ? [datasetId] : undefined }))}
+              datasetIds={filters.datasets ?? []}
+              placeholder="All datasets"
+              onChange={(datasetIds) =>
+                setFilters((prev) => ({ ...prev, datasets: datasetIds.length ? datasetIds : undefined }))
+              }
             />
             <Button
               size="sm"

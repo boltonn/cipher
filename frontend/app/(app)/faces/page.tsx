@@ -3,18 +3,24 @@
 import { PageError, PageLoading } from "@/components/page-loading";
 import { PageHeader } from "@/components/page-header";
 import { PaginationModeToggle } from "@/components/pagination-mode-toggle";
+import { Button } from "@/components/ui/button";
 import { DatasetSelect } from "@/features/datasets/components/dataset-select";
 import { FaceSelectionBar } from "@/features/faces/components/face-selection-bar";
 import { FaceUploadSearchBar } from "@/features/faces/components/face-upload-search-bar";
 import { FacesContainerInfinite } from "@/features/faces/components/faces-container-infinite";
 import { FacesContainerPaginated } from "@/features/faces/components/faces-container-paginated";
 import { useGridSelection } from "@/hooks/use-grid-selection";
-import { useSearchController } from "@/features/faces/hooks/use-search-controller";
+import {
+  MAX_BULK_FACES,
+  useSearchController,
+} from "@/features/faces/hooks/use-search-controller";
+import type { FacePublic } from "@/features/faces/types";
 import { PaginationModeType } from "@/types/common";
 import { useQueryClient } from "@tanstack/react-query";
-import { ScanFace, X } from "lucide-react";
+import { CheckCheck, Loader2, ScanFace, X } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 
 function FacesPageInner() {
   const [paginationMode, setPaginationMode] =
@@ -30,6 +36,8 @@ function FacesPageInner() {
     filters,
     setFilters,
     actions,
+    fetchAllIds,
+    similarId,
     isPending,
     isFetching,
     error,
@@ -48,19 +56,46 @@ function FacesPageInner() {
 
   const selection = useGridSelection();
   const isRejectedView = !!filters.rejectedOnly;
-  const [prevRejectedView, setPrevRejectedView] = useState(isRejectedView);
-  if (isRejectedView !== prevRejectedView) {
-    setPrevRejectedView(isRejectedView);
+  // A new query or filter changes the result set, so an old selection would act on faces no longer shown.
+  const resultSetKey = JSON.stringify({ similarId, queryLabel, filters });
+  const [prevResultSetKey, setPrevResultSetKey] = useState(resultSetKey);
+  if (resultSetKey !== prevResultSetKey) {
+    setPrevResultSetKey(resultSetKey);
     selection.clear();
   }
-  const loadedIds = useMemo(
+  const loadedFaces = useMemo<FacePublic[]>(
     () =>
       paginationMode === "infinite"
-        ? (data?.pages.flatMap((page) => page.data.map((face) => face.id)) ??
-          [])
-        : (paginatedData?.data.map((face) => face.id) ?? []),
+        ? (data?.pages.flatMap((page) => page.data) ?? [])
+        : (paginatedData?.data ?? []),
     [paginationMode, data, paginatedData]
   );
+  const loadedIds = useMemo(
+    () => loadedFaces.map((face) => face.id),
+    [loadedFaces]
+  );
+
+  // Similarity results are bounded by minSimilarity, so "select all" can reach past the loaded pages.
+  const selectAllCount = isSimilarityMode
+    ? Math.min(totalFaces, MAX_BULK_FACES)
+    : loadedIds.length;
+  const [isSelectingAll, setIsSelectingAll] = useState(false);
+  const handleSelectAll = async () => {
+    if (selectAllCount <= loadedIds.length)
+      return selection.selectAll(loadedIds);
+    setIsSelectingAll(true);
+    try {
+      selection.selectAll(await fetchAllIds());
+      if (totalFaces > MAX_BULK_FACES)
+        toast.info(
+          `Selected the top ${MAX_BULK_FACES.toLocaleString()} matches -- raise the minimum similarity to narrow the rest`
+        );
+    } catch {
+      toast.error("Couldn't load every match to select");
+    } finally {
+      setIsSelectingAll(false);
+    }
+  };
 
   useEffect(() => {
     if (hasProcessedParams.current) return;
@@ -95,12 +130,22 @@ function FacesPageInner() {
         actions={
           <div className="flex items-center gap-2">
             <DatasetSelect
-              datasetId={filters.datasets?.[0]}
-              onChange={(datasetId) => setFilters((prev) => ({ ...prev, datasets: datasetId ? [datasetId] : undefined }))}
+              datasetIds={filters.datasets ?? []}
+              placeholder="All datasets"
+              onChange={(datasetIds) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  datasets: datasetIds.length ? datasetIds : undefined,
+                }))
+              }
             />
             <PaginationModeToggle
               mode={paginationMode}
-              onToggle={() => setPaginationMode((p) => (p === "infinite" ? "normal" : "infinite"))}
+              onToggle={() =>
+                setPaginationMode((p) =>
+                  p === "infinite" ? "normal" : "infinite"
+                )
+              }
               accentClassName="hover:text-annotation"
             />
           </div>
@@ -118,6 +163,25 @@ function FacesPageInner() {
           isSimilarityMode={isSimilarityMode}
           isFiltersOpen={isFiltersOpen}
           onToggleFilters={() => setIsFiltersOpen((v) => !v)}
+          trailing={
+            isSimilarityMode &&
+            totalFaces > 0 &&
+            selection.selectedIds.size === 0 && (
+              <Button
+                variant="outline"
+                onClick={handleSelectAll}
+                disabled={isSelectingAll}
+                className="h-10 shrink-0 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+              >
+                {isSelectingAll ? (
+                  <Loader2 size={13} className="animate-spin" />
+                ) : (
+                  <CheckCheck size={13} />
+                )}
+                Select all {selectAllCount.toLocaleString()}
+              </Button>
+            )
+          }
         />
       </div>
 
@@ -163,6 +227,10 @@ function FacesPageInner() {
         <FaceSelectionBar
           selection={selection}
           loadedIds={loadedIds}
+          faces={loadedFaces}
+          selectAllCount={selectAllCount}
+          onSelectAll={handleSelectAll}
+          isSelectingAll={isSelectingAll}
           isRejectedView={isRejectedView}
         />
       </main>

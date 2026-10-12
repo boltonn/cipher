@@ -27,6 +27,11 @@ build-backend = "hatchling.build"
 
 [project.optional-dependencies]
 fastapi = [ "cipher-utils[fastapi]" ]
+# See through these compressions too (gzip, bzip2 and xz are stdlib). zstd is the PEP 784 backport (stdlib on 3.14).
+zstd = [ "backports.zstd" ]
+lz4 = [ "lz4" ]
+# Tell a PDF that needs a password from one only locked against editing.
+pdf = [ "pypdfium2" ]
 
 [project.scripts]
 filetyper-api = "filetyper.api.main:main"

@@ -26,9 +26,9 @@ def pool_pt(
 ) -> torch.Tensor:
     """Pooling function for a batch of hidden states."""
     if method == "avg":
-        pooled = torch.sum(
-            hidden_states * attention_mask.unsqueeze(-1), dim=1
-        ) / torch.sum(attention_mask, dim=1, keepdim=True)
+        pooled = torch.sum(hidden_states * attention_mask.unsqueeze(-1), dim=1) / torch.sum(
+            attention_mask, dim=1, keepdim=True
+        )
     elif method == "cls":
         pooled = hidden_states[:, 0]
     else:

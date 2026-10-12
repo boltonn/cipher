@@ -58,6 +58,9 @@ _NAME_TABLES = (
     ("exact_admin_names", False),
     ("admin_names", True),
 )
+_ADDRESS_PART = re.compile(r"[^,\n;|]+")
+_ADDRESS_NUMBERING = " \t\r0123456789-–/#."
+_SPECIFICITY = {"city": 0, "admin1": 1, "country": 2}
 _QUALIFIER_AFTER = re.compile(r"^\s*,\s*([^\W\d_][^,\n|;:()\d]{1,29}?)\s*(?=$|[,\n|;:()]|\d)")
 
 
@@ -166,6 +169,26 @@ class Gazetteer:
         if (m := _QUALIFIER_AFTER.match(after)) and (scope := self._scope(m.group(1))):
             cands = self._within(cands, scope) or cands
         return self._choose(cands)
+
+    def place_in_address(self, address: str) -> tuple[Place, int, int] | None:
+        """The most specific place a postal address names (city, else state, else country), with its offsets.
+
+        Each comma / line part, stripped of house numbers and postal codes, is resolved in the
+        context of the rest (`Philadelphia` before `, PA 19104` -> Philadelphia, US). Street
+        lines name no place and an ambiguous name resolves to nothing, so nothing is guessed.
+        """
+        best: tuple[int, Place, int, int] | None = None
+        for part in _ADDRESS_PART.finditer(address):
+            core = part.group().strip(_ADDRESS_NUMBERING)
+            if len(core) < 2:
+                continue
+            start = part.start() + part.group().find(core)
+            end = start + len(core)
+            place = self.resolve(core, before=address[:start], after=address[end:])
+            rank = _SPECIFICITY.get(place.kind.value, 3) if place else None
+            if place and (best is None or rank < best[0]):
+                best = (rank, place, start, end)
+        return best[1:] if best else None
 
     def _resolve_code(self, cands: list[Place], *, before: str, after: str) -> Place | None:
         if len(cands) <= 1:

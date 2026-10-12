@@ -68,14 +68,15 @@ function SourceChip({ value, state, onCycle, onRemove }: { value: string; state:
 }
 
 interface SourceFilterProps {
+  datasetIds: string[];
   filters: SearchFilters;
   onFiltersChange: (filters: SearchFilters) => void;
 }
 
 /** Filters on what the data itself says (spam folder, Gmail's promotions tab...): each click cycles only -> hide -> off. */
-export function SourceFilter({ filters, onFiltersChange }: SourceFilterProps) {
+export function SourceFilter({ datasetIds, filters, onFiltersChange }: SourceFilterProps) {
   const [open, setOpen] = useState(false);
-  const { data: facets } = useSourceFacets(filters.datasetId);
+  const { data: facets } = useSourceFacets(datasetIds);
   const cycle = (kind: SourceKind, value: string) =>
     onFiltersChange(withState(filters, kind, value, NEXT_STATE[stateOf(filters, kind, value) ?? "off"]));
   const active = SOURCE_KINDS.flatMap(({ kind }) => [

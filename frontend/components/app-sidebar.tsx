@@ -11,8 +11,12 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
+  SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
   SidebarRail,
   SidebarSeparator,
   useSidebar,
@@ -21,15 +25,23 @@ import { useIsAdmin, useMe } from "@/features/users/hooks/use-me";
 import { getInitials } from "@/features/users/utils";
 import { NAV, type NavItem } from "@/lib/nav";
 import { cn } from "@/lib/utils";
+import { ChevronRight } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Fragment, useState } from "react";
 
 type NavigationItem = NavItem;
 
 function isItemActive(pathname: string, itemUrl: string) {
   if (itemUrl === "/") return pathname === "/";
-  return pathname.startsWith(itemUrl);
+  return pathname === itemUrl || pathname.startsWith(`${itemUrl}/`);
+}
+
+/** Active on its own page, but not while one of its children is the page you're on. */
+function isParentActive(pathname: string, item: NavigationItem) {
+  const onChild = item.children?.some((child) => isItemActive(pathname, child.url));
+  return !onChild && isItemActive(pathname, item.url);
 }
 
 function MenuItem({
@@ -39,9 +51,11 @@ function MenuItem({
   item: NavigationItem;
   pathname: string;
 }) {
-  const isActive = isItemActive(pathname, item.url);
+  const isActive = isParentActive(pathname, item);
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
+  const hasChildren = !!item.children?.length;
+  const [open, setOpen] = useState(hasChildren);
 
   return (
     <SidebarMenuItem>
@@ -81,17 +95,56 @@ function MenuItem({
           </span>
         </a>
       </SidebarMenuButton>
+      {hasChildren && (
+        <>
+          <SidebarMenuAction
+            onClick={() => setOpen((value) => !value)}
+            aria-label={open ? `Collapse ${item.title}` : `Expand ${item.title}`}
+            aria-expanded={open}
+            className="top-2"
+          >
+            <ChevronRight className={cn("transition-transform", open && "rotate-90")} />
+          </SidebarMenuAction>
+          {open && (
+            <SidebarMenuSub>
+              {item.children?.map((child) => {
+                const childActive = isItemActive(pathname, child.url);
+                return (
+                  <SidebarMenuSubItem key={child.url}>
+                    <SidebarMenuSubButton
+                      href={child.url}
+                      isActive={childActive}
+                      className={cn(
+                        "text-muted-foreground hover:text-foreground",
+                        childActive && "font-medium text-primary!"
+                      )}
+                    >
+                      <child.icon className={cn(childActive ? "text-primary!" : "text-muted-foreground!")} />
+                      <span>{child.title}</span>
+                    </SidebarMenuSubButton>
+                  </SidebarMenuSubItem>
+                );
+              })}
+            </SidebarMenuSub>
+          )}
+        </>
+      )}
     </SidebarMenuItem>
   );
 }
 
 const data = {
   main: [NAV.home],
-  workspace: NAV.workspace,
-  explore: NAV.explore,
-  media: NAV.media,
+  groups: [
+    { label: "Find", items: NAV.find },
+    { label: "Knowledge", items: NAV.knowledge },
+    { label: "Manage", items: NAV.manage },
+  ],
   settings: NAV.help,
 };
+
+const separatorClassName =
+  "my-1.5 h-px w-2/3 mx-auto bg-transparent bg-gradient-to-r from-transparent via-primary/25 to-transparent group-data-[collapsible=icon]:w-8";
 
 export function AppSidebar() {
   const pathname = usePathname();
@@ -142,73 +195,24 @@ export function AppSidebar() {
           </SidebarMenu>
         </SidebarGroup>
 
-        <SidebarSeparator className="my-1.5 h-px w-2/3 mx-auto bg-transparent bg-gradient-to-r from-transparent via-primary/25 to-transparent group-data-[collapsible=icon]:w-8" />
-
-        {/* Group 2: Workspace */}
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-muted-foreground">
-            Workspace
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {data.workspace.map((item) => (
-                <MenuItem key={item.title} item={item} pathname={pathname} />
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        <SidebarSeparator className="my-1.5 h-px w-2/3 mx-auto bg-transparent bg-gradient-to-r from-transparent via-primary/25 to-transparent group-data-[collapsible=icon]:w-8" />
-
-        {/* Group 3: Explore -- the knowledge graph and its derived layers */}
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-muted-foreground">
-            Explore
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {data.explore.map((item) => (
-                <MenuItem key={item.title} item={item} pathname={pathname} />
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        <SidebarSeparator className="my-1.5 h-px w-2/3 mx-auto bg-transparent bg-gradient-to-r from-transparent via-primary/25 to-transparent group-data-[collapsible=icon]:w-8" />
-
-        {/* Group 4: Media -- raw visual assets */}
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-muted-foreground">
-            Media
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {data.media.map((item) => (
-                <MenuItem key={item.title} item={item} pathname={pathname} />
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        {isAdmin && (
-          <>
-            <SidebarSeparator className="my-1.5 h-px w-2/3 mx-auto bg-transparent bg-gradient-to-r from-transparent via-primary/25 to-transparent group-data-[collapsible=icon]:w-8" />
-
-            {/* Admin-only management */}
+        {data.groups.map((group) => (
+          <Fragment key={group.label}>
+            <SidebarSeparator className={separatorClassName} />
             <SidebarGroup>
-              <SidebarGroupLabel className="text-muted-foreground">
-                Manage
-              </SidebarGroupLabel>
+              <SidebarGroupLabel className="text-muted-foreground">{group.label}</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
-                  <SidebarAdminLauncher pathname={pathname} />
+                  {group.items.map((item) => (
+                    <MenuItem key={item.title} item={item} pathname={pathname} />
+                  ))}
+                  {group.label === "Manage" && isAdmin && <SidebarAdminLauncher pathname={pathname} />}
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>
-          </>
-        )}
+          </Fragment>
+        ))}
 
-        {/* Group 5: Model (quick switcher, mirrors chat's model store) */}
+        {/* Model (quick switcher, mirrors chat's model store) */}
         <SidebarGroup className="mt-auto">
           <SidebarGroupContent>
             <SidebarMenu>
@@ -217,9 +221,9 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        <SidebarSeparator className="my-1.5 h-px w-2/3 mx-auto bg-transparent bg-gradient-to-r from-transparent via-primary/25 to-transparent group-data-[collapsible=icon]:w-8" />
+        <SidebarSeparator className={separatorClassName} />
 
-        {/* Group 5: Config & Help */}
+        {/* Config & Help */}
         <SidebarGroup>
           <SidebarGroupLabel className="text-muted-foreground">Help</SidebarGroupLabel>
           <SidebarGroupContent>

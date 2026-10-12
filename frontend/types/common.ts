@@ -1,19 +1,8 @@
 export type IconComponent = React.ComponentType<{ className?: string }>;
 
-const PaginationMode = {
-  Infinite: "infinite",
-  Normal: "normal",
-} as const;
+export type PaginationModeType = "infinite" | "normal";
 
-export type PaginationModeType =
-  (typeof PaginationMode)[keyof typeof PaginationMode];
-
-const SortOrder = {
-  Ascending: "asc",
-  Descending: "desc",
-} as const;
-
-export type SortOrderType = (typeof SortOrder)[keyof typeof SortOrder];
+export type SortOrderType = "asc" | "desc";
 
 export interface PaginatedResponse<T> {
   data: T[];

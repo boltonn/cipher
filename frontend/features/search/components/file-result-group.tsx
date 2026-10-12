@@ -2,11 +2,12 @@
 
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
-import { Database, FileText, Mail, Target } from "lucide-react";
+import { Database, FileText, Mail, Target, Sparkles } from "lucide-react";
 import { matchTerms, snippetRange } from "../highlight";
 import type { GroupedFileResult, SearchMode } from "../types";
 import { MentionMarkedText } from "./mention-marked-text";
 import { SOURCE_ORIGIN, sourceLabel } from "./source-filter";
+import { textOffsets } from "@/lib/text-offsets";
 
 interface FileResultGroupProps {
   group: GroupedFileResult;
@@ -39,7 +40,11 @@ export function FileResultGroup({ group, isSelected, onSelect, searchMode, query
   ].filter(Boolean);
   const terms = matchTerms(topChunk, query, searchMode);
   const spans = topChunk.mentionSpans;
-  const snippet = snippetRange(topChunk.text, terms, spans.length ? spans[0].startOffset - topChunk.startOffset : undefined);
+  const snippet = snippetRange(
+    topChunk.text,
+    terms,
+    spans.length ? textOffsets(topChunk.text).toUtf16(spans[0].startOffset - topChunk.startOffset) : undefined
+  );
 
   return (
     <button
@@ -84,6 +89,11 @@ export function FileResultGroup({ group, isSelected, onSelect, searchMode, query
         {snippet.end < topChunk.text.length && "…"}
       </p>
       <div className="flex flex-wrap items-center gap-1.5">
+        {topChunk.isSummary && (
+          <span className="flex items-center gap-1 rounded border border-annotation/20 bg-annotation/10 px-1.5 py-0.5 text-[11px] font-bold text-annotation">
+            <Sparkles className="h-2.5 w-2.5" /> AI summary
+          </span>
+        )}
         {showMatchSignals && (
           <div className="flex items-center gap-1 rounded border border-annotation/20 bg-annotation/10 px-1.5 py-0.5 text-[11px] font-bold text-annotation">
             <Target className="h-2.5 w-2.5" />

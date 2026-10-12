@@ -7,92 +7,18 @@ import { FeatureChip } from "@/features/entities/components/resolution-feature-c
 import { InvalidateEntityDialog } from "@/features/entities/components/invalidate-entity-dialog";
 import {
   useEntityMergeCandidates,
-  useMergeGroups,
   usePromoteEntity,
   useResolveMatch,
 } from "@/features/entities/hooks/use-entity-matches";
-import type { Entity, EntityMatch, EntityMergeGroup, EntityType } from "@/features/entities/types";
+import type {
+  Entity,
+  EntityMatch,
+  EntityType,
+} from "@/features/entities/types";
 import { cn } from "@/lib/utils";
 import { ArrowRight, Ban, BadgeCheck, GitMerge, X } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
-
-/**
- * Entity->entity merge review, shown at the top of the Resolve tab. Each card is
- * a provisional entity the resolver minted (a stub with no Persons entry) next
- * to the canonical entities it may actually be. Merge folds the stub in (its
- * name kept as an alias); Keep separate records that one pair differs; Promote
- * makes the stub a new canonical entity; Not an entity deletes it.
- */
-export function EntityMergeList({
-  datasetId,
-}: {
-  datasetId: string;
-}) {
-  const [page, setPage] = useState(1);
-  const { data, isPending } = useMergeGroups({
-    datasetId,
-    status: "pending",
-    page,
-  });
-  const groups = data?.data ?? [];
-  const total = data?.total ?? 0;
-
-  if (isPending || groups.length === 0) return null;
-
-  return (
-    <details
-      id="possible-duplicates"
-      open
-      className="rounded-lg border border-annotation/30 bg-annotation/[0.04]"
-    >
-      <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 text-xs font-medium">
-        <GitMerge size={13} className="text-annotation" />
-        Possible duplicate entities
-        <span className="rounded-full bg-annotation/20 px-1.5 text-[11px] text-annotation">
-          {total}
-        </span>
-        <span className="font-normal text-muted-foreground">
-          — auto-created entities that may repeat an existing one; settle
-          these first
-        </span>
-      </summary>
-
-      <div className="space-y-2 px-3 pb-3">
-        {groups.map((g) => (
-          <MergeCard
-            key={g.provisionalEntityId}
-            group={g}
-           
-          />
-        ))}
-        {total > groups.length && (
-          <div className="flex items-center justify-end gap-2 pt-1 text-[11px]">
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-6 px-2 text-[11px]"
-              disabled={page === 1}
-              onClick={() => setPage((p) => p - 1)}
-            >
-              Prev
-            </Button>
-            <span className="text-muted-foreground">page {page}</span>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-6 px-2 text-[11px]"
-              disabled={page * 25 >= total}
-              onClick={() => setPage((p) => p + 1)}
-            >
-              Next
-            </Button>
-          </div>
-        )}
-      </div>
-    </details>
-  );
-}
 
 /**
  * "Possible duplicates" panel for a single entity's dossier page. Renders
@@ -116,8 +42,8 @@ export function EntityMergePanel({ entity }: { entity: Entity }) {
             : "Auto-created entity"}
         </p>
         <p className="mt-1 text-[11px] text-muted-foreground">
-          The resolver created this entity because no canonical match was found at
-          the time.{" "}
+          The resolver created this entity because no canonical match was found
+          at the time.{" "}
           {pending.length > 0
             ? "Merge it into the existing one (its name becomes an alias), or verify it if it's someone new."
             : "Verify it if it's a real, distinct entity."}
@@ -146,65 +72,6 @@ export function EntityMergePanel({ entity }: { entity: Entity }) {
         </ul>
       </div>
     </TooltipProvider>
-  );
-}
-
-function MergeCard({
-  group,
-}: {
-  group: EntityMergeGroup;
-}) {
-  const resolve = useResolveMatch();
-  const busy = resolve.isPending;
-  const stubMeta = ENTITY_TYPE_META[group.provisionalEntityType as EntityType];
-
-  return (
-    <div className="rounded-lg border border-border bg-card p-2.5">
-      <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-        {stubMeta?.Icon && (
-          <stubMeta.Icon size={13} className={cn("shrink-0", stubMeta.textClass)} />
-        )}
-        <Link
-          href={`/entities/${group.provisionalEntityId}`}
-          className="font-medium hover:underline"
-        >
-          {group.provisionalName}
-        </Link>
-        <span className="rounded-full border border-border px-1 text-[11px] text-muted-foreground">
-          auto-created · {group.mentionCount.toLocaleString()} mentions
-        </span>
-        <StubActions
-          entity={{
-            id: group.provisionalEntityId,
-            displayName: group.provisionalName,
-            entityType: group.provisionalEntityType as EntityType,
-          }}
-          className="ml-auto"
-        />
-      </p>
-
-      <ul className="mt-2 space-y-1.5">
-        {group.candidates.map((c) => (
-          <MergeCandidateRow
-            key={c.id}
-            match={c}
-            disabled={busy}
-            onMerge={() =>
-              resolve.mutate({
-                matchId: c.id,
-                status: "confirmed",
-              })
-            }
-            onKeep={() =>
-              resolve.mutate({
-                matchId: c.id,
-                status: "rejected",
-              })
-            }
-          />
-        ))}
-      </ul>
-    </div>
   );
 }
 
@@ -277,7 +144,11 @@ function MergeCandidateRow({
       <div className="flex items-center gap-2 text-xs">
         <ArrowRight size={12} className="shrink-0 text-muted-foreground" />
         {Icon && <Icon size={13} className={cn("shrink-0", meta?.textClass)} />}
-        <Link href={href} className="truncate font-medium hover:underline" title="Open this entity">
+        <Link
+          href={href}
+          className="truncate font-medium hover:underline"
+          title="Open this entity"
+        >
           {match.entityName ?? match.entityId.slice(0, 8)}
         </Link>
         <span className="shrink-0 text-[11px] uppercase tracking-wide text-muted-foreground/70">

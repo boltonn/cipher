@@ -1,0 +1,459 @@
+[
+ {
+  "id": "person.full_name",
+  "label": "Person full name",
+  "description": "A person's full name, e.g. 'Ivan Petrov', 'Иванов Иван Иванович', '王伟'.",
+  "entity_type": "person",
+  "attribute": "name",
+  "use": "entity"
+ },
+ {
+  "id": "person.given_name",
+  "label": "Given name",
+  "description": "A person's first / given name only.",
+  "entity_type": "person",
+  "attribute": "name",
+  "part": "given",
+  "use": "entity"
+ },
+ {
+  "id": "person.surname",
+  "label": "Surname",
+  "description": "A person's last name / family name only.",
+  "entity_type": "person",
+  "attribute": "name",
+  "part": "surname",
+  "use": "entity"
+ },
+ {
+  "id": "person.patronymic",
+  "label": "Patronymic",
+  "description": "A patronymic or middle name, e.g. 'Ivanovich', 'Петровна'.",
+  "entity_type": "person",
+  "attribute": "name",
+  "part": "patronymic",
+  "use": "entity"
+ },
+ {
+  "id": "person.date_of_birth",
+  "label": "Date of birth",
+  "description": "A person's birth date.",
+  "entity_type": "person",
+  "attribute": "date_of_birth",
+  "use": "entity"
+ },
+ {
+  "id": "person.age",
+  "label": "Age",
+  "description": "A person's age in years.",
+  "entity_type": "person",
+  "attribute": "age",
+  "use": "entity",
+  "needs_ontology": true
+ },
+ {
+  "id": "person.gender",
+  "label": "Gender",
+  "description": "Sex or gender: M/F, male/female, муж/жен.",
+  "entity_type": "person",
+  "attribute": "gender",
+  "use": "entity",
+  "needs_ontology": true
+ },
+ {
+  "id": "person.nationality",
+  "label": "Nationality",
+  "description": "Citizenship or nationality, e.g. 'Russian', 'French', 'Iran'.",
+  "entity_type": "person",
+  "attribute": "nationality",
+  "use": "entity"
+ },
+ {
+  "id": "person.occupation",
+  "label": "Occupation / role",
+  "description": "A job title, position, rank or role.",
+  "entity_type": "person",
+  "attribute": "role",
+  "use": "edge_attribute"
+ },
+ {
+  "id": "organization.name",
+  "label": "Organization name",
+  "description": "A company, agency, bank, university or other organization name.",
+  "entity_type": "organization",
+  "attribute": "name",
+  "use": "entity"
+ },
+ {
+  "id": "organization.registration_number",
+  "label": "Registration number",
+  "description": "A company registration number (OGRN, company number).",
+  "entity_type": "organization",
+  "attribute": "registration_number",
+  "use": "entity",
+  "needs_ontology": true
+ },
+ {
+  "id": "organization.tax_id",
+  "label": "Tax id",
+  "description": "A taxpayer id such as INN, VAT or EIN.",
+  "entity_type": "selector",
+  "attribute": "value",
+  "selector_type": "national_id",
+  "use": "entity"
+ },
+ {
+  "id": "organization.industry",
+  "label": "Industry / category",
+  "description": "An organization's sector, industry or type.",
+  "entity_type": "organization",
+  "attribute": "category",
+  "use": "entity"
+ },
+ {
+  "id": "location.address",
+  "label": "Full address",
+  "description": "A full street or postal address in one cell.",
+  "entity_type": "location",
+  "attribute": "address",
+  "use": "entity"
+ },
+ {
+  "id": "location.street",
+  "label": "Street",
+  "description": "A street name, optionally with house number.",
+  "entity_type": "location",
+  "attribute": "address",
+  "part": "street",
+  "use": "entity"
+ },
+ {
+  "id": "location.house_number",
+  "label": "House number",
+  "description": "A building or house number.",
+  "entity_type": "location",
+  "attribute": "address",
+  "part": "house",
+  "use": "entity"
+ },
+ {
+  "id": "location.unit",
+  "label": "Apartment / unit",
+  "description": "An apartment, flat, suite or unit number.",
+  "entity_type": "location",
+  "attribute": "address",
+  "part": "unit",
+  "use": "entity"
+ },
+ {
+  "id": "location.postal_code",
+  "label": "Postal code",
+  "description": "A postal or ZIP code.",
+  "entity_type": "location",
+  "attribute": "address",
+  "part": "postal_code",
+  "use": "entity"
+ },
+ {
+  "id": "location.city",
+  "label": "City",
+  "description": "A city, town or village name.",
+  "entity_type": "location",
+  "attribute": "name",
+  "part": "city",
+  "use": "entity"
+ },
+ {
+  "id": "location.admin_area",
+  "label": "Region / state",
+  "description": "A state, province, oblast or other first-level region.",
+  "entity_type": "location",
+  "attribute": "name",
+  "part": "admin_area",
+  "use": "entity"
+ },
+ {
+  "id": "location.country",
+  "label": "Country",
+  "description": "A country name.",
+  "entity_type": "location",
+  "attribute": "name",
+  "part": "country",
+  "use": "entity"
+ },
+ {
+  "id": "location.country_code",
+  "label": "Country code",
+  "description": "A 2-3 letter country code such as RU, US, IRN.",
+  "entity_type": "location",
+  "attribute": "name",
+  "part": "country_code",
+  "use": "entity"
+ },
+ {
+  "id": "location.place_name",
+  "label": "Place name",
+  "description": "A named place, facility or landmark that is not an address.",
+  "entity_type": "location",
+  "attribute": "name",
+  "use": "entity"
+ },
+ {
+  "id": "location.latitude",
+  "label": "Latitude",
+  "description": "Latitude in decimal degrees or DMS.",
+  "entity_type": "location",
+  "attribute": "coordinate",
+  "part": "latitude",
+  "use": "entity"
+ },
+ {
+  "id": "location.longitude",
+  "label": "Longitude",
+  "description": "Longitude in decimal degrees or DMS.",
+  "entity_type": "location",
+  "attribute": "coordinate",
+  "part": "longitude",
+  "use": "entity"
+ },
+ {
+  "id": "location.coordinate",
+  "label": "Coordinate pair",
+  "description": "A latitude/longitude pair in one cell, e.g. '55.75, 37.61'.",
+  "entity_type": "location",
+  "attribute": "coordinate",
+  "use": "entity"
+ },
+ {
+  "id": "location.geohash",
+  "label": "Geohash / MGRS",
+  "description": "A geohash or MGRS grid reference.",
+  "entity_type": "location",
+  "attribute": "coordinate",
+  "part": "grid",
+  "use": "entity",
+  "needs_ontology": true
+ },
+ {
+  "id": "selector.phone",
+  "label": "Phone number",
+  "description": "A telephone or mobile number.",
+  "entity_type": "selector",
+  "attribute": "value",
+  "selector_type": "phone",
+  "use": "entity"
+ },
+ {
+  "id": "selector.email",
+  "label": "Email address",
+  "description": "An email address.",
+  "entity_type": "selector",
+  "attribute": "value",
+  "selector_type": "email",
+  "use": "entity"
+ },
+ {
+  "id": "selector.ip",
+  "label": "IP address",
+  "description": "An IPv4 or IPv6 address.",
+  "entity_type": "selector",
+  "attribute": "value",
+  "selector_type": "ip",
+  "use": "entity"
+ },
+ {
+  "id": "selector.iban",
+  "label": "IBAN / bank account",
+  "description": "An IBAN or bank account number.",
+  "entity_type": "selector",
+  "attribute": "value",
+  "selector_type": "iban",
+  "use": "entity"
+ },
+ {
+  "id": "selector.bank_card",
+  "label": "Payment card",
+  "description": "A payment card number.",
+  "entity_type": "selector",
+  "attribute": "value",
+  "selector_type": "bank_card",
+  "use": "entity"
+ },
+ {
+  "id": "selector.passport",
+  "label": "Passport number",
+  "description": "A passport number or MRZ.",
+  "entity_type": "selector",
+  "attribute": "value",
+  "selector_type": "passport",
+  "use": "entity"
+ },
+ {
+  "id": "selector.national_id",
+  "label": "National id",
+  "description": "A national identity number (SNILS, code melli, resident id).",
+  "entity_type": "selector",
+  "attribute": "value",
+  "selector_type": "national_id",
+  "use": "entity"
+ },
+ {
+  "id": "selector.imei",
+  "label": "IMEI",
+  "description": "A device IMEI.",
+  "entity_type": "selector",
+  "attribute": "value",
+  "selector_type": "imei",
+  "use": "entity"
+ },
+ {
+  "id": "selector.imsi",
+  "label": "IMSI",
+  "description": "A SIM IMSI.",
+  "entity_type": "selector",
+  "attribute": "value",
+  "selector_type": "imsi",
+  "use": "entity"
+ },
+ {
+  "id": "selector.social_handle",
+  "label": "Social handle",
+  "description": "A social-media or messenger handle or profile.",
+  "entity_type": "selector",
+  "attribute": "value",
+  "selector_type": "social_handle",
+  "use": "entity"
+ },
+ {
+  "id": "selector.crypto_address",
+  "label": "Crypto address",
+  "description": "A cryptocurrency wallet address.",
+  "entity_type": "selector",
+  "attribute": "value",
+  "selector_type": "crypto_address",
+  "use": "entity"
+ },
+ {
+  "id": "selector.license_plate",
+  "label": "License plate",
+  "description": "A vehicle registration plate.",
+  "entity_type": "selector",
+  "attribute": "value",
+  "selector_type": "license_plate",
+  "use": "entity"
+ },
+ {
+  "id": "selector.domain",
+  "label": "Domain / website",
+  "description": "A website domain or URL.",
+  "entity_type": "selector",
+  "attribute": "value",
+  "selector_type": "domain",
+  "use": "entity"
+ },
+ {
+  "id": "selector.mac_address",
+  "label": "MAC address",
+  "description": "A network hardware (MAC) address.",
+  "entity_type": "selector",
+  "attribute": "value",
+  "selector_type": "mac_address",
+  "use": "entity"
+ },
+ {
+  "id": "time.date",
+  "label": "Date",
+  "description": "A calendar date of an event or record.",
+  "use": "edge_time"
+ },
+ {
+  "id": "time.datetime",
+  "label": "Date and time",
+  "description": "A timestamp with date and time.",
+  "use": "edge_time"
+ },
+ {
+  "id": "time.epoch",
+  "label": "Unix timestamp",
+  "description": "Seconds or milliseconds since 1970.",
+  "use": "edge_time"
+ },
+ {
+  "id": "time.time",
+  "label": "Time of day",
+  "description": "A time of day without a date.",
+  "use": "edge_attribute"
+ },
+ {
+  "id": "time.duration",
+  "label": "Duration",
+  "description": "A duration such as call length in seconds or hh:mm:ss.",
+  "use": "edge_attribute"
+ },
+ {
+  "id": "edge.amount",
+  "label": "Amount",
+  "description": "A money amount or other quantity.",
+  "use": "edge_attribute"
+ },
+ {
+  "id": "edge.currency",
+  "label": "Currency",
+  "description": "A currency code or symbol, e.g. USD, RUB, €.",
+  "use": "edge_attribute"
+ },
+ {
+  "id": "edge.direction",
+  "label": "Direction",
+  "description": "Incoming/outgoing, sent/received, debit/credit.",
+  "use": "edge_attribute"
+ },
+ {
+  "id": "edge.count",
+  "label": "Count",
+  "description": "A count of events or items.",
+  "use": "edge_attribute"
+ },
+ {
+  "id": "edge.relation",
+  "label": "Relationship label",
+  "description": "How two parties relate, e.g. 'father', 'employee', 'spouse'.",
+  "use": "edge_attribute"
+ },
+ {
+  "id": "key.row_id",
+  "label": "Row id",
+  "description": "A unique record identifier or sequence number.",
+  "use": "key"
+ },
+ {
+  "id": "key.reference",
+  "label": "Reference id",
+  "description": "An id referring to a record elsewhere (account id, case number).",
+  "use": "key"
+ },
+ {
+  "id": "other.free_text",
+  "label": "Free text",
+  "description": "Notes, comments, message bodies or descriptions.",
+  "use": "text"
+ },
+ {
+  "id": "other.boolean",
+  "label": "Boolean flag",
+  "description": "Yes/no, true/false, 0/1 flags.",
+  "use": "ignore"
+ },
+ {
+  "id": "other.category",
+  "label": "Category",
+  "description": "A small set of repeated labels or statuses.",
+  "use": "edge_attribute"
+ },
+ {
+  "id": "other",
+  "label": "Other",
+  "description": "Anything else.",
+  "use": "ignore"
+ }
+]

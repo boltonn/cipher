@@ -2,7 +2,7 @@
 
 Every model runs from this analytic's own `.venv-vllm` (vLLM pins its own torch), as
 a background process group with its pid and log under `~/.local/state/pyvllm/`.
-Auth follows vLLM's own `VLLM_API_KEY` environment variable.
+Auth is `VLLM_API_KEY` (environment or `.env`), handed to each `vllm serve` process.
 """
 
 import asyncio
@@ -18,12 +18,19 @@ import httpx
 from loguru import logger
 
 from pyvllm.models import MODELS, ModelSpec
+from pyvllm.settings import settings
 
 VLLM_BIN = Path(__file__).resolve().parents[2] / ".venv-vllm" / "bin" / "vllm"
 STATE_DIR = Path.home() / ".local" / "state" / "pyvllm"
 STARTUP_TIMEOUT_SECONDS = 900
-# vLLM's Triton/FlashInfer JIT paths that this box's toolchain can't build.
-_VLLM_ENV = {"TRITON_ALLOW_NON_CONSTEXPR_GLOBALS": "1", "VLLM_USE_FLASHINFER_SAMPLER": "0"}
+# Triton/FlashInfer JIT paths this box's toolchain can't build; and strict tool calling off: its
+# grammar only accepts arguments in schema order, silently cutting any the model writes out of order
+# (Qwen writes `date_from` before `query`). The tool-call parser itself reads any order.
+_VLLM_ENV = {
+    "TRITON_ALLOW_NON_CONSTEXPR_GLOBALS": "1",
+    "VLLM_USE_FLASHINFER_SAMPLER": "0",
+    "VLLM_ENFORCE_STRICT_TOOL_CALLING": "0",
+}
 
 
 def pid_path(spec: ModelSpec) -> Path:
@@ -38,10 +45,8 @@ def log_path(spec: ModelSpec) -> Path:
 
 def served_models(spec: ModelSpec) -> list[str] | None:
     """Model names served on `spec`'s port: None when nothing listens, ["?"] when it won't say (other key)."""
-    api_key = os.environ.get("VLLM_API_KEY")
-    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
     try:
-        response = httpx.get(f"{spec.base_url}/v1/models", headers=headers, timeout=3.0)
+        response = httpx.get(f"{spec.base_url}/v1/models", headers=settings.auth_headers, timeout=3.0)
     except httpx.HTTPError:
         return None
     if not response.is_success:
@@ -87,6 +92,8 @@ def start(spec: ModelSpec, gpu: int | None = None, wait: bool = True) -> None:
         *spec.args,
     ]  # fmt: skip
     environment = {**os.environ, **_VLLM_ENV, "CUDA_VISIBLE_DEVICES": str(spec.gpu if gpu is None else gpu)}
+    if settings.api_key:
+        environment["VLLM_API_KEY"] = settings.api_key
     with log_path(spec).open("w") as log:
         process = subprocess.Popen(
             command, env=environment, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,

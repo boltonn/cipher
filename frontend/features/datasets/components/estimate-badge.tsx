@@ -14,7 +14,8 @@ export function EstimateBadge({
   estimate?: EnrichmentEstimate;
   className?: string;
 }) {
-  if (!estimate) return null;
+  // No size to time (faces, table rows): the dependency chip already says what it waits on.
+  if (!estimate || !estimate.eligible.estimable) return null;
 
   if (estimate.estimateSeconds == null) {
     return (

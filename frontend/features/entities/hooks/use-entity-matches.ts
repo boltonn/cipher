@@ -14,10 +14,10 @@ import {
 } from "@tanstack/react-query";
 
 type GroupParams = {
-  datasetId: string | undefined;
+  datasetIds: string[];
   entityId?: string;
   status: EntityMatchStatus;
-  sortBy: "similarity_score" | "date_created";
+  sortBy: "similarityScore" | "dateCreated";
   minSimilarity?: number;
   includeProvisionalEntities: boolean;
   page: number;
@@ -27,7 +27,7 @@ type GroupParams = {
 
 /** The grouped resolution review queue -- one card per unresolved name. */
 export function useMatchGroups({
-  datasetId,
+  datasetIds,
   entityId,
   status,
   sortBy,
@@ -41,7 +41,7 @@ export function useMatchGroups({
     queryKey: [
       "entity-matches",
       "groups",
-      datasetId,
+      datasetIds,
       entityId ?? null,
       status,
       sortBy,
@@ -52,7 +52,7 @@ export function useMatchGroups({
     ],
     queryFn: () =>
       entitiesService.listMatchGroups({
-        datasetId: datasetId as string,
+        datasetIds,
         entityId,
         status,
         sortBy,
@@ -61,7 +61,7 @@ export function useMatchGroups({
         page,
         limit,
       }),
-    enabled: !!datasetId && enabled,
+    enabled: datasetIds.length > 0 && enabled,
     placeholderData: keepPreviousData,
   });
 }
@@ -75,29 +75,6 @@ function useMatchInvalidation() {
     qc.invalidateQueries({ queryKey: ["entities"] });
     qc.invalidateQueries({ queryKey: ["persons"] });
   };
-}
-
-/** Entity->entity merge review queue (populate with `cipher dedupe-entities`). */
-export function useMergeGroups({
-  datasetId,
-  status,
-  page,
-}: {
-  datasetId: string | undefined;
-  status: EntityMatchStatus;
-  page: number;
-}) {
-  return useQuery({
-    queryKey: ["entity-merges", "groups", datasetId, status, page],
-    queryFn: () =>
-      entitiesService.listMergeGroups({
-        datasetId: datasetId as string,
-        status,
-        page,
-      }),
-    enabled: !!datasetId,
-    placeholderData: keepPreviousData,
-  });
 }
 
 /** Merge proposals filed against one entity -- for the "Possible duplicates" panel. */
@@ -193,6 +170,31 @@ export function useMergeEntities(onSuccess?: () => void) {
       invalidate();
       onSuccess?.();
     },
+  });
+}
+
+/**
+ * Settle a same-name type disagreement: the auto-created `source` takes `entityType`
+ * (retyped if needed) and folds into `targetId`.
+ */
+export function usePickEntityType(onSuccess?: () => void) {
+  const invalidate = useMatchInvalidation();
+  return useMutation({
+    mutationFn: async ({
+      targetId,
+      source,
+      entityType,
+    }: {
+      targetId: string;
+      source: { id: string; entityType: EntityType };
+      entityType: EntityType;
+    }) => {
+      if (source.entityType !== entityType)
+        await entitiesService.retype([source.id], entityType);
+      return entitiesService.merge(targetId, [source.id]);
+    },
+    onSettled: invalidate,
+    onSuccess: () => onSuccess?.(),
   });
 }
 

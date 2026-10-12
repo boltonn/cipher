@@ -126,7 +126,7 @@ export function EntityMentionPopover(props: EntityMentionPopoverProps) {
 
   const isSelector = entityType === "selector";
   const lookupValue = existing?.normalizedValue ?? (isSelector ? trimmed : foldName(trimmed));
-  const { data: results, isFetching } = useEntitySearch({ datasetId, q: debouncedQuery });
+  const { data: results, isFetching } = useEntitySearch({ datasetIds: [datasetId], q: debouncedQuery });
   const { data: resolution } = useMentionResolution(isMove ? undefined : existing?.id);
   const { data: elsewhere } = useValueResolvedEntities(datasetId, isMove ? undefined : lookupValue);
 
@@ -161,7 +161,7 @@ export function EntityMentionPopover(props: EntityMentionPopoverProps) {
 
   const span = {
     datasetId,
-    mentionedType: "extracted_text" as const,
+    mentionedType: "extractedText" as const,
     mentionedId: props.textId,
     fileId: props.fileId,
     surfaceText: surface,

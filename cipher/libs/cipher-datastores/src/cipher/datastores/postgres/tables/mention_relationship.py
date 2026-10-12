@@ -48,6 +48,8 @@ class MentionRelationshipTable(Base):
     file_id: Mapped[str | None] = mapped_column(String, ForeignKey("file.id", ondelete="SET NULL"), nullable=True)
     context: Mapped[str | None] = mapped_column(String, nullable=True)
     date_reviewed: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_accepted: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    reviewed_by: Mapped[str | None] = mapped_column(String, nullable=True)
     attributes: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb"))
     extractor: Mapped[str | None] = mapped_column(String, nullable=True)
     extraction_model: Mapped[str | None] = mapped_column(String, nullable=True)

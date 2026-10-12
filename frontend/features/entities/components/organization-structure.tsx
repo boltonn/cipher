@@ -7,7 +7,7 @@ import { entitiesService } from "@/features/entities/api";
 import { useOrganizationStructure } from "@/features/entities/hooks/use-entities";
 import type { EntitySummary, EntityType, RelationshipType } from "@/features/entities/types";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, Plus } from "lucide-react";
+import { ChevronRight, GitBranchPlus, MapPinPlus, UserRoundPlus, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -15,15 +15,18 @@ import { toast } from "sonner";
 type AddKind = "child" | "location" | "person";
 
 /** Each add action as an edge: sub-units point up at the org, the org points at its locations, people at the org. */
-const ADD: Record<AddKind, { label: string; pick: EntityType; relationshipType: RelationshipType; fromOrg: boolean }> = {
-  child: { label: "sub-unit", pick: "organization", relationshipType: "part_of", fromOrg: false },
-  location: { label: "location", pick: "location", relationshipType: "located_in", fromOrg: true },
-  person: { label: "person", pick: "person", relationshipType: "employed_by", fromOrg: false },
+const ADD: Record<
+  AddKind,
+  { label: string; pick: EntityType; relationshipType: RelationshipType; fromOrg: boolean; Icon: LucideIcon }
+> = {
+  child: { label: "sub-unit", pick: "organization", relationshipType: "partOf", fromOrg: false, Icon: GitBranchPlus },
+  location: { label: "location", pick: "location", relationshipType: "locatedIn", fromOrg: true, Icon: MapPinPlus },
+  person: { label: "person", pick: "person", relationshipType: "employedBy", fromOrg: false, Icon: UserRoundPlus },
 };
 
 /**
  * An organization's hierarchy: its parent chain, sub-units (divisions, offices, branches),
- * locations and people -- all read from `part_of` / `located_in` / `employed_by` / `member_of`
+ * locations and people -- all read from `partOf` / `locatedIn` / `employedBy` / `memberOf`
  * edges. The parent itself is set in Edit (an organization has at most one).
  */
 export function OrganizationStructure({ entityId, entityName }: { entityId: string; entityName: string }) {
@@ -70,7 +73,7 @@ export function OrganizationStructure({ entityId, entityName }: { entityId: stri
           notes={Object.fromEntries(
             data.members.map((m) => [
               m.entity.id,
-              m.role ?? (m.relationshipType === "member_of" ? "member" : "employee"),
+              m.role ?? (m.relationshipType === "memberOf" ? "member" : "employee"),
             ])
           )}
           onAdd={setAdding}
@@ -108,6 +111,7 @@ function Group({
   notes?: Record<string, string>;
   onAdd: (kind: AddKind) => void;
 }) {
+  const { Icon } = ADD[kind];
   return (
     <div className="rounded-lg border border-border">
       <div className="flex items-center justify-between border-b border-border/60 px-3 py-1.5">
@@ -115,7 +119,7 @@ function Group({
           {title} <span className="font-normal text-muted-foreground">{entities.length}</span>
         </span>
         <Button variant="ghost" size="sm" className="h-6 gap-1 px-1.5 text-[11px]" onClick={() => onAdd(kind)}>
-          <Plus size={11} /> Add
+          <Icon size={11} /> Add
         </Button>
       </div>
       {entities.length === 0 ? (

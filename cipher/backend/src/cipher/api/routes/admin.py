@@ -3,10 +3,11 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from setfitcv.train import TrainingConfig
 
 from cipher.api.deps.access import invalidate_access
 from cipher.api.deps.authentication import AdminOnly, AdminUserDep
-from cipher.api.deps.postgres import DatabaseMetricsDatastoreDep, UserDatastoreDep
+from cipher.api.deps.postgres import DatabaseMetricsDatastoreDep, TagDatastoreDep, UserDatastoreDep
 from cipher.schemas.ingestion.database_metrics import DatabaseMetrics, DatasetDatabaseUsage
 from cipher.schemas.ingestion.user import (
     PaginatedUsersResponse,
@@ -16,6 +17,7 @@ from cipher.schemas.ingestion.user import (
     UsersRequest,
     UserUpdate,
 )
+from cipher.schemas.interaction.tag import TagTargetType, TagTrainingReadiness
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[AdminOnly])
 
@@ -110,3 +112,26 @@ async def get_dataset_database_usage(dataset_id: str, datastore: DatabaseMetrics
     if usage is None:
         raise HTTPException(status_code=404, detail=f"Dataset not found: {dataset_id}")
     return usage
+
+
+@router.get(
+    "/tag-training",
+    summary="Analyst labels per image tag, and which tags have enough to train a classifier head",
+    response_model=list[TagTrainingReadiness],
+    response_model_by_alias=True,
+)
+async def tag_training_readiness(admin: AdminUserDep, datastore: TagDatastoreDep) -> list[TagTrainingReadiness]:
+    """Image (content) tags only -- the ones `cipher train-image-heads` learns; readiest first."""
+    min_positives = TrainingConfig().min_positives
+    rows = [
+        TagTrainingReadiness(
+            tag=row.tag,
+            positives=row.labelled,
+            negatives=row.rejected,
+            min_positives=min_positives,
+            is_ready=row.labelled >= min_positives,
+        )
+        for row in await datastore.stats(user_id=admin.id)
+        if row.target_type == TagTargetType.CONTENT and (row.labelled or row.rejected)
+    ]
+    return sorted(rows, key=lambda row: (-row.positives, row.tag))

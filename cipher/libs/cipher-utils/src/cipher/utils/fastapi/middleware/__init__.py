@@ -1,6 +1,9 @@
 from cipher.utils.fastapi.middleware.exceptions import (
+    ErrorCode,
     entity_exists_handler,
     entity_not_found_handler,
+    error_code_for,
+    http_exception_handler,
     python_exception_handler,
     validation_exception_handler,
 )
@@ -15,4 +18,7 @@ __all__ = [
     "mirror_query_case",
     "entity_exists_handler",
     "entity_not_found_handler",
+    "http_exception_handler",
+    "ErrorCode",
+    "error_code_for",
 ]

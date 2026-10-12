@@ -32,6 +32,7 @@ _ENRICHMENT_TYPES = (
     EnrichmentType.ENTITY_EXTRACTION,
     EnrichmentType.RELATIONSHIP_EXTRACTION,
     EnrichmentType.SIGNATURE_EXTRACTION,
+    EnrichmentType.TABLE_EXTRACTION,
 )
 
 

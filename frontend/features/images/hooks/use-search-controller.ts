@@ -12,6 +12,7 @@ import {
   type InfiniteData,
 } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
+import { readHandoff } from "@/features/global-search/handoff";
 
 export type ImageFilters = Omit<ImageSimilaritySearchParameters, "page">;
 
@@ -45,16 +46,19 @@ const withSort = (filters: ImageFilters): ImageFilters =>
     : filters;
 
 export const useSearchController = (mode: PaginationModeType = "infinite") => {
+  // "See all" / an image clicked on global search: similar-to-that-image, or the text query.
+  const [handoff] = useState(() => readHandoff("images"));
   const [file, setFile] = useState<File | null>(null);
-  const [id, setId] = useState<string | null>(null);
-  const [text, setText] = useState<string | null>(null);
+  const [id, setId] = useState<string | null>(() => handoff?.imageId ?? null);
+  const [text, setText] = useState<string | null>(() => (handoff && !handoff.imageId && handoff.query) || null);
   const [page, setPage] = useState(1);
 
-  const [filters, setFilters] = useState<ImageFilters>({
+  const [filters, setFilters] = useState<ImageFilters>(() => ({
     sortOrder: "desc",
     minSimilarity: 0,
     limit: 20,
-  });
+    ...(handoff?.datasetId ? { datasets: [handoff.datasetId] } : {}),
+  }));
 
   // Infinite query for infinite scroll mode
   const {

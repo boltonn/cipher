@@ -29,7 +29,7 @@ from cipher.datastores.postgres.repositories import (
     PostgresPersonRepository,
 )
 from cipher.schemas.graph.ontology import EntitySource
-from cipher.schemas.identity.face import DEFAULT_FACE_MATCH_SIMILARITY, FaceAssignmentMethod
+from cipher.schemas.identity.face import DEFAULT_FACE_SIMILARITY, FaceAssignmentMethod
 from cipher.schemas.identity.person import PersonCreate, PersonSource
 
 if TYPE_CHECKING:
@@ -77,14 +77,14 @@ def _clusters_from_edges(edges: list[tuple[str, str, float]]) -> list[set[str]]:
 def _cluster_avg_similarity(edges: list[tuple[str, str, float]], members: set[str]) -> float:
     """Mean similarity of the edges wholly inside a cluster (falls back to the match floor)."""
     inside = [sim for a, b, sim in edges if a in members and b in members]
-    return sum(inside) / len(inside) if inside else DEFAULT_FACE_MATCH_SIMILARITY
+    return sum(inside) / len(inside) if inside else DEFAULT_FACE_SIMILARITY
 
 
 async def cluster_faces_workflow(
     session: "AsyncSession",
     *,
     dataset_id: str | None = None,
-    similarity: float = DEFAULT_FACE_MATCH_SIMILARITY,
+    similarity: float = DEFAULT_FACE_SIMILARITY,
     k: int = 20,
     min_images: int = 3,
     min_faces: int = 2,

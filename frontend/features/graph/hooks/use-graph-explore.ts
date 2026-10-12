@@ -13,6 +13,7 @@ import { shortestPath } from "@/features/graph/lib/graph-analytics";
 import type { LayoutKind } from "@/features/graph/lib/graph-layouts";
 import { edgeInWindow, toTimeWindow } from "@/features/graph/lib/time-window";
 import { useLocalStorageState } from "@/hooks/use-local-storage-state";
+import { apiErrorCode } from "@/lib/api-errors";
 import { useQueries } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 
@@ -50,9 +51,9 @@ const NO_IDS: string[] = [];
  * responses into a single laid-out graph. Seeds / expanded / hidden survive a
  * page navigation (localStorage) so opening an entity doesn't lose the canvas.
  */
-export function useGraphExplore(datasetId: string | undefined) {
-  const [seedIds, setSeedIds] = useLocalStorageState<string[]>("graph:seedIds", NO_IDS);
-  const [expandedIds, setExpandedIds] = useLocalStorageState<string[]>("graph:expandedIds", NO_IDS);
+export function useGraphExplore(datasetIds: string[]) {
+  const [storedSeedIds, setSeedIds] = useLocalStorageState<string[]>("graph:seedIds", NO_IDS);
+  const [storedExpandedIds, setExpandedIds] = useLocalStorageState<string[]>("graph:expandedIds", NO_IDS);
   const [hiddenList, setHiddenList] = useLocalStorageState<string[]>("graph:hiddenIds", NO_IDS);
   const hiddenIds = useMemo(() => new Set(hiddenList), [hiddenList]);
   const [filters, setFilters] = useState<GraphFilters>(EMPTY_GRAPH_FILTERS);
@@ -74,8 +75,8 @@ export function useGraphExplore(datasetId: string | undefined) {
   );
 
   const fetchIds = useMemo(
-    () => Array.from(new Set([...seedIds, ...expandedIds])),
-    [seedIds, expandedIds]
+    () => Array.from(new Set([...storedSeedIds, ...storedExpandedIds])),
+    [storedSeedIds, storedExpandedIds]
   );
 
   const relTypesKey = filters.relationshipTypes.join(",");
@@ -98,14 +99,24 @@ export function useGraphExplore(datasetId: string | undefined) {
           minWeight: filters.minWeight || undefined,
           limit: HOP_LIMIT,
         }),
-      enabled: !!datasetId,
+      enabled: datasetIds.length > 0,
       staleTime: 30_000,
     })),
   });
 
   const isLoading = results.some((r) => r.isLoading);
-  // any failure: with nothing built the page shows the error rather than "No connections"
-  const isError = results.some((r) => r.isError);
+  // Remembered ids of entities that no longer exist (deleted, or a rebuilt database) drop off the canvas.
+  const missingKey = fetchIds.filter((_, i) => apiErrorCode(results[i]?.error) === "notFound").join(",");
+  const seedIds = useMemo(
+    () => (missingKey ? storedSeedIds.filter((id) => !missingKey.split(",").includes(id)) : storedSeedIds),
+    [storedSeedIds, missingKey]
+  );
+  const expandedIds = useMemo(
+    () => (missingKey ? storedExpandedIds.filter((id) => !missingKey.split(",").includes(id)) : storedExpandedIds),
+    [storedExpandedIds, missingKey]
+  );
+  // any other failure: with nothing built the page shows the error rather than "No connections"
+  const isError = results.some((r) => r.isError && apiErrorCode(r.error) !== "notFound");
   // Stable-ish signature so the expensive merge + layout only re-runs on new data.
   const dataSig = results.map((r) => r.dataUpdatedAt ?? 0).join(",");
 

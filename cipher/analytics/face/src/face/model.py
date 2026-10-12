@@ -12,6 +12,7 @@ from cipher.schemas.identity.face import FaceAnnotation, FaceLandmarks5
 from face.utils.align import is_face_backwards
 from face.utils.detection import normalize
 from face.utils.embedding import normalize as normalize_embedding
+from face.utils.quality import face_quality
 
 # The 5-point landmarks (kps) and bbox come from detection itself, not from
 # landmark_2d_106/landmark_3d_68, so landmark_2d_106 is never worth loading.
@@ -112,10 +113,14 @@ class InsightFaceModel:
             min_conf (float, optional): Minimum confidence to consider a face. Defaults to 0.3.
             min_size (int, optional): Minimum size both dimensions of a face must be for an embedding to be associated. Defaults to 30.
         """
-        img = img.convert("RGB")
-        width, height = img.size
+        rgb = np.array(img.convert("RGB"))
+        height, width = rgb.shape[:2]
         # RGB to BGR for model
-        img = np.array(img)[..., ::-1]
-        faces = self.model.get(img)
+        faces = self.model.get(rgb[..., ::-1])
         faces = [self.standardize(f, height=height, width=width) for f in faces]
-        return [f for f in faces if not is_face_backwards(f) and f["confidence"] >= min_conf]
+        faces = [f for f in faces if not is_face_backwards(f) and f["confidence"] >= min_conf]
+        for face in faces:
+            face["quality"] = face_quality(
+                image=rgb, bbox=face["bbox"], landmarks=face["landmarks"], confidence=face["confidence"]
+            )
+        return faces

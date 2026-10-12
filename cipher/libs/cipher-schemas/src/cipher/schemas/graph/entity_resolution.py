@@ -8,11 +8,9 @@ scorer (`cipher.orchestration.entity_resolution`) grades each candidate into a
 rendered as the review-queue "why".
 """
 
-from enum import StrEnum
-
 from pydantic import Field
 
-from cipher.schemas._base.base import BaseModel
+from cipher.schemas._base.base import BaseModel, EnumStr, StrEnum
 from cipher.schemas.graph.entity import EntitySummary
 
 
@@ -38,7 +36,7 @@ class ResolutionBand(StrEnum):
 class ResolutionFeature(BaseModel):
     """One scored comparison signal between a mention and a candidate."""
 
-    name: str = Field(description="Feature id, e.g. 'name_structure', 'selector_overlap'")
+    name: EnumStr = Field(description="Feature id, e.g. 'name_structure', 'selector_overlap'")
     level: FeatureLevel
     weight: float = Field(description="Fellegi-Sunter match weight for this level (log2 m/u)")
     contribution: float = Field(description="Signed contribution to the total log-odds")
@@ -51,7 +49,7 @@ class ResolutionExplanation(BaseModel):
     score: float = Field(ge=0, le=1)
     band: ResolutionBand
     auto_rule: str | None = Field(default=None, description="Which always-auto rule fired, when band == auto")
-    blocking: list[str] = Field(default_factory=list, description="Strategies that surfaced the candidate")
+    blocking: list[EnumStr] = Field(default_factory=list, description="Strategies that surfaced the candidate")
     candidates_considered: int = 0
     runner_up_score: float | None = Field(default=None, ge=0, le=1)
     features: list[ResolutionFeature] = Field(default_factory=list)
@@ -62,9 +60,9 @@ class EntityMatchRef(BaseModel):
 
     id: str
     entity_id: str
-    status: str
+    status: EnumStr
     similarity_score: float
-    match_method: str
+    match_method: EnumStr
     explanation: ResolutionExplanation | None = None
 
 
@@ -113,6 +111,9 @@ _DEFAULT_WEIGHTS: dict[str, dict[str, float]] = {
     # family mailboxes, role accounts) -- keep it below the level where it alone
     # saturates the score, so a name signal still moves the ranking.
     "selector_overlap": {"exact": 6.0, "none": 0.0},
+    # An email address that spells the name (`nbolton04@` / Nick Bolton) -- or spells someone
+    # else's (`cbolton@` / Nick Bolton). Soft both ways: family mailboxes are shared.
+    "address_name": {"strong": 2.0, "none": 0.0, "weak": -1.5},
     "type_agreement": {"exact": 0.5, "none": 0.0, "conflict": -30.0},
     "name_exact": {"exact": 4.5, "none": 0.0},
     "name_translit": {"exact": 3.5, "none": 0.0},

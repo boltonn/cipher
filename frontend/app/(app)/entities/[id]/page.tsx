@@ -8,23 +8,23 @@ import { CommentSection } from "@/features/comments/components/comment-section";
 import { EditEntityDialog } from "@/features/entities/components/edit-entity-dialog";
 import { EntityGraph } from "@/features/entities/components/entity-graph";
 import { EntityMergePanel } from "@/features/entities/components/entity-merge-list";
-import { EntityRelationships } from "@/features/entities/components/entity-relationships";
+import {
+  EntityRelationships,
+  RelationshipSuggestions,
+} from "@/features/entities/components/entity-relationships";
 import { EntityNamesPanel } from "@/features/entities/components/entity-names-panel";
 import { EntitySelectorProposals } from "@/features/entities/components/entity-selector-proposals";
 import { EntitySelectorsPanel } from "@/features/entities/components/entity-selectors-panel";
 import { EntityTypeBadge } from "@/features/entities/components/entity-type-badge";
 import { ENTITY_TYPE_META } from "@/features/entities/components/entity-type-meta";
 import { Section } from "@/features/entities/components/section";
-import { OrganizationStructure } from "@/features/entities/components/organization-structure";
 import { InvalidateEntityDialog } from "@/features/entities/components/invalidate-entity-dialog";
 import { useEntityProfile } from "@/features/entities/hooks/use-entities";
 import type { EntityDetail } from "@/features/entities/types";
-import { cn } from "@/lib/utils";
+import { cn, humanize } from "@/lib/utils";
 import {
   Ban,
   BadgeCheck,
-  Building2,
-  ExternalLink,
   FileText,
   Fingerprint,
   type LucideIcon,
@@ -34,8 +34,15 @@ import {
   Tags,
   Waypoints,
 } from "lucide-react";
+import { apiErrorCode } from "@/lib/api-errors";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import {
+  notFound,
+  redirect,
+  RedirectType,
+  useRouter,
+  useSearchParams,
+} from "next/navigation";
 import { use, useState } from "react";
 
 export default function EntityDetailPage({
@@ -45,10 +52,12 @@ export default function EntityDetailPage({
 }) {
   const { id } = use(params);
   const router = useRouter();
-  const { data: profile, isPending, isError, refetch } = useEntityProfile(id);
+  const search = useSearchParams();
+  const { data: profile, isPending, isError, error, refetch } = useEntityProfile(id);
   const [isEditOpen, setEditOpen] = useState(false);
   const [isInvalidateOpen, setInvalidateOpen] = useState(false);
 
+  if (apiErrorCode(error) === "notFound") notFound();
   if (isError) {
     return (
       <PageError
@@ -67,9 +76,21 @@ export default function EntityDetailPage({
   }
 
   const { entity, detail, fileCount, relatedTotal, selectorTotal } = profile;
+  // People and organizations have richer pages of their own; this dossier is
+  // for every other entity type.
+  const ownPage =
+    entity.entityType === "person" && entity.personId
+      ? `/persons/${entity.personId}`
+      : entity.entityType === "organization"
+        ? `/organizations/${id}`
+        : null;
+  if (ownPage) {
+    const query = search.toString();
+    redirect(query ? `${ownPage}?${query}` : ownPage, RedirectType.replace);
+  }
   const meta = ENTITY_TYPE_META[entity.entityType];
   const isSelector = entity.entityType === "selector";
-  const searchHref = `/search?entityId=${id}${entity.datasetId ? `&datasetId=${entity.datasetId}` : ""}`;
+  const searchHref = `/search/text?entityId=${id}${entity.datasetId ? `&datasetId=${entity.datasetId}` : ""}`;
 
   const stats: { label: string; value: number; href: string; Icon: LucideIcon }[] = [
     { label: "Files", value: fileCount, href: searchHref, Icon: FileText },
@@ -190,7 +211,6 @@ export default function EntityDetailPage({
         <DetailPanel
           entityType={entity.entityType}
           detail={detail}
-          personId={entity.personId}
         />
 
         {/* count strip */}
@@ -227,23 +247,6 @@ export default function EntityDetailPage({
         <EntityMergePanel entity={entity} />
         {!isSelector && <EntitySelectorProposals entityId={id} entityName={entity.displayName} />}
 
-        {entity.entityType === "organization" && (
-          <Section
-            id="structure"
-            title="Structure"
-            icon={<Building2 size={14} className="text-primary" />}
-            action={
-              <Button asChild variant="ghost" size="sm" className="h-7 gap-1 text-xs">
-                <Link href={`/organizations/${id}`}>
-                  <Network size={12} /> Org chart
-                </Link>
-              </Button>
-            }
-          >
-            <OrganizationStructure entityId={id} entityName={entity.displayName} />
-          </Section>
-        )}
-
         {!isSelector && (
           <Section id="names" title="Names in the evidence" icon={<Tags size={14} className="text-primary" />}>
             <EntityNamesPanel entity={entity} />
@@ -268,6 +271,7 @@ export default function EntityDetailPage({
           }
         >
           <div className="space-y-4">
+            <RelationshipSuggestions entityId={id} />
             <EntityRelationships entityId={id} />
             {relatedTotal > 0 && (
               <EntityGraph focusEntityId={id} depth={1} compact />
@@ -324,62 +328,25 @@ function DetailRow({
 function DetailPanel({
   entityType,
   detail,
-  personId,
 }: {
   entityType: string;
   detail?: EntityDetail | null;
-  personId?: string;
 }) {
-  const g = (camel: string, snake: string) =>
-    (detail?.[camel] as string | number | undefined) ??
-    (detail?.[snake] as string | number | undefined);
+  const g = (key: string) => detail?.[key] as string | number | undefined;
 
-  if (entityType === "person") {
-    return (
-      <div className="rounded-lg border border-border/60 bg-background/40 p-3">
-        <DetailRow
-          label="Date of birth"
-          value={g("dateOfBirth", "date_of_birth") as string}
-        />
-        <DetailRow label="Sex" value={detail?.sex as string} />
-        <DetailRow label="Nationality" value={detail?.nationality as string} />
-        <Link
-          href={`/persons/${personId ?? ""}`}
-          className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline"
-        >
-          Edit in Persons <ExternalLink size={11} />
-        </Link>
-      </div>
-    );
-  }
-  if (entityType === "organization") {
-    return (
-      <div className="rounded-lg border border-border/60 bg-background/40 p-3">
-        <DetailRow
-          label="Legal name"
-          value={g("legalName", "legal_name") as string}
-        />
-        <DetailRow
-          label="Category"
-          value={g("category", "category") as string}
-        />
-        <DetailRow label="Country" value={detail?.country as string} />
-      </div>
-    );
-  }
   if (entityType === "location") {
-    const lat = g("latitude", "latitude");
-    const lon = g("longitude", "longitude");
+    const lat = g("latitude");
+    const lon = g("longitude");
     return (
       <div className="rounded-lg border border-border/60 bg-background/40 p-3">
         <DetailRow
           label="Address"
-          value={g("addressText", "address_text") as string}
+          value={g("addressText") as string}
         />
         <DetailRow label="Country" value={detail?.country as string} />
         <DetailRow
           label="Admin area"
-          value={g("adminArea", "admin_area") as string}
+          value={g("adminArea") as string}
         />
         {lat != null && lon != null && (
           <DetailRow
@@ -404,19 +371,16 @@ function DetailPanel({
       <div className="rounded-lg border border-border/60 bg-background/40 p-3">
         <DetailRow
           label="Kind"
-          value={(g("selectorType", "selector_type") as string)?.replace(
-            /_/g,
-            " "
-          )}
+          value={humanize((g("selectorType") as string | undefined) ?? "")}
         />
         <DetailRow
           label="Normalized"
-          value={g("normalizedValue", "normalized_value") as string}
+          value={g("normalizedValue") as string}
         />
-        <DetailRow label="Raw" value={g("rawValue", "raw_value") as string} />
+        <DetailRow label="Raw" value={g("rawValue") as string} />
         <DetailRow
           label="Region"
-          value={g("regionHint", "region_hint") as string}
+          value={g("regionHint") as string}
         />
       </div>
     );

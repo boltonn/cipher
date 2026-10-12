@@ -13,6 +13,11 @@
     {
       "name": "grouped",
       "regex": "(?<![\\w+])(?:\\(?\\d{2,4}\\)?[\\s.\\-]){1,4}\\d{2,4}(?![\\w])"
+    },
+    {
+      "name": "bare_digits",
+      "regex": "(?<![\\w+.,])\\d{10,12}(?![\\w.,])",
+      "requires_context": true
     }
   ],
   "context": {
@@ -20,6 +25,7 @@
     "window_after": 15,
     "terms": {
       "en": [
+        {"term": "msisdn", "weight": 0.3},
         {"term": "tel", "weight": 0.18},
         {"term": "phone", "weight": 0.25},
         {"term": "call", "weight": 0.2},
@@ -34,6 +40,8 @@
         {"term": "isbn", "weight": -0.5}
       ],
       "ru": [
+        {"term": "msisdn", "weight": 0.3},
+        {"term": "абонентский номер", "weight": 0.3},
         {"term": "телефон", "weight": 0.25},
         {"term": "тел", "weight": 0.15},
         {"term": "звони", "weight": 0.22},
@@ -46,12 +54,14 @@
         {"term": "заказ", "weight": -0.4}
       ],
       "uk": [
+        {"term": "msisdn", "weight": 0.3},
         {"term": "телефон", "weight": 0.25},
         {"term": "тел", "weight": 0.15},
         {"term": "дзвоніть", "weight": 0.22},
         {"term": "моб", "weight": 0.2}
       ],
       "zh": [
+        {"term": "msisdn", "weight": 0.3},
         {"term": "电话", "weight": 0.25},
         {"term": "手机", "weight": 0.25},
         {"term": "联系", "weight": 0.15},
@@ -59,12 +69,14 @@
         {"term": "订单号", "weight": -0.45}
       ],
       "ar": [
+        {"term": "msisdn", "weight": 0.3},
         {"term": "هاتف", "weight": 0.25},
         {"term": "جوال", "weight": 0.25},
         {"term": "اتصل", "weight": 0.2},
         {"term": "رقم", "weight": 0.12}
       ],
       "fa": [
+        {"term": "msisdn", "weight": 0.3},
         {"term": "تلفن", "weight": 0.25},
         {"term": "موبایل", "weight": 0.25},
         {"term": "همراه", "weight": 0.22},
@@ -72,6 +84,7 @@
         {"term": "شماره", "weight": 0.12}
       ],
       "es": [
+        {"term": "msisdn", "weight": 0.3},
         {"term": "teléfono", "weight": 0.25},
         {"term": "tel", "weight": 0.15},
         {"term": "llama", "weight": 0.2},
@@ -80,6 +93,7 @@
         {"term": "factura", "weight": -0.45}
       ],
       "fr": [
+        {"term": "msisdn", "weight": 0.3},
         {"term": "téléphone", "weight": 0.25},
         {"term": "tél", "weight": 0.15},
         {"term": "appelez", "weight": 0.2},

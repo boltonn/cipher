@@ -35,12 +35,11 @@ export function useAssignFaces(onSuccess?: () => void) {
       personId: string;
       personName?: string;
     }) =>
-      Promise.all(
-        faceIds.map((id) =>
-          facesService.assign(id, { personId, assignmentMethod: "manual" })
-        )
-      ),
-    onSuccess: (faces, { personName }) => {
+      facesService.assignMany(faceIds, {
+        personId,
+        assignmentMethod: "manual",
+      }),
+    onSuccess: (updated, { personName }) => {
       for (const queryKey of [
         ["faces"],
         ["face-matches"],
@@ -49,7 +48,7 @@ export function useAssignFaces(onSuccess?: () => void) {
       ])
         queryClient.invalidateQueries({ queryKey });
       toast.success(
-        `Assigned ${faces.length.toLocaleString()} face${faces.length === 1 ? "" : "s"} to ${personName || "person"}`
+        `Assigned ${updated.toLocaleString()} face${updated === 1 ? "" : "s"} to ${personName || "person"}`
       );
       onSuccess?.();
     },
@@ -66,14 +65,12 @@ export function useUnassignFaces(onSuccess?: () => void) {
 
   return useMutation({
     mutationFn: (faceIds: string[]) =>
-      Promise.all(
-        faceIds.map((id) => facesService.assign(id, { personId: null }))
-      ),
-    onSuccess: (faces) => {
+      facesService.assignMany(faceIds, { personId: null }),
+    onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: ["faces"] });
       queryClient.invalidateQueries({ queryKey: ["persons"] });
       toast.success(
-        `Unassigned ${faces.length.toLocaleString()} face${faces.length === 1 ? "" : "s"}`
+        `Unassigned ${updated.toLocaleString()} face${updated === 1 ? "" : "s"}`
       );
       onSuccess?.();
     },

@@ -9,7 +9,7 @@ dependencies = [
     "cipher-schemas",
     "cipher-datastores[postgres,elasticsearch]",
     "cipher-places",
-    "cipher-utils",
+    "cipher-utils[aws]",
     "loguru",
     "pyprompt",
     "pyselectors",
@@ -21,7 +21,8 @@ dependencies = [
 # under `uv run --extra <stage>`, so an environment only holds the analytics it has
 # actually run. Names follow the enrichment type they serve.
 [project.optional-dependencies]
-staging = ["filetyper"]
+staging = ["filetyper[zstd,lz4,pdf]"]
+archive-extraction = ["pyarchive[zstd,lz4,pdf]"]
 text-extraction = ["pyxberg", "pyparse[email]"]
 ocr = ["pyvllm", "pyxberg", "setfitcv"]
 text-embedding = ["clir"]
@@ -33,8 +34,9 @@ contact-extraction = ["pyparse[contacts]"]
 event-extraction = ["pyparse"]
 gliner = ["pygliner"]
 nerd = ["nerd"]
+table-mapping = ["pytabular"]
 # Everything at once (a full dev / all-in-one box).
-cli = ["cipher-orchestration[staging,text-extraction,ocr,text-embedding,image-embedding,face-detection,contact-extraction,event-extraction]"]
+cli = ["cipher-orchestration[staging,archive-extraction,text-extraction,ocr,text-embedding,image-embedding,face-detection,contact-extraction,event-extraction]"]
 ner = ["cipher-orchestration[gliner,nerd]"]
 
 [project.scripts]
@@ -51,8 +53,10 @@ filetyper = { workspace = true }
 face = { workspace = true }
 setfitcv = { workspace = true }
 pyxberg = { workspace = true }
+pyarchive = { workspace = true }
 pyparse = { workspace = true }
 pyselectors = { workspace = true }
+pytabular = { workspace = true }
 pyprompt = { workspace = true }
 pyvllm = { workspace = true }
 pygliner = { workspace = true }

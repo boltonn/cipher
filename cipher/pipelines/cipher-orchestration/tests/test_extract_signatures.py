@@ -21,7 +21,9 @@ Senior Analyst, Treasury
 Halcyon Maritime Group
 +31 10 555 0101 | rosa@halcyon-maritime.com
 """
-SIGNATURE = "Rosa Lindqvist\nSenior Analyst, Treasury\nHalcyon Maritime Group\n+31 10 555 0101 | rosa@halcyon-maritime.com"
+SIGNATURE = (
+    "Rosa Lindqvist\nSenior Analyst, Treasury\nHalcyon Maritime Group\n+31 10 555 0101 | rosa@halcyon-maritime.com"
+)
 
 
 def _text(body: str, span) -> str:
@@ -41,7 +43,7 @@ def test_candidate_is_the_tail_with_the_cues_that_fired():
 
 
 def test_a_sign_off_with_nothing_to_learn_is_skipped():
-    """"Thanks, Nick" names the sender but says nothing new -- no organization, no selector."""
+    """'Thanks, Nick' names the sender but says nothing new -- no organization, no selector."""
     body = "Sounds good, see you Tuesday.\n\nThanks,\nNick Bolton\n"
     assert find_candidate(body, sender_name="Nick Bolton", sender_address="nbolton04@gmail.com") is None
 
@@ -62,7 +64,9 @@ def test_ner_person_and_org_are_a_signer_and_a_payload():
     """No farewell and an unmatched header name: an NER person (signer) and organization (payload) suffice."""
     body = "See attached.\n\nDonte Booker\nOffice Coordinator, Idylwood Towers\n"
     spans = [(EntityType.PERSON, body.index("Donte")), (EntityType.ORGANIZATION, body.index("Idylwood"))]
-    candidate = find_candidate(body, sender_name="Idylwood Towers", sender_address="notify@buildinglink.com", ner_spans=spans)
+    candidate = find_candidate(
+        body, sender_name="Idylwood Towers", sender_address="notify@buildinglink.com", ner_spans=spans
+    )
     assert candidate is not None and set(candidate.cues) == {Cue.NER_PERSON, Cue.NER_ORGANIZATION}
 
 

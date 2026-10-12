@@ -5,6 +5,7 @@ import {
   QueryClient,
   QueryClientProvider,
 } from "@tanstack/react-query";
+import { isPageInterrupt } from "@/lib/api-errors";
 
 function makeQueryClient() {
   const queryClient: QueryClient = new QueryClient({
@@ -16,7 +17,10 @@ function makeQueryClient() {
       queries: {
         refetchOnWindowFocus: false,
         staleTime: 1000 * 60 * 5, // 5 minutes
-        retry: 1,
+        // A missing / forbidden / signed-out read won't fix itself: no retry, and throwing the
+        // interrupt during render shows not-found.tsx / forbidden.tsx / unauthorized.tsx.
+        retry: (failureCount, error) => failureCount < 1 && !isPageInterrupt(error),
+        throwOnError: isPageInterrupt,
       },
     },
   });

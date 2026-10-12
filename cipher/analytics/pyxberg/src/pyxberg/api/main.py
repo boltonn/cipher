@@ -22,9 +22,7 @@ try:
     from fastapi.middleware.cors import CORSMiddleware
     from starlette.middleware.base import BaseHTTPMiddleware
 except ImportError:
-    logger.error(
-        "Failed to import uvicorn and/or fastapi. Please install them with `pip install uvicorn fastapi`"
-    )
+    logger.error("Failed to import uvicorn and/or fastapi. Please install them with `pip install uvicorn fastapi`")
     exit(1)
 
 
@@ -58,9 +56,7 @@ async def info() -> ServiceInfo:
 
 
 @app.post("/extract", response_model_exclude_none=True)
-async def extract(
-    file: UploadFile, options: Annotated[ExtractRequest, Depends()]
-) -> ExtractResponse:
+async def extract(file: UploadFile, options: Annotated[ExtractRequest, Depends()]) -> ExtractResponse:
     """Extract text, tables, and structure from an uploaded document."""
     from kreuzberg import ExtractionConfig, OcrConfig, extract_bytes
 
@@ -69,15 +65,11 @@ async def extract(
         disable_ocr=options.disable_ocr,
         ocr=OcrConfig(language=options.ocr_language),
     )
-    result = await extract_bytes(
-        data, mime_type=file.content_type or "application/octet-stream", config=config
-    )
+    result = await extract_bytes(data, mime_type=file.content_type or "application/octet-stream", config=config)
     return ExtractResponse(
         content=result.content,
         tables=[
-            ExtractedTableResponse(
-                cells=t.cells, markdown=t.markdown, page_number=t.page_number
-            )
+            ExtractedTableResponse(cells=t.cells, markdown=t.markdown, page_number=t.page_number)
             for t in (result.tables or [])
         ],
         detected_language=result.get_detected_language(),

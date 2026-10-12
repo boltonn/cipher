@@ -7,6 +7,7 @@ persons, locations) is shared across datasets and open to every user.
 Route usage:
     id: DatasetIdDep                 -- `{id}` path param, must be a dataset the user can access
     dataset_id: DatasetIdQueryDep    -- `?datasetId=` query param, same check
+    dataset_ids: DatasetIdsQueryDep  -- `?datasetIds=` (repeated), every one must be accessible
     mention: MentionDep              -- `{mention_id}` path param, the mention's dataset must be accessible
     access: DatasetAccessDep         -- for bodies/filters: `access.require(...)`, `access.scoped(model)`
 
@@ -30,6 +31,7 @@ from cipher.utils.cache import TTLCache
 # Matches no dataset: keeps a "restrict to these datasets" filter non-empty when the user has none,
 # since repositories read an empty filter list as "no filter".
 NO_DATASET = "__no_dataset__"
+
 
 class DatasetScopedModel(Protocol):
     """A pydantic request/filter model carrying a `dataset_id` filter and a `dataset_ids` scope."""
@@ -72,6 +74,11 @@ class DatasetAccess:
     def require(self, *dataset_ids: str | None) -> None:
         """Raise 403 unless the user can access at least one of these datasets (content can live in several)."""
         if not any(self.allows(dataset_id) for dataset_id in dataset_ids):
+            raise _forbidden()
+
+    def require_all(self, *dataset_ids: str) -> None:
+        """Raise 403 unless the user can access every one of these datasets."""
+        if not all(self.allows(dataset_id) for dataset_id in dataset_ids):
             raise _forbidden()
 
     def scope(self, requested: list[str] | None) -> list[str] | None:
@@ -127,16 +134,23 @@ async def require_dataset(id: str, access: DatasetAccessDep) -> str:
     return id
 
 
-async def require_dataset_query(
-    dataset_id: Annotated[str, Query(alias="datasetId")], access: DatasetAccessDep
-) -> str:
+async def require_dataset_query(dataset_id: Annotated[str, Query(alias="datasetId")], access: DatasetAccessDep) -> str:
     """Guard for a `?datasetId=` query param."""
     access.require(dataset_id)
     return dataset_id
 
 
+async def require_datasets_query(
+    dataset_ids: Annotated[list[str], Query(alias="datasetIds", min_length=1)], access: DatasetAccessDep
+) -> list[str]:
+    """Guard for a `?datasetIds=` query param: every listed dataset must be accessible."""
+    access.require_all(*dataset_ids)
+    return list(dict.fromkeys(dataset_ids))
+
+
 DatasetIdDep = Annotated[str, Depends(require_dataset)]
 DatasetIdQueryDep = Annotated[str, Depends(require_dataset_query)]
+DatasetIdsQueryDep = Annotated[list[str], Depends(require_datasets_query)]
 
 
 async def require_mention(mention_id: str, access: DatasetAccessDep, datastore: MentionDatastoreDep) -> Mention:

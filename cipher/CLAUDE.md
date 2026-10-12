@@ -26,6 +26,10 @@ make start-setfitcv
 
 Run a single test file: `uvx pytest backend/tests/test_chat.py`
 
+Every `cipher` command is listed in `docs/cli.md` (pipeline order: `docs/running-analytics.md`). Add a
+command only if it will be re-run (a pipeline step or a maintenance tool such as `cipher rekey`);
+a one-time repair is a migration or a throwaway script. Update `docs/cli.md` when adding or removing one.
+
 ## Architecture
 
 This is a UV workspace monorepo for a AI/ML based data triage platform.

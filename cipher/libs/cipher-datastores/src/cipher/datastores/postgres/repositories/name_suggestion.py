@@ -21,6 +21,7 @@ from cipher.datastores.postgres.repositories.entity_relationship import Postgres
 from cipher.datastores.postgres.repositories.mention import PostgresMentionRepository
 from cipher.datastores.postgres.tables.entity_relationship import EntityRelationshipTable
 from cipher.datastores.postgres.tables.mention_relationship import MentionRelationshipTable
+from cipher.datastores.postgres.utils import normalize_name
 from cipher.schemas.graph.entity import EntityCreate, EntitySummary
 from cipher.schemas.graph.ontology import EntitySource, EntityType, RelationshipSource, RelationshipType
 from cipher.schemas.graph.organization import (
@@ -40,15 +41,25 @@ _PERSON_FIELD = "signature.person"
 _RELATIONS = text(
     """
     SELECT mr.id, mr.dataset_id, mr.relationship_type, mr.extractor, mr.attributes->>'role' AS role,
-           s.entity_type AS s_type, s.normalized_value AS s_nv, s.surface_text AS s_text, s.entity_id AS s_eid,
-           s.file_id AS file_id,
-           t.entity_type AS t_type, t.normalized_value AS t_nv, t.surface_text AS t_text, t.entity_id AS t_eid
+           -- header names (membership recipients) are untyped; the relationship fixes the ends' types
+           COALESCE(s.entity_type, CASE mr.relationship_type WHEN 'PART_OF' THEN 'ORGANIZATION' ELSE 'PERSON' END)
+             AS s_type,
+           s.normalized_value AS s_nv, s.surface_text AS s_text, s.entity_id AS s_eid, s.context AS s_context,
+           s.file_id AS file_id, recipient_owner.id AS s_owner_id,
+           COALESCE(t.entity_type, 'ORGANIZATION') AS t_type, t.normalized_value AS t_nv, t.surface_text AS t_text, t.entity_id AS t_eid
     FROM mention_relationship mr
     JOIN mention s ON s.id = mr.src_mention_id
     JOIN mention t ON t.id = mr.dst_mention_id
+    -- a membership's person end is the To address: offer whoever owns it
+    LEFT JOIN LATERAL (
+        SELECT r.src_entity_id AS id FROM entity_relationship r
+        JOIN entity p ON p.id = r.src_entity_id AND p.entity_type = 'PERSON'
+        WHERE s.entity_type = 'SELECTOR' AND r.dst_entity_id = s.entity_id AND r.relationship_type = 'HAS_SELECTOR'
+        ORDER BY r.source = 'MANUAL' DESC LIMIT 1
+    ) recipient_owner ON true
     WHERE mr.extractor = ANY(CAST(:extractors AS text[])) AND mr.date_reviewed IS NULL
       AND mr.relationship_type IN ('EMPLOYED_BY', 'MEMBER_OF', 'PART_OF')
-      AND (s.entity_id IS NULL OR t.entity_id IS NULL)
+      AND (s.entity_type = 'SELECTOR' OR s.entity_id IS NULL OR t.entity_id IS NULL)
       AND (CAST(:dataset_ids AS text[]) IS NULL OR mr.dataset_id = ANY(CAST(:dataset_ids AS text[])))
     """
 )
@@ -101,6 +112,20 @@ _CLOSE_GROUP = text(
 )
 
 
+def _recipient_as_person(row: dict) -> dict:
+    """A membership's To address stands for the person: named by its display name, grouped by it."""
+    if row["s_type"] != "SELECTOR":
+        return row | {"s_address": None}
+    address, name = row["s_nv"], row["s_context"]
+    return row | {
+        "s_type": "PERSON",
+        "s_eid": None,
+        "s_address": address,
+        "s_text": name or address,
+        "s_nv": normalize_name(name) if name else address,
+    }
+
+
 def _summary(entity_id: str, entity_type: str, display_name: str, is_verified: bool) -> EntitySummary:
     """From a raw row: enums come back from SQL by member name (`PERSON`)."""
     return EntitySummary(
@@ -130,6 +155,7 @@ class PostgresNameSuggestionRepository:
         )
         if not rows:
             return []
+        rows = [_recipient_as_person(dict(r)) for r in rows]
         names = sorted({r["s_nv"] for r in rows} | {r["t_nv"] for r in rows})
         guesses = {
             (g.dataset_id, g.normalized_value, g.entity_type): (
@@ -154,7 +180,11 @@ class PostgresNameSuggestionRepository:
                 )
             ).all()
         }
-        resolved_ids = sorted({r["s_eid"] for r in rows if r["s_eid"]} | {r["t_eid"] for r in rows if r["t_eid"]})
+        resolved_ids = sorted(
+            {r["s_eid"] for r in rows if r["s_eid"]}
+            | {r["t_eid"] for r in rows if r["t_eid"]}
+            | {r["s_owner_id"] for r in rows if r["s_owner_id"]}
+        )
         entities = {
             e.id: (_summary(e.id, e.entity_type, e.display_name, e.is_verified), e.is_provisional)
             for e in (await self.session.execute(_ENTITIES, {"ids": resolved_ids})).all()
@@ -174,6 +204,12 @@ class PostgresNameSuggestionRepository:
                 )
             ].append(r)
 
+        def member_owner(m: dict) -> tuple[EntitySummary, str] | None:
+            """Signatures: who owns the sending address; memberships: who owns the To address."""
+            if m["extractor"] == _EXTRACTOR:
+                return owners.get(m["file_id"])
+            return (entities[m["s_owner_id"]][0], m["s_address"]) if m["s_owner_id"] in entities else None
+
         def side(dataset_id, entity_type, nv, members, prefix) -> NameSuggestionSide:
             entity_ids = Counter(m[f"{prefix}_eid"] for m in members if m[f"{prefix}_eid"])
             entity, provisional = (
@@ -182,8 +218,10 @@ class PostgresNameSuggestionRepository:
             guess = guesses.get((dataset_id, nv, entity_type)) if entity is None else None
             owner = None
             if prefix == "s" and entity is None:
-                owned = Counter(owners[m["file_id"]] for m in members if m["file_id"] in owners)
-                owner = owned.most_common(1)[0][0] if owned else None
+                found = [o for m in members if (o := member_owner(m))]
+                by_owner = {o[0].id: o for o in found}
+                owned = Counter(o[0].id for o in found)
+                owner = by_owner[owned.most_common(1)[0][0]] if owned else None
             return NameSuggestionSide(
                 name=Counter(m[f"{prefix}_text"] for m in members).most_common(1)[0][0],
                 normalized_value=nv,
@@ -294,21 +332,21 @@ class PostgresNameSuggestionRepository:
                     set_={"attributes": EntityRelationshipTable.attributes.op("||")(insert.excluded.attributes)},
                 )
             )
-        await self._mark_reviewed(decision.mention_relationship_ids)
+        await self._mark_reviewed(decision.mention_relationship_ids, is_accepted=True, reviewed_by=reviewed_by)
         await PostgresGraphRepository(session=self.session).link_header_selectors(decision.dataset_id)
         return NameSuggestionAccepted(
             source_entity_id=source_id, target_entity_id=target_id, created_entity_ids=created
         )
 
-    async def dismiss(self, mention_relationship_ids: list[str]) -> int:
+    async def dismiss(self, mention_relationship_ids: list[str], *, reviewed_by: str | None = None) -> int:
         """Never offer these again; the names themselves stay in the Resolve queue."""
-        return await self._mark_reviewed(mention_relationship_ids)
+        return await self._mark_reviewed(mention_relationship_ids, is_accepted=False, reviewed_by=reviewed_by)
 
-    async def _mark_reviewed(self, ids: list[str]) -> int:
+    async def _mark_reviewed(self, ids: list[str], *, is_accepted: bool, reviewed_by: str | None) -> int:
         result = await self.session.execute(
             update(MentionRelationshipTable)
             .where(MentionRelationshipTable.id.in_(ids), MentionRelationshipTable.extractor.in_(_EXTRACTORS))
-            .values(date_reviewed=datetime.now(UTC))
+            .values(date_reviewed=datetime.now(UTC), is_accepted=is_accepted, reviewed_by=reviewed_by)
         )
         await self.session.commit()
         return result.rowcount or 0

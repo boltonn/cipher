@@ -21,9 +21,7 @@ try:
     from fastapi.middleware.cors import CORSMiddleware
     from starlette.middleware.base import BaseHTTPMiddleware
 except ImportError:
-    logger.error(
-        "Failed to import uvicorn and/or fastapi. Please install them with `pip install uvicorn fastapi`"
-    )
+    logger.error("Failed to import uvicorn and/or fastapi. Please install them with `pip install uvicorn fastapi`")
     exit(1)
 
 app = FastAPI(
@@ -57,9 +55,7 @@ async def info() -> ServiceInfo:
 
 
 @app.post("/infer", response_model_exclude_none=True)
-async def infer(
-    request: EmbeddingsRequest, model: TextEmbeddingModelDep
-) -> list[float]:
+async def infer(request: EmbeddingsRequest, model: TextEmbeddingModelDep) -> list[float]:
     """Embed the input text and return the embeddings."""
     request = request.model_dump()
     embeddings = await model.infer(**request, task="retrieval")

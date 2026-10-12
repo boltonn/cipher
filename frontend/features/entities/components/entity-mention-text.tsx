@@ -1,18 +1,27 @@
 "use client";
 
 import { useFileText } from "@/features/files/api";
-import {
-  ENTITY_TYPE_META,
-  entityGlyph,
-} from "@/features/entities/components/entity-type-meta";
 import { EntityHoverCard } from "@/features/entities/components/entity-tooltip-card";
 import { EntityMentionPopover } from "@/features/entities/components/entity-mention-popover";
+import {
+  labelText,
+  MentionChip,
+  MentionLabelToolbar,
+} from "@/features/entities/components/mention-chip";
 import { useFileMentions } from "@/features/entities/hooks/use-mentions";
 import { foldName } from "@/features/entities/lib/fold-name";
 import type { Mention } from "@/features/entities/types";
+import { textOffsets, type TextOffsets } from "@/lib/text-offsets";
 import { cn } from "@/lib/utils";
-import { HelpCircle, Loader2 } from "lucide-react";
-import { Fragment, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Loader2 } from "lucide-react";
+import {
+  Fragment,
+  type ReactNode,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 interface EntityMentionTextProps {
   fileId: string;
@@ -23,37 +32,93 @@ interface EntityMentionTextProps {
   mentionValues?: string[];
   /** char offset to scroll into view on load (e.g. a specific mention) */
   focusOffset?: number;
+  /** Show only this slice of the text (offsets stay absolute), e.g. an email signature. */
+  range?: { start: number; end: number };
+  /** Ring these mentions (e.g. the two ends of a hovered relationship). */
+  activeMentionIds?: string[];
   className?: string;
 }
 
+/** Spans in UTF-16 indices of the displayed text (mention offsets are converted on the way in). */
 interface Segment {
   start: number;
   end: number;
   mention?: Mention;
+  /** other labels of this name: the same span, or the same name key overlapping it (two extractors) */
+  duplicates?: Mention[];
+  /** mentions inside this one (a city inside an address), shown as chips within it */
+  inner?: Segment[];
 }
 
-function buildSegments(text: string, mentions: Mention[]): Segment[] {
+/** Resolved first, then analyst-drawn: which of several labels on one span to show. */
+function preference(m: Mention) {
+  return (m.entityId ? 2 : 0) + (m.extractor === "manual" ? 1 : 0);
+}
+
+function buildSegments(
+  mentions: Mention[],
+  offsets: TextOffsets,
+  from: number,
+  to: number
+): Segment[] {
   const spans = mentions
     .filter(
       (m) =>
         typeof m.startOffset === "number" &&
         typeof m.endOffset === "number" &&
-        m.endOffset > m.startOffset &&
-        m.endOffset <= text.length
+        m.endOffset > m.startOffset
     )
-    .sort((a, b) => (a.startOffset as number) - (b.startOffset as number));
+    .map((m) => ({
+      m,
+      s: offsets.toUtf16(m.startOffset as number),
+      e: offsets.toUtf16(m.endOffset as number),
+    }))
+    .filter(({ s, e }) => s >= from && e <= to)
+    .sort(
+      (a, b) => a.s - b.s || b.e - a.e || preference(b.m) - preference(a.m)
+    );
 
   const segs: Segment[] = [];
-  let cursor = 0;
-  for (const m of spans) {
-    const s = m.startOffset as number;
-    const e = m.endOffset as number;
+  let cursor = from;
+  for (const { m, s, e } of spans) {
+    const last = segs.at(-1);
+    const isTwin =
+      last?.mention &&
+      ((last.start === s && last.end === e) ||
+        (s < last.end &&
+          !!m.normalizedValue &&
+          m.normalizedValue === last.mention.normalizedValue &&
+          m.entityType === last.mention.entityType));
+    if (last?.mention && isTwin) {
+      // show the twin that says the most (resolved, analyst-drawn); the chip keeps the wider span
+      const [shown, other] =
+        preference(m) > preference(last.mention)
+          ? [m, last.mention]
+          : [last.mention, m];
+      last.mention = shown;
+      last.duplicates = [...(last.duplicates ?? []), other];
+      continue;
+    }
+    if (last?.mention && last.start <= s && e <= last.end) {
+      // nested one level; twins of an inner label share its chip
+      const twin = last.inner?.find((i) => i.start === s && i.end === e);
+      if (twin?.mention) {
+        const [shown, other] =
+          preference(m) > preference(twin.mention)
+            ? [m, twin.mention]
+            : [twin.mention, m];
+        twin.mention = shown;
+        twin.duplicates = [...(twin.duplicates ?? []), other];
+      } else
+        last.inner = [...(last.inner ?? []), { start: s, end: e, mention: m }];
+      continue;
+    }
     if (s < cursor) continue; // drop overlaps, keep the earlier mention
     if (s > cursor) segs.push({ start: cursor, end: s });
     segs.push({ start: s, end: e, mention: m });
     cursor = e;
   }
-  if (cursor < text.length) segs.push({ start: cursor, end: text.length });
+  if (cursor < to) segs.push({ start: cursor, end: to });
   return segs;
 }
 
@@ -68,12 +133,19 @@ function selectionOffsets(container: HTMLElement) {
   const start = pre.toString().length;
   const value = range.toString();
   if (!value.trim()) return null;
-  return { start, end: start + value.length, text: value, rect: range.getBoundingClientRect() };
+  return {
+    start,
+    end: start + value.length,
+    text: value,
+    rect: range.getBoundingClientRect(),
+  };
 }
 
 /** The one displayed mention a selection overlaps -- selecting inside/across a chip adjusts that mention's span. */
 function overlappingMention(segments: Segment[], start: number, end: number) {
-  const hits = segments.filter((seg) => seg.mention && seg.start < end && start < seg.end);
+  const hits = segments.filter(
+    (seg) => seg.mention && seg.start < end && start < seg.end
+  );
   return hits.length === 1 ? hits[0].mention : undefined;
 }
 
@@ -83,41 +155,67 @@ export function EntityMentionText({
   entityIds,
   mentionValues,
   focusOffset,
+  range,
+  activeMentionIds,
   className,
 }: EntityMentionTextProps) {
-  const { data: fileText, isPending: textPending, isError } = useFileText(fileId);
-  const { data: mentionsPage, isPending: mentionsPending } = useFileMentions(fileId);
+  const {
+    data: fileText,
+    isPending: textPending,
+    isError,
+  } = useFileText(fileId);
+  const { data: mentionsPage, isPending: mentionsPending } =
+    useFileMentions(fileId);
   const preRef = useRef<HTMLPreElement>(null);
   const focusRef = useRef<HTMLSpanElement>(null);
 
-  const [selection, setSelection] = useState<
-    | { surface: string; start: number; end: number; rect: DOMRect; existing?: Mention }
-    | null
-  >(null);
+  const [selection, setSelection] = useState<{
+    surface: string;
+    start: number;
+    end: number;
+    rect: DOMRect;
+    existing?: Mention;
+    full?: boolean;
+  } | null>(null);
+  // backend offsets count code points; the DOM counts UTF-16 units (an emoji is two)
+  const offsets = useMemo(() => textOffsets(fileText?.text ?? ""), [fileText]);
+  const from = offsets.toUtf16(range?.start ?? 0);
+  const rangeEnd = range?.end;
+  const focus = focusOffset != null ? offsets.toUtf16(focusOffset) : undefined;
 
-  const segments = useMemo(
-    () => {
-      if (!fileText) return [];
-      const mentions = mentionsPage?.data ?? [];
-      if (!entityIds?.length && !mentionValues?.length) return buildSegments(fileText.text, mentions);
-      const values = new Set((mentionValues ?? []).flatMap((v) => [v, foldName(v)]));
-      // Analyst-drawn mentions stay visible so a fresh edit doesn't vanish under the filter.
-      const shown = mentions.filter(
-        (m) =>
-          (m.entityId && entityIds?.includes(m.entityId)) ||
-          (m.normalizedValue && values.has(m.normalizedValue)) ||
-          m.extractor === "manual"
-      );
-      return buildSegments(fileText.text, shown);
-    },
-    [fileText, mentionsPage, entityIds, mentionValues]
-  );
+  const segments = useMemo(() => {
+    if (!fileText) return [];
+    const mentions = mentionsPage?.data ?? [];
+    const to =
+      rangeEnd != null ? offsets.toUtf16(rangeEnd) : fileText.text.length;
+    if (!entityIds?.length && !mentionValues?.length)
+      return buildSegments(mentions, offsets, from, to);
+    const values = new Set(
+      (mentionValues ?? []).flatMap((v) => [v, foldName(v)])
+    );
+    // Analyst-drawn mentions stay visible so a fresh edit doesn't vanish under the filter.
+    const shown = mentions.filter(
+      (m) =>
+        (m.entityId && entityIds?.includes(m.entityId)) ||
+        (m.normalizedValue && values.has(m.normalizedValue)) ||
+        m.extractor === "manual"
+    );
+    return buildSegments(shown, offsets, from, to);
+  }, [
+    fileText,
+    mentionsPage,
+    entityIds,
+    mentionValues,
+    offsets,
+    from,
+    rangeEnd,
+  ]);
 
   useLayoutEffect(() => {
-    if (focusOffset != null && focusRef.current) {
+    if (focus != null && focusRef.current) {
       focusRef.current.scrollIntoView({ block: "center", behavior: "smooth" });
     }
-  }, [focusOffset, segments]);
+  }, [focus, segments]);
 
   if (textPending || mentionsPending) {
     return (
@@ -138,9 +236,63 @@ export function EntityMentionText({
     if (!preRef.current) return;
     const hit = selectionOffsets(preRef.current);
     if (hit) {
-      const existing = overlappingMention(segments, hit.start, hit.end);
-      setSelection({ surface: hit.text, start: hit.start, end: hit.end, rect: hit.rect, existing });
+      const start = hit.start + from;
+      const end = hit.end + from;
+      const existing = overlappingMention(segments, start, end);
+      setSelection({
+        surface: hit.text,
+        start: offsets.toCodePoint(start),
+        end: offsets.toCodePoint(end),
+        rect: hit.rect,
+        existing,
+        full: !!existing,
+      });
     }
+  };
+
+  const isActive = (mention: Mention, duplicates?: Mention[]) =>
+    !!activeMentionIds?.some(
+      (id) => id === mention.id || duplicates?.some((d) => d.id === id)
+    );
+
+  const renderInner = (seg: Segment) => {
+    const parts: ReactNode[] = [];
+    let cursor = seg.start;
+    for (const { start, end, mention: inner, duplicates } of seg.inner ?? []) {
+      if (!inner || start < cursor) continue;
+      if (start > cursor)
+        parts.push(labelText(fileText.text.slice(cursor, start)));
+      const innerText = fileText.text.slice(start, end);
+      parts.push(
+        <span
+          key={inner.id}
+          className={cn(
+            isActive(inner, duplicates) &&
+              "rounded-md ring-2 ring-primary ring-offset-1 ring-offset-background"
+          )}
+        >
+          <MentionChip
+            mention={inner}
+            duplicates={duplicates}
+            text={innerText}
+            onOpen={(rect) =>
+              setSelection({
+                surface: innerText,
+                start: inner.startOffset as number,
+                end: inner.endOffset as number,
+                rect,
+                existing: inner,
+                full: true,
+              })
+            }
+          />
+        </span>
+      );
+      cursor = end;
+    }
+    if (cursor < seg.end)
+      parts.push(labelText(fileText.text.slice(cursor, seg.end)));
+    return parts;
   };
 
   return (
@@ -153,7 +305,7 @@ export function EntityMentionText({
         {segments.map((seg, i) => {
           const slice = fileText.text.slice(seg.start, seg.end);
           const spansFocus =
-            focusOffset != null && focusOffset >= seg.start && focusOffset < seg.end;
+            focus != null && focus >= seg.start && focus < seg.end;
           if (!seg.mention) {
             return (
               <span key={i} ref={spansFocus ? focusRef : undefined}>
@@ -163,45 +315,41 @@ export function EntityMentionText({
           }
           const m = seg.mention;
           const resolved = !!m.entityId;
-          const meta = m.entityType ? ENTITY_TYPE_META[m.entityType] : null;
-          const Glyph = m.entityType
-            ? entityGlyph(m.entityType, m.selectorType)
-            : HelpCircle;
-          // Inline chip: a small type icon + the surface text in a rounded,
-          // tinted pill -- displacy-style, but it stays in the text flow and
-          // keeps click-to-annotate + hover-card.
           const mark = (
             <span
-              ref={spansFocus ? focusRef : undefined}
-              onClick={(e) => {
-                e.stopPropagation();
-                // a drag inside the chip is a span adjustment -- the mouseup handler owns it
-                if (!window.getSelection()?.isCollapsed) return;
-                setSelection({
-                  surface: slice,
-                  start: seg.start,
-                  end: seg.end,
-                  rect: (e.currentTarget as HTMLElement).getBoundingClientRect(),
-                  existing: m,
-                });
-              }}
               className={cn(
-                "mx-[1px] inline-flex cursor-pointer select-text items-center gap-1 rounded-md border px-1 py-[1px] align-baseline font-sans text-[0.82em] font-medium leading-tight transition-shadow hover:shadow-sm",
-                resolved && meta
-                  ? cn(meta.bgClass, meta.textClass, meta.borderClass)
-                  : m.extractor === "manual"
-                    ? "border-dashed border-primary/50 bg-primary/10 text-primary"
-                    : "border-dashed border-annotation/50 bg-annotation/10 text-annotation"
+                isActive(m, seg.duplicates) &&
+                  "rounded-md ring-2 ring-primary ring-offset-1 ring-offset-background"
               )}
             >
-              <Glyph size={10} className="shrink-0 opacity-80" />
-              {slice}
+              <MentionChip
+                ref={spansFocus ? focusRef : undefined}
+                mention={m}
+                duplicates={seg.duplicates}
+                text={slice}
+                onOpen={(rect) =>
+                  setSelection({
+                    surface: slice,
+                    start: m.startOffset as number,
+                    end: m.endOffset as number,
+                    rect,
+                    existing: m,
+                    full: true,
+                  })
+                }
+              >
+                {seg.inner && renderInner(seg)}
+              </MentionChip>
             </span>
           );
           return (
             <Fragment key={i}>
               {resolved && m.entityId ? (
-                <EntityHoverCard entityId={m.entityId} entityType={m.entityType ?? undefined} disabled={!!selection}>
+                <EntityHoverCard
+                  entityId={m.entityId}
+                  entityType={m.entityType ?? undefined}
+                  disabled={!!selection}
+                >
                   {mark}
                 </EntityHoverCard>
               ) : (
@@ -212,7 +360,26 @@ export function EntityMentionText({
         })}
       </pre>
 
-      {selection && (
+      {selection && !selection.full && (
+        <MentionLabelToolbar
+          key={`${selection.start}:${selection.end}`}
+          rect={selection.rect}
+          span={{
+            datasetId,
+            fileId,
+            textId: fileText.extractedTextId,
+            surfaceText: selection.surface,
+            startOffset: selection.start,
+            endOffset: selection.end,
+          }}
+          onMore={() => setSelection({ ...selection, full: true })}
+          onClose={() => {
+            setSelection(null);
+            window.getSelection()?.removeAllRanges();
+          }}
+        />
+      )}
+      {selection?.full && (
         <EntityMentionPopover
           key={`${selection.start}:${selection.end}`}
           rect={selection.rect}

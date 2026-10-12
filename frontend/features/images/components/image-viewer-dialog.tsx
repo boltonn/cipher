@@ -1,14 +1,6 @@
 "use client";
 
-import {
-  ChevronLeft,
-  ChevronRight,
-  FileText,
-  Loader2,
-  ScanFace,
-  Search,
-  ShieldCheck,
-} from "lucide-react";
+import { ChevronLeft, ChevronRight, FileText, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { CopyableId } from "@/components/copyable-id";
@@ -22,16 +14,15 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 
 import { CommentSection } from "@/features/comments/components/comment-section";
-import { facesService } from "@/features/faces/api";
-import type { OverlayBox } from "@/features/faces/components/face-image-overlay";
-import { FaceTriagePanel } from "@/features/faces/components/face-triage-panel";
-import { useImageFaces } from "@/features/faces/hooks/use-image-faces";
 import type { FacePublic } from "@/features/faces/types";
 import { cn, formatBytes } from "@/lib/utils";
-import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
 import { useImage, useImageFiles } from "../api";
 import { ImagePublic, ImageSimilarityResult } from "../types";
+import {
+  ImageCameraSection,
+  ImageFacesSection,
+  useImageFaceSelection,
+} from "./image-details";
 import { ImageViewerContent } from "./image-viewer-content";
 
 interface ImageViewerDialogProps {
@@ -54,12 +45,6 @@ interface ImageViewerDialogProps {
   onCreatePersonFromFace?: (face: FacePublic) => void;
 }
 
-function faceMatchLabel(f: FacePublic): string | undefined {
-  if (f.personName) return `${f.personName} · ${f.status === "verified" ? "verified" : "matched"}`;
-  if (f.candidatePersonName) return `${f.candidatePersonName} · potential match`;
-  return undefined;
-}
-
 export function ImageViewerDialog({
   image,
   imageId,
@@ -74,48 +59,19 @@ export function ImageViewerDialog({
   onFindSimilarFace,
   onCreatePersonFromFace,
 }: ImageViewerDialogProps) {
-  const router = useRouter();
-
   const { data: fetchedImage } = useImage(imageId, { enabled: !image });
   const resolvedImage = image ?? fetchedImage;
 
-  const { data: files = [], isPending: isFilesLoading } = useImageFiles(resolvedImage?.id);
-  const { data: faces = [] } = useImageFaces(showFaces ? resolvedImage?.id : undefined);
-
-  // `activeFaceId` tracks the user's in-dialog selection; it resets to `focusFaceId`
-  // whenever the caller changes it (each ◄ ► grid step), via the render-phase
-  // "adjust state when a prop changes" pattern.
-  const [activeFaceId, setActiveFaceId] = useState<string | undefined>(focusFaceId);
-  const [prevFocusFaceId, setPrevFocusFaceId] = useState(focusFaceId);
-  if (focusFaceId !== prevFocusFaceId) {
-    setPrevFocusFaceId(focusFaceId);
-    setActiveFaceId(focusFaceId);
-  }
-  const activeFace = useMemo(
-    () =>
-      faces.find((f) => f.id === activeFaceId) ??
-      faces.find((f) => f.id === focusFaceId) ??
-      faces[0],
-    [faces, activeFaceId, focusFaceId]
+  const { data: files = [], isPending: isFilesLoading } = useImageFiles(
+    resolvedImage?.id
   );
-
-  const findSimilar = useMemo(
-    () => onFindSimilarFace ?? ((faceId: string) => router.push(`/faces?similar=${faceId}`)),
-    [onFindSimilarFace, router]
+  const faceSelection = useImageFaceSelection(
+    showFaces ? resolvedImage?.id : undefined,
+    {
+      focusFaceId,
+      onFindSimilarFace,
+    }
   );
-
-  const overlayBoxes = useMemo<OverlayBox[] | undefined>(() => {
-    if (!showFaces || faces.length === 0) return undefined;
-    return faces.map((f) => ({
-      bbox: f.boundingBox,
-      landmarks: f.id === activeFace?.id ? f.landmarks : undefined,
-      isSelected: f.id === activeFace?.id,
-      label: f.id === activeFace?.id ? f.personName ?? f.candidatePersonName ?? undefined : undefined,
-      onClick: () => setActiveFaceId(f.id),
-      onFindSimilar: () => findSimilar(f.id),
-      matchLabel: faceMatchLabel(f),
-    }));
-  }, [showFaces, faces, activeFace?.id, findSimilar]);
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -136,7 +92,10 @@ export function ImageViewerDialog({
           <>
             {/* Left: Image Preview Section */}
             <div className="flex-1 bg-black relative flex flex-col overflow-hidden group/image">
-              <ImageViewerContent image={resolvedImage} overlayBoxes={overlayBoxes} />
+              <ImageViewerContent
+                image={resolvedImage}
+                overlayBoxes={faceSelection.overlayBoxes}
+              />
 
               <div className="absolute inset-0 flex items-center justify-between px-4 pointer-events-none">
                 <Button
@@ -193,71 +152,10 @@ export function ImageViewerDialog({
 
               <ScrollArea className="min-h-0 flex-1">
                 <div className="p-4 space-y-2">
-                  {/* Faces Section */}
-                  {showFaces && faces.length > 0 && (
-                    <section className="p-4 rounded-xl bg-black/40 border border-annotation/20 space-y-4">
-                      <div className="flex items-center gap-2">
-                        <ScanFace size={14} className="text-annotation" />
-                        <h4 className="text-[11px] font-semibold text-foreground uppercase tracking-wide">
-                          Faces
-                        </h4>
-                        <span className="ml-auto text-[11px] font-mono text-muted-foreground">
-                          {faces.length} detected
-                        </span>
-                      </div>
-
-                      <div className="flex flex-wrap gap-2">
-                        {faces.map((f) => (
-                          <div
-                            key={f.id}
-                            role="button"
-                            tabIndex={0}
-                            title={faceMatchLabel(f)}
-                            onClick={() => setActiveFaceId(f.id)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter" || e.key === " ") {
-                                e.preventDefault();
-                                setActiveFaceId(f.id);
-                              }
-                            }}
-                            className={cn(
-                              "group/thumb relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border-2 cursor-pointer",
-                              f.id === activeFace?.id
-                                ? "border-emerald-400"
-                                : "border-border/50 hover:border-annotation/50"
-                            )}
-                          >
-                            {/* eslint-disable-next-line @next/next/no-img-element -- tiny same-origin crop, server already downscales */}
-                            <img
-                              src={facesService.getFaceThumbnailUrl(f.id)}
-                              alt=""
-                              className="h-full w-full object-cover"
-                            />
-                            <span
-                              role="button"
-                              tabIndex={-1}
-                              title="Find similar faces"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                findSimilar(f.id);
-                              }}
-                              className="absolute inset-x-0 bottom-0 flex justify-center bg-black/75 py-0.5 opacity-0 transition-opacity group-hover/thumb:opacity-100"
-                            >
-                              <Search size={11} className="text-annotation" />
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-
-                      {activeFace && (
-                        <FaceTriagePanel
-                          face={activeFace}
-                          onFindSimilar={findSimilar}
-                          onCreatePerson={onCreatePersonFromFace}
-                        />
-                      )}
-                    </section>
-                  )}
+                  <ImageFacesSection
+                    selection={faceSelection}
+                    onCreatePerson={onCreatePersonFromFace}
+                  />
 
                   {/* Source files -- every file this image's content was found in */}
                   {files.length > 0 && (
@@ -291,15 +189,28 @@ export function ImageViewerDialog({
                           </p>
                           <div className="grid grid-cols-2 gap-4">
                             <DataPoint label="Filename" value={file.filename} />
-                            <DataPoint label="Filetype" value={file.filetypeName ?? file.filetype} />
-                            <DataPoint label="Mime Type" value={file.mimeType} />
-                            <DataPoint label="Storage" value={formatBytes(file.size)} />
-                            {file.device && <DataPoint label="Device" value={file.device} />}
+                            <DataPoint
+                              label="Filetype"
+                              value={file.filetypeName ?? file.filetype}
+                            />
+                            <DataPoint
+                              label="Mime Type"
+                              value={file.mimeType}
+                            />
+                            <DataPoint
+                              label="Storage"
+                              value={formatBytes(file.size)}
+                            />
+                            {file.device && (
+                              <DataPoint label="Device" value={file.device} />
+                            )}
                             <DataPoint
                               label="Loaded"
                               value={
                                 file.dateCreated
-                                  ? new Date(file.dateCreated).toLocaleDateString()
+                                  ? new Date(
+                                      file.dateCreated
+                                    ).toLocaleDateString()
                                   : "—"
                               }
                             />
@@ -322,48 +233,14 @@ export function ImageViewerDialog({
 
                   <Separator className="my-2 bg-white/5" />
 
-                  {/* EXIF Section */}
-                  <section className="p-4 rounded-xl bg-black/40 border border-border/50 space-y-4">
-                    <div className="flex items-center gap-2 mb-4">
-                      <ShieldCheck size={14} className="text-primary" />
-                      <h4 className="text-[11px] font-semibold text-foreground uppercase tracking-wide">
-                        Telemetry
-                      </h4>
-                    </div>
-                    <div className="grid grid-cols-2 gap-y-6 gap-x-4">
-                      <DataPoint
-                        label="Equipment"
-                        value={`${resolvedImage.cameraMake || "—"} ${resolvedImage.cameraModel || ""}`}
-                      />
-                      <DataPoint
-                        label="Aperture"
-                        value={resolvedImage.aperture ? `ƒ/${resolvedImage.aperture}` : "—"}
-                      />
-                      <DataPoint label="ISO" value={resolvedImage.iso?.toString() || "—"} />
-                      <DataPoint
-                        label="Focal"
-                        value={resolvedImage.focalLength ? `${resolvedImage.focalLength}mm` : "—"}
-                      />
-                      <DataPoint
-                        label="Timestamp"
-                        value={
-                          resolvedImage.dateTaken
-                            ? new Date(resolvedImage.dateTaken).toLocaleDateString()
-                            : "—"
-                        }
-                      />
-                      <DataPoint
-                        label="Elevation"
-                        value={
-                          resolvedImage.gpsAltitude ? `${resolvedImage.gpsAltitude.toFixed(1)}m` : "—"
-                        }
-                      />
-                    </div>
-                  </section>
+                  <ImageCameraSection image={resolvedImage} />
 
                   {/* Comments (CommentSection renders its own header) */}
                   <section className="mt-6 p-4 rounded-xl bg-black/40 border border-border/50">
-                    <CommentSection commentableType="image" commentableId={resolvedImage.id} />
+                    <CommentSection
+                      commentableType="image"
+                      commentableId={resolvedImage.id}
+                    />
                   </section>
                 </div>
               </ScrollArea>

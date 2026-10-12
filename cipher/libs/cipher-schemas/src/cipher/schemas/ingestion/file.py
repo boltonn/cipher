@@ -1,10 +1,9 @@
 from datetime import UTC, datetime
-from enum import StrEnum
+from typing import Annotated
 
-from pydantic import Field, computed_field, field_validator
-from pydantic.alias_generators import to_snake
+from pydantic import Field, StringConstraints, computed_field, field_validator
 
-from cipher.schemas._base.base import BaseModel
+from cipher.schemas._base.base import BaseModel, StrEnum
 from cipher.schemas._base.common import PaginatedResponse, SortOrder
 
 
@@ -15,6 +14,35 @@ class FileInstanceSortField(StrEnum):
     DATE_CREATED = "date_created"
     DATE_LAST_UPDATED = "date_last_updated"
     SIZE = "size"
+
+
+class Compression(StrEnum):
+    """Single-stream compression a file was found in: an encoding of one file, never a container."""
+
+    GZIP = "gzip"
+    BZIP2 = "bzip2"
+    XZ = "xz"
+    ZSTD = "zstd"
+    LZ4 = "lz4"
+
+
+class ArchiveSandbox(StrEnum):
+    """How `7zz` (7z / rar / iso, and zip members the stdlib can't read) is confined."""
+
+    BEST_EFFORT = "best_effort"  # every layer this machine allows; a missing one is logged
+    REQUIRED = "required"  # those archives fail unless every layer applies
+    OFF = "off"  # no sandbox, for environments where it gets in 7zz's way; size limits still hold
+
+
+class CompressionInfo(BaseModel):
+    """How a file was compressed when found. The row's own hashes describe the content once decoded."""
+
+    encoding: Compression = Field(description="Compression the file was found in")
+    md5: str = Field(description="MD5 of the file as found (compressed)")
+    sha256: str = Field(description="SHA256 of the file as found (compressed)")
+    size: int = Field(description="Size in bytes of the file as found (compressed)")
+    filename: str | None = Field(default=None, description="Original name stored in the compression header (gzip)")
+    date_modified: datetime | None = Field(default=None, description="Modified time stored in the header (gzip)")
 
 
 class FileBase(BaseModel):
@@ -34,15 +62,21 @@ class FileBase(BaseModel):
     parent_id: str | None = Field(
         default=None, description="Parent file this was extracted from, e.g. an email attachment's source email"
     )
+    compression: CompressionInfo | None = Field(
+        default=None, description="Set when the file was found compressed (e.g. report.csv.gz, logs.tar.gz)"
+    )
+    is_encrypted: bool = Field(
+        default=False, description="Encrypted as found (an archive with encrypted members, a password-protected file)"
+    )
 
     date_created: datetime | None = Field(default=None, description="Date the file was created")
     date_last_updated: datetime | None = Field(default=None, description="Date the file was last updated")
 
     @field_validator("path")
     @classmethod
-    def validate_path(cls, path: str) -> str:
-        """Ensure path is stored as a resolved string."""
-        return f"/{path.lstrip('/')}"
+    def validate_path(cls, path: str | None) -> str | None:
+        """Ensure path is stored as a resolved string (unset until the file is stored)."""
+        return None if path is None else f"/{path.lstrip('/')}"
 
 
 class File(FileBase):
@@ -113,29 +147,11 @@ class FilesRequest(BaseModel):
     query: str | None = Field(None, description="Optional search query to filter file instances")
     limit: int = Field(10, description="Number of datasets to return", ge=1, le=100)
     page: int = Field(1, description="Page number for pagination", ge=1)
-    sort_by: str | None = Field(
-        FileInstanceSortField.FILENAME,
+    sort_by: FileInstanceSortField = Field(
+        default=FileInstanceSortField.FILENAME,
         description="Default field to sort by when listing the dataset",
     )
     sort_order: SortOrder | None = Field(SortOrder.DESC, description="Default sort order when listing the dataset")
-
-    @field_validator("sort_by", mode="after")
-    def validate_sort_by(cls, value: FileInstanceSortField | None) -> FileInstanceSortField:
-        """Validate sort_by field."""
-        if value is None:
-            return FileInstanceSortField.FILENAME
-
-        # Convert to snake_case BEFORE Pydantic checks the Enum members
-        if isinstance(value, str):
-            value = FileInstanceSortField(to_snake(value))
-
-        if value not in {
-            FileInstanceSortField.FILENAME,
-            FileInstanceSortField.DATE_CREATED,
-            FileInstanceSortField.DATE_LAST_UPDATED,
-        }:
-            raise ValueError("sort_by must be one of 'name', 'date_created', or 'date_last_updated'")
-        return value
 
     @field_validator("sort_order")
     def validate_sort_order(cls, value: SortOrder | None) -> SortOrder:
@@ -161,6 +177,9 @@ class FileBrowserItem(FileBase):
 
     id: str | None = Field(default=None, description="File ID (unset for directories)")
     type: FileBrowserType = Field(..., description="Type: file or directory")
+    member_count: int = Field(
+        default=0, description="Files found inside it -- archive members, email attachments (browse them at its path)"
+    )
 
 
 class FileBrowserRequest(FilesRequest):
@@ -171,3 +190,28 @@ class FileBrowserRequest(FilesRequest):
 
 class FileBrowserResponse(PaginatedResponse):
     data: list[FileBrowserItem] = Field(..., description="List of files and directories in the current path")
+
+
+class FolderSummary(BaseModel):
+    """One folder under a browsed path: how many files sit anywhere below it, of which kinds, and when."""
+
+    path: str = Field(description="Full folder path")
+    file_count: int
+    filetype_group_counts: dict[str, int] = Field(default_factory=dict)
+    date_first: datetime | None = Field(default=None, description="Earliest file date below it")
+    date_last: datetime | None = Field(default=None, description="Latest file date below it")
+
+
+class FiletypeCoverage(BaseModel):
+    """How much of one filetype group is reachable by text search."""
+
+    filetype_group: str
+    file_count: int
+    searchable_count: int = Field(description="Files with extracted, chunked text")
+
+
+class FilesTagRequest(BaseModel):
+    """Label many files' content with one positive tag at once (e.g. the sources an analyst marked relevant)."""
+
+    tag: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
+    file_ids: list[str] = Field(min_length=1, max_length=500)

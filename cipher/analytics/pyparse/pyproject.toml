@@ -16,33 +16,14 @@ cipher-utils = { workspace = true }
 filetyper = { workspace = true }
 
 [project.optional-dependencies]
-cli = ["fastparquet", "pandas", "typer"]
 html = ["beautifulsoup4", "cssutils", "lxml"]
-text = ["pyparse[html]"]
-docx = ["pyparse[html]", "python-dateutil", "python-docx"]
-doc = ["pyparse[docx]"]
-pptx = ["python-pptx"]
-ppt = ["pyparse[pptx]"]
-pdf = ["pdfminer.six", "PyMuPDF", "python-dateutil"]
-documents = ["pyparse[docx,pdf,doc,pptx,ppt]"]
 eml = ["chardet", "pyparse[html]"]
 msg = ["compressed-rtf", "msg-parser", "pyparse[eml]"]
 email = ["pyparse[eml,msg]"]
-mbox = ["pyparse[email]"]
-rar = ["rarfile"]
-#sevenzip = ["py7zr"]
 contacts = ["phonenumbers", "python-dateutil", "vobject"]
-archives = ["pyparse[mbox,rar]"]
-#archives = ["pyparse[mbox,rar,sevenzip]"]
-messages = ["phonenumbers"]
-all = [
-    "pyparse[archives,contacts,documents,email,messages,text,cli]"
-]
+all = ["pyparse[contacts,email]"]
 
 
 [build-system]
 requires = [ "hatchling" ]
 build-backend = "hatchling.build"
-
-[project.scripts]
-pyparse = "pyparse.cli:app"

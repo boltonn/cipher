@@ -13,8 +13,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-analytics-cpu = [ "clir", "face", "filetyper", "nerd", "pygliner", "pyprompt", "pyvllm", "pyparse[all]", "pyselectors", "pyxberg", "setfitcv" ]
-analytics-cuda = [ "clir[cuda,tables]", "face[cuda]", "filetyper", "nerd[cuda]", "pygliner[cuda]", "pyprompt", "pyvllm", "pyparse[all]", "pyselectors", "pyxberg", "setfitcv[cuda]" ]
+analytics-cpu = [ "clir", "face", "filetyper[zstd,lz4,pdf]", "pyarchive[zstd,lz4,pdf]", "nerd", "pygliner", "pyprompt", "pyvllm", "pyparse[all]", "pyselectors", "pytabular", "pyxberg", "setfitcv" ]
+analytics-cuda = [ "clir[cuda,tables]", "face[cuda]", "filetyper[zstd,lz4,pdf]", "pyarchive[zstd,lz4,pdf]", "nerd[cuda]", "pygliner[cuda]", "pyprompt", "pyvllm", "pyparse[all]", "pyselectors", "pytabular", "pyxberg", "setfitcv[cuda]" ]
 elasticsearch = [ "cipher-datastores[elasticsearch]" ]
 postgres = [ "cipher-datastores[postgres]" ]
 backend = [ "cipher-backend" ]
@@ -40,8 +40,10 @@ filetyper = { workspace = true }
 setfitcv = { workspace = true }
 pyparse = { workspace = true }
 pyxberg = { workspace = true }
+pyarchive = { workspace = true }
 pyvllm = { workspace = true }
 pyselectors = { workspace = true }
+pytabular = { workspace = true }
 pygliner = { workspace = true }
 pyprompt = { workspace = true }
 nerd = { workspace = true }
@@ -64,9 +66,11 @@ members = [
     "analytics/pyvllm",
     "analytics/pyprompt",
     "analytics/pyselectors",
+    "analytics/pytabular",
     "analytics/setfitcv",
     "analytics/pyparse",
     "analytics/pyxberg",
+    "analytics/pyarchive",
 ]
 
 [tool.uv]
@@ -115,6 +119,10 @@ ignore = [
 ]
 
 fixable = ["ALL"]
+
+[tool.ruff.lint.per-file-ignores]
+# test names say what they check
+"**/tests/**" = ["D102", "D103"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

@@ -1,9 +1,8 @@
 from datetime import datetime
-from enum import StrEnum
 
 from pydantic import Field
 
-from cipher.schemas._base.base import BaseModel
+from cipher.schemas._base.base import BaseModel, StrEnum
 from cipher.schemas.content.document import DocumentMetadata
 from cipher.schemas.content.email import EmailMetadata
 
@@ -64,6 +63,13 @@ class ExtractedTextBase(BaseModel):
     prechunked: list[PrechunkedSpan] | None = Field(
         default=None,
         description="Pre-computed chunk boundaries; only set when the extractor's own chunker was used",
+    )
+    is_content_corrected: bool = Field(
+        default=False, description="An analyst corrected the text itself; pipelines no longer overwrite it"
+    )
+    content_corrected_by: str | None = Field(default=None, description="User who last corrected the text")
+    corrected_ranges: list[tuple[int, int]] | None = Field(
+        default=None, description="`[start, end)` stretches of `content` a person wrote (zero-width: a deletion)"
     )
 
     def source_tags(self) -> list[str]:

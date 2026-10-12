@@ -14,11 +14,12 @@ entity (see `ontology.ResolutionPolicy`).
 """
 
 from datetime import datetime
-from enum import StrEnum
+from typing import Any
 
-from pydantic import Field, computed_field
+from pydantic import Field, computed_field, model_validator
+from pydantic.alias_generators import to_snake
 
-from cipher.schemas._base.base import BaseModel
+from cipher.schemas._base.base import BaseModel, StrEnum
 from cipher.schemas._base.common import PageParams, PaginatedResponse
 from cipher.schemas.graph.ontology import EntityType, SelectorSubtype, SelectorType
 
@@ -125,7 +126,23 @@ class MentionBase(BaseModel):
 class MentionCreate(MentionBase):
     """Mention creation schema."""
 
-    pass
+    @model_validator(mode="before")
+    @classmethod
+    def _trim_whitespace(cls, data: Any) -> Any:
+        """Drop edge whitespace from the span (shifting its offsets to match) and collapse it in the value."""
+        if not isinstance(data, dict):
+            return data
+        data = {to_snake(key): value for key, value in data.items()}
+        surface, start, end = data.get("surface_text"), data.get("start_offset"), data.get("end_offset")
+        if isinstance(surface, str):
+            trimmed = surface.strip()
+            if start is not None and end is not None and end - start == len(surface):
+                data["start_offset"] = start + len(surface) - len(surface.lstrip())
+                data["end_offset"] = data["start_offset"] + len(trimmed)
+            data["surface_text"] = trimmed
+        if isinstance(value := data.get("normalized_value"), str):
+            data["normalized_value"] = " ".join(value.split())
+        return data
 
 
 class MentionUpdate(BaseModel):
@@ -219,13 +236,16 @@ class PaginatedMentionsResponse(PaginatedResponse):
 
 
 class UnresolvedNameGroup(BaseModel):
-    """One distinct unresolved `name` value in the review queue, with its footprint."""
+    """One distinct unresolved `name` value in one dataset's review queue, with its footprint."""
 
+    dataset_id: str = Field(description="Dataset the name group belongs to (resolution runs per dataset)")
     normalized_value: str = Field(description="Folded name -- the resolution blocking key")
     surface: str = Field(description="Most common surface form seen for this name")
     mention_count: int = Field(description="Unresolved name mentions sharing this value")
     file_count: int = Field(description="Distinct files those mentions appear in")
+    is_correspondent: bool = Field(default=False, description="Named in an email's from / to / cc header")
     sample_context: str | None = Field(default=None, description="One context snippet, for display")
+    sample_surface: str | None = Field(default=None, description="The name as written in `sample_context`")
     suggested_type: EntityType | None = Field(
         default=None, description="Heuristic person/organization guess; null = undecided"
     )
@@ -263,6 +283,35 @@ class DismissNameGroupRequest(BaseModel):
 
     dataset_id: str
     normalized_value: str
+
+
+class NameGroupKey(BaseModel):
+    """One name group: a dataset's unresolved `name` mentions of one value."""
+
+    dataset_id: str
+    normalized_value: str
+    display_name: str | None = Field(default=None, description="Display name if a new entity is created for it")
+
+
+class ResolveNameGroupsRequest(BaseModel):
+    """Resolve several name groups in one decision: each to a new entity of its own, or all to one entity."""
+
+    groups: list[NameGroupKey] = Field(min_length=1, max_length=200)
+    entity_type: EntityType = Field(default=EntityType.PERSON, description="Kind of entity to attach to / create")
+    entity_id: str | None = Field(default=None, description="Attach every group to this existing entity")
+
+
+class ResolveNameGroupsResult(BaseModel):
+    """Outcome of resolving several name groups."""
+
+    entity_ids: list[str] = Field(description="The entity each group was resolved to, in request order")
+    mentions_attached: int
+
+
+class DismissNameGroupsRequest(BaseModel):
+    """Discard several name groups (not real entities)."""
+
+    groups: list[NameGroupKey] = Field(min_length=1, max_length=200)
 
 
 class ResolvedName(BaseModel):

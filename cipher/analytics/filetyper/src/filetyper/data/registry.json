@@ -122,7 +122,8 @@
         "name": "appledouble",
         "group": "unknown",
         "mime_type": "multipart/appledouble",
-        "extensions": []
+        "extensions": [],
+        "magic": [0, 5, 22, 7]
     },
     {
         "name": "appleplist",
@@ -526,7 +527,7 @@
     },
     {
         "name": "csv",
-        "group": "document",
+        "group": "table",
         "mime_type": "text/csv",
         "extensions": [
             "csv"
@@ -544,6 +545,14 @@
         "mime_type": "text/plain",
         "extensions": [
             "dart"
+        ]
+    },
+    {
+        "name": "dbase",
+        "group": "application",
+        "mime_type": "application/vnd.dbf",
+        "extensions": [
+            "dbf"
         ]
     },
     {
@@ -1449,7 +1458,7 @@
     },
     {
         "name": "mbox",
-        "group": "text",
+        "group": "archive",
         "mime_type": "application/mbox",
         "extensions": [
             "mbox"
@@ -1666,7 +1675,7 @@
     },
     {
         "name": "ods",
-        "group": "document",
+        "group": "table",
         "mime_type": "application/vnd.oasis.opendocument.spreadsheet",
         "extensions": [
             "ods"
@@ -1740,7 +1749,7 @@
     },
     {
         "name": "parquet",
-        "group": "unknown",
+        "group": "table",
         "mime_type": "application/vnd.apache.parquet",
         "extensions": [
             "pqt",
@@ -1840,6 +1849,14 @@
         "extensions": [
             "pickle",
             "pkl"
+        ]
+    },
+    {
+        "name": "pkcs7",
+        "group": "application",
+        "mime_type": "application/pkcs7-mime",
+        "extensions": [
+            "p7m"
         ]
     },
     {
@@ -2183,6 +2200,26 @@
         ]
     },
     {
+        "name": "shapefile",
+        "group": "application",
+        "mime_type": "application/vnd.shp",
+        "extensions": [
+            "shp",
+            "shx"
+        ],
+        "magic": [0, 0, 39, 10, 0, 0, 0, 0]
+    },
+    {
+        "name": "shapefileindex",
+        "group": "application",
+        "mime_type": "application/octet-stream",
+        "extensions": [
+            "sbn",
+            "sbx"
+        ],
+        "magic": [0, 0, 39, 10, 255, 255, 254, 112]
+    },
+    {
         "name": "shell",
         "group": "code",
         "mime_type": "text/x-shellscript",
@@ -2411,7 +2448,7 @@
     },
     {
         "name": "tsv",
-        "group": "document",
+        "group": "table",
         "mime_type": "text/tsv",
         "extensions": [
             "tsv"
@@ -2731,7 +2768,7 @@
     },
     {
         "name": "xls",
-        "group": "document",
+        "group": "table",
         "mime_type": "application/vnd.ms-excel",
         "extensions": [
             "xls"
@@ -2739,7 +2776,7 @@
     },
     {
         "name": "xlsb",
-        "group": "document",
+        "group": "table",
         "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "extensions": [
             "xlsb"
@@ -2747,7 +2784,7 @@
     },
     {
         "name": "xlsx",
-        "group": "document",
+        "group": "table",
         "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "extensions": [
             "xlsx",

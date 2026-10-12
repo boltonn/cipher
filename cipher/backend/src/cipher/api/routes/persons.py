@@ -24,7 +24,7 @@ from cipher.api.settings import Settings
 from cipher.schemas._base.exceptions import ValidationError
 from cipher.schemas.content.image import ImageCreate
 from cipher.schemas.identity.face import (
-    DEFAULT_FACE_MATCH_SIMILARITY,
+    DEFAULT_FACE_SIMILARITY,
     Face,
     FaceAssignment,
     FaceAssignmentMethod,
@@ -52,7 +52,7 @@ from cipher.utils.io import HashType, compute_hash
 # Same floor the rest of the app treats as "this counts as a match" (the
 # similarity search UI's default threshold) -- candidates below this are not
 # proposed at all, rather than proposed and left for an analyst to reject.
-POTENTIAL_MATCH_MIN_SIMILARITY = DEFAULT_FACE_MATCH_SIMILARITY
+POTENTIAL_MATCH_MIN_SIMILARITY = DEFAULT_FACE_SIMILARITY
 
 # Magic-number based (non-ML) file typing, shared with the ingestion CLI's
 # FileTyper -- keeps reference-photo uploads on the same filetype taxonomy
@@ -303,11 +303,11 @@ async def create_person_from_image(
     model: FaceModelDep,
     name: Annotated[str | None, Form()] = None,
     sex: Annotated[str | None, Form()] = None,
-    date_of_birth: Annotated[str | None, Form()] = None,
+    date_of_birth: Annotated[str | None, Form(alias="dateOfBirth")] = None,
     notes: Annotated[str | None, Form()] = None,
     tags: Annotated[str | None, Form(description="Comma-separated tags")] = None,
     face_index: Annotated[
-        int, Form(ge=0, description="Which detected face to use, ranked by descending confidence")
+        int, Form(alias="faceIndex", ge=0, description="Which detected face to use, ranked by descending confidence")
     ] = 0,
 ):
     """Detect faces in an uploaded photo, store the chosen one, and create a person from it.
@@ -368,7 +368,7 @@ async def add_person_example(
     graph_datastore: GraphDatastoreDep,
     model: FaceModelDep,
     face_index: Annotated[
-        int, Form(ge=0, description="Which detected face to use, ranked by descending confidence")
+        int, Form(alias="faceIndex", ge=0, description="Which detected face to use, ranked by descending confidence")
     ] = 0,
 ):
     """Detect a face in an uploaded photo and add it as a representative example for an existing person.

@@ -10,7 +10,7 @@ import {
 } from "@/components/ai-elements/file-tree";
 import { useDatasetFileBrowser } from "@/features/files/api";
 import type { FileBrowserEntryType, FileBrowserItem } from "@/features/files/types";
-import { File as FileIcon, Loader2 } from "lucide-react";
+import { FileArchive, File as FileIcon, Loader2, Mail } from "lucide-react";
 import { useRef, useState } from "react";
 import { FileRowActions } from "./file-row-actions";
 
@@ -27,7 +27,9 @@ const PAGE_SIZE = 100;
  * Hierarchical file tree for a dataset, built on the vendored ai-elements
  * `FileTree` primitives. Each expanded folder fetches its own children on
  * demand via `useDatasetFileBrowser` -- collapsed folders never fetch, so
- * this stays cheap even for datasets with tens of thousands of files.
+ * this stays cheap even for datasets with tens of thousands of files. An
+ * unpacked archive or an email with attachments opens like a folder: its
+ * children sit at its path.
  */
 export function FileTreeBrowser({ datasetId, filetype, filetypeGroup, onView }: FileTreeBrowserProps) {
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
@@ -132,15 +134,40 @@ function FileTreeLevel({
     );
   }
 
-  rows.forEach((row) => reportPathType(row.path ?? row.filename, row.type));
+  rows.forEach((row) => reportPathType(row.path ?? row.filename, row.memberCount ? "directory" : row.type));
 
   return (
     <>
       {rows.map((row) => {
         const rowPath = row.path ?? row.filename;
-        if (row.type === "directory") {
+        if (row.type === "directory" || row.memberCount) {
+          const isParentFile = row.type === "file";
           return (
-            <FileTreeFolder key={rowPath} path={rowPath} name={row.filename}>
+            <FileTreeFolder
+              key={rowPath}
+              path={rowPath}
+              name={
+                isParentFile
+                  ? `${row.filename} · ${row.memberCount?.toLocaleString()} ${row.filetypeGroup === "email" ? "attachments" : "members"}`
+                  : row.filename
+              }
+              icon={
+                isParentFile ? (
+                  row.filetypeGroup === "email" ? (
+                    <Mail className="size-4 text-primary" />
+                  ) : (
+                    <FileArchive className="size-4 text-primary" />
+                  )
+                ) : undefined
+              }
+              actions={
+                isParentFile ? (
+                  <FileTreeActions>
+                    <FileRowActions file={row} onView={onView} />
+                  </FileTreeActions>
+                ) : undefined
+              }
+            >
               {expandedPaths.has(rowPath) && (
                 <FileTreeLevel
                   datasetId={datasetId}

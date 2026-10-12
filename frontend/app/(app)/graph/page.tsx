@@ -9,6 +9,7 @@ import {
   type ContextTarget,
 } from "@/features/graph/components/graph-context-menu";
 import { DatasetSelect } from "@/features/datasets/components/dataset-select";
+import { useDatasetScope } from "@/features/datasets/hooks/use-selected-datasets";
 import { GraphLegend } from "@/features/graph/components/graph-legend";
 import { GraphSelectionBar } from "@/features/graph/components/graph-selection-bar";
 import { GraphTimeBar } from "@/features/graph/components/graph-time-bar";
@@ -20,7 +21,6 @@ import type {
 import { EventNodeInspector } from "@/features/graph/components/event-node-inspector";
 import { NodeInspector } from "@/features/graph/components/node-inspector";
 import { useGraphExplore } from "@/features/graph/hooks/use-graph-explore";
-import { useLocalStorageState } from "@/hooks/use-local-storage-state";
 import { Database, Loader2, Route, Share2, Waypoints, X } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
@@ -46,10 +46,7 @@ function GraphPageInner() {
   const searchParams = useSearchParams();
   const processed = useRef(false);
 
-  const [datasetId, setDatasetId] = useLocalStorageState<string | undefined>(
-    "graph:datasetId",
-    undefined
-  );
+  const { datasetIds, setDatasetIds } = useDatasetScope();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<EdgePick | null>(null);
   const [contextTarget, setContextTarget] = useState<ContextTarget | null>(null);
@@ -60,17 +57,15 @@ function GraphPageInner() {
   const [timeBarOpen, setTimeBarOpen] = useState(false);
   const [multiIds, setMultiIds] = useState<string[]>([]);
 
-  const explore = useGraphExplore(datasetId);
+  const explore = useGraphExplore(datasetIds);
   const { addSeed } = explore;
 
   useEffect(() => {
     if (processed.current) return;
-    const qsDataset = searchParams.get("dataset");
     const qsSeed = searchParams.get("seed");
-    if (qsDataset) setDatasetId(qsDataset);
     if (qsSeed) addSeed(qsSeed);
     processed.current = true;
-  }, [searchParams, setDatasetId, addSeed]);
+  }, [searchParams, addSeed]);
 
   const graph = explore.built?.graph;
   const seeds = explore.seedIds.map((id) => ({
@@ -129,7 +124,7 @@ function GraphPageInner() {
         eyebrow="Graph"
         icon={<Waypoints size={12} className="text-primary/70" />}
         value={
-          !datasetId
+          datasetIds.length === 0
             ? "No dataset selected"
             : !explore.nodeCount
               ? "No nodes"
@@ -139,9 +134,9 @@ function GraphPageInner() {
         }
         actions={
           <DatasetSelect
-            datasetId={datasetId}
-            onChange={(id) => {
-              setDatasetId(id);
+            datasetIds={datasetIds}
+            onChange={(ids) => {
+              setDatasetIds(ids);
               explore.reset();
               setSelectedId(null);
               setSelectedEdge(null);
@@ -152,7 +147,7 @@ function GraphPageInner() {
 
       <div className="mt-4 shrink-0">
         <GraphToolbar
-          datasetId={datasetId}
+          datasetIds={datasetIds}
           filters={explore.filters}
           onFiltersChange={explore.setFilters}
           labelsMode={labelsMode}
@@ -226,11 +221,11 @@ function GraphPageInner() {
 
       <div className="relative z-0 mt-3 min-h-0 flex-1">
         <div className="h-full">
-          {!datasetId ? (
+          {datasetIds.length === 0 ? (
             <EmptyState
               icon={Database}
-              title="Choose a dataset"
-              body="The network is scoped to one dataset. Pick one from the selector in the top bar, then add entities to explore their connections."
+              title="Choose datasets"
+              body="The network is scoped to the datasets you pick. Choose one or more from the selector in the top bar, then add entities to explore their connections."
             />
           ) : explore.seedIds.length === 0 ? (
             <EmptyState
@@ -334,7 +329,6 @@ function GraphPageInner() {
           <NodeInspector
             key={selectedId}
             entityId={selectedId}
-            datasetId={datasetId}
             graph={graph}
             isSeed={selectedIsSeed}
             isExpanded={selectedIsExpanded}
@@ -357,7 +351,6 @@ function GraphPageInner() {
           <EdgeInspector
             key={selectedEdge.id}
             edge={selectedEdge}
-            datasetId={datasetId}
             onClose={() => setSelectedEdge(null)}
           />
         )}

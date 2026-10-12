@@ -24,7 +24,5 @@ async def search_chunks(
     if embedding is None:
         raise RuntimeError("Embedding model unavailable")
 
-    request = ChunkHybridSearchRequest.model_validate(
-        {**params.model_dump(exclude_none=True), "embedding": embedding}
-    )
+    request = ChunkHybridSearchRequest.model_validate({**params.model_dump(exclude_none=True), "embedding": embedding})
     return await datastore.search_hybrid(request=request)

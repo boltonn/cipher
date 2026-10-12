@@ -1,9 +1,10 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import asc, delete, desc, func, select, update
+from sqlalchemy import asc, delete, desc, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cipher.datastores.postgres.tables.entity import EntityTable
 from cipher.datastores.postgres.tables.entity_relationship import EntityRelationshipTable
 from cipher.datastores.postgres.tables.entity_relationship_candidate import (
     EntityRelationshipCandidateTable,
@@ -61,6 +62,13 @@ class PostgresRelationshipCandidateRepository:
             where.append(EntityRelationshipCandidateTable.src_entity_id == request.src_entity_id)
         if request.dst_entity_id:
             where.append(EntityRelationshipCandidateTable.dst_entity_id == request.dst_entity_id)
+        if request.entity_id:
+            where.append(
+                or_(
+                    EntityRelationshipCandidateTable.src_entity_id == request.entity_id,
+                    EntityRelationshipCandidateTable.dst_entity_id == request.entity_id,
+                )
+            )
         if request.dataset_id:
             where.append(EntityRelationshipCandidateTable.dataset_id == request.dataset_id)
         if request.status:
@@ -81,8 +89,21 @@ class PostgresRelationshipCandidateRepository:
             .offset((request.page - 1) * request.limit)
             .limit(request.limit)
         )
-        result = await self.session.execute(stmt)
-        data = [RelationshipCandidate.model_validate(r) for r in result.scalars().all()]
+        rows = (await self.session.execute(stmt)).scalars().all()
+        ids = {r.src_entity_id for r in rows} | {r.dst_entity_id for r in rows}
+        names = dict(
+            (
+                await self.session.execute(
+                    select(EntityTable.id, EntityTable.display_name).where(EntityTable.id.in_(ids))
+                )
+            ).all()
+        )
+        data = [
+            RelationshipCandidate.model_validate(r).model_copy(
+                update={"src_name": names.get(r.src_entity_id), "dst_name": names.get(r.dst_entity_id)}
+            )
+            for r in rows
+        ]
         return PaginatedRelationshipCandidatesResponse(total=total, page=request.page, limit=request.limit, data=data)
 
     async def resolve(self, candidate_id: str, review: RelationshipReview) -> RelationshipCandidate | None:

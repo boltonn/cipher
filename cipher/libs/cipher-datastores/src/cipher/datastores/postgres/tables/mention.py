@@ -33,9 +33,7 @@ class MentionTable(Base):
     # The chunk whose span contains this mention's start_offset -- the materialized
     # chunk<->mention range-join. Populated at extraction time; null for
     # header/metadata mentions with no text offset, and until backfilled.
-    chunk_id: Mapped[str | None] = mapped_column(
-        String, ForeignKey("chunk.id", ondelete="SET NULL"), nullable=True
-    )
+    chunk_id: Mapped[str | None] = mapped_column(String, ForeignKey("chunk.id", ondelete="SET NULL"), nullable=True)
 
     mentioned_type: Mapped[MentionedType] = mapped_column(Enum(MentionedType, native_enum=False), nullable=False)
     mentioned_id: Mapped[str] = mapped_column(String, nullable=False)

@@ -15,6 +15,7 @@ import {
   nodeGlyphUrl,
 } from "@/features/graph/lib/node-glyphs";
 import Graph from "graphology";
+import { humanize } from "@/lib/utils";
 
 const NODE_MIN = 5;
 const NODE_MAX = 22;
@@ -44,8 +45,8 @@ export interface EdgeRelationship {
 
 const relationshipLabel = (r: EdgeRelationship) =>
   r.weight > 1
-    ? `${r.relationshipType.replace(/_/g, " ")} · ${r.weight.toLocaleString()}`
-    : r.relationshipType.replace(/_/g, " ");
+    ? `${humanize(r.relationshipType)} · ${r.weight.toLocaleString()}`
+    : humanize(r.relationshipType);
 
 export interface BuiltNetwork {
   graph: Graph;

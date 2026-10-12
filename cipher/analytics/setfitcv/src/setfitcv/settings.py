@@ -22,7 +22,7 @@ class Settings(BaseServiceSettings):
         default=0, description="Timeout for batching in seconds", alias="IMAGE_EMBEDDING_BATCH_TIMEOUT"
     )
     device: ModelDevice | None = Field(
-        default=None, description="Device to use for the model", alias="IMAGE_EMBEDDING_MODE_DEVICE"
+        default=None, description="Device to use for the model", alias="IMAGE_EMBEDDING_MODEL_DEVICE"
     )
     heads_dir: Path | None = Field(
         default=None, description="Trained tag heads (`heads.safetensors` + `heads.json`)", alias="IMAGE_HEADS_DIR"

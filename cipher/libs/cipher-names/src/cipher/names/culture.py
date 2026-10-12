@@ -122,6 +122,21 @@ PATRONYMIC_SUFFIXES: frozenset[str] = frozenset(
 )
 
 
+_ARABIC_NASAB_WORDS = frozenset({"bin", "ibn", "bint"})
+# `-ich` alone also ends Germanic surnames (Dietrich), so only the unambiguous forms count
+_SLAVIC_PATRONYMIC_ENDINGS = ("ovich", "evich", "ovna", "evna", "ovych", "ivna")
+
+
+def _shape_culture(text: str) -> Culture | None:
+    """Latin-script names that still show their convention: `Ahmed bin Khalid`, `Ivan Petrovich Sidorov`."""
+    words = [w.strip(".,").lower() for w in text.split()]
+    if _ARABIC_NASAB_WORDS & set(words[1:-1]):
+        return Culture.ARABIC
+    if len(words) >= 3 and any(w.endswith(_SLAVIC_PATRONYMIC_ENDINGS) for w in words[1:]):
+        return Culture.EAST_SLAVIC
+    return None
+
+
 def infer_culture(
     *,
     region_hint: str | None = None,
@@ -138,7 +153,7 @@ def infer_culture(
         if hit:
             return hit
     if text:
-        hit = _SCRIPT_CULTURE.get(dominant_script(text))
+        hit = _SCRIPT_CULTURE.get(dominant_script(text)) or _shape_culture(text)
         if hit:
             return hit
     return Culture.GENERIC_WESTERN

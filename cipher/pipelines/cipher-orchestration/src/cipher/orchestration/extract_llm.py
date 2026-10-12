@@ -41,12 +41,16 @@ from cipher.orchestration.extract_entities import persist_file_entities
 from cipher.orchestration.extract_events import (
     _CALENDAR_MIME,
     TEXT_EVENT_GROUPS_EMAIL,
+    _author,
+    _author_label,
     _load_event_dedup_keys,
     _reference_date,
     persist_llm_events,
     tag_event_files,
 )
 from cipher.orchestration.memberships import persist_memberships
+from cipher.orchestration.run_recorder import RunStoppedError
+from cipher.schemas.content.text_correction import correction_filter
 from cipher.schemas.ingestion.enrichment import EnrichableType, EnrichmentType
 
 if TYPE_CHECKING:
@@ -149,13 +153,10 @@ async def extract_llm_workflow(
     warned_eta = False
 
     count = failed_count = mention_count = relation_count = event_count = 0
-    aborted = False
     attempted: set[str] = set()  # enrichment ids tried this run -- don't re-loop our own FAILEDs
 
     with tqdm(total=target, desc=f"Extracting (llm: {','.join(sorted(tasks))})", unit=" file") as pbar:
         for group in filetype_groups:
-            if aborted:
-                break
             while limit is None or count + failed_count < limit:
                 remaining = batch_size if limit is None else min(batch_size, limit - count - failed_count)
                 batch = await enrichment_repo.get_pending_batch(
@@ -197,7 +198,10 @@ async def extract_llm_workflow(
                     async with sem:
                         try:
                             res = await runner.extract_all(
-                                content, tasks=tasks, reference_date=_reference_date(extracted)
+                                content,
+                                tasks=tasks,
+                                reference_date=_reference_date(extracted),
+                                author=_author_label(_author(extracted)),
                             )
                             return item, extracted, content, res, None
                         except Exception as exc:  # noqa: BLE001 -- reported per file below
@@ -214,6 +218,14 @@ async def extract_llm_workflow(
                         continue
                     try:
                         if do_entities:
+                            keep = (
+                                correction_filter(
+                                    corrected_ranges=extracted.corrected_ranges or [],
+                                    taken=await mention_repo.text_spans(mentioned_id=extracted.id),
+                                )
+                                if extracted.is_content_corrected
+                                else None
+                            )
                             written_mentions, written_relations = await persist_file_entities(
                                 spans=list(res.entities.entities),
                                 relations=list(res.entities.relations),
@@ -225,6 +237,7 @@ async def extract_llm_workflow(
                                 model=resolved_model,
                                 mention_repo=mention_repo,
                                 relation_repo=relation_repo,
+                                keep=keep,
                             )
                             mention_count += written_mentions
                             relation_count += written_relations
@@ -236,6 +249,7 @@ async def extract_llm_workflow(
                                 model=resolved_model,
                                 seen=seen,
                                 event_repo=event_repo,
+                                author=_author(extracted),
                             )
                             await persist_memberships(
                                 session,
@@ -252,6 +266,16 @@ async def extract_llm_workflow(
                         await session.rollback()
                         failed[item.enrichment.id] = exc
 
+                # A whole batch failing is systemic (server down, bad model, schema drift), not the files:
+                # requeue it untouched and stop rather than burn the retry budget one expensive call at a time.
+                if failed and not completed and work:
+                    await enrichment_repo.release_claims(list(failed))
+                    await session.commit()
+                    raise RunStoppedError(
+                        f"Every file in a batch failed ({len(failed)}); stopped after {count} files and put the "
+                        f"batch back in the queue. Check the LLM server and the last error above, then re-run."
+                    )
+
                 await tag_event_files(
                     session, with_events=with_events, without_events=without_events, model=resolved_model
                 )
@@ -266,17 +290,6 @@ async def extract_llm_workflow(
 
                 count += len(completed)
                 failed_count += len(failed)
-
-                # A whole batch failing is systemic (server down, bad model,
-                # schema drift) -- bail rather than burn the retry budget one
-                # expensive call at a time.
-                if failed and not completed and work:
-                    logger.error(
-                        f"extract-llm: every file in the batch failed ({len(failed)}); stopping. "
-                        f"Check the LLM server and the last error above."
-                    )
-                    aborted = True
-                    break
 
                 done = count + failed_count
                 per_file = (time.monotonic() - started) / max(done, 1)

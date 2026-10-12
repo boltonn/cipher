@@ -42,6 +42,7 @@ from cipher.schemas.content.extraction import (
     TextExtractor,
 )
 from cipher.schemas.ingestion.enrichment import EnrichableType, EnrichmentType
+from cipher.utils.uri import local_copy
 
 if TYPE_CHECKING:
     from pyvllm.ocr.client import OcrClient
@@ -242,18 +243,18 @@ async def _ocr_file(
     client: "OcrClient", file_resource: dict, min_chars: int, force: bool, figures: bool, min_image_side: int
 ) -> tuple[OcrResponse, dict[int, str]] | None:
     """Network + CPU only (no DB): pick pages, call the service, fetch native text for mixed PDFs."""
-    path = Path(file_resource["path"])
-    if file_resource["filetype"] in IMAGE_FILETYPES and is_below_min_side(path, min_image_side):
-        return None
-    pages = None
-    if file_resource["filetype"] in PDF_FILETYPES and not force:
-        pages = await asyncio.to_thread(scanned_pages, path, min_chars)
-        if not pages:
+    with local_copy(file_resource["uri"]) as path:
+        if file_resource["filetype"] in IMAGE_FILETYPES and is_below_min_side(path, min_image_side):
             return None
-    response = await client.ocr(path, OcrRequest(pages=pages, figures=figures))
-    native = {}
-    if file_resource["filetype"] in PDF_FILETYPES and len(response.pages) < response.page_count:
-        native = await asyncio.to_thread(_native_page_texts, path)
+        pages = None
+        if file_resource["filetype"] in PDF_FILETYPES and not force:
+            pages = await asyncio.to_thread(scanned_pages, path, min_chars)
+            if not pages:
+                return None
+        response = await client.ocr(path, OcrRequest(pages=pages, figures=figures))
+        native = {}
+        if file_resource["filetype"] in PDF_FILETYPES and len(response.pages) < response.page_count:
+            native = await asyncio.to_thread(_native_page_texts, path)
     return response, native
 
 
@@ -272,6 +273,9 @@ def _copy_for(
         content_format=source.content_format,
         extractor=source.extractor,
         prechunked=source.prechunked,
+        is_content_corrected=source.is_content_corrected,
+        content_corrected_by=source.content_corrected_by,
+        corrected_ranges=source.corrected_ranges,
         metadata=source.metadata.model_copy(
             update={
                 "filename": file_resource["filename"],
@@ -285,10 +289,13 @@ def _copy_for(
 async def _write(session: "AsyncSession", extracted: ExtractedTextCreate, existing: ExtractedText | None) -> bool:
     """Persist OCR text and requeue what reads it. True when older mentions may now be stale.
 
-    Text always gets re-embedded. Mention-producing consumers are only re-run when the
+    A text an analyst corrected is left as it is. Otherwise text always gets re-embedded.
+    Mention-producing consumers are only re-run when the
     file had no text before -- they append rows, so re-running over replaced text
     would duplicate mentions; those files are reported instead.
     """
+    if existing is not None and existing.is_content_corrected:
+        return False
     enrichment_repo = PostgresEnrichmentRepository(session=session)
     await PostgresExtractedTextRepository(session=session).upsert(extracted)
     file_ids = [extracted.file_id]

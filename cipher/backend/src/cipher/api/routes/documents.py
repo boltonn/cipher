@@ -88,9 +88,7 @@ async def search_hybrid(
     if embedding is None:
         raise HTTPException(status_code=503, detail="Embedding model unavailable")
 
-    request = ChunkHybridSearchRequest.model_validate(
-        {**params.model_dump(exclude_none=True), "embedding": embedding}
-    )
+    request = ChunkHybridSearchRequest.model_validate({**params.model_dump(exclude_none=True), "embedding": embedding})
     request.filters = _scoped_to_documents(request.filters, access)
     return await datastore.search_hybrid(request=request)
 

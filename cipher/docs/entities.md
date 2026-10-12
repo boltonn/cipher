@@ -296,13 +296,17 @@ how they fit together on the Entities page.
 
 1. **Extraction makes mentions.** Each mention is one occurrence of a name or identifier in a
    file. Unresolved mentions of the same name form a **name group** ("dell": 639 mentions).
-2. **`resolve-entities` sorts the name groups.** For each, it resolves automatically (one safe
-   rule), files **suggested resolutions** (pending `entity_match` rows), **auto-creates** an
-   entity (a typed name with enough mentions and no match), or leaves the name with no entity yet.
-3. **Verify tab — check auto-created entities first.** Biggest first: **verify** keeps one as a
-   real entity (`POST /entities/{id}/promote`), **edit** fixes its name, **merge** folds a
-   duplicate ("Dell Inc") into the entity it repeats ("Dell"). Doing this first means later
-   resolutions point at checked entities.
+2. **`resolve-entities` decides once per resolution unit** -- one name key, any type
+   (`Adaire`, `Adaire's`, `Adaire (no reply)`, a person `Adaire`). Same names settle first
+   (auto-created duplicates fold; names attach to their auto-created entity), then each unit is
+   resolved automatically (one safe rule), given **suggested resolutions** (pending
+   `entity_match` rows), or given **one** auto-created entity; auto-created entities new since
+   the last run are checked against the others for duplicates. See `entity-resolution.md` §0.
+3. **Verify tab — check auto-created entities.** Biggest first: **verify** keeps one as a
+   real entity (`POST /entities/{id}/promote`), **edit** fixes its name, and each row lists the
+   entities it may duplicate -- **merge** folds it in (`POST /entities/matches/{id}/resolve`),
+   **keep apart** says it's different. Doing this first means later resolutions point at
+   checked entities.
 4. **Resolve tab — one decision per name group** (`GET /mentions/unresolved-names`, each row
    carrying its `resolutions`). **Accept** a suggested resolution
    (`POST /entities/matches/{id}/resolve {status:"confirmed"}`), **reject** it, resolve to
@@ -336,9 +340,10 @@ load-files → extract-text → embed-text
           → extract-entities --extractor llm|gliner|nerd   (ENTITY_EXTRACTION — NER → name/address
                                     mentions + mention_relationship rows for every relation reported
                                     between two of those spans)
-          → resolve-entities       (sweep: blocking + scoring + auto-link / candidates; then promotes
-                                    every mention_relationship whose endpoints both resolved into an
-                                    entity_relationship_candidate, endpoint types validated)
+          → resolve-entities       (sweep, one call: blocking + scoring + auto-link / candidates; then
+                                    promotes every mention_relationship whose endpoints both resolved
+                                    into an entity_relationship_candidate, endpoint types validated;
+                                    then places, merge suggestions, event links)
           → [extract-relationships](directed email `emailed` edges — selector-only; independent)
 ```
 
@@ -474,6 +479,10 @@ alembic upgrade head           # ...then apply 0002
 
 Rule going forward: **new tables → `create_all` is still fine; column or data
 changes → write an Alembic revision.**
+
+Each migration statement waits at most `ALEMBIC_LOCK_TIMEOUT` (default 10s) for a lock,
+then fails, rather than queueing behind a busy table and stalling every query that arrives
+after it. Re-run it when the app is quieter.
 
 ## 12. Extending the ontology
 

@@ -39,10 +39,12 @@ members = [
     "face",
     "filetyper",
     "nerd",
+    "pyarchive",
     "pygliner",
     "pyparse",
     "pyprompt",
     "pyselectors",
+    "pytabular",
     "pyvllm",
     "pyxberg",
     "setfitcv",
@@ -64,6 +66,24 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/8d/75/94cd5d389649578aca399e5aa822637eec18319a1dadc400ffe2f9a7493f/accelerate-1.14.0.tar.gz", hash = "sha256:41b9c4377a54e0b460a959b0defa1b736e4ca0a2373252d9a539964c2afe3c8d", size = 412167, upload-time = "2026-06-11T13:45:52.326Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a8/db/253133d7e7cb40d3af384bb2f5c0b4a2b7fdcffbc95c688cc67a20a3c103/accelerate-1.14.0-py3-none-any.whl", hash = "sha256:e94390c2863b873be18f623f9df48a0d8fe5eff13ea7f1a00092b0a7904888c6", size = 389246, upload-time = "2026-06-11T13:45:50.477Z" },
+]
+
+[[package]]
+name = "aiobotocore"
+version = "3.9.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "aiohttp" },
+    { name = "aioitertools" },
+    { name = "botocore" },
+    { name = "jmespath" },
+    { name = "multidict" },
+    { name = "python-dateutil" },
+    { name = "wrapt" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a5/95/4f7e0453d5e81bdb1b40ecf09f135bb88e12ce27fdb3efa125022dcca5d7/aiobotocore-3.9.2.tar.gz", hash = "sha256:8e32238c5bd77717ab1ac90077ff51ab141d025528115ccc7cc9b50b2d176e5f", size = 524343, upload-time = "2026-10-01T02:01:59.522Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/09/ab/c8f982c4dfaab49200e31820a4ffe6275356f7dcaaa1024735d8f8b4e048/aiobotocore-3.9.2-py3-none-any.whl", hash = "sha256:363b4892423b272eb84afbb58000da0be6ccd0cf8a68b98438c957d05b841efc", size = 102571, upload-time = "2026-10-01T02:01:57.883Z" },
 ]
 
 [[package]]
@@ -157,6 +177,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/93/bd/fb25f3049957553d4ce0ba6ae480aa2f592a6985497fca590837d16c1be0/aiohttp-3.14.1-cp314-cp314t-musllinux_1_2_riscv64.whl", hash = "sha256:b165790117eea512d7f3fb22f1f6dad3d55a7189571993eb015591c1401276d1", size = 1668571, upload-time = "2026-06-07T21:09:21.458Z" },
     { url = "https://files.pythonhosted.org/packages/3f/22/7f73303d64dd567ff3addca90b556690ed1233a47b8f55d242fb90af3681/aiohttp-3.14.1-cp314-cp314t-musllinux_1_2_s390x.whl", hash = "sha256:ed09c7eb1c391271c2ed0314a51903e72a3acb653d5ccfc264cdf3ef11f8269d", size = 1881159, upload-time = "2026-06-07T21:09:23.813Z" },
     { url = "https://files.pythonhosted.org/packages/44/be/0474c5a8b5640e1e4aa1923430a91f4151be82e511373fe764189b89aef5/aiohttp-3.14.1-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:99abd37084b82f5830c635fddd0b4993b9742a66eb746dacf433c8590e8f9e3c", size = 1841409, upload-time = "2026-06-07T21:09:26.207Z" },
+]
+
+[[package]]
+name = "aioitertools"
+version = "0.13.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/fd/3c/53c4a17a05fb9ea2313ee1777ff53f5e001aefd5cc85aa2f4c2d982e1e38/aioitertools-0.13.0.tar.gz", hash = "sha256:620bd241acc0bbb9ec819f1ab215866871b4bbd1f73836a55f799200ee86950c", size = 19322, upload-time = "2025-11-06T22:17:07.609Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/10/a1/510b0a7fadc6f43a6ce50152e69dbd86415240835868bb0bd9b5b88b1e06/aioitertools-0.13.0-py3-none-any.whl", hash = "sha256:0be0292b856f08dfac90e31f4739432f4cb6d7520ab9eb73e143f4f2fa5259be", size = 24182, upload-time = "2025-11-06T22:17:06.502Z" },
 ]
 
 [[package]]
@@ -300,6 +329,41 @@ wheels = [
 ]
 
 [[package]]
+name = "backports-zstd"
+version = "1.7.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/75/f0/9ba1b05811aa5f5434f69768253129460a5744e1814f359efba39a01ce20/backports_zstd-1.7.0.tar.gz", hash = "sha256:1a967189c1822b6e85a2e550fdfc88a3272c17633ea0a4732dac5911a8034f2b", size = 1003722, upload-time = "2026-08-15T17:26:43.96Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b2/cb/557db98001c4a7202beed19e8bd42603a2315b80fd5def7e21a0b048ec3b/backports_zstd-1.7.0-cp312-cp312-manylinux2010_i686.manylinux_2_12_i686.manylinux_2_28_i686.whl", hash = "sha256:8344260bed9842c415a93d9bfe23ea834e5f27758827d56933d8c0d06db507a2", size = 508475, upload-time = "2026-08-15T17:25:40.367Z" },
+    { url = "https://files.pythonhosted.org/packages/40/4b/820acbc2c1d1d945aedca0c0d22546a948630ffb186df523098fbd669a95/backports_zstd-1.7.0-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:1c55e55e1e9dee312bc5e186386e6aa5207482a6d2242bd7c14709ded254f87f", size = 478240, upload-time = "2026-08-15T17:25:41.806Z" },
+    { url = "https://files.pythonhosted.org/packages/f9/76/77fa9b385e79d4c106ce15d66681978f39a844b0eb5db02682687246b716/backports_zstd-1.7.0-cp312-cp312-manylinux2014_ppc64le.manylinux_2_17_ppc64le.manylinux_2_28_ppc64le.whl", hash = "sha256:cf609af3735c7e697ccd13f6b0c88da57c201b6ea63c6afbfe81d6f9b50e298c", size = 583611, upload-time = "2026-08-15T17:25:43.104Z" },
+    { url = "https://files.pythonhosted.org/packages/95/a4/fbb7c73336f3279dad36da94382a59755100b656301ea836ebaa42736581/backports_zstd-1.7.0-cp312-cp312-manylinux2014_s390x.manylinux_2_17_s390x.manylinux_2_28_s390x.whl", hash = "sha256:676a37971f676830d4f90cee8fdf4e438781596fb2f2d1984ac76c9b3eb39a69", size = 642496, upload-time = "2026-08-15T17:25:44.322Z" },
+    { url = "https://files.pythonhosted.org/packages/1e/40/121917bd2671bc3f1507c25503c0554f0b52483edcca4e6210e6d22228df/backports_zstd-1.7.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:470895d0bcddc850766e593d1b26764fb138c2feed149f515a2627ef9587d54c", size = 496195, upload-time = "2026-08-15T17:25:45.503Z" },
+    { url = "https://files.pythonhosted.org/packages/de/c7/c6379a0d734bea1c7f14d07c23258108cc92b994654e25cfe3a3e88cd785/backports_zstd-1.7.0-cp312-cp312-manylinux_2_34_riscv64.manylinux_2_39_riscv64.whl", hash = "sha256:02f2f6649a342d0901ddb35596ddadb7c3bb1cf6bb54d691e5e0285f1fa0674f", size = 570964, upload-time = "2026-08-15T17:25:46.648Z" },
+    { url = "https://files.pythonhosted.org/packages/7a/a4/372c3dd3017c3f93cda0acbc282f8073b70efdc1b56d1fdeebe023660725/backports_zstd-1.7.0-cp312-cp312-musllinux_1_2_aarch64.whl", hash = "sha256:132ba81fad59d44958b7d10da31545e7128c469cfbc2e268d0eaab96daa64175", size = 484276, upload-time = "2026-08-15T17:25:48.129Z" },
+    { url = "https://files.pythonhosted.org/packages/f5/50/83fa7bdd5e1d808203b9143848fdf7e15de399b8119a0d4378b2aea9be78/backports_zstd-1.7.0-cp312-cp312-musllinux_1_2_i686.whl", hash = "sha256:a3e1c6ce0b232ee6703ed24ee126e8186107f5a4e56edbd21cd1aa5a8c6bfd12", size = 511963, upload-time = "2026-08-15T17:25:49.666Z" },
+    { url = "https://files.pythonhosted.org/packages/56/d2/d4ed32c353148acc18f3b665ab24a677b9c49d3640244424c5d6046400c5/backports_zstd-1.7.0-cp312-cp312-musllinux_1_2_ppc64le.whl", hash = "sha256:d7a7cb964eb8d1bb5d039970b16fe54802ea47dc935ae96d9874844a126bf8ff", size = 588025, upload-time = "2026-08-15T17:25:51.288Z" },
+    { url = "https://files.pythonhosted.org/packages/ae/5a/df8b5b848e8dfdec6edca55f22067ffbafa081d81aec1313e28155c3fea3/backports_zstd-1.7.0-cp312-cp312-musllinux_1_2_riscv64.whl", hash = "sha256:12a9842a2ec2854cbec7f252ab29d44c2b772788a9bbafded743ca4bf73b115f", size = 568223, upload-time = "2026-08-15T17:25:52.633Z" },
+    { url = "https://files.pythonhosted.org/packages/43/8c/f970f15e7fdbf8a251f121c91364fa68bbc2dfab4d5eca058427dec63397/backports_zstd-1.7.0-cp312-cp312-musllinux_1_2_s390x.whl", hash = "sha256:138154eea8ced84394991bf0e819dba6b690306a178dd528c28eee724b7d4aec", size = 632937, upload-time = "2026-08-15T17:25:54.511Z" },
+    { url = "https://files.pythonhosted.org/packages/6a/d0/e36c18c87a74421954502d123ff7027e0a63a7624dffa99ec0f7474deff9/backports_zstd-1.7.0-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:468b636ed365627b364c94be1c35a52858e13b5bc1fa3f068bbc71b1af65f3d7", size = 500735, upload-time = "2026-08-15T17:25:56.064Z" },
+    { url = "https://files.pythonhosted.org/packages/76/e8/8209081e094aa98b2f28bac388619c85b1a44aed813d6b3c54d1da79d19a/backports_zstd-1.7.0-cp313-cp313-ios_13_0_arm64_iphoneos.whl", hash = "sha256:ecc95fa0e91d92951d74468e7789afdf91d9e702f40af2d0fcbf0ded4d0f650a", size = 357992, upload-time = "2026-08-15T17:26:03.552Z" },
+    { url = "https://files.pythonhosted.org/packages/b3/65/64025302bae4ba924d613e404c6120bf194b5636786960ece274622a4a3e/backports_zstd-1.7.0-cp313-cp313-ios_13_0_arm64_iphonesimulator.whl", hash = "sha256:34154d82fc0246738159084d146401073f9ac9cfd755b66bb8853ca06037810c", size = 366686, upload-time = "2026-08-15T17:26:04.812Z" },
+    { url = "https://files.pythonhosted.org/packages/4a/b9/c4d24d113d28b774662152c462d38d28109741d6d45c1aea7834371741dc/backports_zstd-1.7.0-cp313-cp313-ios_13_0_x86_64_iphonesimulator.whl", hash = "sha256:44b687b1c0be5cb279693d2682f91ff84c559d679b2ef2fbe501fe4b2db2c4bb", size = 447221, upload-time = "2026-08-15T17:26:05.979Z" },
+    { url = "https://files.pythonhosted.org/packages/17/9b/7289dc191b34279d8f176bf5b181c3b26f8e049d14a2c0a2637650f034e5/backports_zstd-1.7.0-cp313-cp313-manylinux2010_i686.manylinux_2_12_i686.manylinux_2_28_i686.whl", hash = "sha256:7e3999b5141d7f85171822d06112f70f7f317d162f0120530dd2c7a28dbf8add", size = 507676, upload-time = "2026-08-15T17:26:09.909Z" },
+    { url = "https://files.pythonhosted.org/packages/7c/4d/6dd730b79ab96532e23fe851003545b4cc79e50c5b4c79ffcbe1b724eec4/backports_zstd-1.7.0-cp313-cp313-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:69367726f4075c2574746f5883b0dc045805c5b02a81fdf8c829c26d33969de3", size = 477744, upload-time = "2026-08-15T17:26:11.038Z" },
+    { url = "https://files.pythonhosted.org/packages/e1/53/11687e5019d56ea47893cf2ba59a6b4884a4e2d1496d0e653aed373b973f/backports_zstd-1.7.0-cp313-cp313-manylinux2014_ppc64le.manylinux_2_17_ppc64le.manylinux_2_28_ppc64le.whl", hash = "sha256:15e97edfd173ade365c01bac7d9d297fa906686015cdbcb5f32a0d410887826b", size = 583215, upload-time = "2026-08-15T17:26:12.379Z" },
+    { url = "https://files.pythonhosted.org/packages/aa/c7/5a8c58542469ab31680c403b844770c119a976fd4cf1000fd7d53e7d0f77/backports_zstd-1.7.0-cp313-cp313-manylinux2014_s390x.manylinux_2_17_s390x.manylinux_2_28_s390x.whl", hash = "sha256:32a94cdcf16b44395cd55086ea38877395ca6bf3362cb507b0eb86db2a45a6a4", size = 644125, upload-time = "2026-08-15T17:26:13.651Z" },
+    { url = "https://files.pythonhosted.org/packages/11/35/be5485e65df95b86c4981ad4a577b505cfeec6b700a46a86e2e3175ac718/backports_zstd-1.7.0-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:f3f4887a8a1fd1290017fe5a1d29a7d1dc5c57f9477fbd64f119316a7e3ae769", size = 492714, upload-time = "2026-08-15T17:26:14.838Z" },
+    { url = "https://files.pythonhosted.org/packages/96/8b/a0603458ca08e4a56f09ae58588ce3c0453425e753df704d9aeaabb66ae5/backports_zstd-1.7.0-cp313-cp313-manylinux_2_34_riscv64.manylinux_2_39_riscv64.whl", hash = "sha256:e590313ce156f1d8986dff3107e8ed1651d6d106a56b3a95f965ff8d845ba979", size = 567953, upload-time = "2026-08-15T17:26:16.276Z" },
+    { url = "https://files.pythonhosted.org/packages/02/87/2296db4c3c578947c35ccd8dcdf7992316d7e1f5f43cc829c062b3ed9319/backports_zstd-1.7.0-cp313-cp313-musllinux_1_2_aarch64.whl", hash = "sha256:565270b0d6497970fa97a0df59593ae0d225e4176678bbce851d39e5f8aa422b", size = 483564, upload-time = "2026-08-15T17:26:17.493Z" },
+    { url = "https://files.pythonhosted.org/packages/c0/d8/f53a79e6bf3cdb7ae08f95220c80bd0d606f3d6c3482995deaf21d024fb9/backports_zstd-1.7.0-cp313-cp313-musllinux_1_2_i686.whl", hash = "sha256:37ef23c6c522fe935726c8fba6344350973c4a23b06d10194d90d0868b09ff7a", size = 511193, upload-time = "2026-08-15T17:26:18.7Z" },
+    { url = "https://files.pythonhosted.org/packages/31/ea/d4e2eb159cd5813debd5a34d0644caff5fe7cf2e569bf5b02a82934aeee7/backports_zstd-1.7.0-cp313-cp313-musllinux_1_2_ppc64le.whl", hash = "sha256:b3975330159f1efdd1fba76afe1c7b84f66f26e2bf209b32630fb148d647e0d5", size = 587748, upload-time = "2026-08-15T17:26:20.148Z" },
+    { url = "https://files.pythonhosted.org/packages/81/d2/b5ec9709660fb1c193508215d9c30e781fac406183faac7c3c36b1c583a9/backports_zstd-1.7.0-cp313-cp313-musllinux_1_2_riscv64.whl", hash = "sha256:b40bc8cd0a86cbbe8263a9c3a2bf2e34897483516c6d799725412a19524c32e3", size = 565808, upload-time = "2026-08-15T17:26:21.349Z" },
+    { url = "https://files.pythonhosted.org/packages/bd/13/004735cc4536483cbd973a60346a9dbc7bb977b13c28b55a11da14bb0a1e/backports_zstd-1.7.0-cp313-cp313-musllinux_1_2_s390x.whl", hash = "sha256:f37e12ef10747f76901b1f20ef70d33221e861de177dba5ba08552242c6fd4bd", size = 634520, upload-time = "2026-08-15T17:26:22.944Z" },
+    { url = "https://files.pythonhosted.org/packages/a3/28/05b11f7084d1100491cf7c60962aafd900c3dd01b1fc1ce85914476cdae0/backports_zstd-1.7.0-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:5992143b2a8b71b4d17afed20cce2df50f8718228e31d6e716493b1fe9201712", size = 497098, upload-time = "2026-08-15T17:26:24.181Z" },
+]
+
+[[package]]
 name = "beartype"
 version = "0.22.9"
 source = { registry = "https://pypi.org/simple" }
@@ -319,6 +383,20 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/43/65/318323f98dbee45d42dff61d8f047181bc6f2268a9068cfad035a46be5af/beautifulsoup4-4.15.0.tar.gz", hash = "sha256:288e3ca7d54b06f2ac191970bc275c1939cb46d450b255bf6718b04aa37ab4f7", size = 632571, upload-time = "2026-06-07T16:44:20.453Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/88/c6/92fcd42f1ba33e1184263f25bfabf3d27c383410470f169e4b8163bf9c17/beautifulsoup4-4.15.0-py3-none-any.whl", hash = "sha256:d6f88de62e1d4e38ecb1077eb9724cd0eff29d2a08ca16a401e9b9e93f117cf9", size = 109924, upload-time = "2026-06-07T16:44:21.566Z" },
+]
+
+[[package]]
+name = "botocore"
+version = "1.43.106"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "jmespath" },
+    { name = "python-dateutil" },
+    { name = "urllib3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/11/b9/10ca68d0092895d5ea60f485a61a9840d5aff9d732c66ed60da53a20b1d4/botocore-1.43.106.tar.gz", hash = "sha256:006870b3b4e40547232ad12c3bb4faec91bbbe0659aafaa3b7fa48a112c4ee97", size = 16271399, upload-time = "2026-09-30T19:36:35.836Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a8/eb/c51d3b54dfaa9267a687359d946dc2a1ca6a27fb4d381773e59b7bd72bf4/botocore-1.43.106-py3-none-any.whl", hash = "sha256:c1fb8818f9957cb5037f73db34ac1a12ba43562e31d6e7f9cb7e5fc64e1dba78", size = 15965506, upload-time = "2026-09-30T19:36:32.625Z" },
 ]
 
 [[package]]
@@ -491,14 +569,16 @@ all-cuda = [
     { name = "clir", extra = ["tables"] },
     { name = "face" },
     { name = "face", extra = ["cuda"], marker = "(extra == 'extra-4-clir-cpu' and extra == 'extra-4-clir-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-4-face-cuda') or (extra != 'extra-4-clir-cpu' and extra == 'extra-4-face-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-4-nerd-cpu' and extra == 'extra-4-nerd-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-8-pygliner-cpu' and extra == 'extra-8-pygliner-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-8-setfitcv-cpu' and extra == 'extra-8-setfitcv-cuda') or (extra != 'extra-4-clir-cpu' and extra == 'extra-4-nerd-cpu' and extra == 'extra-4-nerd-cuda') or (extra != 'extra-4-clir-cpu' and extra == 'extra-8-pygliner-cpu' and extra == 'extra-8-pygliner-cuda') or (extra != 'extra-4-clir-cpu' and extra == 'extra-8-setfitcv-cpu' and extra == 'extra-8-setfitcv-cuda')" },
-    { name = "filetyper" },
+    { name = "filetyper", extra = ["lz4", "pdf", "zstd"] },
     { name = "nerd" },
     { name = "nerd", extra = ["cuda"], marker = "(extra == 'extra-4-clir-cpu' and extra == 'extra-4-clir-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-4-nerd-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-4-face-cpu' and extra == 'extra-4-face-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-8-pygliner-cpu' and extra == 'extra-8-pygliner-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-8-setfitcv-cpu' and extra == 'extra-8-setfitcv-cuda') or (extra != 'extra-4-clir-cpu' and extra == 'extra-4-face-cpu' and extra == 'extra-4-face-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cuda' and extra == 'extra-4-nerd-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cpu' and extra == 'extra-4-nerd-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cuda' and extra == 'extra-8-pygliner-cpu' and extra == 'extra-8-pygliner-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cuda' and extra == 'extra-8-setfitcv-cpu' and extra == 'extra-8-setfitcv-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cpu' and extra == 'extra-8-pygliner-cpu' and extra == 'extra-8-pygliner-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cpu' and extra == 'extra-8-setfitcv-cpu' and extra == 'extra-8-setfitcv-cuda')" },
+    { name = "pyarchive", extra = ["lz4", "pdf", "zstd"] },
     { name = "pygliner" },
     { name = "pygliner", extra = ["cuda"], marker = "(extra == 'extra-4-clir-cpu' and extra == 'extra-4-clir-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-8-pygliner-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-4-face-cpu' and extra == 'extra-4-face-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-4-nerd-cpu' and extra == 'extra-4-nerd-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-8-setfitcv-cpu' and extra == 'extra-8-setfitcv-cuda') or (extra != 'extra-4-clir-cpu' and extra == 'extra-4-face-cpu' and extra == 'extra-4-face-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cuda' and extra == 'extra-8-pygliner-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cuda' and extra == 'extra-4-nerd-cpu' and extra == 'extra-4-nerd-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cuda' and extra == 'extra-8-setfitcv-cpu' and extra == 'extra-8-setfitcv-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cpu' and extra == 'extra-4-nerd-cpu' and extra == 'extra-4-nerd-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cpu' and extra != 'extra-4-nerd-cuda' and extra == 'extra-8-pygliner-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cpu' and extra != 'extra-4-nerd-cpu' and extra == 'extra-8-pygliner-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cpu' and extra != 'extra-4-nerd-cuda' and extra == 'extra-8-setfitcv-cpu' and extra == 'extra-8-setfitcv-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cpu' and extra != 'extra-4-nerd-cpu' and extra == 'extra-8-setfitcv-cpu' and extra == 'extra-8-setfitcv-cuda')" },
     { name = "pyparse", extra = ["all"] },
     { name = "pyprompt" },
     { name = "pyselectors" },
+    { name = "pytabular" },
     { name = "pyvllm" },
     { name = "pyxberg" },
     { name = "setfitcv" },
@@ -507,12 +587,14 @@ all-cuda = [
 analytics-cpu = [
     { name = "clir" },
     { name = "face" },
-    { name = "filetyper" },
+    { name = "filetyper", extra = ["lz4", "pdf", "zstd"] },
     { name = "nerd" },
+    { name = "pyarchive", extra = ["lz4", "pdf", "zstd"] },
     { name = "pygliner" },
     { name = "pyparse", extra = ["all"] },
     { name = "pyprompt" },
     { name = "pyselectors" },
+    { name = "pytabular" },
     { name = "pyvllm" },
     { name = "pyxberg" },
     { name = "setfitcv" },
@@ -522,14 +604,16 @@ analytics-cuda = [
     { name = "clir", extra = ["tables"] },
     { name = "face" },
     { name = "face", extra = ["cuda"], marker = "(extra == 'extra-4-clir-cpu' and extra == 'extra-4-clir-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-4-face-cuda') or (extra != 'extra-4-clir-cpu' and extra == 'extra-4-face-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-4-nerd-cpu' and extra == 'extra-4-nerd-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-8-pygliner-cpu' and extra == 'extra-8-pygliner-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-8-setfitcv-cpu' and extra == 'extra-8-setfitcv-cuda') or (extra != 'extra-4-clir-cpu' and extra == 'extra-4-nerd-cpu' and extra == 'extra-4-nerd-cuda') or (extra != 'extra-4-clir-cpu' and extra == 'extra-8-pygliner-cpu' and extra == 'extra-8-pygliner-cuda') or (extra != 'extra-4-clir-cpu' and extra == 'extra-8-setfitcv-cpu' and extra == 'extra-8-setfitcv-cuda')" },
-    { name = "filetyper" },
+    { name = "filetyper", extra = ["lz4", "pdf", "zstd"] },
     { name = "nerd" },
     { name = "nerd", extra = ["cuda"], marker = "(extra == 'extra-4-clir-cpu' and extra == 'extra-4-clir-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-4-nerd-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-4-face-cpu' and extra == 'extra-4-face-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-8-pygliner-cpu' and extra == 'extra-8-pygliner-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-8-setfitcv-cpu' and extra == 'extra-8-setfitcv-cuda') or (extra != 'extra-4-clir-cpu' and extra == 'extra-4-face-cpu' and extra == 'extra-4-face-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cuda' and extra == 'extra-4-nerd-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cpu' and extra == 'extra-4-nerd-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cuda' and extra == 'extra-8-pygliner-cpu' and extra == 'extra-8-pygliner-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cuda' and extra == 'extra-8-setfitcv-cpu' and extra == 'extra-8-setfitcv-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cpu' and extra == 'extra-8-pygliner-cpu' and extra == 'extra-8-pygliner-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cpu' and extra == 'extra-8-setfitcv-cpu' and extra == 'extra-8-setfitcv-cuda')" },
+    { name = "pyarchive", extra = ["lz4", "pdf", "zstd"] },
     { name = "pygliner" },
     { name = "pygliner", extra = ["cuda"], marker = "(extra == 'extra-4-clir-cpu' and extra == 'extra-4-clir-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-8-pygliner-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-4-face-cpu' and extra == 'extra-4-face-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-4-nerd-cpu' and extra == 'extra-4-nerd-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-8-setfitcv-cpu' and extra == 'extra-8-setfitcv-cuda') or (extra != 'extra-4-clir-cpu' and extra == 'extra-4-face-cpu' and extra == 'extra-4-face-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cuda' and extra == 'extra-8-pygliner-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cuda' and extra == 'extra-4-nerd-cpu' and extra == 'extra-4-nerd-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cuda' and extra == 'extra-8-setfitcv-cpu' and extra == 'extra-8-setfitcv-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cpu' and extra == 'extra-4-nerd-cpu' and extra == 'extra-4-nerd-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cpu' and extra != 'extra-4-nerd-cuda' and extra == 'extra-8-pygliner-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cpu' and extra != 'extra-4-nerd-cpu' and extra == 'extra-8-pygliner-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cpu' and extra != 'extra-4-nerd-cuda' and extra == 'extra-8-setfitcv-cpu' and extra == 'extra-8-setfitcv-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cpu' and extra != 'extra-4-nerd-cpu' and extra == 'extra-8-setfitcv-cpu' and extra == 'extra-8-setfitcv-cuda')" },
     { name = "pyparse", extra = ["all"] },
     { name = "pyprompt" },
     { name = "pyselectors" },
+    { name = "pytabular" },
     { name = "pyvllm" },
     { name = "pyxberg" },
     { name = "setfitcv" },
@@ -584,10 +668,12 @@ requires-dist = [
     { name = "clir", extras = ["cuda", "tables"], marker = "extra == 'analytics-cuda'", editable = "analytics/clir" },
     { name = "face", marker = "extra == 'analytics-cpu'", editable = "analytics/face" },
     { name = "face", extras = ["cuda"], marker = "extra == 'analytics-cuda'", editable = "analytics/face" },
-    { name = "filetyper", marker = "extra == 'analytics-cpu'", editable = "analytics/filetyper" },
-    { name = "filetyper", marker = "extra == 'analytics-cuda'", editable = "analytics/filetyper" },
+    { name = "filetyper", extras = ["zstd", "lz4", "pdf"], marker = "extra == 'analytics-cpu'", editable = "analytics/filetyper" },
+    { name = "filetyper", extras = ["zstd", "lz4", "pdf"], marker = "extra == 'analytics-cuda'", editable = "analytics/filetyper" },
     { name = "nerd", marker = "extra == 'analytics-cpu'", editable = "analytics/nerd" },
     { name = "nerd", extras = ["cuda"], marker = "extra == 'analytics-cuda'", editable = "analytics/nerd" },
+    { name = "pyarchive", extras = ["zstd", "lz4", "pdf"], marker = "extra == 'analytics-cpu'", editable = "analytics/pyarchive" },
+    { name = "pyarchive", extras = ["zstd", "lz4", "pdf"], marker = "extra == 'analytics-cuda'", editable = "analytics/pyarchive" },
     { name = "pygliner", marker = "extra == 'analytics-cpu'", editable = "analytics/pygliner" },
     { name = "pygliner", extras = ["cuda"], marker = "extra == 'analytics-cuda'", editable = "analytics/pygliner" },
     { name = "pyparse", extras = ["all"], marker = "extra == 'analytics-cpu'", editable = "analytics/pyparse" },
@@ -596,6 +682,8 @@ requires-dist = [
     { name = "pyprompt", marker = "extra == 'analytics-cuda'", editable = "analytics/pyprompt" },
     { name = "pyselectors", marker = "extra == 'analytics-cpu'", editable = "analytics/pyselectors" },
     { name = "pyselectors", marker = "extra == 'analytics-cuda'", editable = "analytics/pyselectors" },
+    { name = "pytabular", marker = "extra == 'analytics-cpu'", editable = "analytics/pytabular" },
+    { name = "pytabular", marker = "extra == 'analytics-cuda'", editable = "analytics/pytabular" },
     { name = "pyvllm", marker = "extra == 'analytics-cpu'", editable = "analytics/pyvllm" },
     { name = "pyvllm", marker = "extra == 'analytics-cuda'", editable = "analytics/pyvllm" },
     { name = "pyxberg", marker = "extra == 'analytics-cpu'", editable = "analytics/pyxberg" },
@@ -630,7 +718,7 @@ dependencies = [
     { name = "cipher-datastores", extra = ["elasticsearch", "postgres"] },
     { name = "cipher-orchestration" },
     { name = "cipher-schemas" },
-    { name = "cipher-utils", extra = ["fastapi"] },
+    { name = "cipher-utils", extra = ["aws", "fastapi"] },
     { name = "clir" },
     { name = "face" },
     { name = "filetyper" },
@@ -638,6 +726,7 @@ dependencies = [
     { name = "pydantic-ai" },
     { name = "pyparse", extra = ["email"] },
     { name = "pyselectors" },
+    { name = "pytabular" },
     { name = "setfitcv" },
 ]
 
@@ -646,7 +735,7 @@ requires-dist = [
     { name = "cipher-datastores", extras = ["postgres", "elasticsearch"], editable = "libs/cipher-datastores" },
     { name = "cipher-orchestration", editable = "pipelines/cipher-orchestration" },
     { name = "cipher-schemas", editable = "libs/cipher-schemas" },
-    { name = "cipher-utils", extras = ["fastapi"], editable = "libs/cipher-utils" },
+    { name = "cipher-utils", extras = ["aws", "fastapi"], editable = "libs/cipher-utils" },
     { name = "clir", editable = "analytics/clir" },
     { name = "face", editable = "analytics/face" },
     { name = "filetyper", editable = "analytics/filetyper" },
@@ -654,6 +743,7 @@ requires-dist = [
     { name = "pydantic-ai", specifier = ">=2.35.3" },
     { name = "pyparse", extras = ["email"], editable = "analytics/pyparse" },
     { name = "pyselectors", editable = "analytics/pyselectors" },
+    { name = "pytabular", editable = "analytics/pytabular" },
     { name = "setfitcv", editable = "analytics/setfitcv" },
 ]
 
@@ -728,7 +818,7 @@ dependencies = [
     { name = "cipher-datastores", extra = ["elasticsearch", "postgres"] },
     { name = "cipher-places" },
     { name = "cipher-schemas" },
-    { name = "cipher-utils" },
+    { name = "cipher-utils", extra = ["aws"] },
     { name = "loguru" },
     { name = "pyprompt" },
     { name = "pyselectors" },
@@ -737,11 +827,15 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+archive-extraction = [
+    { name = "pyarchive", extra = ["lz4", "pdf", "zstd"] },
+]
 cli = [
     { name = "clir" },
     { name = "face" },
     { name = "face", extra = ["cuda"], marker = "(extra == 'extra-4-clir-cpu' and extra == 'extra-4-clir-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-4-face-cuda') or (extra != 'extra-4-clir-cpu' and extra == 'extra-4-face-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-4-nerd-cpu' and extra == 'extra-4-nerd-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-8-pygliner-cpu' and extra == 'extra-8-pygliner-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-8-setfitcv-cpu' and extra == 'extra-8-setfitcv-cuda') or (extra != 'extra-4-clir-cpu' and extra == 'extra-4-nerd-cpu' and extra == 'extra-4-nerd-cuda') or (extra != 'extra-4-clir-cpu' and extra == 'extra-8-pygliner-cpu' and extra == 'extra-8-pygliner-cuda') or (extra != 'extra-4-clir-cpu' and extra == 'extra-8-setfitcv-cpu' and extra == 'extra-8-setfitcv-cuda')" },
-    { name = "filetyper" },
+    { name = "filetyper", extra = ["lz4", "pdf", "zstd"] },
+    { name = "pyarchive", extra = ["lz4", "pdf", "zstd"] },
     { name = "pyparse", extra = ["contacts", "email"] },
     { name = "pyvllm" },
     { name = "pyxberg" },
@@ -782,7 +876,10 @@ ocr = [
     { name = "setfitcv" },
 ]
 staging = [
-    { name = "filetyper" },
+    { name = "filetyper", extra = ["lz4", "pdf", "zstd"] },
+]
+table-mapping = [
+    { name = "pytabular" },
 ]
 text-embedding = [
     { name = "clir" },
@@ -797,21 +894,23 @@ requires-dist = [
     { name = "anyio" },
     { name = "cipher-datastores", extras = ["postgres", "elasticsearch"], editable = "libs/cipher-datastores" },
     { name = "cipher-orchestration", extras = ["gliner", "nerd"], marker = "extra == 'ner'", editable = "pipelines/cipher-orchestration" },
-    { name = "cipher-orchestration", extras = ["staging", "text-extraction", "ocr", "text-embedding", "image-embedding", "face-detection", "contact-extraction", "event-extraction"], marker = "extra == 'cli'", editable = "pipelines/cipher-orchestration" },
+    { name = "cipher-orchestration", extras = ["staging", "archive-extraction", "text-extraction", "ocr", "text-embedding", "image-embedding", "face-detection", "contact-extraction", "event-extraction"], marker = "extra == 'cli'", editable = "pipelines/cipher-orchestration" },
     { name = "cipher-places", editable = "libs/cipher-places" },
     { name = "cipher-schemas", editable = "libs/cipher-schemas" },
-    { name = "cipher-utils", editable = "libs/cipher-utils" },
+    { name = "cipher-utils", extras = ["aws"], editable = "libs/cipher-utils" },
     { name = "clir", marker = "extra == 'text-embedding'", editable = "analytics/clir" },
     { name = "face", extras = ["cuda"], marker = "extra == 'face-detection'", editable = "analytics/face" },
-    { name = "filetyper", marker = "extra == 'staging'", editable = "analytics/filetyper" },
+    { name = "filetyper", extras = ["zstd", "lz4", "pdf"], marker = "extra == 'staging'", editable = "analytics/filetyper" },
     { name = "loguru" },
     { name = "nerd", marker = "extra == 'nerd'", editable = "analytics/nerd" },
+    { name = "pyarchive", extras = ["zstd", "lz4", "pdf"], marker = "extra == 'archive-extraction'", editable = "analytics/pyarchive" },
     { name = "pygliner", marker = "extra == 'gliner'", editable = "analytics/pygliner" },
     { name = "pyparse", marker = "extra == 'event-extraction'", editable = "analytics/pyparse" },
     { name = "pyparse", extras = ["contacts"], marker = "extra == 'contact-extraction'", editable = "analytics/pyparse" },
     { name = "pyparse", extras = ["email"], marker = "extra == 'text-extraction'", editable = "analytics/pyparse" },
     { name = "pyprompt", editable = "analytics/pyprompt" },
     { name = "pyselectors", editable = "analytics/pyselectors" },
+    { name = "pytabular", marker = "extra == 'table-mapping'", editable = "analytics/pytabular" },
     { name = "pyvllm", marker = "extra == 'ocr'", editable = "analytics/pyvllm" },
     { name = "pyxberg", marker = "extra == 'ocr'", editable = "analytics/pyxberg" },
     { name = "pyxberg", marker = "extra == 'text-extraction'", editable = "analytics/pyxberg" },
@@ -822,7 +921,7 @@ requires-dist = [
     { name = "tqdm" },
     { name = "typer" },
 ]
-provides-extras = ["staging", "text-extraction", "ocr", "text-embedding", "image-embedding", "image-heads", "exif-location", "face-detection", "contact-extraction", "event-extraction", "gliner", "nerd", "cli", "ner"]
+provides-extras = ["staging", "archive-extraction", "text-extraction", "ocr", "text-embedding", "image-embedding", "image-heads", "exif-location", "face-detection", "contact-extraction", "event-extraction", "gliner", "nerd", "table-mapping", "cli", "ner"]
 
 [[package]]
 name = "cipher-places"
@@ -864,8 +963,15 @@ requires-dist = [
 name = "cipher-utils"
 version = "0.0.1"
 source = { editable = "libs/cipher-utils" }
+dependencies = [
+    { name = "pydantic" },
+    { name = "universal-pathlib" },
+]
 
 [package.optional-dependencies]
+aws = [
+    { name = "s3fs" },
+]
 fastapi = [
     { name = "aiohttp" },
     { name = "fastapi" },
@@ -880,11 +986,14 @@ requires-dist = [
     { name = "aiohttp", marker = "extra == 'fastapi'" },
     { name = "fastapi", marker = "extra == 'fastapi'" },
     { name = "fastapi-offline", marker = "extra == 'fastapi'" },
+    { name = "pydantic" },
     { name = "python-multipart", marker = "extra == 'fastapi'" },
+    { name = "s3fs", marker = "extra == 'aws'", specifier = ">=2026.4.0" },
+    { name = "universal-pathlib", specifier = ">=0.3.10" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'fastapi'" },
     { name = "uvloop", marker = "extra == 'fastapi'" },
 ]
-provides-extras = ["fastapi"]
+provides-extras = ["fastapi", "aws"]
 
 [[package]]
 name = "click"
@@ -1455,17 +1564,29 @@ dependencies = [
 fastapi = [
     { name = "cipher-utils", extra = ["fastapi"] },
 ]
+lz4 = [
+    { name = "lz4" },
+]
+pdf = [
+    { name = "pypdfium2" },
+]
+zstd = [
+    { name = "backports-zstd" },
+]
 
 [package.metadata]
 requires-dist = [
+    { name = "backports-zstd", marker = "extra == 'zstd'" },
     { name = "cipher-schemas", editable = "libs/cipher-schemas" },
     { name = "cipher-utils", extras = ["fastapi"], marker = "extra == 'fastapi'", editable = "libs/cipher-utils" },
     { name = "filetype" },
     { name = "loguru" },
+    { name = "lz4", marker = "extra == 'lz4'" },
     { name = "magika" },
+    { name = "pypdfium2", marker = "extra == 'pdf'" },
     { name = "tqdm" },
 ]
-provides-extras = ["fastapi"]
+provides-extras = ["fastapi", "zstd", "lz4", "pdf"]
 
 [[package]]
 name = "flash-attn"
@@ -2046,6 +2167,15 @@ wheels = [
 ]
 
 [[package]]
+name = "jmespath"
+version = "1.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/d3/59/322338183ecda247fb5d1763a6cbe46eff7222eaeebafd9fa65d4bf5cb11/jmespath-1.1.0.tar.gz", hash = "sha256:472c87d80f36026ae83c6ddd0f1d05d4e510134ed462851fd5f754c8c3cbb88d", size = 27377, upload-time = "2026-01-22T16:35:26.279Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/14/2f/967ba146e6d58cf6a652da73885f52fc68001525b4197effc174321d70b4/jmespath-1.1.0-py3-none-any.whl", hash = "sha256:a5663118de4908c91729bea0acadca56526eb2698e83de10cd116ae0f4e97c64", size = 20419, upload-time = "2026-01-22T16:35:24.919Z" },
+]
+
+[[package]]
 name = "joblib"
 version = "1.5.3"
 source = { registry = "https://pypi.org/simple" }
@@ -2322,6 +2452,26 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/f1/fb/2369825e3f6ca99305bf9f7b7085fda91c8b0922a89e54d900974aa3ef85/lxml-6.1.1-cp314-cp314t-musllinux_1_2_ppc64le.whl", hash = "sha256:2a0217714657e023ef4293500f65aa20fce6164c8fd6b08fa5bd4a859fb14b9b", size = 5620296, upload-time = "2026-05-18T19:19:29.993Z" },
     { url = "https://files.pythonhosted.org/packages/30/90/d61e383146f74c5ab683947ea14dc7b82778838ab9b95ea73a23b60d0191/lxml-6.1.1-cp314-cp314t-musllinux_1_2_riscv64.whl", hash = "sha256:05a82eb6e1530a64f26225b55cbd178113bd0b5af1c2b625f25e5296742c26d2", size = 5228598, upload-time = "2026-05-18T19:19:33.523Z" },
     { url = "https://files.pythonhosted.org/packages/76/2d/2dafd8149e94b05bb070690efd5bb2680720681e03ff03fc57d2b70a1105/lxml-6.1.1-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:9e36f163528fc50cbef305f02a5fd66d404edf7049cdaff211dbc2cba5a7013e", size = 5247845, upload-time = "2026-05-18T19:19:36.649Z" },
+]
+
+[[package]]
+name = "lz4"
+version = "4.4.5"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/57/51/f1b86d93029f418033dddf9b9f79c8d2641e7454080478ee2aab5123173e/lz4-4.4.5.tar.gz", hash = "sha256:5f0b9e53c1e82e88c10d7c180069363980136b9d7a8306c4dca4f760d60c39f0", size = 172886, upload-time = "2025-11-03T13:02:36.061Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b7/17/34e36cc49bb16ca73fb57fbd4c5eaa61760c6b64bce91fcb4e0f4a97f852/lz4-4.4.5-cp312-cp312-manylinux1_i686.manylinux_2_28_i686.manylinux_2_5_i686.whl", hash = "sha256:7b62f94b523c251cf32aa4ab555f14d39bd1a9df385b72443fd76d7c7fb051f5", size = 1292045, upload-time = "2025-11-03T13:01:48.667Z" },
+    { url = "https://files.pythonhosted.org/packages/90/1c/b1d8e3741e9fc89ed3b5f7ef5f22586c07ed6bb04e8343c2e98f0fa7ff04/lz4-4.4.5-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:2c3ea562c3af274264444819ae9b14dbbf1ab070aff214a05e97db6896c7597e", size = 1279546, upload-time = "2025-11-03T13:01:50.159Z" },
+    { url = "https://files.pythonhosted.org/packages/55/d9/e3867222474f6c1b76e89f3bd914595af69f55bf2c1866e984c548afdc15/lz4-4.4.5-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:24092635f47538b392c4eaeff14c7270d2c8e806bf4be2a6446a378591c5e69e", size = 1368249, upload-time = "2025-11-03T13:01:51.273Z" },
+    { url = "https://files.pythonhosted.org/packages/41/7b/7b3a2a0feb998969f4793c650bb16eff5b06e80d1f7bff867feb332f2af2/lz4-4.4.5-cp313-cp313-manylinux1_i686.manylinux_2_28_i686.manylinux_2_5_i686.whl", hash = "sha256:216ca0c6c90719731c64f41cfbd6f27a736d7e50a10b70fad2a9c9b262ec923d", size = 1292136, upload-time = "2025-11-03T13:02:00.375Z" },
+    { url = "https://files.pythonhosted.org/packages/89/d1/f1d259352227bb1c185288dd694121ea303e43404aa77560b879c90e7073/lz4-4.4.5-cp313-cp313-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:533298d208b58b651662dd972f52d807d48915176e5b032fb4f8c3b6f5fe535c", size = 1279639, upload-time = "2025-11-03T13:02:01.649Z" },
+    { url = "https://files.pythonhosted.org/packages/d2/fb/ba9256c48266a09012ed1d9b0253b9aa4fe9cdff094f8febf5b26a4aa2a2/lz4-4.4.5-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:451039b609b9a88a934800b5fc6ee401c89ad9c175abf2f4d9f8b2e4ef1afc64", size = 1368257, upload-time = "2025-11-03T13:02:03.35Z" },
+    { url = "https://files.pythonhosted.org/packages/77/69/225ffadaacb4b0e0eb5fd263541edd938f16cd21fe1eae3cd6d5b6a259dc/lz4-4.4.5-cp313-cp313t-manylinux1_i686.manylinux_2_28_i686.manylinux_2_5_i686.whl", hash = "sha256:a482eecc0b7829c89b498fda883dbd50e98153a116de612ee7c111c8bcf82d1d", size = 1293398, upload-time = "2025-11-03T13:02:10.272Z" },
+    { url = "https://files.pythonhosted.org/packages/c6/9e/2ce59ba4a21ea5dc43460cba6f34584e187328019abc0e66698f2b66c881/lz4-4.4.5-cp313-cp313t-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:e099ddfaa88f59dd8d36c8a3c66bd982b4984edf127eb18e30bb49bdba68ce67", size = 1281209, upload-time = "2025-11-03T13:02:12.091Z" },
+    { url = "https://files.pythonhosted.org/packages/80/4f/4d946bd1624ec229b386a3bc8e7a85fa9a963d67d0a62043f0af0978d3da/lz4-4.4.5-cp313-cp313t-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:a2af2897333b421360fdcce895c6f6281dc3fab018d19d341cf64d043fc8d90d", size = 1369406, upload-time = "2025-11-03T13:02:13.683Z" },
+    { url = "https://files.pythonhosted.org/packages/e7/18/b192b2ce465dfbeabc4fc957ece7a1d34aded0d95a588862f1c8a86ac448/lz4-4.4.5-cp314-cp314-manylinux1_i686.manylinux_2_28_i686.manylinux_2_5_i686.whl", hash = "sha256:9b5e6abca8df9f9bdc5c3085f33ff32cdc86ed04c65e0355506d46a5ac19b6e9", size = 1292415, upload-time = "2025-11-03T13:02:20.829Z" },
+    { url = "https://files.pythonhosted.org/packages/67/79/a4e91872ab60f5e89bfad3e996ea7dc74a30f27253faf95865771225ccba/lz4-4.4.5-cp314-cp314-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:3b84a42da86e8ad8537aabef062e7f661f4a877d1c74d65606c49d835d36d668", size = 1279920, upload-time = "2025-11-03T13:02:22.013Z" },
+    { url = "https://files.pythonhosted.org/packages/f1/01/d52c7b11eaa286d49dae619c0eec4aabc0bf3cda7a7467eb77c62c4471f3/lz4-4.4.5-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:0bba042ec5a61fa77c7e380351a61cb768277801240249841defd2ff0a10742f", size = 1368661, upload-time = "2025-11-03T13:02:23.208Z" },
 ]
 
 [[package]]
@@ -3166,16 +3316,12 @@ wheels = [
 ]
 
 [[package]]
-name = "pdfminer-six"
-version = "20260107"
+name = "pathlib-abc"
+version = "0.5.2"
 source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "charset-normalizer" },
-    { name = "cryptography" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/34/a4/5cec1112009f0439a5ca6afa8ace321f0ab2f48da3255b7a1c8953014670/pdfminer_six-20260107.tar.gz", hash = "sha256:96bfd431e3577a55a0efd25676968ca4ce8fd5b53f14565f85716ff363889602", size = 8512094, upload-time = "2026-01-07T13:29:12.937Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d6/cb/448649d7f25d228bf0be3a04590ab7afa77f15e056f8fa976ed05ec9a78f/pathlib_abc-0.5.2.tar.gz", hash = "sha256:fcd56f147234645e2c59c7ae22808b34c364bb231f685ddd9f96885aed78a94c", size = 33342, upload-time = "2025-10-10T18:37:20.524Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/20/8b/28c4eaec9d6b036a52cb44720408f26b1a143ca9bce76cc19e8f5de00ab4/pdfminer_six-20260107-py3-none-any.whl", hash = "sha256:366585ba97e80dffa8f00cebe303d2f381884d8637af4ce422f1df3ef38111a9", size = 6592252, upload-time = "2026-01-07T13:29:10.742Z" },
+    { url = "https://files.pythonhosted.org/packages/b1/29/c028a0731e202035f0e2e0bfbf1a3e46ad6c628cbb17f6f1cc9eea5d9ff1/pathlib_abc-0.5.2-py3-none-any.whl", hash = "sha256:4c9d94cf1b23af417ce7c0417b43333b06a106c01000b286c99de230d95eefbb", size = 19070, upload-time = "2025-10-10T18:37:19.437Z" },
 ]
 
 [[package]]
@@ -3493,6 +3639,44 @@ keyring = [
 memory = [
     { name = "cachetools" },
 ]
+
+[[package]]
+name = "pyarchive"
+version = "0.0.1"
+source = { editable = "analytics/pyarchive" }
+dependencies = [
+    { name = "cipher-schemas" },
+    { name = "cipher-utils" },
+    { name = "filetyper" },
+    { name = "loguru" },
+    { name = "pydantic" },
+    { name = "typer" },
+]
+
+[package.optional-dependencies]
+lz4 = [
+    { name = "filetyper", extra = ["lz4"] },
+]
+pdf = [
+    { name = "filetyper", extra = ["pdf"] },
+]
+zstd = [
+    { name = "filetyper", extra = ["zstd"] },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "cipher-schemas", editable = "libs/cipher-schemas" },
+    { name = "cipher-utils", editable = "libs/cipher-utils" },
+    { name = "filetyper", editable = "analytics/filetyper" },
+    { name = "filetyper", extras = ["lz4"], marker = "extra == 'lz4'", editable = "analytics/filetyper" },
+    { name = "filetyper", extras = ["pdf"], marker = "extra == 'pdf'", editable = "analytics/filetyper" },
+    { name = "filetyper", extras = ["zstd"], marker = "extra == 'zstd'", editable = "analytics/filetyper" },
+    { name = "loguru" },
+    { name = "pydantic" },
+    { name = "typer" },
+]
+provides-extras = ["zstd", "lz4", "pdf"]
 
 [[package]]
 name = "pyarrow"
@@ -3863,18 +4047,6 @@ wheels = [
 ]
 
 [[package]]
-name = "pymupdf"
-version = "1.27.2.3"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/22/32/708bedc9dde7b328d45abbc076091769d44f2f24ad151ad92d56a6ec142b/pymupdf-1.27.2.3.tar.gz", hash = "sha256:7a92faa25129e8bbec5e50eeb9214f187665428c31b05c4ef6e36c58c0b1c6d2", size = 85759618, upload-time = "2026-04-24T14:13:14.42Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/c3/26/b7e5a70eb83bd189f8b5df87ec442746b992f2f632662839b288170d357d/pymupdf-1.27.2.3-cp310-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:1dd460a3ae4597a755f00a3bd9771f5ebf1531dc111f6a36bf05dd00a6b84425", size = 24333923, upload-time = "2026-04-24T14:09:47.341Z" },
-    { url = "https://files.pythonhosted.org/packages/e4/a0/aa1ee2240f29481a04a827c313333b4ecd8a14d6ac3e15d3f41a30574781/pymupdf-1.27.2.3-cp310-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:857842b4888827bd6155a1131341b2822a7ebe9a8c15a975fd7d490d7a64a30c", size = 24963198, upload-time = "2026-04-24T14:10:07.408Z" },
-    { url = "https://files.pythonhosted.org/packages/69/49/4f742451f980840829fc00ba158bebb25d389c846d8f4f8c65936ee55de8/pymupdf-1.27.2.3-cp310-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:580983849c64a08d08344ca3d1580e87c01f046a8392421797bc850efd72a5b6", size = 25184609, upload-time = "2026-04-24T14:10:22.911Z" },
-    { url = "https://files.pythonhosted.org/packages/53/a4/b9e91aac82293f9c954654c85581ee8212b5b05efadc534b581141241e6f/pymupdf-1.27.2.3-cp314-cp314t-manylinux_2_28_x86_64.whl", hash = "sha256:77691604c5d1d0233827139bbcdea61fd57879c84712b8e49b1f45520f7ab9c2", size = 25000393, upload-time = "2026-04-24T14:11:01.669Z" },
-]
-
-[[package]]
 name = "pyparse"
 version = "0.0.1"
 source = { editable = "analytics/pyparse" }
@@ -3891,62 +4063,16 @@ all = [
     { name = "chardet" },
     { name = "compressed-rtf" },
     { name = "cssutils" },
-    { name = "fastparquet" },
     { name = "lxml" },
     { name = "msg-parser" },
-    { name = "pandas" },
-    { name = "pdfminer-six" },
     { name = "phonenumbers" },
-    { name = "pymupdf" },
     { name = "python-dateutil" },
-    { name = "python-docx" },
-    { name = "python-pptx" },
-    { name = "rarfile" },
-    { name = "typer" },
     { name = "vobject" },
-]
-archives = [
-    { name = "beautifulsoup4" },
-    { name = "chardet" },
-    { name = "compressed-rtf" },
-    { name = "cssutils" },
-    { name = "lxml" },
-    { name = "msg-parser" },
-    { name = "rarfile" },
-]
-cli = [
-    { name = "fastparquet" },
-    { name = "pandas" },
-    { name = "typer" },
 ]
 contacts = [
     { name = "phonenumbers" },
     { name = "python-dateutil" },
     { name = "vobject" },
-]
-doc = [
-    { name = "beautifulsoup4" },
-    { name = "cssutils" },
-    { name = "lxml" },
-    { name = "python-dateutil" },
-    { name = "python-docx" },
-]
-documents = [
-    { name = "beautifulsoup4" },
-    { name = "cssutils" },
-    { name = "lxml" },
-    { name = "pdfminer-six" },
-    { name = "pymupdf" },
-    { name = "python-dateutil" },
-    { name = "python-docx" },
-    { name = "python-pptx" },
-]
-docx = [
-    { name = "beautifulsoup4" },
-    { name = "cssutils" },
-    { name = "lxml" },
-    { name = "python-dateutil" },
-    { name = "python-docx" },
 ]
 email = [
     { name = "beautifulsoup4" },
@@ -3967,17 +4093,6 @@ html = [
     { name = "cssutils" },
     { name = "lxml" },
 ]
-mbox = [
-    { name = "beautifulsoup4" },
-    { name = "chardet" },
-    { name = "compressed-rtf" },
-    { name = "cssutils" },
-    { name = "lxml" },
-    { name = "msg-parser" },
-]
-messages = [
-    { name = "phonenumbers" },
-]
 msg = [
     { name = "beautifulsoup4" },
     { name = "chardet" },
@@ -3985,25 +4100,6 @@ msg = [
     { name = "cssutils" },
     { name = "lxml" },
     { name = "msg-parser" },
-]
-pdf = [
-    { name = "pdfminer-six" },
-    { name = "pymupdf" },
-    { name = "python-dateutil" },
-]
-ppt = [
-    { name = "python-pptx" },
-]
-pptx = [
-    { name = "python-pptx" },
-]
-rar = [
-    { name = "rarfile" },
-]
-text = [
-    { name = "beautifulsoup4" },
-    { name = "cssutils" },
-    { name = "lxml" },
 ]
 
 [package.metadata]
@@ -4014,37 +4110,19 @@ requires-dist = [
     { name = "cipher-utils", editable = "libs/cipher-utils" },
     { name = "compressed-rtf", marker = "extra == 'msg'" },
     { name = "cssutils", marker = "extra == 'html'" },
-    { name = "fastparquet", marker = "extra == 'cli'" },
     { name = "filetyper", editable = "analytics/filetyper" },
     { name = "loguru" },
     { name = "lxml", marker = "extra == 'html'" },
     { name = "msg-parser", marker = "extra == 'msg'" },
-    { name = "pandas", marker = "extra == 'cli'" },
-    { name = "pdfminer-six", marker = "extra == 'pdf'" },
     { name = "phonenumbers", marker = "extra == 'contacts'" },
-    { name = "phonenumbers", marker = "extra == 'messages'" },
-    { name = "pymupdf", marker = "extra == 'pdf'" },
-    { name = "pyparse", extras = ["archives", "contacts", "documents", "email", "messages", "text", "cli"], marker = "extra == 'all'", editable = "analytics/pyparse" },
-    { name = "pyparse", extras = ["docx"], marker = "extra == 'doc'", editable = "analytics/pyparse" },
-    { name = "pyparse", extras = ["docx", "pdf", "doc", "pptx", "ppt"], marker = "extra == 'documents'", editable = "analytics/pyparse" },
-    { name = "pyparse", extras = ["email"], marker = "extra == 'mbox'", editable = "analytics/pyparse" },
+    { name = "pyparse", extras = ["contacts", "email"], marker = "extra == 'all'", editable = "analytics/pyparse" },
     { name = "pyparse", extras = ["eml"], marker = "extra == 'msg'", editable = "analytics/pyparse" },
     { name = "pyparse", extras = ["eml", "msg"], marker = "extra == 'email'", editable = "analytics/pyparse" },
-    { name = "pyparse", extras = ["html"], marker = "extra == 'docx'", editable = "analytics/pyparse" },
     { name = "pyparse", extras = ["html"], marker = "extra == 'eml'", editable = "analytics/pyparse" },
-    { name = "pyparse", extras = ["html"], marker = "extra == 'text'", editable = "analytics/pyparse" },
-    { name = "pyparse", extras = ["mbox", "rar"], marker = "extra == 'archives'", editable = "analytics/pyparse" },
-    { name = "pyparse", extras = ["pptx"], marker = "extra == 'ppt'", editable = "analytics/pyparse" },
     { name = "python-dateutil", marker = "extra == 'contacts'" },
-    { name = "python-dateutil", marker = "extra == 'docx'" },
-    { name = "python-dateutil", marker = "extra == 'pdf'" },
-    { name = "python-docx", marker = "extra == 'docx'" },
-    { name = "python-pptx", marker = "extra == 'pptx'" },
-    { name = "rarfile", marker = "extra == 'rar'" },
-    { name = "typer", marker = "extra == 'cli'" },
     { name = "vobject", marker = "extra == 'contacts'" },
 ]
-provides-extras = ["cli", "html", "text", "docx", "doc", "pptx", "ppt", "pdf", "documents", "eml", "msg", "email", "mbox", "rar", "contacts", "archives", "messages", "all"]
+provides-extras = ["html", "eml", "msg", "email", "contacts", "all"]
 
 [[package]]
 name = "pypdfium2"
@@ -4138,6 +4216,58 @@ requires-dist = [
 provides-extras = ["fastapi"]
 
 [[package]]
+name = "pytabular"
+version = "0.0.1"
+source = { editable = "analytics/pytabular" }
+dependencies = [
+    { name = "charset-normalizer" },
+    { name = "cipher-names" },
+    { name = "cipher-places" },
+    { name = "cipher-schemas" },
+    { name = "httpx" },
+    { name = "loguru" },
+    { name = "polars" },
+    { name = "pyarrow" },
+    { name = "pyselectors" },
+    { name = "python-calamine" },
+    { name = "pyyaml" },
+]
+
+[package.optional-dependencies]
+fastapi = [
+    { name = "cipher-utils", extra = ["fastapi"] },
+]
+gliner = [
+    { name = "pygliner" },
+]
+llm = [
+    { name = "pyprompt" },
+]
+nerd = [
+    { name = "nerd" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "charset-normalizer" },
+    { name = "cipher-names", editable = "libs/cipher-names" },
+    { name = "cipher-places", editable = "libs/cipher-places" },
+    { name = "cipher-schemas", editable = "libs/cipher-schemas" },
+    { name = "cipher-utils", extras = ["fastapi"], marker = "extra == 'fastapi'", editable = "libs/cipher-utils" },
+    { name = "httpx" },
+    { name = "loguru" },
+    { name = "nerd", marker = "extra == 'nerd'", editable = "analytics/nerd" },
+    { name = "polars" },
+    { name = "pyarrow" },
+    { name = "pygliner", marker = "extra == 'gliner'", editable = "analytics/pygliner" },
+    { name = "pyprompt", marker = "extra == 'llm'", editable = "analytics/pyprompt" },
+    { name = "pyselectors", editable = "analytics/pyselectors" },
+    { name = "python-calamine" },
+    { name = "pyyaml" },
+]
+provides-extras = ["fastapi", "llm", "gliner", "nerd"]
+
+[[package]]
 name = "pytest"
 version = "9.1.1"
 source = { registry = "https://pypi.org/simple" }
@@ -4226,6 +4356,51 @@ wheels = [
 ]
 
 [[package]]
+name = "python-calamine"
+version = "0.8.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/10/36/473a55063a6af3739cdf4b879869d3067e677f3dfb52ec8fadac23941a33/python_calamine-0.8.2.tar.gz", hash = "sha256:b2000c085722afd01d973af3d58325d26cfd798b3665bb0924e3a658351ebfad", size = 227187, upload-time = "2026-07-13T13:58:26.909Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/de/a5/4cbd1a01279372a20319629ddc832806914827bd1edc8801ee7956c275fe/python_calamine-0.8.2-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:96daed873be1f70d22795fbf197d3d833655aad6a149c15154651b7773d3a1ad", size = 923414, upload-time = "2026-07-13T13:56:34.952Z" },
+    { url = "https://files.pythonhosted.org/packages/45/1b/9d646373c241082ce4488a0a297f8834a2513e17c6ce098506f91bb0f4c4/python_calamine-0.8.2-cp312-cp312-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:17314a59fe01bb1bb7010240a578bf85e49b47af955622ae5f06f286d6d6954f", size = 918317, upload-time = "2026-07-13T13:56:36.467Z" },
+    { url = "https://files.pythonhosted.org/packages/34/0d/73f4bcba43fc7a89ec48cbe1459d0436d6205a85ce720af54682bd14116e/python_calamine-0.8.2-cp312-cp312-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:1396287f66a54ec2e68c6448f0c782173dbb3e8c2aca4089195d8c9a52b46c72", size = 1087802, upload-time = "2026-07-13T13:56:38.113Z" },
+    { url = "https://files.pythonhosted.org/packages/47/54/b71763efd1c868d096fbad6f080de39ac83d832b456bc0ff285e74237723/python_calamine-0.8.2-cp312-cp312-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:da1b26061783d2bc1d7aabc83cce63706cdacb6b03c6c6a37d3ea33ad34b7b4b", size = 986451, upload-time = "2026-07-13T13:56:39.743Z" },
+    { url = "https://files.pythonhosted.org/packages/27/61/deb1b368933ddedeedbd7bef8aa71185eaff66dc058b44ca9f4a419925d5/python_calamine-0.8.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:5a148bf41efabb39ee99eac2552223c3605d29beaed6bd7a14a2990e07022e3b", size = 920176, upload-time = "2026-07-13T13:56:41.308Z" },
+    { url = "https://files.pythonhosted.org/packages/c9/df/7645e4d3ea983cac1bfe2643661fd03b92db2736cd97ba1bda367d86a61e/python_calamine-0.8.2-cp312-cp312-manylinux_2_5_i686.manylinux1_i686.whl", hash = "sha256:21afb508d71f83c12c1c01fef21d9285f91820d052998e44706571bebd835cf6", size = 996879, upload-time = "2026-07-13T13:56:42.951Z" },
+    { url = "https://files.pythonhosted.org/packages/af/b1/a88e1c7bc883f2767cc09247d395ce530c903a6bd2cc40e1f2000e6eaf85/python_calamine-0.8.2-cp312-cp312-musllinux_1_1_aarch64.whl", hash = "sha256:0cd1c5592b4a2cc7b0a92c5289f0eeef74e8ce3c5af9cc12361ae75625b14926", size = 1098763, upload-time = "2026-07-13T13:56:44.708Z" },
+    { url = "https://files.pythonhosted.org/packages/0c/59/de0fb08a1745d30d85cbef6b474e975a92bb7c6daf6aa37fc63960ae4674/python_calamine-0.8.2-cp312-cp312-musllinux_1_1_armv7l.whl", hash = "sha256:70e6e7aa5e74234254cae87e60a7ccb525e6962f73741f2b1927536aa7cb0093", size = 1192807, upload-time = "2026-07-13T13:56:46.379Z" },
+    { url = "https://files.pythonhosted.org/packages/bf/f5/d6956857490924ab9945d3be6624dadee1918d8630288009a2b7ef7700e1/python_calamine-0.8.2-cp312-cp312-musllinux_1_1_x86_64.whl", hash = "sha256:2c2d65dd0cff571ad9463fc964194507e31295387bc1bbc76c2604959d694c0f", size = 1136033, upload-time = "2026-07-13T13:56:48.346Z" },
+    { url = "https://files.pythonhosted.org/packages/7b/61/4ef12d9c4d3774410eec3a1b377542523ee18b606b91b0281f8db5ac8819/python_calamine-0.8.2-cp313-cp313-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:f28ebfaa0ca306ec25df2cf6d5cef4838769ebd5536edd1eb0aa9a77935189fa", size = 923463, upload-time = "2026-07-13T13:56:59.411Z" },
+    { url = "https://files.pythonhosted.org/packages/df/a1/41db6b31011ac5c4ad3c05f4f8078a7d24d81f4288c756829cbdc941cbcc/python_calamine-0.8.2-cp313-cp313-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:d0a229632dde778a03d3c1ff159da4762e04d8b5e69be94edbf005da152de944", size = 916869, upload-time = "2026-07-13T13:57:01.063Z" },
+    { url = "https://files.pythonhosted.org/packages/72/70/b582691901b90b52884b8f525d4be7e27e423040b17ec4f50d0f8ac8f4e5/python_calamine-0.8.2-cp313-cp313-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:b67798d130fe8c89891c3e75f9334e0e18c2c8e6527d276954c31c9dc426d39b", size = 1086769, upload-time = "2026-07-13T13:57:02.761Z" },
+    { url = "https://files.pythonhosted.org/packages/1c/5c/a05493fdcbf8aede4362150edd0dfde4e87db53c23f1668cc6aa4d4b40a3/python_calamine-0.8.2-cp313-cp313-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:57eebc266e7c40d337112a9cfc82f9c9d7587121fa4e86673da1e97f8855039c", size = 986561, upload-time = "2026-07-13T13:57:04.346Z" },
+    { url = "https://files.pythonhosted.org/packages/db/c6/8c12291275f63d314723d1480be017f0c32d5fd4dea76b66205ebd05dee2/python_calamine-0.8.2-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:efe476889191a80b05a514b37f89a7d364e1ad19783918e93b0a053e2e2e9f08", size = 919538, upload-time = "2026-07-13T13:57:06.049Z" },
+    { url = "https://files.pythonhosted.org/packages/cb/5d/dc12ce14a748b180cfa22d6a9e5dc372808050466666ab9776623f437c61/python_calamine-0.8.2-cp313-cp313-manylinux_2_5_i686.manylinux1_i686.whl", hash = "sha256:220b1a2962f5394edc0f5918d91e4dd3e9f3c6c521d0f2a4ccaf3d3ace980a28", size = 995727, upload-time = "2026-07-13T13:57:08.315Z" },
+    { url = "https://files.pythonhosted.org/packages/ab/da/72986560b082a005d88e5b74cc89686fa8f767a5173436b9dd3d0f43a33a/python_calamine-0.8.2-cp313-cp313-musllinux_1_1_aarch64.whl", hash = "sha256:02d52d6d7792f82d97f1b8e15001fc08f9ab75a57a62fd849313c0a6b64d38af", size = 1098601, upload-time = "2026-07-13T13:57:10.071Z" },
+    { url = "https://files.pythonhosted.org/packages/00/9e/e5ca987e17e043079a391a1fff7c13f2b5ed6908a25b54baac2e41d2db84/python_calamine-0.8.2-cp313-cp313-musllinux_1_1_armv7l.whl", hash = "sha256:c55112b2b0f65f7e6757629e89d0b063689d8fa821736d9b81a1468db08d0085", size = 1191819, upload-time = "2026-07-13T13:57:11.758Z" },
+    { url = "https://files.pythonhosted.org/packages/78/23/4cc7cc53d342ad7b74e3780aefd60a6af0e132f3e5d964a1847ccfe32ea5/python_calamine-0.8.2-cp313-cp313-musllinux_1_1_x86_64.whl", hash = "sha256:2e8f0753f1ec064704e256a2d5793f42f0cb256710501cf060f5f3a47e5dabc8", size = 1135376, upload-time = "2026-07-13T13:57:13.391Z" },
+    { url = "https://files.pythonhosted.org/packages/ef/be/2c82689a076e438fa310fa8119e5e1d1166e2419a122f6137808a1a70a64/python_calamine-0.8.2-cp314-cp314-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:ccd41bed56ae3a7ff0de6f71860cd13edcf3ebc42eefb58eab201b5cc6ec7660", size = 923867, upload-time = "2026-07-13T13:57:23.739Z" },
+    { url = "https://files.pythonhosted.org/packages/d8/3d/8e5da593780efb767f0d0fcaccec9f4bcc6f9beba9281969b2c51fee05f8/python_calamine-0.8.2-cp314-cp314-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:19c8d87444fe83ca0cebd95e01cb7166f1844455120319de4ef8581e03f63b22", size = 917529, upload-time = "2026-07-13T13:57:25.83Z" },
+    { url = "https://files.pythonhosted.org/packages/f7/2f/56334bdb7c1bbdb2474ff927afeff72ebb558a301e2dfbb1691e6969e0e1/python_calamine-0.8.2-cp314-cp314-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:5be7dca31f391cc2bc3d86a9e1ef88d51240565e9849b23642b3b95bd7ce29ad", size = 1089145, upload-time = "2026-07-13T13:57:27.658Z" },
+    { url = "https://files.pythonhosted.org/packages/2d/99/908da083c1faa6ee215be079238f7d25022eaa577dd9fa3e88814f39dfec/python_calamine-0.8.2-cp314-cp314-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:40f1c657eaa988a50638fc584226391e6897ba676ec3e35aaed0db7d8b02e3ed", size = 987785, upload-time = "2026-07-13T13:57:29.57Z" },
+    { url = "https://files.pythonhosted.org/packages/52/90/f7a71c8991911a431ed31f83cd9f3a49bf0e0e3395a27d3a47f60dd55826/python_calamine-0.8.2-cp314-cp314-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:9d3cfce465ce82eb9100e5e90673a5844fd46eb7b8148c5404c70f941fd8280b", size = 921563, upload-time = "2026-07-13T13:57:31.268Z" },
+    { url = "https://files.pythonhosted.org/packages/b8/2e/768d8686fa4d87d6bcdee21959845d767e4913066e562cddd048516f9edd/python_calamine-0.8.2-cp314-cp314-manylinux_2_5_i686.manylinux1_i686.whl", hash = "sha256:3655c08901562d7c44853ba966a62104637f216a67aa5ba5628115067811b3f2", size = 998078, upload-time = "2026-07-13T13:57:33.483Z" },
+    { url = "https://files.pythonhosted.org/packages/ea/b3/12273f5ea9df335eeb896e8f8d54dfd888b52d57f03d0e6163c86be28ac1/python_calamine-0.8.2-cp314-cp314-musllinux_1_1_aarch64.whl", hash = "sha256:c72d5310e28a517cbb14812cd60a41c264d65b2424e6413c08f5f7160eebafd4", size = 1099253, upload-time = "2026-07-13T13:57:35.404Z" },
+    { url = "https://files.pythonhosted.org/packages/02/64/3f222cc693eb6bbae0cf1bfa3c45300d6024cb515a8380779ca46ea096db/python_calamine-0.8.2-cp314-cp314-musllinux_1_1_armv7l.whl", hash = "sha256:2e88eef40b2f39aa9c32cf6d2d7e6bf0c8669547f8a196883bae6d202458b358", size = 1193093, upload-time = "2026-07-13T13:57:37.147Z" },
+    { url = "https://files.pythonhosted.org/packages/56/a0/91d06d24caa01cbb7d020155a0ba565d5acb15b873705c72c69dc36351fc/python_calamine-0.8.2-cp314-cp314-musllinux_1_1_x86_64.whl", hash = "sha256:8e9b57dc1553bf86e2793d86e0b9268855f5382391f01be78c9c06aa30bad3a7", size = 1138084, upload-time = "2026-07-13T13:57:39.059Z" },
+    { url = "https://files.pythonhosted.org/packages/ce/ba/279277863792e26982c6a9c9b9700c36b4319e7ad3424fc4e8164b6db5a7/python_calamine-0.8.2-cp314-cp314-pyemscripten_2026_0_wasm32.whl", hash = "sha256:74f5038df6c40316e7f1d20c7d478baf6a6bd227e91f17aae2723014156a895f", size = 515427, upload-time = "2026-07-13T13:57:40.66Z" },
+    { url = "https://files.pythonhosted.org/packages/6b/9b/01bccf504edeb5419c4a138302004c7a3b14db537554f0da8b4b217c94d1/python_calamine-0.8.2-cp314-cp314t-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:8c307f6e5f5c55a58a3a64b96dd3a7ca437570efea8e1b8515108b1cfd9adf46", size = 920817, upload-time = "2026-07-13T13:57:51.816Z" },
+    { url = "https://files.pythonhosted.org/packages/d5/65/c555639d38376908a2258ad7c06e8f12ffb774343531dddd5acce1a7be9f/python_calamine-0.8.2-cp314-cp314t-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:7dc9d63b44b0681a3ff4be1810bf63042d3492bba3e4dbf0273318170fb82e59", size = 915360, upload-time = "2026-07-13T13:57:53.576Z" },
+    { url = "https://files.pythonhosted.org/packages/aa/a2/ba37bc638ecf4dbf651cb0e9db4fac495881739434c7eb106653bc686f8f/python_calamine-0.8.2-cp314-cp314t-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:dd903b60575bf8ec45c5797a64d1960e46cafe0d5ae479131d739aba6f094775", size = 1086101, upload-time = "2026-07-13T13:57:55.575Z" },
+    { url = "https://files.pythonhosted.org/packages/6e/41/732501f6a965284dc429c56d90f56328ad5c9ec57ccc6404b6bd5a07605a/python_calamine-0.8.2-cp314-cp314t-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:5770e6fb816792ff329505d4a6a0eb3439b0b5e5c05f601268fb3bae26a52844", size = 985151, upload-time = "2026-07-13T13:57:57.357Z" },
+    { url = "https://files.pythonhosted.org/packages/71/4a/90f3646da7c8546153229b9df2f97cd3dcb644d747bc28e0ae7773e6f3fa/python_calamine-0.8.2-cp314-cp314t-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:7351f2e8833ff6d6e2e6bf7bf1327a69527513f5e8cfb8d51f13ea32d2bcfb16", size = 921694, upload-time = "2026-07-13T13:57:59.071Z" },
+    { url = "https://files.pythonhosted.org/packages/d4/7b/96aedc02df1cb762578b44af05413d51cae9b041319c0c200ddfc4aa36c3/python_calamine-0.8.2-cp314-cp314t-manylinux_2_5_i686.manylinux1_i686.whl", hash = "sha256:1804917c652b674e9456419f4c80add237b2edc94e192e9b6b7ccd7b2a7c4105", size = 996333, upload-time = "2026-07-13T13:58:00.856Z" },
+    { url = "https://files.pythonhosted.org/packages/c5/9a/b152b3d25f778cf5b90b60df9fec57ddb2f3d5c2c16ed08e751421a64d30/python_calamine-0.8.2-cp314-cp314t-musllinux_1_1_aarch64.whl", hash = "sha256:4ae30729fa4032f7a5d3fdca6968f4b5774967ea67bb62d7e5d198350419adc4", size = 1096283, upload-time = "2026-07-13T13:58:02.669Z" },
+    { url = "https://files.pythonhosted.org/packages/e7/25/9c8c877f1632e70681437471a63e4d0ec150f72219665e1bcc0d2ba9d14b/python_calamine-0.8.2-cp314-cp314t-musllinux_1_1_armv7l.whl", hash = "sha256:67dad173dce245859eeb8335e8808835b53245bab75bf5a5b9f20435357c5156", size = 1191124, upload-time = "2026-07-13T13:58:04.747Z" },
+    { url = "https://files.pythonhosted.org/packages/32/36/035b56decd6c0855203a21235c501c9d1c0965a0cd80f5299a561f05228b/python_calamine-0.8.2-cp314-cp314t-musllinux_1_1_x86_64.whl", hash = "sha256:3013f0872b6e4f52173d98fa0a6dbb83f1858440c1b858690893339e7d813c38", size = 1137036, upload-time = "2026-07-13T13:58:06.457Z" },
+]
+
+[[package]]
 name = "python-dateutil"
 version = "2.9.0.post0"
 source = { registry = "https://pypi.org/simple" }
@@ -4235,19 +4410,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/66/c0/0c8b6ad9f17a802ee498c46e004a0eb49bc148f2fd230864601a86dcf6db/python-dateutil-2.9.0.post0.tar.gz", hash = "sha256:37dd54208da7e1cd875388217d5e00ebd4179249f90fb72437e91a35459a0ad3", size = 342432, upload-time = "2024-03-01T18:36:20.211Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ec/57/56b9bcc3c9c6a792fcbaf139543cee77261f3651ca9da0c93f5c1221264b/python_dateutil-2.9.0.post0-py2.py3-none-any.whl", hash = "sha256:a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427", size = 229892, upload-time = "2024-03-01T18:36:18.57Z" },
-]
-
-[[package]]
-name = "python-docx"
-version = "1.2.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "lxml" },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/a9/f7/eddfe33871520adab45aaa1a71f0402a2252050c14c7e3009446c8f4701c/python_docx-1.2.0.tar.gz", hash = "sha256:7bc9d7b7d8a69c9c02ca09216118c86552704edc23bac179283f2e38f86220ce", size = 5723256, upload-time = "2025-06-16T20:46:27.921Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/d0/00/1e03a4989fa5795da308cd774f05b704ace555a70f9bf9d3be057b680bcf/python_docx-1.2.0-py3-none-any.whl", hash = "sha256:3fd478f3250fbbbfd3b94fe1e985955737c145627498896a8a6bf81f4baf66c7", size = 252987, upload-time = "2025-06-16T20:46:22.506Z" },
 ]
 
 [[package]]
@@ -4275,21 +4437,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/5b/42/55c32bb9b12693c092ad250a0e82edb5b31ddeda6eb772de5f308b3804ad/python_multipart-0.0.32.tar.gz", hash = "sha256:be54b7f3fa167bb83e4fcd936b887b708f4e57fe75911c02aebf53efaf8d938e", size = 46881, upload-time = "2026-06-04T16:18:58.647Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e1/04/e8135ebd1ad02c56ec633277529b2602ff99ff634be76cdba5744cf554fd/python_multipart-0.0.32-py3-none-any.whl", hash = "sha256:ff6d3f776f16878c894e52e107296ffc890e913c611b1a4ec6c44e2821fe2e23", size = 30042, upload-time = "2026-06-04T16:18:57.319Z" },
-]
-
-[[package]]
-name = "python-pptx"
-version = "1.0.2"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "lxml" },
-    { name = "pillow" },
-    { name = "typing-extensions" },
-    { name = "xlsxwriter" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/52/a9/0c0db8d37b2b8a645666f7fd8accea4c6224e013c42b1d5c17c93590cd06/python_pptx-1.0.2.tar.gz", hash = "sha256:479a8af0eaf0f0d76b6f00b0887732874ad2e3188230315290cd1f9dd9cc7095", size = 10109297, upload-time = "2024-08-07T17:33:37.772Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/d9/4f/00be2196329ebbff56ce564aa94efb0fbc828d00de250b1980de1a34ab49/python_pptx-1.0.2-py3-none-any.whl", hash = "sha256:160838e0b8565a8b1f67947675886e9fea18aa5e795db7ae531606d68e785cba", size = 472788, upload-time = "2024-08-07T17:33:28.192Z" },
 ]
 
 [[package]]
@@ -4341,6 +4488,7 @@ dependencies = [
     { name = "pillow" },
     { name = "pillow-heif" },
     { name = "pydantic" },
+    { name = "pydantic-settings" },
     { name = "pypdfium2" },
     { name = "typer" },
 ]
@@ -4353,6 +4501,7 @@ requires-dist = [
     { name = "pillow" },
     { name = "pillow-heif" },
     { name = "pydantic", specifier = ">=2" },
+    { name = "pydantic-settings" },
     { name = "pypdfium2" },
     { name = "typer" },
 ]
@@ -4409,15 +4558,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/b1/5e/f77dc6b9036943e285ba76b49e118d9ea929885becb0a29ba8a7c75e29fe/pyyaml-6.0.3-cp314-cp314t-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:00c4bdeba853cc34e7dd471f16b4114f4162dc03e6b7afcc2128711f0eca823c", size = 839261, upload-time = "2025-09-25T21:32:51.808Z" },
     { url = "https://files.pythonhosted.org/packages/ce/88/a9db1376aa2a228197c58b37302f284b5617f56a5d959fd1763fb1675ce6/pyyaml-6.0.3-cp314-cp314t-musllinux_1_2_aarch64.whl", hash = "sha256:66e1674c3ef6f541c35191caae2d429b967b99e02040f5ba928632d9a7f0f065", size = 805272, upload-time = "2025-09-25T21:32:52.941Z" },
     { url = "https://files.pythonhosted.org/packages/da/92/1446574745d74df0c92e6aa4a7b0b3130706a4142b2d1a5869f2eaa423c6/pyyaml-6.0.3-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:16249ee61e95f858e83976573de0f5b2893b3677ba71c9dd36b9cf8be9ac6d65", size = 829923, upload-time = "2025-09-25T21:32:54.537Z" },
-]
-
-[[package]]
-name = "rarfile"
-version = "4.2"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/26/3f/3118a797444e7e30e784921c4bfafb6500fb288a0c84cb8c32ed15853c16/rarfile-4.2.tar.gz", hash = "sha256:8e1c8e72d0845ad2b32a47ab11a719bc2e41165ec101fd4d3fe9e92aa3f469ef", size = 153476, upload-time = "2024-04-03T17:10:53.798Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/62/fc/ab37559419ca36dd8dd317c3a98395ed4dcee2beeb28bf6059b972906727/rarfile-4.2-py3-none-any.whl", hash = "sha256:8757e1e3757e32962e229cab2432efc1f15f210823cc96ccba0f6a39d17370c9", size = 29052, upload-time = "2024-04-03T17:10:52.632Z" },
 ]
 
 [[package]]
@@ -4628,6 +4768,20 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/f5/d1/5cf5909329fedb5d39d555ee818ba5cf4638e1a301b89785d34f2905bfcb/ruff-0.15.18-py3-none-musllinux_1_2_armv7l.whl", hash = "sha256:a81beadbbff2c9c245561ae3f77b16709d87f35eec650d0501679239d3449b22", size = 10693187, upload-time = "2026-06-18T18:25:08.245Z" },
     { url = "https://files.pythonhosted.org/packages/fd/44/ff6c635cf2c4f4e7b618b6640da057376baa36014695487d88aed4794268/ruff-0.15.18-py3-none-musllinux_1_2_i686.whl", hash = "sha256:2186d9e940ae332ab293623a75b5f4fe49565f449954d50a72a046683aa6b809", size = 11208721, upload-time = "2026-06-18T18:25:41.327Z" },
     { url = "https://files.pythonhosted.org/packages/88/d9/5baa2a30861adfb7022cf33c1e35b2fc18085b08c16f83eff4c7b99a5f48/ruff-0.15.18-py3-none-musllinux_1_2_x86_64.whl", hash = "sha256:5c2abf140438032bc77b2284a6c9944ecd8a19e5f1c7b52b1b8e4a0a80d19a7a", size = 11678599, upload-time = "2026-06-18T18:25:13.607Z" },
+]
+
+[[package]]
+name = "s3fs"
+version = "2026.4.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "aiobotocore" },
+    { name = "aiohttp" },
+    { name = "fsspec" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/cb/d8/76f3dc1558bdf4494b117a9f7a9cc0a5d9d34edadc9e5d7ceabc5a6a7c37/s3fs-2026.4.0.tar.gz", hash = "sha256:5bdce0abb00b0435ee150807a45fea727451dbc22de4cbc116464f8504ab9d37", size = 85986, upload-time = "2026-04-29T20:52:51.748Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5d/a4/9d1ea10ebc9e028a289a72fec84da170689549a8102c8aacfcad26bc5035/s3fs-2026.4.0-py3-none-any.whl", hash = "sha256:de0d2a1f33cdf03831fd2382d278c6e4e31fe57c3bf2f703c61f8aec6b703e2a", size = 32392, upload-time = "2026-04-29T20:52:50.295Z" },
 ]
 
 [[package]]
@@ -5263,6 +5417,19 @@ wheels = [
 ]
 
 [[package]]
+name = "universal-pathlib"
+version = "0.3.10"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "fsspec" },
+    { name = "pathlib-abc" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3d/6e/d997a70ee8f4c61f9a7e2f4f8af721cf072a3326848fc881b05187e52558/universal_pathlib-0.3.10.tar.gz", hash = "sha256:4487cbc90730a48cfb64f811d99e14b6faed6d738420cd5f93f59f48e6930bfb", size = 261110, upload-time = "2026-02-22T14:40:58.87Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/dd/1a/5d9a402b39ec892d856bbdd9db502ff73ce28cdf4aff72eb1ce1d6843506/universal_pathlib-0.3.10-py3-none-any.whl", hash = "sha256:dfaf2fb35683d2eb1287a3ed7b215e4d6016aa6eaf339c607023d22f90821c66", size = 83528, upload-time = "2026-02-22T14:40:57.316Z" },
+]
+
+[[package]]
 name = "urllib3"
 version = "2.7.0"
 source = { registry = "https://pypi.org/simple" }
@@ -5525,15 +5692,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/44/b3/e8aa07b619890a2aa6cde1931b1887abb08820721b564a5f80b7ca3f3aa0/wrapt-2.2.2-cp314-cp314t-musllinux_1_2_riscv64.whl", hash = "sha256:6fe35fd51b74867d8b80174c277bd6bbf6a73e443f908129dc531c4b688a20d5", size = 192728, upload-time = "2026-06-20T23:49:16.854Z" },
     { url = "https://files.pythonhosted.org/packages/b7/f0/1819fb50f0d3c9bd758d8a83b56f1b470dee8b5b8eac8702b7c137cea9d4/wrapt-2.2.2-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:11d95fc2fbad3163596c39d440e6f21ca9fccece74b56e30a37ac2fca786a07c", size = 198842, upload-time = "2026-06-20T23:49:18.504Z" },
     { url = "https://files.pythonhosted.org/packages/6e/d2/6317eb6d4554855bbf12d61857774af34747bf88a42c19bf306de67e2fa3/wrapt-2.2.2-py3-none-any.whl", hash = "sha256:5bad217350f19ce99ca5b5e71d406765ea86fe541628426772b657375ee1c048", size = 61460, upload-time = "2026-06-20T23:49:42.966Z" },
-]
-
-[[package]]
-name = "xlsxwriter"
-version = "3.2.9"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/46/2c/c06ef49dc36e7954e55b802a8b231770d286a9758b3d936bd1e04ce5ba88/xlsxwriter-3.2.9.tar.gz", hash = "sha256:254b1c37a368c444eac6e2f867405cc9e461b0ed97a3233b2ac1e574efb4140c", size = 215940, upload-time = "2025-09-16T00:16:21.63Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/3a/0c/3662f4a66880196a590b202f0db82d919dd2f89e99a27fadef91c4a33d41/xlsxwriter-3.2.9-py3-none-any.whl", hash = "sha256:9a5db42bc5dff014806c58a20b9eae7322a134abb6fce3c92c181bfb275ec5b3", size = 175315, upload-time = "2025-09-16T00:16:20.108Z" },
 ]
 
 [[package]]

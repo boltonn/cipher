@@ -3,6 +3,10 @@
 Resolves the database URL from `ALEMBIC_DATABASE_URL`, or from the same
 `POSTGRES__*` variables (in `.env`) the services use. `target_metadata` is the
 shared `Base.metadata`; importing the tables package registers every model.
+
+Every statement waits at most `ALEMBIC_LOCK_TIMEOUT` (default 10s) for a lock, then fails: a
+migration queued behind a busy table would otherwise block every live query that arrives after it.
+Re-run it when the app is quieter.
 """
 
 import os
@@ -65,7 +69,13 @@ def run_migrations_online() -> None:
     """Run migrations against a live database."""
     section = config.get_section(config.config_ini_section, {})
     section["sqlalchemy.url"] = _database_url()
-    connectable = engine_from_config(section, prefix="sqlalchemy.", poolclass=pool.NullPool)
+    lock_timeout = os.environ.get("ALEMBIC_LOCK_TIMEOUT", "10s")
+    connectable = engine_from_config(
+        section,
+        prefix="sqlalchemy.",
+        poolclass=pool.NullPool,
+        connect_args={"options": f"-c lock_timeout={lock_timeout}"},
+    )
 
     with connectable.connect() as connection:
         context.configure(

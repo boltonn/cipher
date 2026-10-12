@@ -105,9 +105,7 @@ async def get_comments(
         file_datastore=file_datastore,
         entity_datastore=entity_datastore,
     )
-    return await datastore.get_comments(
-        commentable_type=params.commentable_type, commentable_id=params.commentable_id
-    )
+    return await datastore.get_comments(commentable_type=params.commentable_type, commentable_id=params.commentable_id)
 
 
 @router.patch(

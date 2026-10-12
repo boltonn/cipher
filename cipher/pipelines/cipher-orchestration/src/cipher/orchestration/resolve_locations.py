@@ -55,7 +55,7 @@ def _location_detail(place: Place) -> LocationCreate:
     )
 
 
-async def _place_entities(session: AsyncSession, places: list[Place]) -> dict[str, str]:
+async def place_entities(session: AsyncSession, places: list[Place]) -> dict[str, str]:
     """Place id -> entity id, creating the global place entity (+ location row) on first sight."""
     if not places:
         return {}
@@ -100,7 +100,7 @@ async def resolve_locations_workflow(
             places[place.id] = place
             kinds[place.kind.value] += 1
 
-    entity_ids = await _place_entities(session, list(places.values()))
+    entity_ids = await place_entities(session, list(places.values()))
     mention_repo = PostgresMentionRepository(session=session)
     attached = 0
     for place_id, ids in mention_ids.items():

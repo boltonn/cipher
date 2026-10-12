@@ -12,6 +12,7 @@ from cipher.api.settings import Settings, TextRanker
 from cipher.datastores.postgres.repositories.comment import PostgresCommentRepository
 from cipher.datastores.postgres.repositories.database_metrics import PostgresDatabaseMetricsRepository
 from cipher.datastores.postgres.repositories.dataset import PostgresDatasetRepository
+from cipher.datastores.postgres.repositories.dataset_profile import PostgresDatasetProfileRepository
 from cipher.datastores.postgres.repositories.enrichment import (
     PostgresEnrichmentRepository,
 )
@@ -35,6 +36,8 @@ from cipher.datastores.postgres.repositories.mention import PostgresMentionRepos
 from cipher.datastores.postgres.repositories.mention_relationship import PostgresMentionRelationshipRepository
 from cipher.datastores.postgres.repositories.name_suggestion import PostgresNameSuggestionRepository
 from cipher.datastores.postgres.repositories.person import PostgresPersonRepository
+from cipher.datastores.postgres.repositories.search_record import PostgresSearchRecordRepository
+from cipher.datastores.postgres.repositories.table_mapping import PostgresTableMappingRepository
 from cipher.datastores.postgres.repositories.tag import PostgresTagRepository
 from cipher.datastores.postgres.repositories.user import PostgresUserRepository
 from cipher.datastores.postgres.tables.base import Base
@@ -79,6 +82,21 @@ async def get_session():
     """
     async with AsyncSession(get_async_engine_from_settings(), expire_on_commit=False) as session:
         yield session
+
+
+async def end_transactions(*repositories: object) -> None:
+    """Commit each repository's open transaction before a slow non-database step (an LLM call).
+
+    A request's session otherwise holds its first query's transaction -- and its locks -- until the
+    response ends, minutes for a streamed chat, which stalls migrations and every query queued behind them.
+    """
+    sessions = {id(s): s for r in repositories if isinstance(s := getattr(r, "session", None), AsyncSession)}
+    for session in sessions.values():
+        if session.in_transaction():
+            try:
+                await session.commit()
+            except Exception:  # noqa: BLE001 -- a failed transaction can only be rolled back
+                await session.rollback()
 
 
 # The Postgres extension each keyword ranker needs; `core` needs none.
@@ -146,6 +164,18 @@ async def get_extracted_text_repository() -> AsyncGenerator[PostgresExtractedTex
     """Dependency injector for PostgresExtractedTextRepository."""
     async with get_session() as session:
         yield PostgresExtractedTextRepository(session=session)
+
+
+async def get_search_record_repository() -> AsyncGenerator[PostgresSearchRecordRepository, None]:
+    """Dependency injector for PostgresSearchRecordRepository."""
+    async with get_session() as session:
+        yield PostgresSearchRecordRepository(session=session)
+
+
+async def get_dataset_profile_repository() -> AsyncGenerator[PostgresDatasetProfileRepository, None]:
+    """Dependency injector for PostgresDatasetProfileRepository."""
+    async with get_session() as session:
+        yield PostgresDatasetProfileRepository(session=session)
 
 
 async def get_image_repository() -> AsyncGenerator[PostgresImageRepository, None]:
@@ -250,12 +280,20 @@ async def get_tag_repository() -> AsyncGenerator[PostgresTagRepository, None]:
         yield PostgresTagRepository(session=session)
 
 
+async def get_table_mapping_repository() -> AsyncGenerator[PostgresTableMappingRepository, None]:
+    """Dependency injector for PostgresTableMappingRepository."""
+    async with get_session() as session:
+        yield PostgresTableMappingRepository(session=session)
+
+
 DatasetDatastoreDep = Annotated[PostgresDatasetRepository, Depends(get_dataset_repository)]
 EnrichmentDatastoreDep = Annotated[PostgresEnrichmentRepository, Depends(get_enrichment_repository)]
 EnrichmentRunDatastoreDep = Annotated[PostgresEnrichmentRunRepository, Depends(get_enrichment_run_repository)]
 FileDatastoreDep = Annotated[PostgresFileRepository, Depends(get_file_repository)]
 ExtractedTextDatastoreDep = Annotated[PostgresExtractedTextRepository, Depends(get_extracted_text_repository)]
 ImageDatastoreDep = Annotated[PostgresImageRepository, Depends(get_image_repository)]
+SearchRecordDatastoreDep = Annotated[PostgresSearchRecordRepository, Depends(get_search_record_repository)]
+DatasetProfileDatastoreDep = Annotated[PostgresDatasetProfileRepository, Depends(get_dataset_profile_repository)]
 UserDatastoreDep = Annotated[PostgresUserRepository, Depends(get_user_repository)]
 DatabaseMetricsDatastoreDep = Annotated[PostgresDatabaseMetricsRepository, Depends(get_database_metrics_repository)]
 FaceDatastoreDep = Annotated[PostgresFaceRepository, Depends(get_face_repository)]
@@ -276,6 +314,7 @@ NameSuggestionDatastoreDep = Annotated[PostgresNameSuggestionRepository, Depends
 EntityMatchDatastoreDep = Annotated[PostgresEntityMatchRepository, Depends(get_entity_match_repository)]
 EventDatastoreDep = Annotated[PostgresEventRepository, Depends(get_event_repository)]
 TagDatastoreDep = Annotated[PostgresTagRepository, Depends(get_tag_repository)]
+TableMappingDatastoreDep = Annotated[PostgresTableMappingRepository, Depends(get_table_mapping_repository)]
 
 
 def image_similarity_params_form(
@@ -369,6 +408,7 @@ __all__ = [
     "Person",
     "Comment",
     "get_session",
+    "end_transactions",
     "get_async_engine_from_settings",
     "get_dataset_repository",
     "get_enrichment_repository",
@@ -408,6 +448,7 @@ __all__ = [
     "EntityMatchDatastoreDep",
     "EventDatastoreDep",
     "TagDatastoreDep",
+    "TableMappingDatastoreDep",
     "FaceSimilaritySearchFormParametersDep",
     "postgres_lifespan",
 ]

@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
+import { humanize } from "@/lib/utils";
 
 /** Shared shell: the inspectors float over the canvas' right edge so opening one never resizes the graph. */
 export const INSPECTOR_SHELL =
@@ -36,7 +37,6 @@ const CONNECTIONS_PREVIEW = 6;
 
 interface NodeInspectorProps {
   entityId: string;
-  datasetId: string | undefined;
   graph: Graph | undefined;
   isSeed: boolean;
   isExpanded: boolean;
@@ -54,7 +54,6 @@ interface NodeInspectorProps {
 
 export function NodeInspector({
   entityId,
-  datasetId,
   graph,
   isSeed,
   isExpanded,
@@ -198,7 +197,7 @@ export function NodeInspector({
               className="h-8 gap-1.5 border-border bg-muted/40 text-xs"
             >
               <Link
-                href={`/search?entityId=${entityId}${datasetId ? `&datasetId=${datasetId}` : ""}`}
+                href={`/search/text?entityId=${entityId}`}
                 target="_blank"
               >
                 Search text
@@ -270,7 +269,7 @@ function Connections({
         return (
           <div key={type} className="space-y-1">
             <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
-              <span>{type.replace(/_/g, " ")}</span>
+              <span>{humanize(type)}</span>
               <span className="font-mono font-normal">{all.length}</span>
             </div>
             {shown.map((c) => (

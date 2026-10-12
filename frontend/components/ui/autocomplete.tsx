@@ -100,6 +100,9 @@ interface AutocompleteInputProps
   onValueChange: (value: string) => void;
   /** Fired on Enter when no suggestion is highlighted -- lets this double as a search field. */
   onEnter?: (value: string) => void;
+  /** Rendered inside the field box, before / after the text (icons, clear buttons). */
+  startAddon?: React.ReactNode;
+  endAddon?: React.ReactNode;
 }
 
 function AutocompleteInput({
@@ -107,6 +110,8 @@ function AutocompleteInput({
   value,
   onValueChange,
   onEnter,
+  startAddon,
+  endAddon,
   onFocus,
   onBlur,
   onKeyDown,
@@ -130,6 +135,7 @@ function AutocompleteInput({
           className
         )}
       >
+        {startAddon}
         <CommandPrimitive.Input
           ref={inputRef}
           data-slot="autocomplete-input"
@@ -178,6 +184,7 @@ function AutocompleteInput({
           )}
           {...props}
         />
+        {endAddon}
       </div>
     </PopoverAnchor>
   );

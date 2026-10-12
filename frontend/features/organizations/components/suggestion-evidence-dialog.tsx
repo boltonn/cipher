@@ -24,6 +24,8 @@ import { Check, ExternalLink, Mail, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
+import { humanize } from "@/lib/utils";
+import { textOffsets } from "@/lib/text-offsets";
 
 /**
  * Why a suggestion exists and every source behind it: each email signature (both names
@@ -55,7 +57,7 @@ export function SuggestionEvidenceDialog({
                 {suggestion.entity.displayName}
                 <span className="font-normal text-muted-foreground">
                   {" "}
-                  {suggestion.relationshipType.replace(/_/g, " ")}{" "}
+                  {humanize(suggestion.relationshipType)}{" "}
                 </span>
                 {suggestion.unit.displayName}
               </DialogTitle>
@@ -180,7 +182,7 @@ function Why({ suggestion }: { suggestion: OrganizationSuggestion }) {
   return (
     <div className="rounded-lg border border-annotation/40 bg-annotation/5 px-3 py-2 text-xs">
       <p className="text-foreground">{explainSuggestion(suggestion)}</p>
-      {suggestion.method === "email_domain" && e && (
+      {suggestion.method === "emailDomain" && e && (
         <ul className="mt-1.5 space-y-0.5 text-[11px] text-muted-foreground">
           <li>
             Addresses:{" "}
@@ -231,13 +233,14 @@ function markSpans(
   offset: number,
   marks: { span: EvidenceSpan | null; className: string }[]
 ): ReactNode[] {
+  const offsets = textOffsets(snippet); // span offsets count code points; the snippet indexes UTF-16
   const ranges = marks
     .flatMap(({ span, className }) =>
       span?.startOffset != null && span.endOffset != null
         ? [
             {
-              start: span.startOffset - offset,
-              end: span.endOffset - offset,
+              start: offsets.toUtf16(span.startOffset - offset),
+              end: offsets.toUtf16(span.endOffset - offset),
               className,
             },
           ]

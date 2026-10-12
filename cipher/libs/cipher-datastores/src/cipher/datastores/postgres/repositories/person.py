@@ -261,16 +261,28 @@ class PostgresPersonRepository:
         count_result = await self.session.execute(count_stmt)
         total_count = count_result.scalar_one()
 
-        sort_column = {
-            PersonSortField.NAME: PersonTable.name,
-            PersonSortField.DATE_CREATED: PersonTable.date_created,
-            PersonSortField.DATE_UPDATED: PersonTable.date_updated,
-        }[request.sort_by]
+        is_named = func.coalesce(PersonTable.name, "") != ""
+        if request.sort_by == PersonSortField.RELEVANCE:
+            face_count = (
+                select(func.count(FaceTable.id))
+                .where(FaceTable.person_id == PersonTable.id, FaceTable.date_rejected.is_(None))
+                .scalar_subquery()
+            )
+            order = [desc(PersonTable.is_verified), desc(is_named), desc(face_count), asc(PersonTable.name)]
+        else:
+            sort_column = {
+                PersonSortField.NAME: PersonTable.name,
+                PersonSortField.DATE_CREATED: PersonTable.date_created,
+                PersonSortField.DATE_UPDATED: PersonTable.date_updated,
+            }[request.sort_by]
+            direction = desc if request.sort_order == SortOrder.DESC else asc
+            # Unnamed face clusters sort after every named person, whichever way names run.
+            order = [desc(is_named), direction(sort_column).nulls_last()]
 
         data_stmt = select(PersonTable)
         if where_clause:
             data_stmt = data_stmt.where(*where_clause)
-        data_stmt = data_stmt.order_by(desc(sort_column) if request.sort_order == SortOrder.DESC else asc(sort_column))
+        data_stmt = data_stmt.order_by(*order, PersonTable.id)
         data_stmt = data_stmt.offset((request.page - 1) * request.limit).limit(request.limit)
 
         result = await self.session.execute(data_stmt)

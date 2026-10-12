@@ -1,9 +1,8 @@
 from datetime import UTC, datetime
-from enum import StrEnum
 
 from pydantic import Field, computed_field
 
-from cipher.schemas._base.base import BaseModel
+from cipher.schemas._base.base import BaseModel, StrEnum
 from cipher.schemas._base.common import PageParams, PaginatedResponse, Sex
 from cipher.schemas.identity.face import FaceEmbedding
 
@@ -16,6 +15,7 @@ class PersonSource(StrEnum):
 
 
 class PersonSortField(StrEnum):
+    RELEVANCE = "relevance"
     NAME = "name"
     DATE_CREATED = "date_created"
     DATE_UPDATED = "date_updated"
@@ -146,7 +146,10 @@ class PersonSearchParameters(PageParams):
         default=None, description="True = only persons with no name yet; False = only named persons"
     )
     limit: int = Field(default=10, ge=1, le=100)
-    sort_by: PersonSortField = Field(default=PersonSortField.DATE_UPDATED)
+    sort_by: PersonSortField = Field(
+        default=PersonSortField.RELEVANCE,
+        description="relevance = verified, then named, then most faces, then name (sort_order ignored)",
+    )
 
 
 class PaginatedPersonsResponse(PaginatedResponse):

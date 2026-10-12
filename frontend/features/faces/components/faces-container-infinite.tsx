@@ -14,7 +14,7 @@ import type {
   PaginatedFaceSimilarityResponse,
 } from "../types";
 import { ImageViewerDialog } from "@/features/images/components/image-viewer-dialog";
-import { FaceCard } from "./face-card";
+import { EAGER_FACE_COUNT, FaceCard } from "./face-card";
 import type { GridSelection } from "@/hooks/use-grid-selection";
 import { useAssignFaces } from "../hooks/use-assign-face";
 import { useRejectFaces, useUnrejectFaces } from "../hooks/use-reject-faces";
@@ -112,9 +112,10 @@ export function FacesContainerInfinite({
     []
   );
   const renderItem = useCallback(
-    (face: FacePublic | FaceSimilarityResult) => (
+    (face: FacePublic | FaceSimilarityResult, index: number) => (
       <FaceCard
         face={face}
+        isEager={index < EAGER_FACE_COUNT}
         onFindSimilar={onSimilar}
         onExpand={handleExpand}
         onCreatePerson={setCreatePersonFace}

@@ -4,9 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from cipher.datastores.elasticsearch.client import get_async_client
 from cipher.datastores.postgres.session import get_async_engine
-from cipher.orchestration.settings import Settings
-
-settings = Settings()
+from cipher.orchestration.settings import settings
 
 
 def get_async_engine_from_settings() -> AsyncEngine:

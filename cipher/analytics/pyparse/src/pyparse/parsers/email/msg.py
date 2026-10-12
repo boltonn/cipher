@@ -1,9 +1,9 @@
-"""Parser for Outlook .msg files (OLE compound-file format).
+"""Outlook .msg files (OLE compound-file format): ``parse_msg``.
 
 Delegates all header-string parsing (address decoding, from/to/cc/bcc,
-`EmailClient`/`MessageState` detection, date parsing) to `EmlParser`, since a
+`EmailClient`/`MessageState` detection, date parsing) to the .eml reader, since a
 .msg file's `TransportMessageHeaders` property is the same RFC 822 header
-blob `EmlParser` already knows how to read -- .msg only differs in where
+blob `extract_metadata` already reads -- .msg only differs in where
 the body and attachments live (OLE properties, not MIME parts), and in
 exposing a few native properties (`Subject`, sender addresses,
 `InternetMessageId`, `DeliverTime`) that fill in whenever the transport
@@ -11,27 +11,35 @@ headers are absent or incomplete, which some .msg exports don't preserve.
 """
 
 import email
-import hashlib
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from filetyper import FileTyper
 from loguru import logger
 from msg_parser.msg_parser import Message
 from olefile import OleFileIO
 
 from cipher.schemas.content.email import EmailAddress, EmailBase
 from cipher.schemas.ingestion.file import FileBase
-from pyparse.parsers.email.eml import EmlParser
-from pyparse.utils.io import safe_open
-
-try:
-    import compressed_rtf
-except ImportError:
-    compressed_rtf = None
+from pyparse.children import ChildSink, describe_only
+from pyparse.parsers.email.eml import EmailOptions, extract_metadata, with_meaningful_hash
+from pyparse.parsers.email.inline import ContentIdParts, content_id_key, resolve_inline_images
+from pyparse.parsers.email.msg_embedded import embedded_message_eml, embedded_message_subject
+from pyparse.parsers.email.rtf import rtf_body
 
 _SENDER_PROPERTY_KEYS = ("SenderSmtpAddress", "SenderEmailAddress", "SentRepresentingSmtpAddress")
+# PidTagMessageClass as a top-level stream (Unicode, then ANSI); `IPM.Note.SMIME` is an encrypted
+# message (its body is an attached smime.p7m), `IPM.Note.SMIME.MultipartSigned` only signed.
+_MESSAGE_CLASS_STREAMS = (("__substg1.0_001A001F", "utf-16-le"), ("__substg1.0_001A001E", "latin-1"))
+_ENCRYPTED_MESSAGE_CLASS = "ipm.note.smime"
+
+
+def message_class(ole: OleFileIO) -> str | None:
+    """The message's own class (`IPM.Note`, `IPM.Note.SMIME`, ...), or None when absent."""
+    for stream, encoding in _MESSAGE_CLASS_STREAMS:
+        if ole.exists(stream):
+            return ole.openstream(stream).read().decode(encoding, errors="replace").rstrip("\x00")
+    return None
 
 
 def _fix_mojibake(text: str | None) -> str | None:
@@ -61,147 +69,124 @@ def _fix_mojibake(text: str | None) -> str | None:
     return candidate if printable / len(candidate) > 0.98 else text
 
 
-class MsgParser:
-    """Parser for Outlook .msg files.
+def _native_sender(properties: dict) -> EmailAddress | None:
+    for key in _SENDER_PROPERTY_KEYS:
+        if address := properties.get(key):
+            return EmailAddress(name=_fix_mojibake(properties.get("SenderName")), value=_fix_mojibake(address))
+    return None
+
+
+def _extract_meta(msg: Message, *, return_raw_header: bool) -> dict[str, Any]:
+    """Parse `TransportMessageHeaders` as an .eml's headers, then patch in native OLE properties.
+
+    `TransportMessageHeaders` is the same RFC 822 header blob an .eml file has, so address /
+    state / client detection is identical. When headers are missing or don't carry a field
+    (from / title / message_id / date_sent), the equivalent native property fills the gap.
+    """
+    properties = msg.properties
+    header_msg = email.message_from_string(_fix_mojibake(properties.get("TransportMessageHeaders")) or "")
+    out = extract_metadata(header_msg, return_raw_header=return_raw_header)
+
+    if out["from"] is None:
+        out["from"] = _native_sender(properties)
+    if out.get("title") is None:
+        out["title"] = _fix_mojibake(properties.get("Subject"))
+    if out.get("message_id") is None:
+        out["message_id"] = properties.get("InternetMessageId")
+    if out.get("date_sent") is None:
+        native_date = properties.get("DeliverTime") or properties.get("CreationTime")
+        if isinstance(native_date, datetime):
+            out["date_sent"] = native_date
+    return out
+
+
+def _extract_body(properties: dict) -> tuple[str | None, str | None]:
+    """The plain and HTML bodies; an RTF-only body (common in Outlook) is read as text."""
+    html = properties.get("Html")
+    if isinstance(html, bytes):
+        html = html.decode("utf-8", errors="ignore")
+    plain = properties.get("Body")
+    if isinstance(plain, bytes):
+        plain = plain.decode("utf-8", errors="ignore")
+    plain, html = _fix_mojibake(plain) or None, _fix_mojibake(html) or None
+    return (plain, html) if plain or html else rtf_body(properties.get("RtfCompressed"))
+
+
+def _content_id_parts(msg: Message) -> ContentIdParts:
+    """Attached files with a Content-ID (the HTML may show them inline)."""
+    parts: ContentIdParts = {}
+    for attachment in msg.attachments.values():
+        payload = attachment.get("AttachDataObject")
+        if payload is not None and (content_id := content_id_key(attachment.get("AttachContentId"))):
+            parts[content_id] = (attachment.get("AttachMimeTag") or "application/octet-stream", payload)
+    return parts
+
+
+def _extract_attachments(
+    msg: Message, ole: OleFileIO, *, inline_content_ids: set[str], save_inline_images: bool, sink: ChildSink
+) -> list[FileBase]:
+    """True attachments (attached Outlook items as `.eml`), each handed to ``sink``.
+
+    Images the body shows (``inline_content_ids``) go to ``sink`` only when ``save_inline_images``, and are
+    never returned.
+    """
+    children: list[FileBase] = []
+    for storage, attachment in msg.attachments.items():
+        file_name = _fix_mojibake(attachment.get("AttachLongFilename") or attachment.get("AttachFilename"))
+        is_inline = content_id_key(attachment.get("AttachContentId")) in inline_content_ids
+        if (payload := attachment.get("AttachDataObject")) is not None:
+            if is_inline and not save_inline_images:
+                continue
+            child = sink(data=payload, filename=file_name)
+            if not is_inline:
+                children.append(child)
+        elif "EmbeddedMessage" in attachment and (eml := embedded_message_eml(ole, storage)):
+            children.append(sink(data=eml, filename=f"{embedded_message_subject(ole, storage) or 'attached'}.eml"))
+        else:
+            logger.debug(f"Outlook attachment {file_name!r} ({storage}) has no data; skipped")
+    return children
+
+
+def parse_msg(
+    source: bytes | str | Path,
+    *,
+    sink: ChildSink = describe_only,
+    options: EmailOptions | None = None,
+) -> EmailBase:
+    """Parse an Outlook .msg into an ``EmailBase`` (same shape as ``parse_eml``).
+
+    OLE is read as binary, so ``options.encoding`` doesn't apply, and a .msg has no MIME tree
+    for HTML sanitization; ``options.return_raw_header`` does apply.
 
     Args:
-        file_typer: Shared ``FileTyper`` instance used for attachment metadata
-            enrichment, same as ``EmlParser``. A default instance is created
-            when omitted.
+        source: Raw bytes, or a path to a ``.msg`` file.
+        sink: Receives each attachment (an attached Outlook item as ``.eml``) and returns its record.
+        options: How to read it (``EmailOptions``).
+
+    Returns:
+        The parsed email; ``is_encrypted`` when its message class is ``IPM.Note.SMIME``.
     """
+    options = options or EmailOptions()
+    with OleFileIO(source if isinstance(source, bytes) else Path(source)) as ole:
+        msg = Message(ole.root.kids_dict)
+        metadata = _extract_meta(msg, return_raw_header=options.return_raw_header)
+        plain, html = _extract_body(msg.properties)
+        html, inline_content_ids = resolve_inline_images(
+            html, _content_id_parts(msg), embed=options.embed_inline_images
+        )
+        attachments = _extract_attachments(
+            msg,
+            ole,
+            inline_content_ids=inline_content_ids,
+            save_inline_images=options.save_inline_images,
+            sink=sink,
+        )
+        encrypted = (message_class(ole) or "").lower() == _ENCRYPTED_MESSAGE_CLASS
 
-    def __init__(self, file_typer: FileTyper | None = None) -> None:
-        self.file_typer = file_typer or FileTyper()
-        self._eml_parser = EmlParser(file_typer=self.file_typer)
-
-    @staticmethod
-    def _load(source: bytes | str | Path) -> Message:
-        if isinstance(source, bytes):
-            return Message(OleFileIO(source).root.kids_dict)
-        with OleFileIO(Path(source)) as ole:
-            return Message(ole.root.kids_dict)
-
-    @staticmethod
-    def _native_sender(properties: dict) -> EmailAddress | None:
-        for key in _SENDER_PROPERTY_KEYS:
-            if address := properties.get(key):
-                return EmailAddress(name=_fix_mojibake(properties.get("SenderName")), value=_fix_mojibake(address))
-        return None
-
-    def _extract_meta(self, msg: Message, *, return_raw_header: bool) -> dict[str, Any]:
-        """Parse `TransportMessageHeaders` via `EmlParser`, then patch in native OLE properties.
-
-        `TransportMessageHeaders` is the same RFC 822 header blob an .eml
-        file has, so address/state/client detection is identical -- reused
-        as-is rather than reimplemented. When headers are missing or don't
-        carry a given field (from/title/message_id/date_sent), the
-        equivalent native property fills the gap.
-        """
-        properties = msg.properties
-        header_msg = email.message_from_string(_fix_mojibake(properties.get("TransportMessageHeaders")) or "")
-        out = self._eml_parser._extract_meta(header_msg, return_raw_header=return_raw_header)
-
-        if out["from"] is None:
-            out["from"] = self._native_sender(properties)
-        if out.get("title") is None:
-            out["title"] = _fix_mojibake(properties.get("Subject"))
-        if out.get("message_id") is None:
-            out["message_id"] = properties.get("InternetMessageId")
-        if out.get("date_sent") is None:
-            native_date = properties.get("DeliverTime") or properties.get("CreationTime")
-            if isinstance(native_date, datetime):
-                out["date_sent"] = native_date
-
-        return out
-
-    @staticmethod
-    def _extract_body(properties: dict) -> tuple[str | None, str | None]:
-        html = properties.get("Html")
-        if isinstance(html, bytes):
-            html = html.decode("utf-8", errors="ignore")
-        html = _fix_mojibake(html)
-
-        plain = properties.get("Body")
-        if isinstance(plain, bytes):
-            plain = plain.decode("utf-8", errors="ignore")
-        plain = _fix_mojibake(plain)
-
-        if not plain and not html and compressed_rtf and "RtfCompressed" in properties:
-            try:
-                plain = compressed_rtf.decompress(properties["RtfCompressed"])
-            except Exception as e:
-                logger.error(f"Error decompressing RTF body: {e}")
-
-        return plain or None, html or None
-
-    def _extract_attachments(self, msg: Message, *, extract_children: bool, out_dir: Path | None) -> list[FileBase]:
-        attachments = []
-        for attachment in msg.attachments.values():
-            payload: bytes | None = attachment.get("AttachDataObject")
-            if payload is None:
-                continue
-
-            file_name = _fix_mojibake(attachment.get("AttachLongFilename") or attachment.get("AttachFilename"))
-            ext = Path(file_name).suffix if file_name else None
-            md5 = hashlib.md5(payload).hexdigest()
-            sha256 = hashlib.sha256(payload).hexdigest()
-            filetype_info = self.file_typer.infer(payload)
-
-            if extract_children:
-                if out_dir is None:
-                    raise ValueError("out_dir must be provided when extract_children=True")
-                if ext is None and filetype_info.extensions:
-                    ext = filetype_info.extensions[0]
-                out_path = out_dir / f"{md5}{ext or '.bin'}"
-                with safe_open(out_path, "wb") as fh:
-                    fh.write(payload)
-
-            attachments.append(
-                FileBase(
-                    filename=file_name,
-                    filetype=filetype_info["filetype"],
-                    filetype_group=filetype_info["filetype_group"],
-                    md5=md5,
-                    sha256=sha256,
-                    mime_type=filetype_info["mime_type"],
-                    size=len(payload),
-                    **({"path": str(out_path), "uri": out_path.as_uri()} if extract_children else {}),
-                )
-            )
-        return attachments
-
-    def parse(
-        self,
-        source: bytes | str | Path,
-        *,
-        return_raw_header: bool = False,
-        extract_children: bool = False,
-        out_dir: Path | None = None,
-    ) -> EmailBase:
-        """Parse an Outlook .msg file from bytes or a file path into an ``EmailBase``.
-
-        Mirrors ``EmlParser.parse``'s return shape for interchangeability via
-        ``parse_email()``. Has no ``encoding``/``sanitize_html`` parameters --
-        OLE is read as binary (no filesystem-encoding concern) and .msg has
-        no MIME tree to run through ``HtmlParser``.
-
-        Args:
-            source: Raw bytes, a path string, or a ``Path`` to a ``.msg`` file.
-            return_raw_header: Attaches the decoded transport-header dict to
-                ``EmailBase.raw_header`` when ``True``.
-            extract_children: Write attachment payloads to ``out_dir``.
-            out_dir: Target directory for extracted files. Required when
-                ``extract_children=True``.
-
-        Returns:
-            A fully assembled ``EmailBase`` instance.
-
-        Raises:
-            ValueError: When ``extract_children=True`` and ``out_dir`` is None.
-        """
-        msg = self._load(source)
-        metadata = self._extract_meta(msg, return_raw_header=return_raw_header)
-        plain, html = self._extract_body(msg.properties)
-        attachments = self._extract_attachments(msg, extract_children=extract_children, out_dir=out_dir)
-
-        return EmailBase(html=html, plain=plain, attachments=attachments, metadata=metadata)
+    return EmailBase(
+        html=html,
+        plain=plain,
+        is_encrypted=encrypted,
+        attachments=attachments,
+        metadata=with_meaningful_hash(metadata, plain=plain, html=html),
+    )

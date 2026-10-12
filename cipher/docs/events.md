@@ -161,7 +161,7 @@ rows with `extractor = "llm"` deduped against existing rows on `uid`, then
 `(normalized title, start date)` / `(type, start date, place)`. It is not part of
 the chat agent.
 
-- **`.ics` parsing** — `pyparse.parsers.calendar.ics.IcsParser` (hand-rolled like
+- **`.ics` parsing** — `pyparse.parsers.calendar.ics.parse_events` / `iter_events` (hand-rolled like
   `vcard.py`: line unfold, TEXT unescape, UTC / `TZID=` / all-day `DTSTART`,
   `DURATION`, `STATUS`, `CLASS`, `URL`, `GEO`, `SEQUENCE`, `DTSTAMP` / `CREATED`
   / `LAST-MODIFIED`, `ORGANIZER` / `ATTENDEE` with `CN` / `mailto:` / `PARTSTAT`

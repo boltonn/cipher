@@ -7,18 +7,20 @@
 # jats/pst support too), but this starts with the well-established office/
 # document formats and should grow as the exotic ones (hwp, one, postscript,
 # visio, ai) get verified against real samples.
-SUPPORTED_FILETYPES = frozenset({
-    "pdf",
-    "doc",
-    "docx",
-    "dotx",
-    "xls",
-    "xlsb",
-    "xlsx",
-    "ppt",
-    "pptx",
-    "odt",
-    "ods",
-    "odp",
-    "epub",
-})
+SUPPORTED_FILETYPES = frozenset(
+    {
+        "pdf",
+        "doc",
+        "docx",
+        "dotx",
+        "xls",
+        "xlsb",
+        "xlsx",
+        "ppt",
+        "pptx",
+        "odt",
+        "ods",
+        "odp",
+        "epub",
+    }
+)

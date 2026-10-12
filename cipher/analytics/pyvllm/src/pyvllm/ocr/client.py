@@ -7,7 +7,6 @@ bounded by `MAX_PAGES_IN_FLIGHT` rendered pages held in memory.
 
 import asyncio
 import base64
-import os
 from io import BytesIO
 from pathlib import Path
 
@@ -18,6 +17,7 @@ from pyvllm.models import MODELS
 from pyvllm.ocr.pages import DEFAULT_MAX_SIDE, page_count, render_pages, scanned_pages
 from pyvllm.ocr.parse import DEFAULT_PROMPT, FIGURE_PROMPT, parse_page
 from pyvllm.ocr.schemas import OcrPage, OcrRequest, OcrResponse
+from pyvllm.settings import settings
 
 MAX_PAGES_IN_FLIGHT = 96
 MAX_TOKENS_PER_PAGE = 4096
@@ -41,12 +41,12 @@ class OcrClient:
     """Sends each page to the `ocr` server with the fewest pages in flight (one server per GPU scales ~linearly)."""
 
     def __init__(self, base_urls: list[str] | None = None, timeout: float = 900.0, max_side: int = DEFAULT_MAX_SIDE):
-        api_key = os.environ.get("VLLM_API_KEY")
-        headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
         urls = base_urls or [MODELS["ocr"].base_url]
         self.model = MODELS["ocr"].served_name
         self.max_side = max_side
-        self._clients = [httpx.AsyncClient(base_url=url, timeout=timeout, headers=headers) for url in urls]
+        self._clients = [
+            httpx.AsyncClient(base_url=url, timeout=timeout, headers=settings.auth_headers) for url in urls
+        ]
         self._pages_in_flight = [0] * len(self._clients)
         self._slots = asyncio.Semaphore(MAX_PAGES_IN_FLIGHT)
 

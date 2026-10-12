@@ -7,7 +7,7 @@ import {
   type EntityBreakdownItem,
   type SelectorType,
 } from "@/features/entities/types";
-import { cn } from "@/lib/utils";
+import { cn, humanize } from "@/lib/utils";
 import { motion } from "motion/react";
 import Link from "next/link";
 
@@ -22,7 +22,7 @@ function labelFor(section: Section, key: string): string {
     );
   if (section === "selectorType")
     return SELECTOR_TYPE_LABELS[key as SelectorType] ?? key;
-  return key.replace(/_/g, " ");
+  return humanize(key);
 }
 
 type Section = "entityType" | "selectorType" | "selectorSubtype";
@@ -84,7 +84,7 @@ function BarList({
 
 /** Compact linked breakdown of a dataset's entities -- by type, then by selector type/subtype. */
 export function DatasetEntityBreakdown({ datasetId }: Props) {
-  const { data, isPending } = useEntityBreakdown(datasetId);
+  const { data, isPending } = useEntityBreakdown([datasetId]);
 
   if (isPending) {
     return (

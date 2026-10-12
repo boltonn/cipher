@@ -1,0 +1,32 @@
+[project]
+name = "pyarchive"
+description = "Safe, streaming archive extraction into a content-addressed blob store."
+keywords = ["archive", "zip", "tar", "extraction", "cipher"]
+version = "0.0.1"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "cipher-schemas",
+  "cipher-utils",
+  "filetyper",
+  "loguru",
+  "pydantic",
+  "typer",
+]
+
+[project.optional-dependencies]
+zstd = [ "filetyper[zstd]" ]
+lz4 = [ "filetyper[lz4]" ]
+pdf = [ "filetyper[pdf]" ]
+
+[project.scripts]
+pyarchive = "pyarchive.cli:app"
+
+[tool.uv.sources]
+cipher-schemas = { workspace = true }
+cipher-utils = { workspace = true }
+filetyper = { workspace = true }
+
+[build-system]
+requires = [ "hatchling" ]
+build-backend = "hatchling.build"

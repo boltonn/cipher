@@ -108,9 +108,7 @@ async def toggle_chunk_tag(
     If 'negative', it updates the 'negative_tags' list.
     """
     # We pass the type to the datastore to let it decide which column/field to update
-    updated_chunk = await datastore.toggle_chunk_tag(
-        chunk_id=str(id), tag=tag_data.tag, tag_type=tag_data.type
-    )
+    updated_chunk = await datastore.toggle_chunk_tag(chunk_id=str(id), tag=tag_data.tag, tag_type=tag_data.type)
 
     if updated_chunk is None:
         raise HTTPException(status_code=404, detail=f"Chunk not found: {id}")
@@ -211,9 +209,7 @@ async def translate_message(
     datastore: MessageDatastoreDep,
 ):
     """Update the translation field of a message by its source message_id."""
-    updated = await datastore.translate_message(
-        message_id=id, translation=payload.translation
-    )
+    updated = await datastore.translate_message(message_id=id, translation=payload.translation)
     if not updated:
         raise HTTPException(status_code=404, detail=f"Message not found: {id}")
     return updated

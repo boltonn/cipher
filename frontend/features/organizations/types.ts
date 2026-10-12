@@ -5,11 +5,11 @@ import type {
 } from "@/features/entities/types";
 import type { PaginatedResponse, SortOrderType } from "@/types/common";
 
-/** One unit of a hierarchy, pointing at its `part_of` parent (cipher.schemas.graph.organization). */
+/** One unit of a hierarchy, pointing at its `partOf` parent (cipher.schemas.graph.organization). */
 export interface OrganizationTreeNode {
   entity: EntitySummary;
   parentId: string | null;
-  /** Pending `part_of` suggestion that would attach this unit; null once confirmed. */
+  /** Pending `partOf` suggestion that would attach this unit; null once confirmed. */
   suggestionId: string | null;
   category: string | null;
   /** People employed by / members of this unit directly. */
@@ -29,20 +29,20 @@ export type OrganizationAffiliation = "member" | "connected";
 export type RelationshipSource =
   | "manual"
   | "extraction"
-  | "selector_inference"
-  | "co_mention"
-  | "face_cooccurrence"
+  | "selectorInference"
+  | "coMention"
+  | "faceCooccurrence"
   | "import";
 
 export type OrganizationPeopleSortKey =
-  | "display_name"
+  | "displayName"
   | "role"
   | "unit"
-  | "relationship_type"
+  | "relationshipType"
   | "source"
-  | "mention_count"
-  | "file_count"
-  | "date_observed_end";
+  | "mentionCount"
+  | "fileCount"
+  | "dateObservedEnd";
 
 export interface OrganizationPeopleParameters {
   includeSubUnits: boolean;
@@ -77,12 +77,12 @@ export interface OrganizationPerson {
 export type PaginatedOrganizationPeople = PaginatedResponse<OrganizationPerson>;
 
 export type SuggestionMethod =
-  | "co_mention"
+  | "coMention"
   | "llm"
-  | "selector_inference"
+  | "selectorInference"
   | "manual"
   | "signature"
-  | "email_domain";
+  | "emailDomain";
 
 /** The numbers behind an email-domain suggestion (cipher.orchestration.domain_affiliations). */
 export interface EmailDomainExplanation {
@@ -97,8 +97,8 @@ export interface EmailDomainExplanation {
 }
 
 /**
- * A pending suggestion on a unit: a person `employed_by` / `member_of` it,
- * or a sub-unit `part_of` it.
+ * A pending suggestion on a unit: a person `employedBy` / `memberOf` it,
+ * or a sub-unit `partOf` it.
  */
 export interface OrganizationSuggestion {
   candidateId: string;

@@ -39,7 +39,12 @@ interface FaceCardProps {
   /** Something in the grid is selected: a click toggles selection instead of expanding. */
   isSelectionActive?: boolean;
   onToggleSelect?: (face: FacePublic, range: boolean) => void;
+  /** Above-the-fold card (first rows): load eagerly so it isn't a lazy LCP image. */
+  isEager?: boolean;
 }
+
+/** Cards in the first rows of a face grid that load eagerly. */
+export const EAGER_FACE_COUNT = 12;
 
 const FaceCardImpl: React.FC<FaceCardProps> = ({
   face,
@@ -52,6 +57,7 @@ const FaceCardImpl: React.FC<FaceCardProps> = ({
   isSelected,
   isSelectionActive,
   onToggleSelect,
+  isEager,
 }) => {
   const similarityScore =
     "similarityScore" in face ? face.similarityScore : undefined;
@@ -93,13 +99,14 @@ const FaceCardImpl: React.FC<FaceCardProps> = ({
         }}
       >
         {/* Small server-cropped thumbnail (~10 KB) -- not the full source photo.
-            next/image is lazy by default, so offscreen virtualized rows don't
-            fetch/decode. */}
+            Lazy by default so offscreen virtualized rows don't fetch/decode;
+            the first rows are eager since one is usually the LCP. */}
         <Image
           src={facesService.getFaceThumbnailUrl(face.id)}
           alt=""
           fill
           unoptimized
+          loading={isEager ? "eager" : "lazy"}
           sizes="(max-width: 640px) 50vw, (max-width: 1280px) 20vw, 16vw"
           className={cn("object-cover", isRejected && "grayscale opacity-60")}
         />

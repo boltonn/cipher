@@ -112,15 +112,15 @@ const SLIDES: { title: string; body: ReactNode }[] = [
         <p>
           Every mention of the same spelling is bucketed into a{" "}
           <b className="text-foreground">name group</b>:{" "}
-          <NameChip>Nick Bolton</NameChip> across 4,493 emails is{" "}
-          <i>one</i> group.
+          <NameChip>Nick Bolton</NameChip> across 4,493 emails is <i>one</i>{" "}
+          group.
         </p>
         <p>
           An <b className="text-foreground">entity</b> is the single record for
           the real person / organization / location that mentions point at.{" "}
-          <b className="text-foreground">Resolving</b> a name group means deciding
-          which entity it is — accepting a suggested resolution, picking another
-          entity, or creating a new one.
+          <b className="text-foreground">Resolving</b> a name group means
+          deciding which entity it is — accepting a suggested resolution,
+          picking another entity, or creating a new one.
         </p>
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/30 p-3">
           <span className="flex items-center gap-1 text-[11px]">
@@ -142,12 +142,12 @@ const SLIDES: { title: string; body: ReactNode }[] = [
     body: (
       <div className="space-y-3 text-xs leading-relaxed text-muted-foreground">
         <p>
-          Names and identifiers are pulled from email headers
-          (<code>From / To / Cc / Bcc</code>), signatures, contact cards, and
+          Names and identifiers are pulled from email headers (
+          <code>From / To / Cc / Bcc</code>), signatures, contact cards, and
           body text. Email addresses and phone numbers become{" "}
-          <b className="text-foreground">selector</b> entities; the display names
-          beside them become unresolved <b className="text-foreground">name</b>{" "}
-          mentions.
+          <b className="text-foreground">selector</b> entities; the display
+          names beside them become unresolved{" "}
+          <b className="text-foreground">name</b> mentions.
         </p>
         <p>
           Nothing is a person or an organisation yet — a header name is
@@ -196,28 +196,64 @@ const SLIDES: { title: string; body: ReactNode }[] = [
         <ul className="space-y-2">
           <li className="rounded-lg border border-border/60 p-2">
             <span className="inline-flex items-center gap-1 font-medium text-foreground">
-              <Sparkles size={11} className="text-annotation" /> Resolved automatically
+              <Sparkles size={11} className="text-annotation" /> Resolved
+              automatically
             </span>{" "}
-            — one safe rule only: an exact shared identifier on a structured field <i>plus</i> a real
-            name match, with a clear margin over any runner-up. Tagged “auto”; you can undo it.
+            — one safe rule only: an exact shared identifier on a structured
+            field <i>plus</i> a real name match, with a clear margin over any
+            runner-up. Tagged “auto”; you can undo it.
           </li>
           <li className="rounded-lg border border-border/60 p-2">
-            <span className="font-medium text-foreground">Suggested resolution</span> — plausible
-            entities, not safe enough to apply alone. The name waits in the{" "}
-            <b className="text-foreground">Resolve</b> tab with those suggestions.
+            <span className="font-medium text-foreground">
+              Suggested resolution
+            </span>{" "}
+            — plausible entities, not safe enough to apply alone. The name waits
+            in the <b className="text-foreground">Resolve</b> tab with those
+            suggestions.
           </li>
           <li className="rounded-lg border border-border/60 p-2">
             <span className="inline-flex items-center gap-1 font-medium text-foreground">
-              <Sparkles size={11} className="text-annotation" /> Auto-created entity
+              <Sparkles size={11} className="text-annotation" /> Auto-created
+              entity
             </span>{" "}
-            — nothing matched, but the name was typed (e.g. an organization found by the language
-            model) and common enough. The resolver creates an entity for it; you check it on the{" "}
+            — nothing matched, but the name was typed (e.g. an organization
+            found by the language model) and common enough. The resolver creates
+            an entity for it; you check it on the{" "}
             <b className="text-foreground">Verify</b> tab.
           </li>
           <li className="rounded-lg border border-border/60 p-2">
-            <span className="font-medium text-foreground">No entity yet</span> — nothing matched and
-            too little to go on. The name waits in the <b className="text-foreground">Resolve</b> tab
-            for you to create an entity or discard it.
+            <span className="font-medium text-foreground">No entity yet</span> —
+            nothing matched and too little to go on. The name waits in the{" "}
+            <b className="text-foreground">Resolve</b> tab for you to create an
+            entity or discard it.
+          </li>
+        </ul>
+      </div>
+    ),
+  },
+  {
+    title: "One name, one decision",
+    body: (
+      <div className="space-y-3 text-xs leading-relaxed text-muted-foreground">
+        <p>
+          The data spells the same thing many ways — “Adaire”, “Adaire&apos;s”,
+          “Adaire (no reply)”, “Adaire, Inc.”, and the language model may call
+          it a person in one email and an organization in the next. The resolver
+          treats all of these as <b className="text-foreground">one name</b> and
+          decides once:
+        </p>
+        <ul className="space-y-1.5">
+          <li>
+            Auto-created copies of the same name and type are folded into one
+            entity, and new mentions of the name attach to it.
+          </li>
+          <li>
+            The same name as a person <i>and</i> an organization is asked on the{" "}
+            <b className="text-foreground">Verify</b> tab: merge or keep apart.
+          </li>
+          <li>
+            Only a <b className="text-foreground">verified</b> entity is never
+            assumed from the name alone — two real people can share one.
           </li>
         </ul>
       </div>
@@ -228,19 +264,33 @@ const SLIDES: { title: string; body: ReactNode }[] = [
     body: (
       <div className="space-y-3 text-xs leading-relaxed text-muted-foreground">
         <p>
-          Auto-created entities are real records holding their names&apos; mentions, but nobody has
-          checked them. Start with the biggest — more names will resolve to them.
+          Auto-created entities are real records holding their names&apos;
+          mentions, but nobody has checked them. Start with the biggest — more
+          names will resolve to them.
         </p>
         <ul className="space-y-1.5">
           <li>
-            <b className="text-foreground">Verify</b> — it&apos;s right; keep it as a real entity.
+            <b className="text-foreground">Verify</b> — it&apos;s right; keep it
+            as a real entity.
           </li>
           <li>
-            <b className="text-foreground">Edit</b> — fix its name or type (“dell” → “Dell”).
+            <b className="text-foreground">Edit</b> — fix its name or type
+            (“dell” → “Dell”).
           </li>
           <li>
-            <b className="text-foreground">Merge</b> — it repeats another entity (“Dell Inc” is “Dell”):
-            fold it in. Its mentions move over and its name becomes an alias.
+            <b className="text-foreground">May be the same as …</b> — the
+            resolver found another entity it may repeat (“Matt Regan” / “Matthew
+            Regan”).{" "}
+            <b className="text-foreground">Merge</b> folds it in — its mentions
+            move over and its name becomes an alias;{" "}
+            <b className="text-foreground">Keep apart</b> says they differ.
+          </li>
+          <li>
+            <b className="text-foreground">Also auto-created as …</b> — the same
+            name was made as two types (“Adaire” the person and the
+            organization). Pick the type it really is and the two become one
+            entity of that type; <b className="text-foreground">Both</b> says
+            the name really is shared.
           </li>
         </ul>
       </div>
@@ -251,14 +301,17 @@ const SLIDES: { title: string; body: ReactNode }[] = [
     body: (
       <div className="space-y-3 text-xs leading-relaxed text-muted-foreground">
         <p>
-          Each card is one name group: the amber box is the <b className="text-foreground">name</b>, the
-          rows beneath are <b className="text-foreground">suggested resolutions</b> — entities it might
-          be, best first.
+          Each card is one name group: the amber box is the{" "}
+          <b className="text-foreground">name</b>, the rows beneath are{" "}
+          <b className="text-foreground">suggested resolutions</b> — entities it
+          might be, best first.
         </p>
         <div className="rounded-xl border border-border p-3">
           <div className="mb-2 flex items-center gap-2">
             <NameChip>Nick Bolton</NameChip>
-            <span className="text-[11px] text-muted-foreground">14,856 mentions · 4,493 files</span>
+            <span className="text-[11px] text-muted-foreground">
+              14,856 mentions · 4,493 files
+            </span>
           </div>
           <div className="space-y-1.5">
             <MiniCandidate
@@ -276,7 +329,10 @@ const SLIDES: { title: string; body: ReactNode }[] = [
               score="—"
               Icon={User}
               dim
-              chips={[{ label: "shared identifier" }, { label: "name structure", conflict: true }]}
+              chips={[
+                { label: "shared identifier" },
+                { label: "name structure", conflict: true },
+              ]}
             />
           </div>
         </div>
@@ -291,23 +347,26 @@ const SLIDES: { title: string; body: ReactNode }[] = [
             <span className="inline-flex items-center gap-1 font-medium text-foreground">
               <X size={11} /> Reject
             </span>{" "}
-            → that suggestion is wrong; the name stays open for another decision.
+            → that suggestion is wrong; the name stays open for another
+            decision.
           </li>
           <li>
-            <b className="text-foreground">Another entity…</b> → resolve to an existing entity that
-            wasn&apos;t suggested.
+            <b className="text-foreground">Another entity…</b> → resolve to an
+            existing entity that wasn&apos;t suggested.
           </li>
           <li>
-            <b className="text-foreground">Create a new</b> person / organization / location → a new
-            entity from the name, with all its mentions.
+            <b className="text-foreground">Create a new</b> person /
+            organization / location → a new entity from the name, with all its
+            mentions.
           </li>
           <li>
-            <b className="text-foreground">Not an entity</b> → discard the name (a slogan, a greeting,
-            parser junk).
+            <b className="text-foreground">Not an entity</b> → discard the name
+            (a slogan, a greeting, parser junk).
           </li>
           <li>
-            <b className="text-foreground">Accept N clear matches</b> accepts every top suggestion on the
-            page that scores ≥ 0.95, has no conflict, and points at a verified entity.
+            <b className="text-foreground">Accept N clear matches</b> accepts
+            every top suggestion on the page that scores ≥ 0.95, has no
+            conflict, and points at a verified entity.
           </li>
         </ul>
       </div>
@@ -319,10 +378,12 @@ const SLIDES: { title: string; body: ReactNode }[] = [
       <div className="space-y-3 text-xs leading-relaxed text-muted-foreground">
         <p>Once a name group is resolved:</p>
         <ul className="space-y-1.5">
-          <li>Its mentions now point at the entity and show on the entity dossier.</li>
           <li>
-            Graph edges get built — <code>has_selector</code> (person ↔ address),{" "}
-            <code>emailed</code> (who emailed whom).
+            Its mentions now point at the entity and show on the entity dossier.
+          </li>
+          <li>
+            Graph edges get built — <code>has_selector</code> (person ↔
+            address), <code>emailed</code> (who emailed whom).
           </li>
           <li>
             Auto-attached rows carry a{" "}
@@ -365,7 +426,9 @@ export default function ResolutionGuidePage() {
             Entities
           </Link>
           <span className="text-muted-foreground/50">/</span>
-          <span className="font-mono text-primary/80">How resolution works</span>
+          <span className="font-mono text-primary/80">
+            How resolution works
+          </span>
         </div>
       </PageHeader>
 
@@ -381,14 +444,11 @@ export default function ResolutionGuidePage() {
       </h1>
       <p className="mt-1 text-xs text-muted-foreground">
         What the <b>Verify</b> and <b>Resolve</b> tabs do, and what happens when
-        you click. Verify auto-created entities first, then resolve names to them.
+        you click. Verify auto-created entities first, then resolve names to
+        them.
       </p>
 
-      <Carousel
-        setApi={setApi}
-        opts={{ align: "start" }}
-        className="mt-6"
-      >
+      <Carousel setApi={setApi} opts={{ align: "start" }} className="mt-6">
         <CarouselContent>
           {SLIDES.map((s, i) => (
             <CarouselItem key={i}>
@@ -430,7 +490,10 @@ export default function ResolutionGuidePage() {
       </p>
       <dl className="mt-3 divide-y divide-border/60 rounded-xl border border-border">
         {Object.values(RESOLUTION_FEATURE_META).map((m) => (
-          <div key={m.label} className="flex flex-col gap-1 p-3 sm:flex-row sm:gap-4">
+          <div
+            key={m.label}
+            className="flex flex-col gap-1 p-3 sm:flex-row sm:gap-4"
+          >
             <dt className="sm:w-40 sm:shrink-0">
               <span className="rounded-full border border-annotation/30 bg-annotation/10 px-1.5 py-0.5 text-[11px] text-annotation-foreground dark:text-annotation">
                 {m.label}

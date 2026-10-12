@@ -11,7 +11,7 @@ import {
   type SelectorSubtype,
   type SelectorType,
 } from "@/features/entities/types";
-import { cn } from "@/lib/utils";
+import { cn, humanize } from "@/lib/utils";
 
 interface EntityTypeBadgeProps {
   type: EntityType;
@@ -54,7 +54,7 @@ export function EntityTypeBadge({
   const kindMeta = kind ? SELECTOR_TYPE_META[kind] : null;
   const Icon = kindMeta?.Icon ?? meta.Icon;
   const label = kindMeta?.label ?? meta.label;
-  const trailing = sub ? sub.replace(/_/g, " ") : kind ? null : detail;
+  const trailing = sub ? humanize(sub) : kind ? null : detail;
 
   return (
     <Badge

@@ -31,7 +31,7 @@ import { useState } from "react";
 
 /**
  * What extraction proposed for this unit or anything below it, awaiting review: sub-units
- * (`part_of`, from signature unit chains) and people (from signatures or their email domain).
+ * (`partOf`, from signature unit chains) and people (from signatures or their email domain).
  * Accepting turns a suggestion into a real edge, so it joins the chart and the table.
  */
 export function OrganizationSuggestions({
@@ -52,8 +52,8 @@ export function OrganizationSuggestions({
   );
   if (suggestions.length === 0 && nameSuggestions.length === 0) return null;
 
-  const units = suggestions.filter((s) => s.relationshipType === "part_of");
-  const people = suggestions.filter((s) => s.relationshipType !== "part_of");
+  const units = suggestions.filter((s) => s.relationshipType === "partOf");
+  const people = suggestions.filter((s) => s.relationshipType !== "partOf");
   const row = (s: OrganizationSuggestion) => (
     <SuggestionRow
       key={s.candidateId}
@@ -149,9 +149,9 @@ export function NameSuggestionRow({
           <span className="font-medium text-foreground">{n.source.name}</span>
           {n.role && <span className="text-muted-foreground">{n.role}</span>}
           <span className="text-muted-foreground">
-            {n.relationshipType === "part_of"
+            {n.relationshipType === "partOf"
               ? "under"
-              : n.relationshipType === "member_of"
+              : n.relationshipType === "memberOf"
                 ? "member of"
                 : "at"}
           </span>
@@ -214,7 +214,7 @@ function SuggestionRow({
   onResolve: (status: "confirmed" | "rejected") => void;
   onSelectUnit: (id: string) => void;
 }) {
-  const isUnit = s.relationshipType === "part_of";
+  const isUnit = s.relationshipType === "partOf";
   return (
     <li className="flex items-start gap-3 px-3 py-1.5 text-xs">
       <div className="min-w-0 flex-1">

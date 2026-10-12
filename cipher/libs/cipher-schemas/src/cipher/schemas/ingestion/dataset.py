@@ -1,12 +1,10 @@
 from datetime import UTC, datetime
-from enum import StrEnum
 from typing import Literal
 from uuid import uuid4
 
-from pydantic import Field, computed_field, model_validator
-from pydantic.alias_generators import to_snake
+from pydantic import Field, computed_field
 
-from cipher.schemas._base.base import BaseModel
+from cipher.schemas._base.base import BaseModel, StrEnum
 from cipher.schemas._base.common import PaginatedResponse, SortOrder
 
 HistogramGranularity = Literal["day", "week", "month"]
@@ -109,21 +107,8 @@ class DatasetsRequest(BaseModel):
     date_last_updated_to: datetime | None = Field(None, description="Filter datasets last updated before this date")
     limit: int = Field(10, description="Number of datasets to return", ge=1, le=100)
     page: int = Field(1, description="Page number for pagination", ge=1)
-    sort_by: str | None = Field(None, alias="sortBy")
+    sort_by: DatasetSortField = Field(default=DatasetSortField.NAME)
     sort_order: SortOrder = Field(SortOrder.DESC, description="Sort order when listing the dataset")
-
-    @model_validator(mode="after")
-    def validate_sort_by(self) -> "DatasetsRequest":
-        """Convert sort_by string to enum."""
-        if self.sort_by is None:
-            self.sort_by = DatasetSortField.NAME
-        elif isinstance(self.sort_by, str):
-            snake_value = to_snake(self.sort_by)
-            try:
-                self.sort_by = DatasetSortField(snake_value)
-            except ValueError as exc:
-                raise ValueError(f"Invalid sort_by: {self.sort_by}") from exc
-        return self
 
 
 class PaginatedDatasetsResponse(PaginatedResponse):

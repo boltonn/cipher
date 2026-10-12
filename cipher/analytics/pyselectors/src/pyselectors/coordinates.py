@@ -114,6 +114,52 @@ def extract_coordinates(text: str, *, language: str | None = None) -> list[Coord
     return _dedupe(out)
 
 
+_AXIS = regex.compile(
+    rf"^(?P<sign>[-+])?\s*(?P<d>\d{{1,3}}(?:[.,]\d+)?)\s*{_DEG}?\s*(?:(?P<m>{_NUM})\s*{_MIN}\s*)?"
+    rf"(?:(?P<s>{_NUM})\s*{_SEC}\s*)?(?P<h>{_HEMI_N}|{_HEMI_S}|{_HEMI_E}|{_HEMI_W})?$",
+    regex.VERSION1 | regex.IGNORECASE,
+)
+_BARE_PAIR = regex.compile(rf"^\(?\s*(?P<lat>{_SIGN}{_NUM})\s*[,;\s]\s*(?P<lon>{_SIGN}{_NUM})\s*\)?$")
+
+
+def parse_degrees(value: str) -> tuple[float, str | None] | None:
+    """One axis in one cell -- `55.7558`, `-37,6`, `55°45′N`, `37°37'E`, `55,75 с.ш.` -- to decimal degrees.
+
+    Also returns the axis the hemisphere names (`lat` / `lon`), or None when the value doesn't say.
+    """
+    match = _AXIS.match(fold_digits(value.strip()))
+    if match is None:
+        return None
+    degrees = _f(match["d"]) + _f(match["m"]) / 60 + _f(match["s"]) / 3600
+    hemisphere = (match["h"] or "").strip()
+    axis = None
+    if hemisphere:
+        axis = "lat" if regex.match(rf"(?i)^(?:{_HEMI_N}|{_HEMI_S})$", hemisphere) else "lon"
+        if regex.match(rf"(?i)^(?:{_HEMI_S}|{_HEMI_W})$", hemisphere):
+            degrees = -degrees
+    if match["sign"] == "-":
+        degrees = -degrees
+    return degrees, axis
+
+
+def parse_coordinate_cell(value: str) -> CoordinateSpan | None:
+    """A latitude/longitude pair filling one table cell.
+
+    Unlike `extract_coordinates`, a bare `55.7558, 37.6173` counts: in free text a
+    number pair is too ambiguous, but a cell the column says is a coordinate isn't.
+    """
+    text = value.strip()
+    spans = extract_coordinates(text)
+    if spans and spans[0].end_offset - spans[0].start_offset >= 0.8 * len(text):
+        return spans[0]
+    match = _BARE_PAIR.match(fold_digits(text))
+    if match is None or not ("." in match["lat"] + match["lon"] or "," in match["lat"] + match["lon"]):
+        return None
+    out: list[CoordinateSpan] = []
+    _add(out, _f(match["lat"]), _f(match["lon"]), match, "decimal", text)
+    return out[0] if out else None
+
+
 def _add(out, lat, lon, m, fmt, text):  # noqa: ANN001, ANN202
     if not (-90 <= lat <= 90 and -180 <= lon <= 180):
         return

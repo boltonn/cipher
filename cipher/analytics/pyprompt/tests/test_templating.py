@@ -44,6 +44,6 @@ def test_registered_packs_load_and_render(task):
 
 
 def test_registry_covers_expected_tasks():
-    from pyprompt.prompts.registry import EXTRACT, SIGNATURE
+    from pyprompt.prompts.registry import COLUMNS, EXTRACT, SIGNATURE, SUMMARIZE
 
-    assert set(REGISTRY) == {ENTITIES, EVENTS, EXTRACT, SIGNATURE}
+    assert set(REGISTRY) == {COLUMNS, ENTITIES, EVENTS, EXTRACT, SIGNATURE, SUMMARIZE}

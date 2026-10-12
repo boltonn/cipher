@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from loguru import logger
 from sqlalchemy import text
 
 # Importing the tables package registers every table class on the shared
@@ -14,12 +15,16 @@ from cipher.datastores.postgres.tables.base import Base
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
-EXTENSIONS = ["vector", "pg_trgm", "postgis", "unaccent", "pg_search"]
-# Objects the table models don't declare (migrations add them on upgraded databases).
-EXTRAS = [
+EXTENSIONS = ["vector", "pg_trgm", "postgis", "unaccent"]
+# Optional (ParadeDB): without it keyword search downgrades to core full-text. docs/postgres-extensions.md
+BM25 = [
+    "CREATE EXTENSION IF NOT EXISTS pg_search",
     """CREATE INDEX IF NOT EXISTS ix_chunk_text_bm25 ON chunk
        USING bm25 (id, text, dataset_id, filetype_group, file_id, language)
        WITH (key_field=id, text_fields='{"text": {"tokenizer": {"type": "icu"}}}')""",
+]
+# Objects the table models don't declare (migrations add them on upgraded databases).
+EXTRAS = [
     "ALTER TABLE chunk ALTER COLUMN date_created SET DEFAULT now()",
     "ALTER TABLE event ALTER COLUMN categories SET DEFAULT '[]'::jsonb",
     "ALTER TABLE event_participant ALTER COLUMN is_resource SET DEFAULT false",
@@ -36,6 +41,12 @@ async def create_tables(session: "AsyncSession") -> None:
         await conn.run_sync(Base.metadata.create_all)
         for statement in EXTRAS:
             await conn.execute(text(statement))
+        try:
+            async with conn.begin_nested():
+                for statement in BM25:
+                    await conn.execute(text(statement))
+        except Exception as exc:  # noqa: BLE001 -- pg_search is optional; retrieval downgrades to core
+            logger.warning(f"pg_search unavailable ({exc.__class__.__name__}); keyword search will use core full-text")
 
 
 def stamp_head() -> None:

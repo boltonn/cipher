@@ -15,7 +15,7 @@ import { PersonAvatar } from "@/features/persons/components/person-avatar";
 import { useCreatePerson, usePersonSearch } from "@/features/persons/hooks/use-persons";
 import { useDebounce } from "@/hooks/use-debounce";
 import { cn } from "@/lib/utils";
-import { Check, ChevronsUpDown, Plus, UserRound } from "lucide-react";
+import { Check, ChevronsUpDown, UserRound, UserRoundPlus } from "lucide-react";
 import { useState } from "react";
 
 interface PersonPickerProps {
@@ -146,7 +146,7 @@ function PersonPickerList({
               disabled={createPerson.isPending}
               className="text-xs gap-2 text-annotation"
             >
-              <Plus className="h-3 w-3" />
+              <UserRoundPlus className="h-3 w-3" />
               Create &quot;{query.trim()}&quot;
             </CommandItem>
           </CommandGroup>

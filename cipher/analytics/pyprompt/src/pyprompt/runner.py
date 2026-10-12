@@ -13,6 +13,7 @@ import json
 from loguru import logger
 from openai import AsyncOpenAI
 from pydantic import BaseModel, ValidationError
+from pydantic_core import from_json
 
 from cipher.schemas.graph.event import (
     DatePrecision,
@@ -26,19 +27,22 @@ from cipher.schemas.graph.event import (
 from cipher.schemas.graph.ontology import default_ner_labels, default_relation_labels
 from pyprompt.errors import StructuredOutputError
 from pyprompt.offsets import OffsetResolver, find_span
-from pyprompt.prompts.registry import ENTITIES, EVENTS, EXTRACT, SIGNATURE, get_pack
+from pyprompt.prompts.registry import COLUMNS, ENTITIES, EVENTS, EXTRACT, SIGNATURE, SUMMARIZE, get_pack
 from pyprompt.schemas import (
     CombinedExtraction,
     EntityExtraction,
     EntitySpan,
     EventExtraction,
     LlmEventOutput,
+    LlmFileSummary,
     LlmMembership,
     LlmSignatureOutput,
+    LlmTableColumnsOutput,
     ParsedEvent,
     RelationSpan,
     build_combined_output_model,
     build_entity_output_model,
+    build_table_columns_output_model,
 )
 from pyprompt.settings import Settings
 from pyprompt.templating import render_custom
@@ -101,6 +105,7 @@ class PromptRunner:
         text: str,
         *,
         reference_date: str | None = None,
+        author: str | None = None,
         prompt: str | None = None,
         model: str | None = None,
     ) -> EventExtraction:
@@ -108,7 +113,7 @@ class PromptRunner:
         clipped = text[: self._settings.max_input_chars]
 
         template = get_pack(EVENTS).load()
-        system, user = template.render(text=clipped, reference_date=reference_date)
+        system, user = template.render(text=clipped, reference_date=reference_date, author=author)
         if prompt:
             user = render_custom(prompt, clipped)
 
@@ -131,6 +136,7 @@ class PromptRunner:
         labels: list[str] | None = None,
         relation_labels: list[str] | None = None,
         reference_date: str | None = None,
+        author: str | None = None,
         model: str | None = None,
     ) -> CombinedExtraction:
         """Run the combined `extract` pack -- entities/relations and/or events in one call.
@@ -151,6 +157,7 @@ class PromptRunner:
             labels=labels,
             relation_labels=relation_labels,
             reference_date=reference_date,
+            author=author,
         )
         # Entity/relation `label` fields are enum-locked to the ontology vocabulary
         # (same as `extract_entities`); `events` stays permissive and is coerced.
@@ -207,6 +214,45 @@ class PromptRunner:
             addresses=keep(raw.addresses),
         )
 
+    @property
+    def model_name(self) -> str:
+        """The configured model id (what a stored result records as its model)."""
+        return self._model
+
+    async def summarize(
+        self, content: str, *, title: str, filetype: str, language: str = "English", model: str | None = None
+    ) -> LlmFileSummary:
+        """A 2-4 sentence summary of one file's content (text, OCR text, or a table preview)."""
+        limit = self._settings.max_input_chars
+        clipped = content if len(content) <= limit else content[:limit] + "\n[... truncated]"
+        system, user = (
+            get_pack(SUMMARIZE).load().render(content=clipped, title=title, filetype=filetype, language=language)
+        )
+        return await self._structured(
+            system=system, user=user, model_cls=LlmFileSummary, model=model, max_tokens=self._settings.max_event_tokens
+        )
+
+    async def aclose(self) -> None:
+        """Close the HTTP client -- needed when each call runs in its own short-lived event loop."""
+        await self._client.close()
+
+    async def type_table_columns(
+        self,
+        table: str,
+        *,
+        field_types: dict[str, str],
+        verbs: dict[str, str],
+        model: str | None = None,
+    ) -> LlmTableColumnsOutput:
+        """Type a table preview's columns onto `field_types` (id -> description), with roles and row relationships."""
+        template = get_pack(COLUMNS).load()
+        system, user = template.render(
+            table=table[: self._settings.max_input_chars], field_types=field_types, verbs=verbs
+        )
+        strict = build_table_columns_output_model(tuple(field_types), tuple(verbs))
+        raw = await self._structured(system=system, user=user, model_cls=strict, model=model)
+        return LlmTableColumnsOutput.model_validate(raw.model_dump())
+
     async def run(
         self,
         *,
@@ -252,9 +298,10 @@ class PromptRunner:
 
         The schema is sent non-strict: strict mode makes every optional field
         required, and a guided-decoding server (vLLM) then lets a model that
-        wants to stop pad with whitespace until it times out. Output past
-        `max_tokens` raises `StructuredOutputError` without a retry -- a
-        truncated answer is a runaway, and asking again only repeats it.
+        wants to stop pad with whitespace until it times out. Output cut off at
+        `max_tokens` keeps every item the model finished (`_complete_prefix`)
+        rather than failing -- asking again at temperature 0 would only cut off
+        at the same place.
         """
         messages = _messages(system, user)
         response_format = {
@@ -272,7 +319,8 @@ class PromptRunner:
             )
             choice = completion.choices[0]
             if choice.finish_reason == "length":
-                raise StructuredOutputError(f"Output hit the {max_tokens}-token cap (runaway generation)")
+                logger.warning(f"Output hit the {max_tokens}-token cap; keeping the items finished before it")
+                return _complete_prefix(model_cls, choice.message.content or "")
             if choice.message.refusal:
                 last_error = f"model refused: {choice.message.refusal}"
             else:
@@ -293,6 +341,38 @@ class PromptRunner:
         raise StructuredOutputError(
             f"No schema-valid response after {self._settings.max_retries + 1} attempts: {last_error}"
         )
+
+
+def _complete_prefix[M: BaseModel](model_cls: type[M], content: str) -> M:
+    """Validate JSON cut off mid-generation, keeping only what the model finished writing.
+
+    Generation is sequential, so only the last-opened value is unfinished: the last list item
+    (a whole event, entity...) or the last scalar is dropped rather than kept half-written.
+    """
+
+    def drop_unfinished(node: dict | list) -> None:
+        if isinstance(node, list):
+            if node:
+                node.pop()
+            return
+        if not node:
+            return
+        last_key = next(reversed(node))
+        if isinstance(node[last_key], dict | list):
+            drop_unfinished(node[last_key])
+        else:
+            node.pop(last_key)
+
+    try:
+        try:
+            data = from_json(content)
+        except ValueError:
+            data = from_json(content, allow_partial=True)
+            if isinstance(data, dict):
+                drop_unfinished(data)
+        return model_cls.model_validate(data)
+    except (ValueError, ValidationError) as exc:
+        raise StructuredOutputError(f"Output hit the token cap and the finished part is unusable: {exc}") from exc
 
 
 def _verbatim_memberships(memberships: list[LlmMembership], source: str) -> list[LlmMembership]:

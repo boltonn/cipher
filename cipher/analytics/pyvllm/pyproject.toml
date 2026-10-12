@@ -16,6 +16,7 @@ dependencies = [
   "pillow",
   "pillow-heif",
   "pydantic>=2",
+  "pydantic-settings",
   "pypdfium2",
   "typer",
 ]

@@ -209,9 +209,7 @@ class PostgresGraphRepository(GraphRepository):
                         next_frontier.add(nid)
             frontier = next_frontier
 
-        return GraphResponse(
-            nodes=await self._graph_nodes(visited), edges=all_edges, truncated=len(all_edges) >= limit
-        )
+        return GraphResponse(nodes=await self._graph_nodes(visited), edges=all_edges, truncated=len(all_edges) >= limit)
 
     async def top_connections(self, request: TopConnectionsRequest) -> TopConnectionsResponse:
         """Rank the seeds' neighbours by summed edge weight (see `TopConnectionsRequest`)."""
@@ -443,6 +441,7 @@ class PostgresGraphRepository(GraphRepository):
                     selector,
                     and_(
                         selector.c.file_id == actor.c.file_id,
+                        selector.c.mentioned_id == actor.c.mentioned_id,
                         selector.c.field_path == actor.c.field_path,
                         selector.c.dataset_id == actor.c.dataset_id,
                     ),

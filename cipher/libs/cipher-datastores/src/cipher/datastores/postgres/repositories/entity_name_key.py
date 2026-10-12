@@ -154,7 +154,7 @@ class PostgresEntityNameKeyRepository:
         return (await self.session.execute(select(func.count()).select_from(EntityNameKeyTable))).scalar_one()
 
     async def delete_all(self) -> int:
-        """Drop every key row (used by `backfill-entity-name-keys --reset`)."""
+        """Drop every key row (used by `cipher rekey --name-keys --purge-name-keys`)."""
         result = await self.session.execute(delete(EntityNameKeyTable))
         await self.session.commit()
         return result.rowcount or 0

@@ -19,6 +19,7 @@ import {
 } from "@/features/entities/types";
 import { CalendarRange, RotateCcw, X } from "lucide-react";
 import { useState } from "react";
+import { humanize } from "@/lib/utils";
 
 export interface EntityFilters {
   entityType?: EntityType;
@@ -144,7 +145,7 @@ export function EntitySearchFilters({
               </SelectItem>
               {SELECTOR_TYPES.map((k) => (
                 <SelectItem key={k} value={k} className="text-xs capitalize">
-                  {k.replace(/_/g, " ")}
+                  {humanize(k)}
                 </SelectItem>
               ))}
             </SelectContent>

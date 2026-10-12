@@ -4,7 +4,6 @@ Lives here (not in the backend package) so orchestration workflows can read the
 same config without depending on the API. See docs/retrieval-architecture.md.
 """
 
-import os
 from enum import StrEnum
 
 from pydantic import BaseModel, Field
@@ -31,7 +30,7 @@ class TextRanker(StrEnum):
 
 
 class RetrievalConfig(BaseModel):
-    """Which store backs chunk search, and how. Populated from ``RETRIEVAL__*``."""
+    """Which store backs chunk search, and how. A `retrieval` field on a settings class, so ``RETRIEVAL__*``."""
 
     backend: RetrievalBackend = Field(
         RetrievalBackend.POSTGRES,
@@ -44,13 +43,4 @@ class RetrievalConfig(BaseModel):
     )
     graph_expand_entity_cap: int = Field(
         10_000, description="Max entities a graph_expand may fan out to before the filter is truncated"
-    )
-
-
-def load_retrieval_config() -> RetrievalConfig:
-    """`RetrievalConfig` from ``RETRIEVAL__*`` env vars, for code with no `Settings` object."""
-    return RetrievalConfig(
-        backend=os.getenv("RETRIEVAL__BACKEND", RetrievalBackend.POSTGRES.value),
-        text_ranker=os.getenv("RETRIEVAL__TEXT_RANKER", TextRanker.PG_SEARCH.value),
-        graph_expand_entity_cap=int(os.getenv("RETRIEVAL__GRAPH_EXPAND_ENTITY_CAP", "10000")),
     )

@@ -5,11 +5,10 @@ Mirrors the face/face_match split -- `EntityRelationship` is an asserted edge,
 """
 
 from datetime import datetime
-from enum import StrEnum
 
 from pydantic import Field
 
-from cipher.schemas._base.base import BaseModel
+from cipher.schemas._base.base import BaseModel, StrEnum
 from cipher.schemas._base.common import PageParams, PaginatedResponse
 from cipher.schemas._base.review import ReviewableMixin, ReviewDecision, ReviewStatus
 from cipher.schemas.graph.entity import EntitySummary
@@ -36,6 +35,7 @@ class RelationshipCandidateMethod(StrEnum):
     MANUAL = "manual"
     SIGNATURE = "signature"  # an email signature names the sender's employer / unit
     EMAIL_DOMAIN = "email_domain"  # the sender's address domain is one colleagues sign for
+    PATRONYMIC = "patronymic"  # a patronymic names the father (Ivan Petrovich -> Pyotr), or a shared one a sibling
 
 
 class EntityRelationshipBase(BaseModel):
@@ -101,6 +101,8 @@ class RelationshipCandidate(ReviewableMixin, RelationshipCandidateBase):
 
     id: str
     date_created: datetime
+    src_name: str | None = Field(default=None, description="Display name of `src_entity_id` (read-time only)")
+    dst_name: str | None = Field(default=None, description="Display name of `dst_entity_id` (read-time only)")
 
     model_config = {"from_attributes": True}
 
@@ -126,6 +128,7 @@ class RelationshipCandidateSearchParameters(PageParams):
 
     src_entity_id: str | None = Field(default=None)
     dst_entity_id: str | None = Field(default=None)
+    entity_id: str | None = Field(default=None, description="Either end is this entity")
     dataset_id: str | None = Field(default=None)
     status: ReviewStatus | None = Field(default=ReviewStatus.PENDING)
     limit: int = Field(default=25, ge=1, le=100)

@@ -9,9 +9,11 @@ embedded/detected once.
 
 import asyncio
 import json
+import os
+from collections import Counter
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 import typer
 from loguru import logger
@@ -22,14 +24,17 @@ from cipher.datastores.postgres.repositories import (
     PostgresFaceRepository,
     PostgresGraphRepository,
 )
-from cipher.orchestration.backfill_entity_name_keys import backfill_entity_name_keys_workflow
-from cipher.orchestration.backfill_exif_locations import backfill_exif_locations
 from cipher.orchestration.benchmark import benchmark_ingest, benchmark_storage
 from cipher.orchestration.cluster_faces import cluster_faces_workflow, reset_face_clusters
-from cipher.orchestration.dedupe_entities import dedupe_entities_workflow
 from cipher.orchestration.embed_images import embed_images_workflow, get_embedding_stats
 from cipher.orchestration.embed_text import DEFAULT_SKIP_EMAIL_STATES, embed_text_workflow, get_text_embedding_stats
 from cipher.orchestration.environments import ensure_stage_env
+from cipher.orchestration.extract_archives import (
+    DEFAULT_MAX_DEPTH,
+    GIB,
+    extract_archives_workflow,
+    missing_dependencies,
+)
 from cipher.orchestration.extract_contact_entities import extract_contact_entities_workflow
 from cipher.orchestration.extract_documents import (
     DEFAULT_CHUNK_SIZE,
@@ -69,31 +74,35 @@ from cipher.orchestration.extract_relationships import (
 )
 from cipher.orchestration.extract_selectors import extract_selectors_workflow, get_selector_extraction_stats
 from cipher.orchestration.extract_signatures import extract_signatures_workflow
-from cipher.orchestration.image_size import DEFAULT_MIN_IMAGE_SIDE
 from cipher.orchestration.ingest import create_dataset, load_files
 from cipher.orchestration.link_face_cooccurrence import (
     get_face_cooccurrence_stats,
     link_face_cooccurrence_workflow,
 )
 from cipher.orchestration.match_faces import match_faces_workflow, reset_face_matches
-from cipher.orchestration.reclassify_domains import reclassify_domains_workflow
-from cipher.orchestration.refresh_selectors import refresh_selectors_workflow
+from cipher.orchestration.rekey import REKEY_OPT_IN_PARTS, REKEY_PARTS, rekey_workflow
 from cipher.orchestration.reset_entities import reset_entities
 from cipher.orchestration.reset_events import reset_events
-from cipher.orchestration.resolve_entities import resolve_entities_workflow
+from cipher.orchestration.resolution import resolution_workflow
 from cipher.orchestration.resolve_event_links import resolve_event_links_workflow
 from cipher.orchestration.resolve_locations import resolve_locations_workflow
-from cipher.orchestration.run_recorder import record_run
+from cipher.orchestration.run_recorder import GPU_ENV, RunStoppedError, progress_writer, record_run
 from cipher.orchestration.schema import create_tables, stamp_head
 from cipher.orchestration.session import get_elasticsearch_client_context, get_session_context
-from cipher.orchestration.sync_chunk_entities import sync_chunk_entities_workflow
-from cipher.places import default_gazetteer_path
+from cipher.orchestration.settings import output_store, settings
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 from cipher.schemas._base.common import ModelDevice
 from cipher.schemas.content.email import EmailCategory, MessageState
 from cipher.schemas.graph.entity_resolution import EntityResolutionConfig
-from cipher.schemas.identity.face import DEFAULT_FACE_REJECT_SIMILARITY
-from cipher.schemas.ingestion.enrichment import EnrichmentType
+from cipher.schemas.identity.face import DEFAULT_FACE_SIMILARITY
+from cipher.schemas.ingestion.enrichment import DEFAULT_FILETYPE_GROUPS, EnrichmentType
 from cipher.schemas.ingestion.estimation import WorkUnit
+from cipher.schemas.ingestion.file import ArchiveSandbox
+from cipher.schemas.ingestion.run_plan import STAGING_RUN, StepPool
+
+OUTPUT_URI_HELP = "Directory or s3://bucket/prefix for files this step creates (default <OUTPUT_URI>/<dataset id>)"
 
 app = typer.Typer(help="Test-drive ingestion, embedding, and face detection against a local dataset.")
 
@@ -101,9 +110,9 @@ app = typer.Typer(help="Test-drive ingestion, embedding, and face detection agai
 @asynccontextmanager
 async def _text_chunk_es_repo():
     """The ES `text_chunks` repo when `RETRIEVAL__BACKEND=elasticsearch`, else None (ES never opened)."""
-    from cipher.utils.retrieval import RetrievalBackend, load_retrieval_config
+    from cipher.utils.retrieval import RetrievalBackend
 
-    if load_retrieval_config().backend == RetrievalBackend.POSTGRES:
+    if settings.retrieval.backend == RetrievalBackend.POSTGRES:
         yield None
         return
     from cipher.datastores.elasticsearch.repositories.text_chunk import ElasticsearchTextChunkRepository
@@ -126,10 +135,25 @@ async def _resolve_dataset_id(session, dataset_id: str | None, dataset_name: str
     return dataset.id
 
 
+def _required[T](value: T | None, *, option: str, env: str) -> T:
+    """A required option whose default comes from settings: error when neither the flag nor `.env` gives it."""
+    if value is None:
+        raise typer.BadParameter(f"pass {option} or set {env} in .env")
+    return value
+
+
+def _run_llm_pass(coroutine) -> None:
+    """Run an LLM pass; a stopped one (recorded `stopped`, its batch requeued) exits non-zero without a traceback."""
+    try:
+        asyncio.run(coroutine)
+    except RunStoppedError as exc:
+        logger.error(str(exc))
+        raise typer.Exit(code=1) from exc
+
+
 MinImageSideOption = Annotated[
     int,
     typer.Option(
-        envvar="MIN_IMAGE_SIDE",
         help="Skip images whose shorter side is under this many pixels (spacers, tracking pixels)",
     ),
 ]
@@ -155,24 +179,6 @@ def create_tables_cmd(
         logger.success("Stamped at the latest migration")
 
 
-@app.command("backfill-exif-locations")
-def backfill_exif_locations_cmd(
-    dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
-    dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
-):
-    """Create map points for images that already have EXIF coordinates on their row."""
-
-    async def _run():
-        async with get_session_context() as session:
-            scope = dataset_id
-            if scope is None and dataset_name is not None:
-                scope = await _resolve_dataset_id(session, dataset_id, dataset_name)
-            written = await backfill_exif_locations(session=session, dataset_id=scope)
-            typer.echo(f"{written} locations upserted")
-
-    asyncio.run(_run())
-
-
 @app.command("create-dataset")
 def create_dataset_cmd(
     name: Annotated[str, typer.Option(help="Dataset name")],
@@ -190,12 +196,20 @@ def create_dataset_cmd(
 
 @app.command("load-files")
 def load_files_cmd(
-    path: Annotated[Path, typer.Argument(help="Local directory of files to load")],
+    uri: Annotated[str, typer.Argument(help="Directory or s3://bucket/prefix/ to stage from (read-only)")],
     dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
     dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
-    limit: Annotated[int | None, typer.Option(help="Max number of files to load")] = None,
+    include: Annotated[
+        list[str] | None, typer.Option(help="Glob a file's path below the uri must match, repeatable (any)")
+    ] = None,
+    exclude: Annotated[list[str] | None, typer.Option(help="Glob that drops a file, repeatable")] = None,
+    limit: Annotated[int | None, typer.Option(help="Stop after this many files")] = None,
 ):
-    """Stage a directory of files into a dataset via file typing (File rows only; no analysis)."""
+    """Stage files into a dataset: crawl the uri, type and hash each file, write `file` rows. No analysis.
+
+    Nothing is copied: each row's uri points where the file already is. Files already staged
+    are skipped, so an interrupted crawl resumes.
+    """
     ensure_stage_env("staging")
     from filetyper.models.main import FileTyper
 
@@ -203,43 +217,140 @@ def load_files_cmd(
         file_typer = FileTyper()
         async with get_session_context() as session:
             resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
-            count = await load_files(
-                session=session,
-                path=path,
+            async with record_run(
+                enrichment_type=STAGING_RUN,
                 dataset_id=resolved_id,
-                file_analyzer=file_typer.generate_from_local_path,
-                limit=limit,
+                unit=WorkUnit.FILE,
+                params={"uri": uri, "include": include or [], "exclude": exclude or [], "limit": limit},
+            ) as run:
+                run.units = await load_files(
+                    session,
+                    uri,
+                    dataset_id=resolved_id,
+                    file_typer=file_typer,
+                    include=include or [],
+                    exclude=exclude or [],
+                    limit=limit,
+                    on_progress=progress_writer(run.run_id),
+                )
+
+    asyncio.run(_run())
+
+
+@app.command("worker")
+def worker_cmd(
+    pool: Annotated[StepPool, typer.Option(help="Kind of host this is: cpu, or gpu (one step per GPU)")],
+    slots: Annotated[int, typer.Option(help="Steps run at once on a cpu worker")] = 1,
+    gpu: Annotated[
+        list[str] | None, typer.Option(help="GPU index a gpu worker may use, repeatable (default: all visible)")
+    ] = None,
+    llm_cap: Annotated[int, typer.Option(help="Most LLM steps running at once, across all workers")] = 1,
+    max_hosts_per_step: Annotated[int, typer.Option(help="Most hosts sharing one per-file step")] = 4,
+    strict_version: Annotated[
+        bool, typer.Option(help="Refuse steps approved on another commit (default: run them and warn)")
+    ] = False,
+    poll_seconds: Annotated[float, typer.Option(help="How often to look for queued steps")] = 10,
+    log_dir: Annotated[Path, typer.Option(help="One log file per step")] = Path("~/data/cipher/worker-logs"),
+):
+    """Run approved plan steps from the database on this host until stopped (Ctrl-C drains, twice interrupts).
+
+    See docs/pipeline-runner.md. Needs only outbound access to Postgres (and S3 / the LLM service).
+    """
+    from cipher.orchestration.worker import Worker
+
+    gpus = gpu or []
+    if pool is StepPool.GPU and not gpus:
+        import torch
+
+        gpus = [str(index) for index in range(torch.cuda.device_count())]
+        if not gpus:
+            typer.echo("ERROR: no GPU visible; pass --gpu or run --pool cpu", err=True)
+            raise typer.Exit(1)
+    worker = Worker(
+        pool=pool,
+        slots=slots,
+        gpus=gpus,
+        caps={"llm": llm_cap},
+        max_hosts_per_step=max_hosts_per_step,
+        is_strict_version=strict_version,
+        poll_seconds=poll_seconds,
+        log_dir=log_dir.expanduser(),
+    )
+    asyncio.run(worker.run())
+
+
+@app.command("runs")
+def runs_cmd(
+    here: Annotated[bool, typer.Option(help="Only steps running on this host")] = False,
+):
+    """Plan steps queued or running right now: where each runs, its pids and its log file.
+
+    On the host, `tail -f <log>` follows a step, `ps -g <pid>` shows its processes, and a step
+    is stopped from the app (or Ctrl-C on its worker).
+    """
+    import socket
+    from datetime import UTC, datetime
+
+    from cipher.datastores.postgres.repositories import PostgresEnrichmentRunRepository
+
+    async def _run():
+        async with get_session_context() as session:
+            steps = await PostgresEnrichmentRunRepository(session=session).live_steps(
+                host=socket.gethostname() if here else None
             )
-            logger.success(f"Loaded {count} files into dataset {resolved_id}")
+            names = {
+                dataset_id: (await PostgresDatasetRepository(session=session).get_dataset_by_id(dataset_id=dataset_id))
+                for dataset_id in {step.dataset_id for step in steps}
+            }
+        if not steps:
+            typer.echo("Nothing queued or running" + (" on this host." if here else "."))
+            return
+        now = datetime.now(UTC)
+        for step in sorted(steps, key=lambda step: step.status == "queued"):
+            dataset = names.get(step.dataset_id)
+            process = step.process or {}
+            heard = f"{int((now - step.date_heartbeat).total_seconds())}s ago" if step.date_heartbeat else "-"
+            typer.echo(
+                f"{step.status:<10} {step.enrichment_type:<24} {dataset.name if dataset else step.dataset_id}\n"
+                + (
+                    f"           host {process.get('host')}  worker pid {process.get('worker_pid')}  "
+                    f"step pid {process.get('pid')}  last heard {heard}\n           log  {process.get('log')}\n"
+                    if process and step.status != "queued"
+                    else f"           waiting for {', '.join(step.depends_on) or 'a ' + (step.pool or 'cpu') + ' worker'}\n"
+                )
+            )
 
     asyncio.run(_run())
 
 
 @app.command("embed-images")
 def embed_images_cmd(
-    model_dir: Annotated[Path, typer.Option(help="Path to the CLIP model directory")],
+    model_dir: Annotated[
+        Path | None, typer.Option(help="Path to the CLIP model directory")
+    ] = settings.image_embedding_model_dir,
     dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
     dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
-    device: Annotated[ModelDevice, typer.Option(help="Inference device")] = ModelDevice.CPU,
+    device: Annotated[ModelDevice, typer.Option(help="Inference device")] = settings.image_embedding_model_device,
     classify: Annotated[
         bool, typer.Option(help="Also score every image with the tag heads, in the same GPU pass")
     ] = False,
     heads_dir: Annotated[
-        Path | None, typer.Option(envvar="IMAGE_HEADS_DIR", help="Trained tag heads (from train-image-heads)")
-    ] = None,
-    min_image_side: MinImageSideOption = DEFAULT_MIN_IMAGE_SIDE,
+        Path | None, typer.Option(help="Trained tag heads (from train-image-heads)")
+    ] = settings.image_heads_dir,
+    min_image_side: MinImageSideOption = settings.min_image_side,
 ):
     """Run CLIP image embedding over a dataset's image files.
 
     Independent of `detect-faces` -- either can run first. With `--classify`, the tag heads
     in `--heads-dir` score each batch as it is embedded (one extra matmul on the GPU).
     """
+    model_dir = _required(model_dir, option="--model-dir", env="IMAGE_EMBEDDING_MODEL_DIR")
     ensure_stage_env("image-embedding")
     from setfitcv.heads import TagHeads
     from setfitcv.model import CLIP
 
     if classify and heads_dir is None:
-        raise typer.BadParameter("--classify needs --heads-dir (or IMAGE_HEADS_DIR)")
+        raise typer.BadParameter("--classify needs --heads-dir (or IMAGE_HEADS_DIR in .env)")
     heads = TagHeads.load(heads_dir) if classify else None
 
     async def _run():
@@ -262,10 +373,10 @@ def embed_images_cmd(
 
 @app.command("train-image-heads")
 def train_image_heads_cmd(
-    heads_dir: Annotated[Path, typer.Option(envvar="IMAGE_HEADS_DIR", help="Where to save the trained heads")],
     embedding_model: Annotated[
         str, typer.Option(help="CLIP model the stored embeddings came from (its directory name)")
     ],
+    heads_dir: Annotated[Path | None, typer.Option(help="Where to save the trained heads")] = settings.image_heads_dir,
     tag: Annotated[list[str] | None, typer.Option(help="Tag to train, repeatable; default every labelled tag")] = None,
     min_positives: Annotated[int, typer.Option(help="Skip tags with fewer positive labels")] = 8,
     unlabeled_per_positive: Annotated[
@@ -284,6 +395,8 @@ def train_image_heads_cmd(
 
     from cipher.orchestration.image_heads import train_image_heads_workflow
 
+    heads_dir = _required(heads_dir, option="--heads-dir", env="IMAGE_HEADS_DIR")
+
     async def _run():
         async with get_session_context() as session:
             await train_image_heads_workflow(
@@ -300,7 +413,7 @@ def train_image_heads_cmd(
 
 @app.command("score-image-heads")
 def score_image_heads_cmd(
-    heads_dir: Annotated[Path, typer.Option(envvar="IMAGE_HEADS_DIR", help="Trained tag heads")],
+    heads_dir: Annotated[Path | None, typer.Option(help="Trained tag heads")] = settings.image_heads_dir,
     dataset_name: Annotated[str | None, typer.Option(help="Only this dataset's images")] = None,
     dataset_id: Annotated[str | None, typer.Option(help="Only this dataset's images")] = None,
     tag: Annotated[list[str] | None, typer.Option(help="Only these heads, repeatable")] = None,
@@ -317,7 +430,7 @@ def score_image_heads_cmd(
 
     from cipher.orchestration.image_heads import score_image_heads_workflow
 
-    heads = TagHeads.load(heads_dir)
+    heads = TagHeads.load(_required(heads_dir, option="--heads-dir", env="IMAGE_HEADS_DIR"))
     if tag:
         heads = heads.select(tag)
 
@@ -358,13 +471,16 @@ def extract_locations_cmd(
 
 @app.command("detect-faces")
 def detect_faces_cmd(
-    model_dir: Annotated[Path, typer.Option(help="Path to the InsightFace model directory")],
+    model_dir: Annotated[
+        Path | None, typer.Option(help="Path to the InsightFace model directory")
+    ] = settings.face_model_dir,
     dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
     dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
-    device: Annotated[ModelDevice, typer.Option(help="Inference device")] = ModelDevice.CPU,
-    min_image_side: MinImageSideOption = DEFAULT_MIN_IMAGE_SIDE,
+    device: Annotated[ModelDevice, typer.Option(help="Inference device")] = settings.face_model_device,
+    min_image_side: MinImageSideOption = settings.min_image_side,
 ):
     """Run face detection over a dataset's image files."""
+    model_dir = _required(model_dir, option="--model-dir", env="FACE_MODEL_DIR")
     ensure_stage_env("face-detection")
     from face.api.deps import AsyncInsightFaceModel
 
@@ -388,6 +504,116 @@ def detect_faces_cmd(
     asyncio.run(_run())
 
 
+async def _unpack(
+    session: "AsyncSession",
+    dataset_id: str,
+    *,
+    output_uri: str | None = None,
+    max_depth: int = DEFAULT_MAX_DEPTH,
+    limits: dict[str, float | str] | None = None,
+    passwords_file: Path = settings.archive_passwords_file,
+) -> Counter:
+    """Archive extraction as its own recorded run (shared by extract-archives and extract-text)."""
+    from pyarchive import ArchiveLimits
+
+    async with record_run(
+        enrichment_type=EnrichmentType.ARCHIVE_EXTRACTION,
+        dataset_id=dataset_id,
+        unit=WorkUnit.FILE,
+        params={"max_depth": max_depth, **(limits or {})},
+    ) as run:
+        counts = await extract_archives_workflow(
+            session,
+            dataset_id,
+            output_store(dataset_id=dataset_id, output_uri=output_uri),
+            ArchiveLimits(**(limits or {})),
+            max_depth=max_depth,
+            run_id=run.run_id,
+            passwords_file=passwords_file,
+        )
+        run.units = sum(n for key, n in counts.items() if key == "completed" or key.startswith(("skipped:", "failed:")))
+    return counts
+
+
+async def _exit_if_tools_missing(session: "AsyncSession", dataset_id: str) -> None:
+    """Exit 1 naming what to install when archives couldn't be unpacked for a missing tool (retried next run)."""
+    if missing := await missing_dependencies(session, dataset_id):
+        for need, archives in missing.items():
+            typer.echo(f"ERROR: {archives:,} archive(s) not unpacked: {need}", err=True)
+        typer.echo("They are retried on the next run once it's installed.", err=True)
+        raise typer.Exit(1)
+
+
+@app.command("extract-archives")
+def extract_archives_cmd(
+    dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
+    dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
+    output_uri: Annotated[str | None, typer.Option(help=OUTPUT_URI_HELP)] = None,
+    max_archive_gib: Annotated[
+        float | None,
+        typer.Option(
+            help="Skip archives bigger than this (PYARCHIVE_MAX_ARCHIVE_GIB; default none for local files, "
+            "50 for S3, where 7z/rar/iso must be copied first)"
+        ),
+    ] = None,
+    max_depth: Annotated[int, typer.Option(help="Most archives-within-archives levels to open")] = DEFAULT_MAX_DEPTH,
+    max_total_gib: Annotated[float, typer.Option(help="Most GiB one archive may write")] = 20,
+    max_member_gib: Annotated[float, typer.Option(help="Most GiB one member may write")] = 8,
+    max_ratio: Annotated[
+        float, typer.Option(help="Most bytes written per compressed byte, per member past 64 MiB (zip bombs)")
+    ] = 250,
+    max_entries: Annotated[int, typer.Option(help="Most members one archive may list")] = 1_000_000,
+    min_free_gib: Annotated[float, typer.Option(help="Stop an archive when the output store disk has less free")] = 10,
+    sandbox: Annotated[
+        ArchiveSandbox,
+        typer.Option(
+            help="How 7zz is confined: best_effort (what this machine allows), required (fail those archives "
+            "otherwise), off (where the sandbox gets in 7zz's way; check with `pyarchive sandbox`)"
+        ),
+    ] = ArchiveSandbox.BEST_EFFORT,
+    passwords_file: Annotated[
+        Path, typer.Option(help="Passwords to try on encrypted members, one per line (ARCHIVE_PASSWORDS_FILE)")
+    ] = settings.archive_passwords_file,
+):
+    """Unpack archives into member files, and decode compressed files in place.
+
+    zip and tar (also .tar.gz / .xz / .bz2 / .zst) -- and 7z, rar, iso, cab when 7zz is installed
+    (SEVENZIP_PATH, PATH or ~/.local/share/cipher/bin/7zz; run sandboxed) -- become one file per
+    member, `parent_id` the archive, bytes in the output store. Encrypted members are tried with
+    each password in --passwords-file; archives holding encrypted members are flagged
+    `is_encrypted` and, when that file changes, queued again for whatever is still missing. A file found compressed (report.csv.gz) is decoded into
+    its row. Nested archives are opened pass by pass up to --max-depth; copies of content
+    already unpacked, and archives that contain themselves, are skipped. Resumes where an
+    interrupted run stopped. Run before every other file analytic (extract-text runs it too).
+    """
+    ensure_stage_env("archive-extraction")
+    limits = {
+        "max_archive_bytes": int(max_archive_gib * GIB) if max_archive_gib is not None else None,
+        "max_total_bytes": int(max_total_gib * GIB),
+        "max_member_bytes": int(max_member_gib * GIB),
+        "max_ratio": max_ratio,
+        "max_entries": max_entries,
+        "min_free_bytes": int(min_free_gib * GIB),
+        "sandbox": sandbox,
+    }
+
+    async def _run():
+        async with get_session_context() as session:
+            resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
+            counts = await _unpack(
+                session,
+                resolved_id,
+                output_uri=output_uri,
+                max_depth=max_depth,
+                limits=limits,
+                passwords_file=passwords_file,
+            )
+            typer.echo(json.dumps(dict(counts), indent=2))
+            await _exit_if_tools_missing(session, resolved_id)
+
+    asyncio.run(_run())
+
+
 @app.command("extract-text")
 def extract_text_cmd(
     dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
@@ -403,13 +629,6 @@ def extract_text_cmd(
         Path | None,
         typer.Option(
             help="Local tokenizer directory for chunker=kreuzberg with token-based sizing (same dir as the embedding model)"
-        ),
-    ] = None,
-    attachments_dir: Annotated[
-        Path | None,
-        typer.Option(
-            help="Root directory for extracted email attachments, grouped by file ID. "
-            "Default writes a '<stem>_attachments' directory next to each source email instead."
         ),
     ] = None,
     max_concurrent_extractions: Annotated[
@@ -428,10 +647,31 @@ def extract_text_cmd(
     ] = None,
     ocr_model_dir: Annotated[
         Path | None,
-        typer.Option(envvar="EASYOCR_MODEL_DIR", help="Pre-downloaded EasyOCR weights, so OCR never downloads"),
+        typer.Option(help="Pre-downloaded EasyOCR weights, so OCR never downloads"),
+    ] = settings.easyocr_model_dir,
+    filetype_group: Annotated[
+        list[str] | None,
+        typer.Option(
+            help="Filetype group to process, repeatable (default: document, email). Add `table` to include spreadsheets"
+        ),
     ] = None,
+    archives: Annotated[
+        bool,
+        typer.Option(help="Unpack archives first, and again for any found in emails (extract-archives defaults)"),
+    ] = True,
+    inline_images: Annotated[
+        bool,
+        typer.Option(
+            help="Save images email bodies show (cid: links) as files found in the email; never listed as attachments"
+        ),
+    ] = True,
+    output_uri: Annotated[str | None, typer.Option(help=OUTPUT_URI_HELP)] = None,
 ):
     """Extract text (and structure) from a dataset's eligible files.
+
+    Unpacks archives first (`extract-archives`, unless --no-archives), then loops emails and
+    unpacking until neither finds anything new -- a zip can hold an email whose attachment is
+    another zip -- and only then reads documents, so every member is in this pass.
 
     Runs emails first (pyparse) -- which also persists any attachments as
     their own files, linked via `parent_id` -- then documents (xberg,
@@ -440,10 +680,12 @@ def extract_text_cmd(
     `metadata.image_pages` and OCR'd inline (EasyOCR by default); re-run just
     those with a stronger model via `cipher ocr`.
     """
-    ensure_stage_env("text-extraction")
+    ensure_stage_env("text-extraction", *(["archive-extraction"] if archives else []))
     ocr = XbergOcr(backend=ocr_backend, languages=ocr_language or ["en"], model_dir=ocr_model_dir)
     if ocr_backend == OcrBackend.EASYOCR and ocr_model_dir is None:
         logger.warning("No --ocr-model-dir / EASYOCR_MODEL_DIR -- EasyOCR will try to download its weights")
+
+    groups = filetype_group or list(DEFAULT_FILETYPE_GROUPS[EnrichmentType.TEXT_EXTRACTION])
 
     async def _run():
         async with get_session_context() as session:
@@ -453,11 +695,26 @@ def extract_text_cmd(
                 dataset_id=resolved_id,
                 device="na",
                 unit=WorkUnit.TEXT_FILE,
-                params={"chunker": chunker.value, "chunk_size": chunk_size, "ocr_backend": ocr_backend.value},
+                params={
+                    "chunker": chunker.value,
+                    "chunk_size": chunk_size,
+                    "ocr_backend": ocr_backend.value,
+                    "filetype_groups": groups,
+                },
             ) as run:
-                email_count = await extract_emails_workflow(
-                    session=session, dataset_id=resolved_id, attachments_dir=attachments_dir
-                )
+                email_count = 0
+                store = output_store(dataset_id=resolved_id, output_uri=output_uri)
+                if archives:
+                    await _unpack(session, resolved_id, output_uri=output_uri)
+                while "email" in groups:
+                    email_count += await extract_emails_workflow(
+                        session=session, dataset_id=resolved_id, store=store, save_inline_images=inline_images
+                    )
+                    if not archives:
+                        break
+                    unpacked = await _unpack(session, resolved_id, output_uri=output_uri)
+                    if not (unpacked["members"] or unpacked["decoded"]):
+                        break
                 logger.success(f"Extracted text for {email_count} emails")
                 doc_count = await extract_documents_workflow(
                     session=session,
@@ -467,9 +724,12 @@ def extract_text_cmd(
                     chunk_size=chunk_size,
                     max_concurrent_extractions=max_concurrent_extractions,
                     ocr=ocr,
+                    filetype_groups=groups,
                 )
                 logger.success(f"Extracted text for {doc_count} document files")
                 run.units = email_count + doc_count
+            if archives:
+                await _exit_if_tools_missing(session, resolved_id)
 
     asyncio.run(_run())
 
@@ -498,15 +758,14 @@ def ocr_cmd(
     clip_model_dir: Annotated[
         Path | None,
         typer.Option(
-            envvar="IMAGE_EMBEDDING_MODEL_DIR",
             help="CLIP model dir for the image text gate: only images matching --clip-tag are OCR'd (needs embed-images)",
         ),
-    ] = None,
+    ] = settings.image_embedding_model_dir,
     all_images: Annotated[bool, typer.Option(help="Skip the text gate and OCR every image")] = False,
     clip_tag: Annotated[list[str] | None, typer.Option(help="Text-bearing CLIP tag, repeatable")] = None,
     clip_negative_tag: Annotated[list[str] | None, typer.Option(help="Competing non-text CLIP tag, repeatable")] = None,
     clip_threshold: Annotated[float, typer.Option(help="Min probability mass on --clip-tag to OCR an image")] = 0.5,
-    min_image_side: MinImageSideOption = DEFAULT_MIN_IMAGE_SIDE,
+    min_image_side: MinImageSideOption = settings.min_image_side,
 ):
     """OCR image-based PDF pages and images into extracted text (run after extract-text).
 
@@ -548,7 +807,8 @@ def ocr_cmd(
 
     async def _run():
         async with AsyncExitStack() as stack:
-            urls = service_url or [(await stack.enter_async_context(serving("ocr"))).base_url]
+            gpu = int(os.environ[GPU_ENV]) if GPU_ENV in os.environ else None  # set by `cipher worker`
+            urls = service_url or [(await stack.enter_async_context(serving("ocr", gpu=gpu))).base_url]
             client = OcrClient(base_urls=urls)
             stack.push_async_callback(client.aclose)
             async with get_session_context() as session:
@@ -579,10 +839,12 @@ def ocr_cmd(
 
 @app.command("embed-text")
 def embed_text_cmd(
-    model_dir: Annotated[Path, typer.Option(help="Path to the text embedding model directory")],
+    model_dir: Annotated[
+        Path | None, typer.Option(help="Path to the text embedding model directory")
+    ] = settings.text_embedding_model_dir,
     dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
     dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
-    device: Annotated[ModelDevice, typer.Option(help="Inference device")] = ModelDevice.CPU,
+    device: Annotated[ModelDevice, typer.Option(help="Inference device")] = settings.text_embedding_model_device,
     chunk_size: Annotated[
         int, typer.Option(help="Token budget per chunk -- keep equal to extract-text's --chunk-size")
     ] = DEFAULT_CHUNK_SIZE,
@@ -609,6 +871,12 @@ def embed_text_cmd(
             help="Email states to exclude from embedding entirely (repeat the flag to skip several); default: spam"
         ),
     ] = None,
+    filetype_group: Annotated[
+        list[str] | None,
+        typer.Option(
+            help="Filetype group to process, repeatable (default: document, email, image). Add `table` to include spreadsheets"
+        ),
+    ] = None,
 ):
     """Chunk (if needed) and embed a dataset's extracted text into the chunk store (`RETRIEVAL__BACKEND`).
 
@@ -616,8 +884,11 @@ def embed_text_cmd(
     it doesn't parse files itself. Elasticsearch is only opened when
     `RETRIEVAL__BACKEND=elasticsearch`.
     """
+    model_dir = _required(model_dir, option="--model-dir", env="TEXT_EMBEDDING_MODEL_DIR")
     ensure_stage_env("text-embedding")
     from clir.models.pytorch import TextEmbeddingPytorchModel
+
+    groups = filetype_group or list(DEFAULT_FILETYPE_GROUPS[EnrichmentType.TEXT_EMBEDDING])
 
     async def _run():
         model = TextEmbeddingPytorchModel(model_dir=model_dir, device=device.value)
@@ -628,9 +899,10 @@ def embed_text_cmd(
                 dataset_id=resolved_id,
                 device=device.value,
                 unit=WorkUnit.TEXT_FILE,
-                params={"chunk_size": chunk_size, "max_pages": max_pages},
+                params={"chunk_size": chunk_size, "max_pages": max_pages, "filetype_groups": groups},
             ) as run:
                 run.units = await embed_text_workflow(
+                    filetype_groups=groups,
                     session=session,
                     dataset_id=resolved_id,
                     model=model,
@@ -653,6 +925,15 @@ def embed_text_cmd(
 def extract_selectors_cmd(
     dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
     dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
+    filetype_group: Annotated[
+        list[str] | None,
+        typer.Option(
+            help="Filetype group to process, repeatable (default: document, email, image). Add `table` to include spreadsheets"
+        ),
+    ] = None,
+    rescan: Annotated[
+        bool, typer.Option(help="Revisit already-processed files and add only the body spans they're missing")
+    ] = False,
 ):
     """Extract selectors from every text-bearing file into mentions + selector entities.
 
@@ -664,6 +945,7 @@ def extract_selectors_cmd(
     `extract-text` first -- this reads persisted `ExtractedText`, it does not
     parse source files.
     """
+    groups = filetype_group or list(DEFAULT_FILETYPE_GROUPS[EnrichmentType.SELECTOR_EXTRACTION])
 
     async def _run():
         async with get_session_context() as session:
@@ -674,56 +956,10 @@ def extract_selectors_cmd(
                 device="na",
                 unit=WorkUnit.TEXT_FILE,
             ) as run:
-                run.units = await extract_selectors_workflow(session=session, dataset_id=resolved_id)
+                run.units = await extract_selectors_workflow(
+                    filetype_groups=groups, session=session, dataset_id=resolved_id, rescan=rescan
+                )
             logger.success(f"Extracted selectors for {run.units} files")
-
-    asyncio.run(_run())
-
-
-@app.command("backfill-mention-chunks")
-def backfill_mention_chunks_cmd(
-    dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
-    dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
-):
-    """Set `mention.chunk_id` on a dataset's text mentions (Postgres retrieval backend).
-
-    Extraction now sets `chunk_id` inline, so this is only for datasets extracted
-    before that, or after a re-embed changed chunk boundaries. Set-based; idempotent.
-    """
-    from cipher.datastores.postgres.repositories.mention import PostgresMentionRepository
-
-    async def _run():
-        async with get_session_context() as session:
-            resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
-            n = await PostgresMentionRepository(session=session).backfill_chunk_ids(dataset_id=resolved_id)
-            typer.echo(f"set chunk_id on {n} mentions")
-
-    asyncio.run(_run())
-
-
-@app.command("sync-chunk-entities")
-def sync_chunk_entities_cmd(
-    dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
-    dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
-    purge: Annotated[bool, typer.Option(help="Clear entity fields on chunks with no mentions first")] = False,
-):
-    """[elasticsearch retrieval backend only] Denormalize mentions onto the `text_chunks` ES index.
-
-    Obsolete when `RETRIEVAL__BACKEND=postgres` -- there search joins
-    `mention.chunk_id` live (see `backfill-mention-chunks`). For the ES backend:
-    run after `extract-selectors` / `extract-entities`; each chunk doc gets the
-    `entity_ids` / `entity_types` / `selector_types` / `selector_subtypes` /
-    `mention_count` of the mentions anchored in its span. Idempotent; use
-    `--purge` after `reset-entities`.
-    """
-
-    async def _run():
-        async with get_session_context() as session, get_elasticsearch_client_context() as es_client:
-            resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
-            summary = await sync_chunk_entities_workflow(
-                session=session, es_client=es_client, dataset_id=resolved_id, purge=purge
-            )
-            typer.echo(json.dumps(summary, indent=2))
 
     asyncio.run(_run())
 
@@ -793,7 +1029,9 @@ def link_face_cooccurrence_cmd(
 def match_faces_cmd(
     dataset_name: Annotated[str | None, typer.Option(help="Scope candidate faces to this dataset")] = None,
     dataset_id: Annotated[str | None, typer.Option(help="Scope candidate faces to this dataset ID")] = None,
-    similarity: Annotated[float, typer.Option(help="Min cosine similarity to propose a match")] = 0.61,
+    similarity: Annotated[
+        float, typer.Option(help="Min cosine similarity to propose a match")
+    ] = DEFAULT_FACE_SIMILARITY,
     verified_only: Annotated[
         bool,
         typer.Option(
@@ -850,7 +1088,7 @@ def match_faces_cmd(
 def reject_similar_faces_cmd(
     similarity: Annotated[
         float, typer.Option(help="Min cosine similarity to a manually rejected face to auto-reject")
-    ] = DEFAULT_FACE_REJECT_SIMILARITY,
+    ] = DEFAULT_FACE_SIMILARITY,
 ):
     """Auto-reject unassigned faces resembling ones an analyst marked "not a face".
 
@@ -874,7 +1112,9 @@ def reject_similar_faces_cmd(
 def cluster_faces_cmd(
     dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to (persons stay global)")] = None,
     dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
-    similarity: Annotated[float, typer.Option(help="Min cosine similarity for a face-to-face cluster edge")] = 0.61,
+    similarity: Annotated[
+        float, typer.Option(help="Min cosine similarity for a face-to-face cluster edge")
+    ] = DEFAULT_FACE_SIMILARITY,
     k: Annotated[int, typer.Option(help="Nearest neighbours considered per face")] = 20,
     min_images: Annotated[
         int, typer.Option(help="Mint a person only for a cluster spanning at least this many distinct images")
@@ -967,9 +1207,9 @@ def extract_events_cmd(
         typer.Option(help="Mail state the gate skips (repeatable; default: spam)"),
     ] = None,
     gliner_model_dir: Annotated[
-        str | None, typer.Option(envvar="GLINER_MODEL_DIR", help="Local GLiNER2.5 checkpoint dir (gate)")
-    ] = None,
-    device: Annotated[ModelDevice, typer.Option(help="Gate inference device")] = ModelDevice.CPU,
+        str | None, typer.Option(help="Local GLiNER2.5 checkpoint dir (gate)")
+    ] = settings.gliner_model_dir,
+    device: Annotated[ModelDevice, typer.Option(help="Gate inference device")] = settings.gliner_model_device,
 ):
     """Parse a dataset's `.ics` files into `event` rows (deterministic), optionally plus an LLM pass.
 
@@ -994,7 +1234,9 @@ def extract_events_cmd(
         "skip_states": frozenset(gate_skip_state or DEFAULT_GATE_SKIP_STATES),
     }
     if use_gate and not gliner_model_dir:
-        raise typer.BadParameter("the gate needs --gliner-model-dir (or GLINER_MODEL_DIR); pass --no-gate to skip it")
+        raise typer.BadParameter(
+            "the gate needs --gliner-model-dir (or GLINER_MODEL_DIR in .env); pass --no-gate to skip it"
+        )
     ensure_stage_env(*(("event-extraction", "gliner") if use_gate else ("event-extraction",)))
 
     async def _run():
@@ -1051,7 +1293,7 @@ def extract_events_cmd(
                         report = await get_event_gate_report(session, resolved_id, threshold=gate_threshold, **skip)
                         typer.echo(json.dumps(report, indent=2))
 
-    asyncio.run(_run())
+    _run_llm_pass(_run())
 
 
 @app.command("extract-llm")
@@ -1122,29 +1364,44 @@ def extract_llm_cmd(
                 raise typer.BadParameter(str(exc)) from exc
             logger.success(f"Combined LLM pass over {run.units} files")
 
-    asyncio.run(_run())
+    _run_llm_pass(_run())
 
 
 @app.command("extract-entities")
 def extract_entities_cmd(
     dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
     dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
-    extractor: Annotated[str, typer.Option(help="Engine: llm | gliner | nerd")] = "llm",
+    extractor: Annotated[str, typer.Option(help="Engine: nerd | gliner | llm")] = "nerd",
     model: Annotated[str | None, typer.Option(help="Override the configured LLM model id (llm extractor)")] = None,
     gliner_model_dir: Annotated[
         str | None, typer.Option(help="Local GLiNER2.5 checkpoint dir (gliner extractor)")
-    ] = None,
+    ] = settings.gliner_model_dir,
     nerd_model_dir: Annotated[
         str | None, typer.Option(help="Token-classification checkpoint dir (nerd extractor)")
-    ] = None,
+    ] = settings.nerd_model_dir,
     threshold: Annotated[
         float | None, typer.Option(help="Span score floor. Default: 0.65 for gliner, 0.5 for nerd")
     ] = None,
     no_relations: Annotated[bool, typer.Option(help="Do not persist mention relations")] = False,
-    device: Annotated[ModelDevice, typer.Option(help="Inference device (gliner / nerd)")] = ModelDevice.CPU,
+    device: Annotated[
+        ModelDevice | None,
+        typer.Option(help="Inference device (gliner / nerd). Default: GLINER_MODEL_DEVICE / NERD_MODEL_DEVICE"),
+    ] = None,
     batch_size: Annotated[
         int, typer.Option(help="Files per batch; nerd packs a whole batch into shared GPU passes")
     ] = 25,
+    filetype_group: Annotated[
+        list[str] | None,
+        typer.Option(
+            help="Filetype group to process, repeatable (default: document, email, image). Add `table` to include spreadsheets"
+        ),
+    ] = None,
+    rescan: Annotated[
+        bool,
+        typer.Option(
+            help="Re-extract already-processed files, keeping each name's resolved entity; hand-corrected texts are skipped"
+        ),
+    ] = False,
 ):
     """Run NER + relation extraction over a dataset's extracted text.
 
@@ -1160,6 +1417,10 @@ def extract_entities_cmd(
     """
     if extractor in ("gliner", "nerd"):
         ensure_stage_env(extractor)
+    if device is None:
+        device = settings.nerd_model_device if extractor == "nerd" else settings.gliner_model_device
+
+    groups = filetype_group or list(DEFAULT_FILETYPE_GROUPS[EnrichmentType.ENTITY_EXTRACTION])
 
     async def _run():
         async with get_session_context() as session:
@@ -1169,9 +1430,10 @@ def extract_entities_cmd(
                 dataset_id=resolved_id,
                 device="na",
                 unit=WorkUnit.LLM_FILE if extractor == "llm" else WorkUnit.TEXT_FILE,
-                params={"extractor": extractor},
+                params={"extractor": extractor, "filetype_groups": groups},
             ) as run:
                 run.units = await extract_entities_workflow(
+                    filetype_groups=groups,
                     session=session,
                     dataset_id=resolved_id,
                     extractor=extractor,
@@ -1182,6 +1444,7 @@ def extract_entities_cmd(
                     persist_relations=not no_relations,
                     device=device,
                     batch_size=batch_size,
+                    rescan=rescan,
                 )
             logger.success(f"Extracted entity mentions for {run.units} files")
 
@@ -1215,16 +1478,27 @@ def resolve_entities_cmd(
     skip_locations: Annotated[
         bool, typer.Option(help="Skip the gazetteer pass over location mentions (see `resolve-locations`)")
     ] = False,
+    full: Annotated[
+        bool, typer.Option(help="Re-score every auto-created entity, not just those created since the last run")
+    ] = False,
 ):
-    """Sweep unresolved name mentions -> entities: block -> score -> decide -> emit.
+    """The whole entity-resolution stage, one call: match -> decide -> derive.
 
-    A dataset-wide pass. For each unresolved `name` group it blocks candidates
-    (`entity_name_key` + selector + trigram), scores them (Fellegi-Sunter), then:
-    auto-attaches the whole group on the one safe rule (exact selector on a
-    structured header), files a pending group-level `entity_match` per candidate
-    for the review queue, or -- if nothing clears `--review-low` -- promotes a
-    trustworthy typed group to a provisional entity, else leaves it for Review.
-    Idempotent; `reset-entities` clears everything it writes.
+    One unit per name key (`normalize_name`: formatting, possessive, legal form and type
+    aside -- `Adaire`, `Adaire's`, `Adaire (no reply)` are one unit):
+
+    1. **Same names**: auto-created entities of one type fold into the unit's keeper; the
+       unit's names attach to an auto-created keeper; same name / other type is asked.
+    2. **Match names**: block candidates (`entity_name_key` + selector + trigram), score them
+       (Fellegi-Sunter), attach on the one safe rule (exact header identifier + name),
+       suggest the review band, or create one auto-created entity for a trustworthy unit.
+    3. **Match new entities**: auto-created entities created since the last run (all with
+       `--full`) against other entities -> merge suggestions.
+    4. **Places** (`resolve-locations`), then **links and suggestions**: header identifier
+       links, relationship / email-domain suggestions, event links, closing settled suggestions.
+
+    Progress per step is recorded on the run (dataset page). Idempotent; `reset-entities`
+    clears what it writes. Review on Entities -> Resolve, then Verify.
     """
 
     async def _run():
@@ -1239,17 +1513,15 @@ def resolve_entities_cmd(
                 min_mentions=min_mentions,
                 cross_dataset=cross_dataset,
             )
-            counts = await resolve_entities_workflow(
-                session=session,
-                dataset_id=resolved_id,
+            counts = await resolution_workflow(
+                session,
+                resolved_id,
                 config=config,
                 link_selectors=not skip_selector_links,
                 concurrency=concurrency,
+                locations=not skip_locations,
+                full=full,
             )
-            if not skip_locations and not default_gazetteer_path().exists():
-                logger.warning(f"No gazetteer at {default_gazetteer_path()}; skipping location mentions")
-            elif not skip_locations:
-                counts["locations"] = await resolve_locations_workflow(session=session, dataset_id=resolved_id)
             typer.echo(json.dumps(counts, indent=2))
 
     asyncio.run(_run())
@@ -1271,56 +1543,6 @@ def resolve_locations_cmd(
         async with get_session_context() as session:
             resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
             counts = await resolve_locations_workflow(session=session, dataset_id=resolved_id)
-            typer.echo(json.dumps(counts, indent=2))
-
-    asyncio.run(_run())
-
-
-@app.command("dedupe-entities")
-def dedupe_entities_cmd(
-    dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
-    dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
-    review_low: Annotated[float, typer.Option(help="Score floor for proposing a merge")] = 0.55,
-):
-    """Score every provisional entity against canonical entities and file merge proposals.
-
-    `resolve-entities` mints a provisional entity when a trustworthy name group
-    has no canonical match; nothing then re-checks that stub. This pass blocks
-    canonical candidates for each stub, scores them with the same Fellegi-Sunter
-    scorer, and writes a pending `entity_match` (with `provisional_entity_id`
-    set) per candidate over `--review-low`. Never auto -- a merge is reviewed in
-    the app; confirming runs `merge_entities`. Skips a pair an analyst already
-    rejected. Idempotent.
-    """
-
-    async def _run():
-        async with get_session_context() as session:
-            resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
-            config = EntityResolutionConfig(review_low=review_low)
-            counts = await dedupe_entities_workflow(session=session, dataset_id=resolved_id, config=config)
-            typer.echo(json.dumps(counts, indent=2))
-
-    asyncio.run(_run())
-
-
-@app.command("reclassify-domains")
-def reclassify_domains_cmd(
-    dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
-    dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
-    dry_run: Annotated[bool, typer.Option(help="Only count the website name mentions it would move")] = False,
-):
-    """Move websites out of people/organizations and into `domain` selectors (one-off repair).
-
-    Deletes name mentions that are a URL / domain (`Udemy.com`) or were cut from one
-    (`Towards` in `towardsdatascience.com`), scans the dataset's text for domains, folds
-    each website-named entity into the same-named organization (else drops it when it's
-    auto-created and now empty), and links domains to organizations by name. Idempotent.
-    """
-
-    async def _run():
-        async with get_session_context() as session:
-            resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
-            counts = await reclassify_domains_workflow(session=session, dataset_id=resolved_id, dry_run=dry_run)
             typer.echo(json.dumps(counts, indent=2))
 
     asyncio.run(_run())
@@ -1428,58 +1650,51 @@ def resolve_event_links_cmd(
     asyncio.run(_run())
 
 
-@app.command("backfill-entity-name-keys")
-def backfill_entity_name_keys_cmd(
+@app.command("rekey")
+def rekey_cmd(
     dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
     dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
-    batch_size: Annotated[int, typer.Option(help="Entities per keyset-paginated batch")] = 1000,
-    purge: Annotated[
-        bool, typer.Option(help="Delete every key row first (only with no dataset scope; for a KEYS_VERSION rebuild)")
+    names: Annotated[bool, typer.Option("--names", help="Only re-key names (after a `normalize_name` change)")] = False,
+    name_keys: Annotated[
+        bool,
+        typer.Option("--name-keys", help="Only rebuild the resolver's name-key index (after a cipher-names change)"),
+    ] = False,
+    selectors: Annotated[
+        bool, typer.Option("--selectors", help="Only re-key selectors (after a pyselectors change)")
+    ] = False,
+    filetypes: Annotated[
+        bool,
+        typer.Option("--filetypes", help="Re-type files (after a filetyper change; opt-in, reads every file)"),
+    ] = False,
+    dry_run: Annotated[bool, typer.Option(help="Count what would change; write nothing")] = False,
+    purge_name_keys: Annotated[
+        bool, typer.Option(help="Empty the name-key index first (all datasets only; for a KEYS_VERSION bump)")
     ] = False,
 ):
-    """Populate / rebuild the `entity_name_key` blocking index for entity resolution.
+    """Bring stored keys in line with the current normalization code (all three parts unless narrowed).
 
-    Recomputes `cipher.names.entity_keys` (transliterated / phonetic / sorted-token
-    / surname / given+surname forms) for every person / organization / location
-    entity and replaces its rows. Idempotent -- delete-then-insert per entity, so
-    re-running heals drift. Only needed for initial adoption and after a
-    `cipher-names` upgrade; inline refresh keeps the index current thereafter.
-    Runs across all datasets when none is given.
+    Run after changing `normalize_name`, cipher-names, or pyselectors, so existing rows match
+    what a fresh extraction would write. Names re-key mentions / entities / resolutions and trim
+    name spans; name keys rebuild `entity_name_key`; selectors refresh attributes and re-key
+    values that now normalize differently (folding into an existing selector). Idempotent.
+    Follow a names re-key with `resolve-entities`. `--filetypes` (opt-in) re-types files after a
+    filetyper change. All datasets when none is given.
     """
+    flags = (names, name_keys, selectors, filetypes)
+    chosen = tuple(part for part, flag in zip(REKEY_PARTS + REKEY_OPT_IN_PARTS, flags, strict=True) if flag)
+    chosen = chosen or REKEY_PARTS
+    if filetypes:
+        ensure_stage_env("staging")
 
     async def _run():
         async with get_session_context() as session:
             resolved_id = None
             if dataset_name or dataset_id:
                 resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
-            counts = await backfill_entity_name_keys_workflow(
-                session=session, dataset_id=resolved_id, batch_size=batch_size, purge=purge
+            counts = await rekey_workflow(
+                session, dataset_id=resolved_id, parts=chosen, dry_run=dry_run, purge_name_keys=purge_name_keys
             )
             typer.echo(json.dumps(counts, indent=2))
-
-    asyncio.run(_run())
-
-
-@app.command("refresh-selectors")
-def refresh_selectors_cmd(
-    dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
-    dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
-):
-    """Recompute normalization / validation / attributes on existing `selector` rows.
-
-    Retroactive backfill against the current `pyselectors` packs and validators:
-    refreshes `attributes` and `region_hint` on every selector row (all datasets
-    if none is given). `normalized_value` is left untouched; rows that no longer
-    validate are logged, not deleted.
-    """
-
-    async def _run():
-        async with get_session_context() as session:
-            resolved_id = None
-            if dataset_name or dataset_id:
-                resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
-            summary = await refresh_selectors_workflow(session=session, dataset_id=resolved_id)
-            typer.echo(json.dumps(summary, indent=2))
 
     asyncio.run(_run())
 
@@ -1559,10 +1774,10 @@ def reset_text_cmd(
     instead of skipping ones already marked complete under the old config.
     """
     from cipher.schemas.ingestion.enrichment import EnrichmentType
-    from cipher.utils.retrieval import RetrievalBackend, load_retrieval_config
+    from cipher.utils.retrieval import RetrievalBackend
 
     async def _run():
-        cfg = load_retrieval_config()
+        cfg = settings.retrieval
         async with _text_chunk_es_repo() as es_repo, get_session_context() as session:
             if cfg.backend == RetrievalBackend.POSTGRES:
                 from cipher.datastores.postgres.repositories.chunk_retrieval import (
@@ -1819,7 +2034,7 @@ def benchmark_ingest_cmd(
             result = await benchmark_ingest(
                 session=session,
                 directory=directory,
-                file_analyzer=file_typer.generate_from_local_path,
+                file_typer=file_typer,
                 limit=limit,
                 skip_emails=skip_emails,
                 skip_documents=skip_documents,
@@ -1831,6 +2046,336 @@ def benchmark_ingest_cmd(
                 typer.echo(f"\nWrote report to {report}")
 
     asyncio.run(_run())
+
+
+@app.command("profile-dataset")
+def profile_dataset_cmd(
+    dataset_name: Annotated[str | None, typer.Option(help="Dataset name")] = None,
+    dataset_id: Annotated[str | None, typer.Option(help="Dataset ID")] = None,
+    all_datasets: Annotated[bool, typer.Option("--all", help="Profile every dataset")] = False,
+):
+    """Recompute the dataset profile behind the empty-query search briefing (docs/global-search.md §6).
+
+    Composition, content-date histogram, the people/orgs, selectors and places mentioned in
+    the most non-bulk files, top email correspondents, and a spread sample of images. A full
+    recompute -- run it after enrichment changes what's in a dataset.
+    """
+    from sqlalchemy import text
+
+    from cipher.datastores.postgres.repositories.dataset_profile import PostgresDatasetProfileRepository
+
+    async def _run():
+        async with get_session_context() as session:
+            if all_datasets:
+                dataset_ids = list((await session.execute(text("SELECT id FROM dataset ORDER BY name"))).scalars())
+            else:
+                dataset_ids = [await _resolve_dataset_id(session, dataset_id, dataset_name)]
+            repo = PostgresDatasetProfileRepository(session=session)
+            for resolved_id in dataset_ids:
+                profile = await repo.compute(dataset_id=resolved_id)
+                logger.success(
+                    f"Profiled {resolved_id}: {profile.file_count} files, "
+                    f"{len(profile.top_people_orgs)} people/orgs, {len(profile.image_sample_ids)} sample images"
+                )
+
+    asyncio.run(_run())
+
+
+@app.command("prune-search-history")
+def prune_search_history_cmd(
+    days: Annotated[
+        int,
+        typer.Option(help="Keep unsaved searches run within this many days"),
+    ] = settings.search.history_retention_days,
+):
+    """Delete unsaved search records not run recently; saved searches are kept (docs/global-search.md §7.3)."""
+    from cipher.datastores.postgres.repositories.search_record import PostgresSearchRecordRepository
+
+    async def _run():
+        async with get_session_context() as session:
+            deleted = await PostgresSearchRecordRepository(session=session).prune(retention_days=days)
+            logger.success(f"Pruned {deleted} searches older than {days} days")
+
+    asyncio.run(_run())
+
+
+def _table_detectors(detectors: str, *, gliner_url, gliner_model_dir, nerd_url, nerd_model_dir, llm_model, device):
+    from pytabular.build import ModelEndpoints, build_detectors
+
+    endpoints = ModelEndpoints(
+        gliner_url=gliner_url,
+        gliner_model_dir=gliner_model_dir,
+        nerd_url=nerd_url,
+        nerd_model_dir=nerd_model_dir,
+        llm_model=llm_model,
+        device=device,
+    )
+    return build_detectors([d.strip() for d in detectors.split(",") if d.strip()], endpoints=endpoints)
+
+
+_DetectorsOpt = Annotated[str, typer.Option(help="Comma list of: header, validators, gliner, nerd, llm")]
+_GlinerUrlOpt = Annotated[str | None, typer.Option(help="pygliner service URL")]
+_GlinerDirOpt = Annotated[str | None, typer.Option(help="Local GLiNER2.5 dir (in-process)")]
+_NerdUrlOpt = Annotated[str | None, typer.Option(help="nerd service URL")]
+_NerdDirOpt = Annotated[str | None, typer.Option(help="Local nerd model dir (in-process)")]
+_LlmModelOpt = Annotated[str | None, typer.Option(help="LLM model name override (default: LLM__MODEL)")]
+
+
+@app.command("profile-table")
+def profile_table_cmd(
+    path: Annotated[Path, typer.Argument(exists=True, dir_okay=False, help="csv/tsv/xlsx/xls/ods/parquet/json/jsonl")],
+    detectors: _DetectorsOpt = "header,validators",
+    mapping: Annotated[
+        Path | None, typer.Option(exists=True, help="Edited mapping JSON: user-set columns/slots/edges stay locked")
+    ] = None,
+    region: Annotated[str | None, typer.Option(help="ISO-3166 alpha-2 default region for phone numbers")] = None,
+    cascade: Annotated[bool, typer.Option(help="Run model detectors only on still-ambiguous tables")] = True,
+    gliner_url: _GlinerUrlOpt = settings.pytabular_gliner_url,
+    gliner_model_dir: _GlinerDirOpt = settings.gliner_model_dir,
+    nerd_url: _NerdUrlOpt = settings.pytabular_nerd_url,
+    nerd_model_dir: _NerdDirOpt = settings.nerd_model_dir,
+    llm_model: _LlmModelOpt = None,
+    device: Annotated[ModelDevice, typer.Option(help="Device for in-process models")] = settings.gliner_model_device,
+    summary: Annotated[bool, typer.Option(help="A readable summary instead of the full mapping JSON")] = False,
+):
+    """Type a table's columns onto the ontology and print the proposed mapping (no database writes).
+
+    See docs/tabular-mapping.md.
+    """
+    ensure_stage_env("table-mapping")
+    from pydantic import TypeAdapter
+    from pytabular.decide import ProfileConfig, profile_table
+
+    from cipher.schemas.ingestion.table_mapping import TableMapping
+
+    locked = None
+    if mapping is not None:
+        raw = json.loads(mapping.read_text(encoding="utf-8"))
+        locked = TypeAdapter(list[TableMapping]).validate_python(raw if isinstance(raw, list) else [raw])
+    built = _table_detectors(
+        detectors,
+        gliner_url=gliner_url,
+        gliner_model_dir=gliner_model_dir,
+        nerd_url=nerd_url,
+        nerd_model_dir=nerd_model_dir,
+        llm_model=llm_model,
+        device=device,
+    )
+    mappings = profile_table(path, detectors=built, locked=locked, config=ProfileConfig(region=region, cascade=cascade))
+    if not summary:
+        typer.echo(
+            json.dumps([m.model_dump(mode="json", by_alias=True) for m in mappings], ensure_ascii=False, indent=2)
+        )
+        return
+    for m in mappings:
+        typer.echo(f"sheet={m.sheet} header_rows={m.header_rows} rows~{m.rows_estimate} fingerprint={m.fingerprint}")
+        typer.echo(f"detectors: {', '.join(m.detectors)}")
+        for c in m.columns:
+            hit = f"{c.hit_rate:.0%}" if c.hit_rate is not None else "-"
+            typer.echo(
+                f"  #{c.index:<3} {c.header[:28]:<28} {c.field_type:<26} {c.confidence:.2f}  hit={hit:<5} "
+                f"role={c.role or '-':<9} slot={c.slot or '-':<14} {'; '.join(c.examples[:2])[:50]}"
+            )
+        for s in m.slots:
+            typer.echo(f"  slot {s.name}: {s.entity_type.value} <- columns {s.columns}")
+        for e in m.edges:
+            proposed = " (proposed verb)" if e.is_proposed_verb else ""
+            typer.echo(f"  edge {e.src_slot} -{e.relationship_type}-> {e.dst_slot}{proposed}")
+
+
+@app.command("map-tables")
+def map_tables_cmd(
+    dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
+    dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
+    detectors: _DetectorsOpt = "header,validators",
+    region: Annotated[str | None, typer.Option(help="ISO-3166 alpha-2 default region for phone numbers")] = None,
+    reprofile: Annotated[bool, typer.Option(help="Profile files again even if their layout is recorded")] = False,
+    repropose: Annotated[
+        bool, typer.Option(help="Re-run the detectors on unverified mappings (user-set parts stay locked)")
+    ] = False,
+    gliner_url: _GlinerUrlOpt = settings.pytabular_gliner_url,
+    gliner_model_dir: _GlinerDirOpt = settings.gliner_model_dir,
+    nerd_url: _NerdUrlOpt = settings.pytabular_nerd_url,
+    nerd_model_dir: _NerdDirOpt = settings.nerd_model_dir,
+    llm_model: _LlmModelOpt = None,
+    device: Annotated[ModelDevice, typer.Option(help="Device for in-process models")] = settings.gliner_model_device,
+):
+    """Profile a dataset's tabular files and propose a column mapping per header layout (review them on /tables).
+
+    Nothing reaches the graph until a mapping is verified and `cipher emit-tables` runs. See docs/tabular-mapping.md.
+    """
+    ensure_stage_env("table-mapping")
+    from pytabular.decide import ProfileConfig
+
+    from cipher.orchestration.extract_tables import map_tables_workflow
+
+    built = _table_detectors(
+        detectors,
+        gliner_url=gliner_url,
+        gliner_model_dir=gliner_model_dir,
+        nerd_url=nerd_url,
+        nerd_model_dir=nerd_model_dir,
+        llm_model=llm_model,
+        device=device,
+    )
+
+    async def _run():
+        async with get_session_context() as session:
+            resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
+            counts = await map_tables_workflow(
+                session,
+                resolved_id,
+                detectors=built,
+                config=ProfileConfig(region=region),
+                reprofile=reprofile,
+                repropose=repropose,
+            )
+            typer.echo(json.dumps(counts, indent=2))
+
+    asyncio.run(_run())
+
+
+@app.command("emit-tables")
+def emit_tables_cmd(
+    dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
+    dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
+):
+    """Write rows of files whose table mapping is verified: mentions, map points and edges (then run resolve-entities).
+
+    Re-runnable: a file is re-emitted only when its mapping is verified again, replacing what it wrote before.
+    """
+    ensure_stage_env("table-mapping")
+    from cipher.orchestration.extract_tables import emit_tables_workflow
+
+    async def _run():
+        async with get_session_context() as session:
+            resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
+            async with record_run(
+                enrichment_type=EnrichmentType.TABLE_EXTRACTION,
+                dataset_id=resolved_id,
+                device="na",
+                unit=WorkUnit.TABLE_ROW,
+            ) as run:
+                counts = await emit_tables_workflow(session, resolved_id)
+                run.units = counts.get("rows", 0)
+            typer.echo(json.dumps(counts, indent=2))
+
+    asyncio.run(_run())
+
+
+@app.command("summarize")
+def summarize_cmd(
+    dataset_name: Annotated[str | None, typer.Option(help="Dataset name to scope to")] = None,
+    dataset_id: Annotated[str | None, typer.Option(help="Dataset ID to scope to")] = None,
+    filetype_group: Annotated[
+        list[str] | None,
+        typer.Option(help="Filetype group to summarize, repeatable (default: document, email, image, table)"),
+    ] = None,
+    concurrency: Annotated[int, typer.Option(help="Concurrent LLM calls")] = 8,
+    limit: Annotated[int | None, typer.Option(help="Only summarize this many files (a trial slice)")] = None,
+    language: Annotated[str, typer.Option(help="Language the summaries are written in")] = "English",
+    model: Annotated[str | None, typer.Option(help="Override the configured LLM model id")] = None,
+):
+    """Write a short AI summary of each file (opt-in: one LLM call per file, so it's slow on big datasets).
+
+    Cached on the file -- re-runs and content-identical files cost nothing. Tables are summarized from
+    their sample rows + column mapping (run `cipher map-tables` first). One file at a time: the file
+    viewer's Summarize button.
+    """
+    from cipher.orchestration.summarize import summarize_workflow
+
+    groups = filetype_group or list(DEFAULT_FILETYPE_GROUPS[EnrichmentType.TEXT_SUMMARIZATION])
+
+    async def _run():
+        async with get_session_context() as session:
+            resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
+            async with record_run(
+                enrichment_type=EnrichmentType.TEXT_SUMMARIZATION,
+                dataset_id=resolved_id,
+                device="na",
+                unit=WorkUnit.LLM_FILE,
+                params={"filetype_groups": groups, "language": language, "model": model},
+            ) as run:
+                counts = await summarize_workflow(
+                    session,
+                    resolved_id,
+                    filetype_groups=groups,
+                    concurrency=concurrency,
+                    limit=limit,
+                    language=language,
+                    model=model,
+                )
+                run.units = counts["llm_calls"]
+            typer.echo(json.dumps(counts, indent=2))
+
+    asyncio.run(_run())
+
+
+@app.command("eval-table-typing")
+def eval_table_typing_cmd(
+    labels: Annotated[
+        Path | None, typer.Option(exists=True, help="labels.yaml of hand-labelled files (default: synthetic tables)")
+    ] = None,
+    combos: Annotated[
+        str,
+        typer.Option(help="Semicolon list of detector combos to compare, e.g. 'header;validators;header,validators'"),
+    ] = "header;validators;header,validators",
+    synthetic: Annotated[int, typer.Option(help="Synthetic tables to generate when no labels are given")] = 42,
+    seed: Annotated[int, typer.Option(help="Synthetic table seed")] = 7,
+    out_dir: Annotated[
+        Path | None, typer.Option(help="Where synthetic tables are written (default: a temp dir)")
+    ] = None,
+    cascade: Annotated[
+        bool, typer.Option(help="Cascade inside a combo (off: every detector sees every column)")
+    ] = False,
+    gliner_url: _GlinerUrlOpt = settings.pytabular_gliner_url,
+    gliner_model_dir: _GlinerDirOpt = settings.gliner_model_dir,
+    nerd_url: _NerdUrlOpt = settings.pytabular_nerd_url,
+    nerd_model_dir: _NerdDirOpt = settings.nerd_model_dir,
+    llm_model: _LlmModelOpt = None,
+    device: Annotated[ModelDevice, typer.Option(help="Device for in-process models")] = settings.gliner_model_device,
+    mistakes: Annotated[int, typer.Option(help="Most common mistakes to list per combo")] = 10,
+):
+    """Compare column-typing detectors on labelled or synthetic messy tables (accuracy, macro-F1, ms/column)."""
+    ensure_stage_env("table-mapping")
+    import tempfile
+
+    from pytabular.decide import ProfileConfig
+    from pytabular.evaluate import LabelledTable, evaluate, load_labels, report
+    from pytabular.synth import make_tables
+
+    if labels is not None:
+        tables = load_labels(labels)
+    else:
+        directory = out_dir or Path(tempfile.mkdtemp(prefix="pytabular-synth-"))
+        tables = [
+            LabelledTable(path=t.path, labels=dict(enumerate(t.labels)))
+            for t in make_tables(directory, count=synthetic, seed=seed)
+        ]
+        logger.info(f"Generated {len(tables)} synthetic tables in {directory}")
+
+    cache: dict[str, object] = {}
+
+    def detector(name: str):
+        if name not in cache:
+            cache[name] = _table_detectors(
+                name,
+                gliner_url=gliner_url,
+                gliner_model_dir=gliner_model_dir,
+                nerd_url=nerd_url,
+                nerd_model_dir=nerd_model_dir,
+                llm_model=llm_model,
+                device=device,
+            )[0]
+        return cache[name]
+
+    combo_map = {
+        combo.strip(): [detector(n.strip()) for n in combo.split(",") if n.strip()]
+        for combo in combos.split(";")
+        if combo.strip()
+    }
+    results = evaluate(tables, combo_map, config=ProfileConfig(cascade=cascade))
+    typer.echo(report(results, mistakes=mistakes))
 
 
 if __name__ == "__main__":

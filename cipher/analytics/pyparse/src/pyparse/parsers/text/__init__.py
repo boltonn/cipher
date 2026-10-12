@@ -1,5 +1,3 @@
-from pyparse.parsers.text.html import HtmlParser
-from pyparse.parsers.text.txt import TxtParser
-from pyparse.parsers.text.xml import XmlParser
+from pyparse.parsers.text.html import extract_links, html_to_text, parse_html, sanitize_html
 
-__all__ = ["HtmlParser", "TxtParser", "XmlParser"]
+__all__ = ["extract_links", "html_to_text", "parse_html", "sanitize_html"]

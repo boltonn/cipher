@@ -123,3 +123,20 @@ def test_keys_and_codes():
 def test_resolve(gaz: Gazetteer, surface: str, before: str, after: str, expected: str | None):
     """Each rule resolves or abstains as documented."""
     assert _id(gaz.resolve(surface, before=before, after=after)) == expected
+
+
+@pytest.mark.parametrize(
+    ("address", "expected", "surface"),
+    [
+        ("1100 N Market Street\n\nWilmington, DE 19890", "wil-de", "Wilmington"),  # ambiguous city, state settles it
+        ("ул. Тверская, 7, Москва, 125009", "moscow", "Москва"),
+        ("1 Main St, Suite 300, Texas", "us-tx", "Texas"),  # no city: the state
+        ("12 Rue de Rivoli\nWilmington", None, None),  # ambiguous and nothing to settle it
+    ],
+)
+def test_place_in_address(gaz: Gazetteer, address: str, expected: str | None, surface: str | None):
+    """The most specific place an address names, with its offsets; nothing when it is ambiguous."""
+    found = gaz.place_in_address(address)
+    assert _id(found[0] if found else None) == expected
+    if found:
+        assert address[found[1] : found[2]] == surface

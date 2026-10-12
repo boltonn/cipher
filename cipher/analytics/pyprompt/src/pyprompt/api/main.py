@@ -84,6 +84,7 @@ async def events(request: EventRequest, runner: PromptRunnerDep) -> EventExtract
         return await runner.extract_events(
             request.text,
             reference_date=request.reference_date,
+            author=request.author,
             prompt=request.prompt,
             model=request.model,
         )
@@ -101,6 +102,7 @@ async def extract(request: ExtractRequest, runner: PromptRunnerDep) -> CombinedE
             labels=request.labels,
             relation_labels=request.relation_labels,
             reference_date=request.reference_date,
+            author=request.author,
             model=request.model,
         )
     except PromptError as exc:

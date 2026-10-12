@@ -197,32 +197,20 @@ export default function Page() {
         >
           <RecentDatasets />
 
-          <section>
-            <SectionLabel>Workspace</SectionLabel>
-            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {NAV.workspace.map((item) => (
-                <NavRow key={item.url} item={item} />
-              ))}
-            </div>
-          </section>
-
-          <section>
-            <SectionLabel>Explore</SectionLabel>
-            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {NAV.explore.map((item) => (
-                <NavRow key={item.url} item={item} />
-              ))}
-            </div>
-          </section>
-
-          <section>
-            <SectionLabel>Media</SectionLabel>
-            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {NAV.media.map((item) => (
-                <NavRow key={item.url} item={item} />
-              ))}
-            </div>
-          </section>
+          {[
+            { label: "Find", items: NAV.find },
+            { label: "Knowledge", items: NAV.knowledge },
+            { label: "Manage", items: NAV.manage },
+          ].map((group) => (
+            <section key={group.label}>
+              <SectionLabel>{group.label}</SectionLabel>
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {group.items.flatMap((item) => [item, ...(item.children ?? [])]).map((item) => (
+                  <NavRow key={item.url} item={item} />
+                ))}
+              </div>
+            </section>
+          ))}
         </div>
 
         {(REPO_URL || CONTACT_EMAIL) && (

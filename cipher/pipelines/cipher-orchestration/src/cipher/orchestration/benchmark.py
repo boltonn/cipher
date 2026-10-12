@@ -15,7 +15,6 @@ import shutil
 import statistics
 import string
 import tempfile
-from collections.abc import Callable
 from pathlib import Path
 from time import perf_counter
 from typing import TYPE_CHECKING
@@ -35,8 +34,10 @@ from cipher.schemas.content.document import DocumentMetadata, ExtractedTableInfo
 from cipher.schemas.content.extraction import ExtractedTextCreate, ExtractionContentFormat, TextExtractor
 from cipher.schemas.ingestion.dataset import DatasetCreate
 from cipher.schemas.ingestion.file import FileCreate
+from cipher.utils.output import OutputStore
 
 if TYPE_CHECKING:
+    from filetyper.models.main import FileTyper
     from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -159,7 +160,7 @@ def _throughput(count: int, elapsed_ms: float) -> float | None:
 async def benchmark_ingest(
     session: "AsyncSession",
     directory: Path,
-    file_analyzer: Callable,
+    file_typer: "FileTyper",
     limit: int | None = None,
     skip_emails: bool = False,
     skip_documents: bool = False,
@@ -188,7 +189,7 @@ async def benchmark_ingest(
 
     start = perf_counter()
     file_count = await load_files(
-        session=session, path=directory, dataset_id=dataset.id, file_analyzer=file_analyzer, limit=limit
+        session, str(directory), dataset_id=dataset.id, file_typer=file_typer, limit=limit
     )
     load_ms = (perf_counter() - start) * 1000
 
@@ -202,12 +203,12 @@ async def benchmark_ingest(
         "by_filetype_group": {group: info["count"] for group, info in inventory.items()},
     }
 
-    attachments_dir = Path(tempfile.mkdtemp(prefix="benchmark-ingest-attachments-"))
+    output_root = Path(tempfile.mkdtemp(prefix="benchmark-ingest-output-"))
     try:
         if not skip_emails:
             start = perf_counter()
             email_count = await extract_emails_workflow(
-                session=session, dataset_id=dataset.id, attachments_dir=attachments_dir
+                session=session, dataset_id=dataset.id, store=OutputStore(output_root)
             )
             email_ms = (perf_counter() - start) * 1000
             result["extract_emails"] = {
@@ -226,7 +227,7 @@ async def benchmark_ingest(
                 "documents_per_sec": _throughput(count=doc_count, elapsed_ms=doc_ms),
             }
     finally:
-        shutil.rmtree(attachments_dir, ignore_errors=True)
+        shutil.rmtree(output_root, ignore_errors=True)
 
     result["dataset_id"] = dataset.id if not cleanup else None
     if cleanup:

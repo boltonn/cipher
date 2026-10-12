@@ -5,17 +5,30 @@ import { PageHeader } from "@/components/page-header";
 import { PageLoading } from "@/components/page-loading";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { CommentSection } from "@/features/comments/components/comment-section";
 import { AddConnectionDialog } from "@/features/entities/components/add-connection-dialog";
 import { AttachSelectorDialog } from "@/features/entities/components/attach-selector-dialog";
 import { EntityGraph } from "@/features/entities/components/entity-graph";
+import { EntityMergePanel } from "@/features/entities/components/entity-merge-list";
+import { EntityNamesPanel } from "@/features/entities/components/entity-names-panel";
+import { EntitySelectorProposals } from "@/features/entities/components/entity-selector-proposals";
 import { EntitySelectors } from "@/features/entities/components/entity-selectors";
 import { ENTITY_TYPE_META } from "@/features/entities/components/entity-type-meta";
 import { Section } from "@/features/entities/components/section";
 import { useEntityProfile } from "@/features/entities/hooks/use-entities";
 import { FAMILY_ROLE_INVERSE } from "@/features/entities/types";
 import { PersonEventsSection } from "@/features/events/components/person-events-section";
-import { FaceCard } from "@/features/faces/components/face-card";
+import {
+  EAGER_FACE_COUNT,
+  FaceCard,
+} from "@/features/faces/components/face-card";
 import { FaceSelectionBar } from "@/features/faces/components/face-selection-bar";
 import { useUnassignFaces } from "@/features/faces/hooks/use-assign-face";
 import { useGridSelection } from "@/hooks/use-grid-selection";
@@ -23,9 +36,9 @@ import { usePersonFaces } from "@/features/faces/hooks/use-person-faces";
 import { useRejectFaces } from "@/features/faces/hooks/use-reject-faces";
 import { ImageViewerDialog } from "@/features/images/components/image-viewer-dialog";
 import { FacePublic } from "@/features/faces/types";
+import type { PersonSourceType } from "@/features/persons/types";
 import { EditPersonDialog } from "@/features/persons/components/edit-person-dialog";
 import { MergePersonDialog } from "@/features/persons/components/merge-person-dialog";
-import { PersonExampleUploadButton } from "@/features/persons/components/person-example-upload-button";
 import { PersonExamplesGallery } from "@/features/persons/components/person-examples-gallery";
 import {
   useDeletePerson,
@@ -35,23 +48,30 @@ import {
 import {
   BadgeCheck,
   Cake,
+  Ellipsis,
   FileText,
   Fingerprint,
-  ImagePlus,
   Loader2,
   type LucideIcon,
   Merge,
-  MessageSquare,
   Network,
   Pencil,
   Plus,
   ScanFace,
+  Search,
   Share2,
+  Tags,
   Trash2,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { use, useMemo, useState } from "react";
+import { humanize } from "@/lib/utils";
+
+const SOURCE_LABELS: Record<PersonSourceType, string> = {
+  manual: "Added manually",
+  faceClustering: "From face clustering",
+};
 
 export default function PersonDetailPage({
   params,
@@ -77,6 +97,7 @@ export default function PersonDetailPage({
 
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isMergeOpen, setIsMergeOpen] = useState(false);
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isAddSelectorOpen, setIsAddSelectorOpen] = useState(false);
   const [isAddConnectionOpen, setIsAddConnectionOpen] = useState(false);
   const [showConnGraph, setShowConnGraph] = useState(true);
@@ -106,6 +127,9 @@ export default function PersonDetailPage({
     return <PageLoading icon={ScanFace} label="Loading person…" />;
   }
 
+  const displayName = person.name || "Unnamed person";
+  const searchHref = `/search/text?entityId=${id}`;
+
   const stats: {
     label: string;
     value: number;
@@ -119,8 +143,9 @@ export default function PersonDetailPage({
       Icon: ScanFace,
     },
     {
-      label: "Mentions",
+      label: "Files",
       value: fileCount,
+      href: searchHref,
       Icon: FileText,
     },
     {
@@ -146,6 +171,59 @@ export default function PersonDetailPage({
             ? `${recentFaces.length} faces · named in ${fileCount.toLocaleString()} file${fileCount === 1 ? "" : "s"}`
             : `${recentFaces.length} faces`
         }
+        actions={
+          <>
+            <Button asChild variant="outline" className="h-9 gap-2 text-xs">
+              <Link href={searchHref}>
+                <Search size={14} />
+                Find in text
+              </Link>
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setIsEditOpen(true)}
+              className="h-9 gap-2 text-xs"
+            >
+              <Pencil size={14} />
+              Edit
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  aria-label="More actions"
+                  className="h-9 w-9"
+                >
+                  <Ellipsis size={14} />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-64">
+                <DropdownMenuItem
+                  onSelect={() => setIsMergeOpen(true)}
+                  className="items-start"
+                >
+                  <Merge size={14} className="mt-0.5" />
+                  <div>
+                    <div>Merge with another person</div>
+                    <div className="text-[11px] text-muted-foreground">
+                      Same person recorded twice — combine faces, names and
+                      links into one
+                    </div>
+                  </div>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  variant="destructive"
+                  onSelect={() => setIsDeleteOpen(true)}
+                >
+                  <Trash2 size={14} />
+                  Delete person
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
+        }
       />
 
       <div className="w-full max-w-5xl">
@@ -159,98 +237,32 @@ export default function PersonDetailPage({
             />
 
             <div className="flex min-w-0 flex-1 flex-col gap-3">
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2.5">
-                    <h1 className="truncate text-xl font-bold text-white">
-                      {person.name || "Unnamed Person"}
-                    </h1>
-                    {person.isVerified && (
-                      <Badge className="h-6 gap-1.5 border-none bg-primary/10 px-2.5 text-xs text-primary">
-                        <BadgeCheck size={14} /> Verified
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-muted-foreground">
-                    {person.sex && (
-                      <span className="capitalize">{person.sex}</span>
-                    )}
-                    {person.dateOfBirth && (
-                      <span className="flex items-center gap-1.5">
-                        <Cake size={14} />
-                        {new Date(person.dateOfBirth).toLocaleDateString()}
-                      </span>
-                    )}
-                    {person.aliases.length > 0 && (
-                      <span>aka {person.aliases.join(", ")}</span>
-                    )}
-                    <span className="capitalize">
-                      {person.source.replace(/_/g, " ")}
+              <div>
+                <h1 className="text-2xl font-bold leading-tight text-foreground [overflow-wrap:anywhere]">
+                  {displayName}
+                </h1>
+                <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm text-muted-foreground">
+                  {person.isVerified && (
+                    <Badge className="h-6 gap-1.5 border-none bg-primary/10 px-2.5 text-xs text-primary">
+                      <BadgeCheck size={14} /> Verified
+                    </Badge>
+                  )}
+                  {person.sex && (
+                    <span className="capitalize">{person.sex}</span>
+                  )}
+                  {person.dateOfBirth && (
+                    <span className="flex items-center gap-1.5">
+                      <Cake size={14} />
+                      {new Date(person.dateOfBirth).toLocaleDateString()}
                     </span>
-                  </div>
+                  )}
+                  <span>{SOURCE_LABELS[person.source]}</span>
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <PersonExampleUploadButton
-                    personId={id}
-                    atCap={(representativeFaces?.length ?? 0) >= 10}
-                    className="flex h-9 items-center gap-2 rounded-md border border-border/50 bg-muted/40 px-3 text-[11px] font-bold uppercase tracking-wide text-muted-foreground transition-colors hover:border-annotation/30 hover:text-annotation disabled:pointer-events-none disabled:opacity-30"
-                  >
-                    <ImagePlus size={14} />
-                    Upload Exemplar
-                  </PersonExampleUploadButton>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setIsEditOpen(true)}
-                    className="h-9 gap-2 border-border/50 bg-muted/40 text-xs font-medium text-muted-foreground hover:text-primary"
-                  >
-                    <Pencil size={14} />
-                    Edit
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setIsMergeOpen(true)}
-                    className="h-9 gap-2 border-border/50 bg-muted/40 text-xs font-medium text-muted-foreground hover:text-primary"
-                  >
-                    <Merge size={14} />
-                    Merge
-                  </Button>
-                  <ConfirmDialog
-                    trigger={
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label="Delete person"
-                        className="h-9 w-9 text-muted-foreground/70 hover:bg-destructive/10 hover:text-destructive"
-                      >
-                        <Trash2 size={14} />
-                      </Button>
-                    }
-                    title="Delete this person?"
-                    description={
-                      <>
-                        This permanently deletes{" "}
-                        <strong className="text-foreground">
-                          {person.name || "Unnamed Person"}
-                        </strong>{" "}
-                        and their entry in the knowledge graph. Their{" "}
-                        {recentFaces.length.toLocaleString()} face
-                        {recentFaces.length === 1 ? "" : "s"} are unlinked, not
-                        deleted, and can be reassigned to someone else; mentions
-                        naming them become unresolved. Their{" "}
-                        {(profile?.relatedTotal ?? 0).toLocaleString()}{" "}
-                        relationship
-                        {(profile?.relatedTotal ?? 0) === 1 ? "" : "s"}, pending
-                        face/resolution matches, and comments are deleted
-                        outright. This can&apos;t be undone.
-                      </>
-                    }
-                    confirmLabel="Delete Person"
-                    isPending={deletePerson.isPending}
-                    onConfirm={() => deletePerson.mutate(id)}
-                  />
-                </div>
+                {person.aliases.length > 0 && (
+                  <p className="mt-1.5 text-sm text-muted-foreground">
+                    Also known as {person.aliases.join(", ")}
+                  </p>
+                )}
               </div>
 
               {person.notes && (
@@ -316,6 +328,9 @@ export default function PersonDetailPage({
 
         {/* Stacked sections */}
         <div className="mt-8 flex flex-col gap-10">
+          {profile && <EntityMergePanel entity={profile.entity} />}
+          <EntitySelectorProposals entityId={id} entityName={displayName} />
+
           <Section
             id="selectors"
             title="Selectors"
@@ -353,10 +368,11 @@ export default function PersonDetailPage({
             ) : recentFaces.length ? (
               <>
                 <div className="grid grid-cols-3 gap-3 sm:grid-cols-5 lg:grid-cols-6">
-                  {recentFaces.map((face) => (
+                  {recentFaces.map((face, index) => (
                     <FaceCard
                       key={face.id}
                       face={face}
+                      isEager={index < EAGER_FACE_COUNT}
                       onExpand={setSelectedFace}
                       onFindSimilar={(faceId) =>
                         router.push(`/faces?similar=${faceId}`)
@@ -470,7 +486,7 @@ export default function PersonDetailPage({
                             {r.entity.displayName}
                           </span>
                           <span className="text-[11px] uppercase text-muted-foreground">
-                            {role ?? r.relationshipType.replace(/_/g, " ")}
+                            {role ?? humanize(r.relationshipType)}
                           </span>
                         </Link>
                       </li>
@@ -489,6 +505,16 @@ export default function PersonDetailPage({
             )}
           </Section>
 
+          {profile && (
+            <Section
+              id="names"
+              title="Names in the evidence"
+              icon={<Tags size={14} className="text-primary" />}
+            >
+              <EntityNamesPanel entity={profile.entity} />
+            </Section>
+          )}
+
           {/* CommentSection renders its own "Comments" header -- no Section
             wrapper, or the heading shows twice. */}
           <section id="comments" className="scroll-mt-20">
@@ -505,22 +531,48 @@ export default function PersonDetailPage({
         onOpenChange={setIsEditOpen}
       />
 
+      <ConfirmDialog
+        open={isDeleteOpen}
+        onOpenChange={setIsDeleteOpen}
+        title="Delete this person?"
+        description={
+          <>
+            This permanently deletes{" "}
+            <strong className="text-foreground">{displayName}</strong> and
+            their entry in the knowledge graph. Their{" "}
+            {recentFaces.length.toLocaleString()} face
+            {recentFaces.length === 1 ? "" : "s"} are unlinked, not deleted,
+            and can be reassigned to someone else; mentions naming them become
+            unresolved. Their {(profile?.relatedTotal ?? 0).toLocaleString()}{" "}
+            relationship{(profile?.relatedTotal ?? 0) === 1 ? "" : "s"},
+            pending face/resolution matches, and comments are deleted outright.
+            This can&apos;t be undone.
+          </>
+        }
+        confirmLabel="Delete person"
+        isPending={deletePerson.isPending}
+        onConfirm={() => deletePerson.mutate(id)}
+      />
+
       <MergePersonDialog
         person={person}
         isOpen={isMergeOpen}
         onOpenChange={setIsMergeOpen}
+        onMerged={(keptId) => {
+          if (keptId !== id) router.replace(`/persons/${keptId}`);
+        }}
       />
 
       <AttachSelectorDialog
         entityId={id}
-        entityLabel={person.name || "this person"}
+        entityLabel={displayName}
         isOpen={isAddSelectorOpen}
         onOpenChange={setIsAddSelectorOpen}
       />
 
       <AddConnectionDialog
         entityId={id}
-        entityLabel={person.name || "this person"}
+        entityLabel={displayName}
         isOpen={isAddConnectionOpen}
         onOpenChange={setIsAddConnectionOpen}
       />

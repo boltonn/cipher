@@ -20,7 +20,7 @@ linked from dominance alone.
 from dataclasses import dataclass
 from functools import lru_cache
 
-from cipher.names import AddressAgreement, Level, address_name_agreement, compare_names
+from cipher.names import AddressAgreement, Level, address_name_agreement, compare_names, is_role_address
 
 _MIN_EMAILS = 3
 _MIN_SHARE = 0.5
@@ -57,9 +57,9 @@ def decide_header_links(evidence: list[HeaderEvidence], actor_names: dict[str, s
     for address_id, rows in by_address.items():
         total = sum(row.emails for row in rows)
         candidates = {row.resolved_id for row in rows if row.resolved_id in actor_names}
-        if not candidates:
-            continue
         address = rows[0].address
+        if not candidates or is_role_address(address):
+            continue
         agreement = {actor: address_name_agreement(address, [actor_names[actor]]) for actor in candidates}
         spelled = {actor for actor, value in agreement.items() if value == AddressAgreement.MATCH}
         for actor in candidates:

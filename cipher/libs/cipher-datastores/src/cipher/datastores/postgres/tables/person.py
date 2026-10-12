@@ -55,4 +55,7 @@ class PersonTable(Base):
     # this adds no column to `person` -- only the reverse accessor.
     entity: Mapped["EntityTable | None"] = relationship(back_populates="person", uselist=False, lazy="select")
 
-    __table_args__ = (Index("ix_person_tags_gin", "tags", postgresql_using="gin"),)
+    __table_args__ = (
+        Index("ix_person_tags_gin", "tags", postgresql_using="gin"),
+        Index("ix_person_name_trgm", "name", postgresql_using="gin", postgresql_ops={"name": "gin_trgm_ops"}),
+    )

@@ -23,9 +23,7 @@ try:
     from fastapi.middleware.cors import CORSMiddleware
     from starlette.middleware.base import BaseHTTPMiddleware
 except ImportError:
-    logger.error(
-        "Failed to import uvicorn and/or fastapi. Please install them with `pip install uvicorn fastapi`"
-    )
+    logger.error("Failed to import uvicorn and/or fastapi. Please install them with `pip install uvicorn fastapi`")
     exit(1)
 
 

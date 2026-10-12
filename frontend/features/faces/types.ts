@@ -1,19 +1,11 @@
 import { PaginatedResponse, SortOrderType } from "@/types/common";
 
-const FaceSortField = {
-  DateCreated: "dateCreated",
-  Quality: "qualityScore",
-  DetectionConfidence: "detectionConfidence",
-} as const;
-
-export type FaceSortFieldType =
-  (typeof FaceSortField)[keyof typeof FaceSortField];
+export type FaceSortFieldType = "dateCreated" | "qualityScore" | "detectionConfidence";
 
 export type FaceAssignmentMethodType = "manual" | "automatic";
 
-/** Datastore-wide default for "this counts as a match" (mirrors the backend's
- * `DEFAULT_FACE_MATCH_SIMILARITY`): the floor used whenever similarity search
- * runs without an analyst-chosen threshold, and the filter panel's default. */
+/** Datastore-wide "same face" floor (mirrors the backend's `DEFAULT_FACE_SIMILARITY`):
+ * matching, clustering and "not a face" auto-rejection all use it, and the filter panel defaults to it. */
 export const DEFAULT_MIN_SIMILARITY = 0.61;
 
 export interface BaseFaceSearchParameters {
@@ -100,9 +92,6 @@ export interface FaceAssignment {
   assignmentConfidence?: number;
 }
 
-/** Mirrors the backend's `DEFAULT_FACE_REJECT_SIMILARITY`. */
-export const DEFAULT_REJECT_SIMILARITY = 0.64;
-
 export interface FaceRejection {
   faceIds: string[];
   /** Also auto-reject unassigned faces this similar (e.g. more photos of the same cat). */
@@ -134,8 +123,8 @@ export type PaginatedFaceSimilarityResponse =
 
 export type FaceMatchStatusType = "pending" | "confirmed" | "rejected";
 export type FaceMatchMethodType =
-  | "automatic_similarity"
-  | "automatic_clustering"
+  | "automaticSimilarity"
+  | "automaticClustering"
   | "manual";
 
 /** A candidate face-to-person match awaiting (or having received) analyst review. */

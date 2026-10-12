@@ -11,10 +11,14 @@ get swept up in the same batch as everything else -- no special-casing.
 """
 
 import re
+import shutil
+from collections.abc import Sequence
+from contextlib import ExitStack
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
+from tempfile import mkdtemp
 from typing import TYPE_CHECKING
 
 import anyio
@@ -36,7 +40,9 @@ from cipher.schemas.content.extraction import (
     PrechunkedSpan,
     TextExtractor,
 )
-from cipher.schemas.ingestion.enrichment import EnrichableType, EnrichmentType
+from cipher.schemas.ingestion.enrichment import DEFAULT_FILETYPE_GROUPS, EnrichableType, EnrichmentType
+from cipher.utils.io import suffixed_path
+from cipher.utils.uri import MAX_IN_MEMORY_BYTES, is_local, local_copy, local_path, read_bytes
 
 if TYPE_CHECKING:
     from kreuzberg import ExtractionResult
@@ -158,12 +164,12 @@ def _document_structure_from_kreuzberg(
 def _fallback_json_tables(file_resource: dict) -> list[ExtractedTableInfo]:
     """Table view for JSON/JSONL, which xberg extracts as text but not as a table.
 
-    Reads the same local path xberg already extracted from, rather than
+    Reads the same file xberg already extracted from, rather than
     threading file bytes through the batch pipeline just for this.
     """
     from pyparse.parsers.tabular.json_tabular import flatten_json_records
 
-    data = Path(file_resource["path"]).read_bytes()
+    data = read_bytes(file_resource["uri"])
     cells = flatten_json_records(data, jsonl=file_resource["filetype"] == "jsonl")
     if not cells:
         return []
@@ -188,8 +194,47 @@ def _image_pages(result: "ExtractionResult") -> list[int]:
     ]
 
 
+def _reader_suffix(file_resource: dict) -> str:
+    """The extension xberg should see: the name's own (less a compression suffix once decoded), else the filetype's."""
+    name = Path(file_resource["filename"])
+    if file_resource.get("compression"):
+        name = name.with_suffix("")
+    return name.suffix.lower() or f".{file_resource['filetype']}"
+
+
+_XBERG_ERROR = re.compile(r"^Error: \w+ error: ")
+
+
+def _xberg_error(result: "ExtractionResult") -> str | None:
+    """The failure message when xberg's batch API returned one in place of the file's text (never store it)."""
+    if not result.metadata and _XBERG_ERROR.match(result.content or ""):
+        return result.content[:500]
+    return None
+
+
+def _extract_batch(sources: "list[str | tuple[bytes, str]]", config, **kwargs) -> "list[ExtractionResult]":
+    """Xberg's batch extraction over local paths and in-memory `(bytes, mime type)` alike, results in input order."""
+    from kreuzberg import batch_extract_bytes_sync, batch_extract_files_sync
+
+    file_configs = kwargs.pop("file_configs", None)
+    results: list = [None] * len(sources)
+    for wanted, run in ((str, batch_extract_files_sync), (tuple, batch_extract_bytes_sync)):
+        picked = [i for i, source in enumerate(sources) if isinstance(source, wanted)]
+        if not picked:
+            continue
+        configs = [file_configs[i] for i in picked] if file_configs else None
+        if wanted is str:
+            found = run([sources[i] for i in picked], config=config, file_configs=configs, **kwargs)
+        else:
+            data, mime_types = zip(*(sources[i] for i in picked), strict=True)
+            found = run(list(data), list(mime_types), config=config, file_configs=configs, **kwargs)
+        for i, result in zip(picked, found, strict=True):
+            results[i] = result
+    return results
+
+
 def _run_batch(
-    paths: list[str],
+    paths: "list[str | tuple[bytes, str]]",
     use_chunking: bool,
     tokenizer_model_dir: Path | None,
     chunk_size: int,
@@ -197,6 +242,8 @@ def _run_batch(
     ocr: XbergOcr | None = None,
 ) -> "list[tuple[ExtractionResult, list[int]]]":
     """CPU-bound worker: xberg's batched extraction call, run off the event loop.
+
+    Each source is a local path, or `(bytes, mime type)` for a file read from a remote uri.
 
     Returns each result with its PDF's image-based pages, read from xberg's own
     per-page output of a first, no-OCR pass. With `ocr` set, PDFs that have any are
@@ -219,7 +266,6 @@ def _run_batch(
         OcrConfig,
         PageConfig,
         PdfConfig,
-        batch_extract_files_sync,
     )
 
     chunking = None
@@ -260,14 +306,14 @@ def _run_batch(
         # `force_ocr_pages` without it
         "pages": PageConfig(extract_pages=True),
     }
-    results = batch_extract_files_sync(paths, config=ExtractionConfig(**base))
+    results = _extract_batch(paths, ExtractionConfig(**base))
     image_pages = [_image_pages(result) for result in results]
 
     to_ocr = [i for i, pages in enumerate(image_pages) if pages] if use_ocr else []
     if to_ocr:
-        ocr_results = batch_extract_files_sync(
+        ocr_results = _extract_batch(
             [paths[i] for i in to_ocr],
-            config=ExtractionConfig(**base, ocr=ocr_config),
+            ExtractionConfig(**base, ocr=ocr_config),
             file_configs=[FileExtractionConfig(force_ocr_pages=image_pages[i]) for i in to_ocr],
             easyocr_kwargs=easyocr_kwargs,
         )
@@ -351,6 +397,7 @@ async def dedupe_pending_extractions(
     session: "AsyncSession",
     dataset_id: str | None = None,
     batch_size: int = 100,
+    group: str = "document",
 ) -> int:
     """Resolve pending document extractions whose content has already been extracted elsewhere.
 
@@ -374,7 +421,7 @@ async def dedupe_pending_extractions(
             enrichable_type=EnrichableType.FILE,
             batch_size=batch_size,
             dataset_id=dataset_id,
-            filetype_group_filter="document",
+            filetype_group_filter=group,
         )
         if not batch:
             break
@@ -411,6 +458,9 @@ async def dedupe_pending_extractions(
                     extractor=duplicate.extractor,
                     metadata=metadata,
                     prechunked=duplicate.prechunked,
+                    is_content_corrected=duplicate.is_content_corrected,
+                    content_corrected_by=duplicate.content_corrected_by,
+                    corrected_ranges=duplicate.corrected_ranges,
                 )
             )
             resolved.append(item.enrichment.id)
@@ -433,14 +483,18 @@ async def dedupe_pending_extractions(
     return total
 
 
-async def queue_document_extraction_enrichments(session: "AsyncSession", dataset_id: str) -> int:
-    """Queue TEXT_EXTRACTION enrichments for a dataset's document files."""
+async def queue_document_extraction_enrichments(
+    session: "AsyncSession", dataset_id: str, groups: tuple[str, ...] = ("document",)
+) -> int:
+    """Queue TEXT_EXTRACTION enrichments for a dataset's files in `groups` (documents; tables only when asked)."""
     enrichment_repo = PostgresEnrichmentRepository(session=session)
-    count = await enrichment_repo.queue_enrichments_by_filter(
-        dataset_id=dataset_id,
-        enrichment_type=EnrichmentType.TEXT_EXTRACTION,
-        filetype_group="document",
-    )
+    count = 0
+    for group in groups:
+        count += await enrichment_repo.queue_enrichments_by_filter(
+            dataset_id=dataset_id,
+            enrichment_type=EnrichmentType.TEXT_EXTRACTION,
+            filetype_group=group,
+        )
     await session.commit()
     return count
 
@@ -454,8 +508,13 @@ async def extract_documents_workflow(
     batch_size: int = 50,
     max_concurrent_extractions: int | None = None,
     ocr: XbergOcr | None = None,
+    filetype_groups: Sequence[str] = DEFAULT_FILETYPE_GROUPS[EnrichmentType.TEXT_EXTRACTION],
 ) -> int:
-    """Extract text for a dataset's documents in xberg-batched passes. Returns files processed.
+    """Extract text for a dataset's files in `filetype_groups`, in xberg-batched passes. Returns files processed.
+
+    Defaults to documents. Spreadsheets (`table`) are left out unless asked for: `cipher
+    map-tables` maps them column by column. Included, their flattened text is stored like
+    any document's, for embedding / NER runs that also list `table`.
 
     Every PDF's image-based pages are recorded (`metadata.image_pages`) whether or
     not `ocr` is set; with it, xberg OCRs just those pages inline.
@@ -485,48 +544,68 @@ async def extract_documents_workflow(
             "attachments discovered by extract_emails_workflow. Consider running emails first (or again after)."
         )
 
-    await queue_document_extraction_enrichments(session=session, dataset_id=dataset_id)
-    await dedupe_pending_extractions(session=session, dataset_id=dataset_id)
+    groups = tuple(group for group in filetype_groups if group != "email")
+    await queue_document_extraction_enrichments(session=session, dataset_id=dataset_id, groups=groups)
+    for group in groups:
+        await dedupe_pending_extractions(session=session, dataset_id=dataset_id, group=group)
 
     extracted_text_repo = PostgresExtractedTextRepository(session=session)
     use_chunking = chunker == Chunker.KREUZBERG
 
-    total = await enrichment_repo.count_pending(
-        enrichment_type=EnrichmentType.TEXT_EXTRACTION,
-        enrichable_type=EnrichableType.FILE,
-        dataset_id=dataset_id,
-        filetype_group_filter="document",
-    )
+    total = 0
+    for group in groups:
+        total += await enrichment_repo.count_pending(
+            enrichment_type=EnrichmentType.TEXT_EXTRACTION,
+            enrichable_type=EnrichableType.FILE,
+            dataset_id=dataset_id,
+            filetype_group_filter=group,
+        )
     count = failed_count = 0
+    pending_groups = list(groups)
 
     with tqdm(total=total, desc="Extracting documents", unit=" file") as pbar:
-        while True:
+        while pending_groups:
             batch = await enrichment_repo.get_pending_batch(
                 enrichment_type=EnrichmentType.TEXT_EXTRACTION,
                 enrichable_type=EnrichableType.FILE,
                 batch_size=batch_size,
                 dataset_id=dataset_id,
-                filetype_group_filter="document",
+                filetype_group_filter=pending_groups[0],
             )
             if not batch:
-                break
+                pending_groups.pop(0)
+                continue
 
             await enrichment_repo.mark_processing(enrichment_ids=[item.enrichment.id for item in batch])
             await session.commit()
 
-            # xberg's batch API needs local paths -- files without one (e.g. not
-            # yet downloaded from a remote store) can't be batched and fail fast.
-            resolvable = [item for item in batch if item.resource.get("path")]
-            failed = {item.enrichment.id: "File has no local path" for item in batch if not item.resource.get("path")}
+            # Local files go to xberg by path (a link carrying the extension when the name has
+            # none); remote ones as bytes with their mime type, or a temp copy when too big for memory.
+            resolvable, failed = [], {}
             completed = []
+            links_dir = Path(mkdtemp(prefix="cipher-xberg-"))
+            copies = ExitStack()
+            xberg_paths: list[str | tuple[bytes, str]] = []
+            for item in batch:
+                uri, suffix = item.resource["uri"], _reader_suffix(item.resource)
+                try:
+                    if is_local(uri):
+                        xberg_paths.append(str(suffixed_path(local_path(uri), suffix, links_dir)))
+                    elif (item.resource.get("size") or 0) <= MAX_IN_MEMORY_BYTES and item.resource.get("mime_type"):
+                        data = await anyio.to_thread.run_sync(read_bytes, uri)
+                        xberg_paths.append((data, item.resource["mime_type"]))
+                    else:
+                        xberg_paths.append(str(copies.enter_context(local_copy(uri, suffix=suffix))))
+                    resolvable.append(item)
+                except (OSError, ValueError) as e:
+                    failed[item.enrichment.id] = f"File could not be read: {type(e).__name__}: {e}"
 
-            if resolvable:
-                paths = [item.resource["path"] for item in resolvable]
+            with copies:
                 batch_error = "Batch extraction returned no result for this file"
                 try:
                     results = await anyio.to_thread.run_sync(
                         _run_batch,
-                        paths,
+                        xberg_paths,
                         use_chunking,
                         tokenizer_model_dir,
                         chunk_size,
@@ -534,11 +613,16 @@ async def extract_documents_workflow(
                         ocr,
                     )
                 except Exception as e:
-                    logger.error(f"Batch extraction failed for {len(paths)} files: {e}")
+                    logger.error(f"Batch extraction failed for {len(xberg_paths)} files: {e}")
                     batch_error = f"Batch extraction failed: {type(e).__name__}: {e}"
                     results = []
+                finally:
+                    shutil.rmtree(links_dir, ignore_errors=True)
 
                 for item, (result, image_pages) in zip(resolvable, results, strict=False):
+                    if error := _xberg_error(result):
+                        failed[item.enrichment.id] = error
+                        continue
                     try:
                         parent_email_metadata = None
                         if parent_id := item.resource.get("parent_id"):

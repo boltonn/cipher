@@ -24,6 +24,8 @@ interface FaceUploadSearchBarProps {
   isSimilarityMode: boolean;
   isFiltersOpen: boolean;
   onToggleFilters: () => void;
+  /** Sits beside the bar (shrinking it), e.g. "Select all" for similarity results. */
+  trailing?: React.ReactNode;
 }
 
 export const FaceUploadSearchBar: React.FC<FaceUploadSearchBarProps> = ({
@@ -35,11 +37,15 @@ export const FaceUploadSearchBar: React.FC<FaceUploadSearchBarProps> = ({
   isSimilarityMode,
   isFiltersOpen,
   onToggleFilters,
+  trailing,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isDetecting, setIsDetecting] = useState(false);
-  const [pickerState, setPickerState] = useState<{ file: File; faces: DetectedFace[] } | null>(null);
+  const [pickerState, setPickerState] = useState<{
+    file: File;
+    faces: DetectedFace[];
+  } | null>(null);
 
   const handleFile = async (file: File | undefined) => {
     if (!file) return;
@@ -60,81 +66,89 @@ export const FaceUploadSearchBar: React.FC<FaceUploadSearchBarProps> = ({
 
   return (
     <div className="w-full transition-all duration-500">
-      <SearchBarShell
-        isActive={isSearching || isDetecting || isDragging}
-        accent="annotation"
-        icon={<ScanFace size={18} strokeWidth={1.5} />}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setIsDragging(true);
-        }}
-        onDragLeave={() => setIsDragging(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setIsDragging(false);
-          handleFile(e.dataTransfer.files?.[0]);
-        }}
-      >
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          className="h-full flex-1 cursor-pointer bg-transparent px-2 text-left text-sm text-muted-foreground"
+      <div className="flex items-center gap-2">
+        <SearchBarShell
+          className="flex-1 min-w-0"
+          isActive={isSearching || isDetecting || isDragging}
+          accent="annotation"
+          icon={<ScanFace size={18} strokeWidth={1.5} />}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setIsDragging(true);
+          }}
+          onDragLeave={() => setIsDragging(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setIsDragging(false);
+            handleFile(e.dataTransfer.files?.[0]);
+          }}
         >
-          {uploadedLabel ? (
-            <span className="text-annotation">{uploadedLabel}</span>
-          ) : (
-            <span className="text-muted-foreground">
-              Upload a photo to find similar faces, or drop one here…
-            </span>
-          )}
-        </button>
-
-        <input
-          ref={fileInputRef}
-          type="file"
-          aria-label="Upload photo"
-          className="hidden"
-          accept="image/*"
-          onChange={(e) => handleFile(e.target.files?.[0])}
-        />
-
-        <div className="flex items-center gap-1">
-          <Button
+          <button
             type="button"
-            variant="ghost"
-            size="icon"
-            aria-label="Filters"
-            aria-expanded={isFiltersOpen}
-            onClick={onToggleFilters}
-            className={cn(
-              "relative h-7 w-7",
-              isFiltersOpen ? "text-annotation" : "text-muted-foreground hover:text-annotation"
-            )}
-          >
-            <Filter size={15} strokeWidth={1.5} />
-            {hasActiveFaceFilters(filters) && (
-              <span className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-annotation" />
-            )}
-          </Button>
-
-          <div className="mx-1 h-4 w-px bg-border" />
-
-          <Button
-            type="button"
-            variant="ghost"
             onClick={() => fileInputRef.current?.click()}
-            className="h-7 gap-1.5 px-2 text-xs text-muted-foreground hover:text-annotation"
+            className="h-full flex-1 cursor-pointer bg-transparent px-2 text-left text-sm text-muted-foreground"
           >
-            <UploadIcon size={13} strokeWidth={1.5} />
-            Upload
-          </Button>
-        </div>
-      </SearchBarShell>
+            {uploadedLabel ? (
+              <span className="text-annotation">{uploadedLabel}</span>
+            ) : (
+              <span className="text-muted-foreground">
+                Upload a photo to find similar faces, or drop one here…
+              </span>
+            )}
+          </button>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            aria-label="Upload photo"
+            className="hidden"
+            accept="image/*"
+            onChange={(e) => handleFile(e.target.files?.[0])}
+          />
+
+          <div className="flex items-center gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Filters"
+              aria-expanded={isFiltersOpen}
+              onClick={onToggleFilters}
+              className={cn(
+                "relative h-7 w-7",
+                isFiltersOpen
+                  ? "text-annotation"
+                  : "text-muted-foreground hover:text-annotation"
+              )}
+            >
+              <Filter size={15} strokeWidth={1.5} />
+              {hasActiveFaceFilters(filters) && (
+                <span className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-annotation" />
+              )}
+            </Button>
+
+            <div className="mx-1 h-4 w-px bg-border" />
+
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => fileInputRef.current?.click()}
+              className="h-7 gap-1.5 px-2 text-xs text-muted-foreground hover:text-annotation"
+            >
+              <UploadIcon size={13} strokeWidth={1.5} />
+              Upload
+            </Button>
+          </div>
+        </SearchBarShell>
+        {trailing}
+      </div>
 
       <div
         className={cn(
           "grid transition-all duration-300 ease-in-out overflow-hidden",
-          isFiltersOpen ? "grid-rows-[1fr] opacity-100 mt-3" : "grid-rows-[0fr] opacity-0"
+          isFiltersOpen
+            ? "grid-rows-[1fr] opacity-100 mt-3"
+            : "grid-rows-[0fr] opacity-0"
         )}
       >
         <div className="min-h-0">
@@ -153,7 +167,10 @@ export const FaceUploadSearchBar: React.FC<FaceUploadSearchBarProps> = ({
         faces={pickerState?.faces ?? []}
         onConfirm={(index) => {
           if (!pickerState) return;
-          onEmbeddingSelected(pickerState.faces[index].embedding, pickerState.file.name);
+          onEmbeddingSelected(
+            pickerState.faces[index].embedding,
+            pickerState.file.name
+          );
         }}
       />
     </div>

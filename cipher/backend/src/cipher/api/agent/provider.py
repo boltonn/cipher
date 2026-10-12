@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from pydantic_ai.models import CompletedStreamedResponse, Model, StreamedResponse
 from pydantic_ai.models.wrapper import WrapperModel
+from pydantic_ai.settings import ModelSettings
 
 from cipher.schemas.interaction.llm import LOCAL_LLM_BASE_URL, LLMProvider, LLMSettings, ModelOption
 
@@ -34,6 +35,21 @@ AVAILABLE_MODELS: tuple[ModelOption, ...] = (
     ),
     ModelOption(id="google:gemini-2.5-pro", provider=LLMProvider.GOOGLE, label="Gemini 2.5 Pro", has_key=False),
     ModelOption(id="local:Qwen/Qwen3.8-27B", provider=LLMProvider.LOCAL, label="Qwen3.8 27B (local)", has_key=True),
+)
+
+
+# The local Qwen (pyvllm `llm`, thinking off server-wide) as a tool-calling agent: Qwen's sampling for
+# precise thinking-mode tasks; the template's default effort ("xhigh") makes every step think at length,
+# so medium with a per-step token cap; earlier turns' reasoning not re-sent (only this turn's tool chain).
+# Callers that want a one-shot reply (search assist) override `extra_body` per run.
+LOCAL_AGENT_SETTINGS = ModelSettings(
+    temperature=0.6,
+    top_p=0.95,
+    extra_body={
+        "top_k": 20,
+        "thinking_token_budget": 1024,
+        "chat_template_kwargs": {"enable_thinking": True, "reasoning_effort": "medium", "preserve_thinking": False},
+    },
 )
 
 
@@ -90,8 +106,12 @@ def build_model(settings: LLMSettings) -> Model:
         from pydantic_ai.providers.openai import OpenAIProvider
 
         if settings.provider == LLMProvider.LOCAL:
-            provider = OpenAIProvider(base_url=settings.base_url or LOCAL_LLM_BASE_URL, api_key=settings.api_key or "local")
-            return BufferedStreamModel(OpenAIChatModel(settings.model, provider=provider))
+            provider = OpenAIProvider(
+                base_url=settings.base_url or LOCAL_LLM_BASE_URL, api_key=settings.api_key or "local"
+            )
+            return BufferedStreamModel(
+                OpenAIChatModel(settings.model, provider=provider, settings=LOCAL_AGENT_SETTINGS)
+            )
         elif settings.base_url:
             provider = OpenAIProvider(api_key=settings.api_key, base_url=settings.base_url)
         else:

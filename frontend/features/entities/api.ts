@@ -1,4 +1,7 @@
-import { apiClient } from "@/lib/api-client";
+import { apiClient, humanErrorMessage } from "@/lib/api-client";
+import type { PaginatedResponse } from "@/types/common";
+import { isAxiosError } from "axios";
+import { toast } from "sonner";
 import type {
   Entity,
   EntityBreakdown,
@@ -18,19 +21,21 @@ import type {
   MentionResolution,
   MentionResolvePayload,
   MentionUpdatePayload,
+  NameGroupKey,
   Ontology,
   PaginatedEntitiesResponse,
   PaginatedEntityMatchesResponse,
   PaginatedEntityMatchGroupsResponse,
-  PaginatedEntityMergeGroupsResponse,
   PaginatedMentionsResponse,
   PaginatedRelatedEntitiesResponse,
   PaginatedRelationshipsResponse,
   PaginatedUnresolvedNamesResponse,
   EntityType,
   RelatedEntitySort,
+  RelationshipSuggestion,
   RelationshipType,
   ResolveNameGroupPayload,
+  ResolveNameGroupsPayload,
   OrganizationStructure,
   ResolvedName,
   SelectorEvidence,
@@ -51,7 +56,7 @@ export const entitiesService = {
 
   // GET /entities/search takes plain (snake_case) query params, not a model.
   search: (opts: {
-    datasetId: string;
+    datasetIds: string[];
     q?: string;
     selector?: string;
     limit?: number;
@@ -59,7 +64,7 @@ export const entitiesService = {
     apiClient
       .get<EntitySearchResult[]>(`${entitiesBaseURL}/search`, {
         params: {
-          datasetId: opts.datasetId,
+          datasetIds: opts.datasetIds,
           q: opts.q,
           selector: opts.selector,
           limit: opts.limit ?? 8,
@@ -70,12 +75,31 @@ export const entitiesService = {
   getById: (id: string) =>
     apiClient.get<Entity>(`${entitiesBaseURL}/${id}`).then((res) => res.data),
 
-  // A 404 just means "no knowledge-graph node for this id yet" (e.g. a person
-  // page opened before its bridge entity exists) -- not an error worth toasting.
+  // Pending relationship suggestions with this entity at either end (family from patronymics, …).
+  listRelationshipSuggestions: (entityId: string) =>
+    apiClient
+      .get<
+        PaginatedResponse<RelationshipSuggestion>
+      >(`${entitiesBaseURL}/relationship-candidates`, { params: { entityId, status: "pending", limit: 50 } })
+      .then((res) => res.data),
+
+  // Accept (becomes a real edge) or reject; the reviewer comes from the session.
+  resolveRelationshipSuggestion: (
+    id: string,
+    status: "confirmed" | "rejected"
+  ) =>
+    apiClient
+      .post(`${entitiesBaseURL}/relationship-candidates/${id}/resolve`, {
+        status,
+      })
+      .then((res) => res.data),
+
+  // A 404 can mean "no knowledge-graph node for this id yet" (e.g. a person page opened
+  // before its bridge entity exists), so callers decide; other failures surface as usual.
   getProfile: (id: string) =>
     apiClient
       .get<EntityProfile>(`${entitiesBaseURL}/${id}/profile`, {
-        suppressErrorToast: true,
+        expectNotFound: true,
       })
       .then((res) => res.data),
 
@@ -99,10 +123,10 @@ export const entitiesService = {
       .then((res) => res.data),
 
   // Entity / selector counts for a dataset -- the dataset-view breakdown chart.
-  getBreakdown: (datasetId?: string) =>
+  getBreakdown: (datasetIds: string[]) =>
     apiClient
       .get<EntityBreakdown>(`${entitiesBaseURL}/breakdown`, {
-        params: { datasetId },
+        params: { datasetIds },
       })
       .then((res) => res.data),
 
@@ -146,10 +170,23 @@ export const entitiesService = {
       .then((res) => res.data),
 
   // Remove the has_selector edge; the selector node itself is left intact.
-  detachSelector: (id: string, selectorId: string) =>
+  detachSelector: (
+    id: string,
+    selectorId: string,
+    opts?: { ignoreMissing?: boolean }
+  ) =>
     apiClient
-      .delete(`${entitiesBaseURL}/${id}/selectors/${selectorId}`)
-      .then((res) => res.data),
+      .delete(`${entitiesBaseURL}/${id}/selectors/${selectorId}`, {
+        suppressErrorToast: opts?.ignoreMissing,
+      })
+      .then((res) => res.data)
+      // `ignoreMissing`: an edge that's already gone is the outcome we wanted, not an error.
+      .catch((error) => {
+        if (!opts?.ignoreMissing || !isAxiosError(error)) throw error;
+        if (error.response?.status === 404) return null;
+        toast.error(humanErrorMessage(error));
+        throw error;
+      }),
 
   /** `discardMentions` deletes its mentions too ("not an entity"); otherwise they go back to Review unresolved. */
   delete: (id: string, opts?: { discardMentions?: boolean }) =>
@@ -157,7 +194,9 @@ export const entitiesService = {
       .delete<{
         deleted: boolean;
         mentionsDeleted: number;
-      }>(`${entitiesBaseURL}/${id}`, { params: { discardMentions: opts?.discardMentions } })
+      }>(`${entitiesBaseURL}/${id}`, {
+        params: { discardMentions: opts?.discardMentions },
+      })
       .then((res) => res.data),
 
   /** Keep a provisional entity as a new canonical one (a person gets its own person page). */
@@ -174,16 +213,18 @@ export const entitiesService = {
       }>(`${entitiesBaseURL}/promote-batch`, { entityIds })
       .then((res) => res.data),
 
-  /** Person <-> organization for auto-created entities; their name mentions follow. */
+  /** Person / organization / location for auto-created entities; their name mentions follow, known places merge in. */
   retype: (entityIds: string[], entityType: EntityType) =>
     apiClient
-      .post<{ retyped: number; mentions: number; edgesRemoved: number }>(
-        `${entitiesBaseURL}/retype`,
-        {
-          entityIds,
-          entityType,
-        }
-      )
+      .post<{
+        retyped: number;
+        mentions: number;
+        edgesRemoved: number;
+        placesMatched: number;
+      }>(`${entitiesBaseURL}/retype`, {
+        entityIds,
+        entityType,
+      })
       .then((res) => res.data),
 
   /** Fold auto-created duplicates into `id`; their names become its aliases. */
@@ -283,6 +324,8 @@ export const entitiesService = {
   ) =>
     apiClient
       .get<GraphResponse>(`${entitiesBaseURL}/${id}/graph`, {
+        // canvas seeds are remembered ids; a deleted entity just drops off the graph
+        expectNotFound: true,
         params: {
           depth: params?.depth ?? 2,
           direction: params?.direction ?? "both",
@@ -316,7 +359,7 @@ export const entitiesService = {
       .then((res) => res.data),
 
   listMatches: (params: {
-    datasetId?: string;
+    datasetIds?: string[];
     entityId?: string;
     status?: string;
     limit?: number;
@@ -342,12 +385,12 @@ export const entitiesService = {
   // The grouped resolution review queue: one card per unresolved name, its best
   // candidate plus alternatives, each carrying the per-feature `explanation`.
   listMatchGroups: (params: {
-    datasetId: string;
+    datasetIds: string[];
     entityId?: string;
     status?: string;
     minSimilarity?: number;
     includeProvisionalEntities?: boolean;
-    sortBy?: "similarity_score" | "date_created";
+    sortBy?: "similarityScore" | "dateCreated";
     limit?: number;
     page?: number;
   }) =>
@@ -356,12 +399,12 @@ export const entitiesService = {
         `${entitiesBaseURL}/matches/groups`,
         {
           params: {
-            datasetId: params.datasetId,
+            datasetIds: params.datasetIds,
             entityId: params.entityId,
             status: params.status ?? "pending",
             minSimilarity: params.minSimilarity,
             includeProvisionalEntities: params.includeProvisionalEntities,
-            sortBy: params.sortBy ?? "similarity_score",
+            sortBy: params.sortBy ?? "similarityScore",
             limit: params.limit ?? 25,
             page: params.page ?? 1,
           },
@@ -389,25 +432,6 @@ export const entitiesService = {
       .post<{
         rejected: number;
       }>(`${entitiesBaseURL}/matches/name-group/dismiss`, body)
-      .then((res) => res.data),
-
-  // Entity->entity merge review queue: one card per provisional stub, the
-  // canonical entities it may duplicate nested. Populate with `dedupe-entities`.
-  listMergeGroups: (params: {
-    datasetId: string;
-    status?: string;
-    limit?: number;
-    page?: number;
-  }) =>
-    apiClient
-      .get<PaginatedEntityMergeGroupsResponse>(`${entitiesBaseURL}/merges`, {
-        params: {
-          datasetId: params.datasetId,
-          status: params.status ?? "pending",
-          limit: params.limit ?? 25,
-          page: params.page ?? 1,
-        },
-      })
       .then((res) => res.data),
 
   // Merge proposals filed against one entity (empty unless it's a provisional stub).
@@ -450,7 +474,9 @@ export const mentionsService = {
 
   getResolution: (id: string) =>
     apiClient
-      .get<MentionResolution>(`${mentionsBaseURL}/${id}/resolution`, { suppressErrorToast: true })
+      .get<MentionResolution>(`${mentionsBaseURL}/${id}/resolution`, {
+        suppressErrorToast: true,
+      })
       .then((res) => res.data),
 
   resolve: (id: string, payload: MentionResolvePayload) =>
@@ -460,12 +486,14 @@ export const mentionsService = {
 
   /** The review queue, one row per distinct unresolved name. */
   listUnresolvedNames: (params: {
-    datasetId: string;
+    datasetIds: string[];
     q?: string;
     /** true: only names with a suggested resolution; false: only names needing a new entity */
     hasResolution?: boolean;
     /** only names with a pending resolution to this entity */
     entityId?: string;
+    /** count only mentions in files carrying none of these source tags */
+    excludeSourceTags?: string[];
     limit?: number;
     page?: number;
   }) =>
@@ -490,5 +518,20 @@ export const mentionsService = {
   dismissNameGroup: (payload: { datasetId: string; normalizedValue: string }) =>
     apiClient
       .post<{ deleted: number }>(`${mentionsBaseURL}/dismiss-names`, payload)
+      .then((res) => res.data),
+
+  resolveNameGroups: (payload: ResolveNameGroupsPayload) =>
+    apiClient
+      .post<{
+        entityIds: string[];
+        mentionsAttached: number;
+      }>(`${mentionsBaseURL}/resolve-names/batch`, payload)
+      .then((res) => res.data),
+
+  dismissNameGroups: (groups: NameGroupKey[]) =>
+    apiClient
+      .post<{ deleted: number }>(`${mentionsBaseURL}/dismiss-names/batch`, {
+        groups,
+      })
       .then((res) => res.data),
 };

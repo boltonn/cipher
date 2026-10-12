@@ -42,9 +42,10 @@ class Settings(BaseServiceSettings):
         alias="PROMPT_CLIENT_RETRIES",
     )
     max_event_tokens: int = Field(
-        default=1536,
+        default=4096,
         gt=0,
-        description="Output cap for the events pack; a model stuck repeating itself fails fast instead of timing out",
+        description="Output cap for the events pack: room for a long itinerary (~230 tokens an event), still short "
+        "enough that a model stuck repeating itself stops fast. Past it, the events finished so far are kept",
         alias="PROMPT_MAX_EVENT_TOKENS",
     )
     max_input_chars: int = Field(

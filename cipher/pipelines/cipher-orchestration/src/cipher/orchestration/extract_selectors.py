@@ -17,11 +17,13 @@ Two passes per file, both writing `mention` rows that are already resolved to a
 
 Re-runnable: `queue_enrichments_by_filter` only queues files without a
 SELECTOR_EXTRACTION row, and a completed row is never revisited, so a second
-run is a no-op until `reset-entities` clears them. If the enrichment rows are
-cleared without the mentions, a pass that already wrote mentions for a file is
-skipped rather than duplicated (which would also discard Review decisions).
+run is a no-op until `reset-entities` clears them (or `--rescan` requeues them).
+A file whose header mentions exist keeps them; the body pass is additive -- it
+only writes spans the earlier run didn't, so a rescan fills gaps without
+duplicating (or discarding Review decisions).
 """
 
+from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -37,10 +39,16 @@ from cipher.datastores.postgres.repositories import (
 from cipher.datastores.postgres.utils import normalize_name
 from cipher.schemas.content.document import DocumentMetadata
 from cipher.schemas.content.email import EmailAddress, EmailMetadata
+from cipher.schemas.content.text_correction import correction_filter
 from cipher.schemas.graph.location import LocationCreate
 from cipher.schemas.graph.mention import MentionCreate, MentionedType
 from cipher.schemas.graph.ontology import EntityType, LocationSource, SelectorType
-from cipher.schemas.ingestion.enrichment import EnrichableType, EnrichmentType
+from cipher.schemas.ingestion.enrichment import (
+    DEFAULT_FILETYPE_GROUPS,
+    TEXT_NATIVE_GROUPS,
+    EnrichableType,
+    EnrichmentType,
+)
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -48,7 +56,6 @@ if TYPE_CHECKING:
 _HEADER_EXTRACTOR = "email_headers"
 _TEXT_EXTRACTOR = "selectors"
 _TEXT_CONTEXT_WINDOW = 80
-_MAX_MENTIONS_PER_VALUE = 5
 
 
 def _email_participants(metadata: EmailMetadata) -> list[tuple[str, EmailAddress]]:
@@ -132,8 +139,15 @@ async def _extract_file_selectors(
             mention_repo=mention_repo,
             selector_cache=selector_cache,
         )
-    if await mention_repo.has_extractor_mentions(mentioned_id=extracted.id, extractor=_TEXT_EXTRACTOR):
-        return written
+    existing_offsets = await mention_repo.extractor_offsets(mentioned_id=extracted.id, extractor=_TEXT_EXTRACTOR)
+    keep = (
+        correction_filter(
+            corrected_ranges=extracted.corrected_ranges or [],
+            taken=await mention_repo.text_spans(mentioned_id=extracted.id),
+        )
+        if extracted.is_content_corrected
+        else None
+    )
     written += await _extract_text_selectors(
         dataset_id=dataset_id,
         file_id=file_id,
@@ -141,14 +155,18 @@ async def _extract_file_selectors(
         entity_repo=entity_repo,
         mention_repo=mention_repo,
         selector_cache=selector_cache,
+        skip_offsets=existing_offsets,
+        keep=keep,
     )
-    written += await _extract_text_coordinates(
-        dataset_id=dataset_id,
-        file_id=file_id,
-        extracted=extracted,
-        mention_repo=mention_repo,
-        location_repo=location_repo,
-    )
+    if not existing_offsets or keep is not None:
+        written += await _extract_text_coordinates(
+            dataset_id=dataset_id,
+            file_id=file_id,
+            extracted=extracted,
+            mention_repo=mention_repo,
+            location_repo=location_repo,
+            keep=keep,
+        )
     return written
 
 
@@ -191,19 +209,21 @@ async def _extract_email_selectors(
                 mentioned_type=MentionedType.STRUCTURED_FIELD,
                 mentioned_id=extracted.id,
                 file_id=file_id,
-                surface_text=f"{participant.name} <{participant.value}>" if participant.name else participant.value,
+                surface_text=f"{participant.name.strip()} <{participant.value}>"
+                if participant.name and participant.name.strip()
+                else participant.value,
                 entity_type=EntityType.SELECTOR,
                 entity_attribute="value",
                 selector_type=SelectorType.EMAIL,
                 normalized_value=normalized,
                 field_path=field_path,
-                context=participant.name,
+                context=participant.name.strip() if participant.name else None,
                 extractor=_HEADER_EXTRACTOR,
                 extraction_confidence=1.0,
             )
         )
 
-        if participant.name:
+        if name := (participant.name or "").strip():
             # A display name on an address is an actor name of unknown kind --
             # "Nick Bolton" and "Medium Daily Digest" are indistinguishable here.
             # Leave entity_type null so it lands in Review as an untyped name for
@@ -216,10 +236,10 @@ async def _extract_email_selectors(
                     mentioned_type=MentionedType.STRUCTURED_FIELD,
                     mentioned_id=extracted.id,
                     file_id=file_id,
-                    surface_text=participant.name,
+                    surface_text=name,
                     entity_type=None,
                     entity_attribute="name",
-                    normalized_value=normalize_name(participant.name),
+                    normalized_value=normalize_name(name),
                     field_path=field_path,
                     context=participant.value,
                     extractor=_HEADER_EXTRACTOR,
@@ -270,8 +290,14 @@ async def _extract_text_selectors(
     mention_repo: PostgresMentionRepository,
     selector_cache: dict[tuple, str],
     types: set[SelectorType] | None = None,
+    skip_offsets: set[tuple[str | None, int]] | None = None,
+    keep: Callable[[int, int], bool] | None = None,
 ) -> int:
     """Run `pyselectors.extract_selectors` over `ExtractedText.content` (only ``types``, when given).
+
+    Spans whose ``(selector_type, start_offset)`` is in ``skip_offsets`` (already written
+    by an earlier run) are skipped, so a re-scan only adds what that run missed; so are
+    spans ``keep`` rejects (a corrected text: `correction_filter`).
 
     Offsets are char positions into `content`, the same contract NER uses.
     `DocumentMetadata.detected_language` seeds the context lexicon and phone
@@ -292,20 +318,12 @@ async def _extract_text_selectors(
         return 0
 
     mentions: list[MentionCreate] = []
-    per_value: dict[tuple, int] = {}
-    seen: set[tuple] = set()
+    seen = set(skip_offsets or ())
     for span in spans:
-        key = (span.selector_type, span.normalized_value, span.start_offset)
-        if key in seen:
+        key = (span.selector_type, span.start_offset)
+        if key in seen or (keep is not None and not keep(span.start_offset, span.end_offset)):
             continue
         seen.add(key)
-        # A messy file can repeat one address hundreds of times (quoted reply
-        # chains); keep a few anchor spans, not every occurrence.
-        value_key = (span.selector_type, span.normalized_value)
-        per_value[value_key] = per_value.get(value_key, 0) + 1
-        if per_value[value_key] > _MAX_MENTIONS_PER_VALUE:
-            continue
-
         selector_entity_id = await _resolve_selector(
             selector_cache,
             entity_repo,
@@ -338,6 +356,7 @@ async def _extract_text_coordinates(
     extracted,
     mention_repo: PostgresMentionRepository,
     location_repo: PostgresLocationRepository,
+    keep: Callable[[int, int], bool] | None = None,
 ) -> int:
     """Pull lat/long out of `ExtractedText.content` -> `location` points + LOCATION mentions.
 
@@ -345,7 +364,8 @@ async def _extract_text_coordinates(
     `LOCATION` mention (`entity_attribute="coordinate"`, shows on the file text
     view, searchable) plus a `location` row (`source="coordinate_mention"`) so the
     point lands on the map. Re-run safe: the file's `coordinate_mention` points are
-    replaced wholesale.
+    replaced wholesale. On a corrected text (``keep``) the points are replaced even when
+    none are left, and mentions are only added where ``keep`` allows.
     """
     import asyncio
 
@@ -357,7 +377,7 @@ async def _extract_text_coordinates(
 
     language = extracted.metadata.detected_language if isinstance(extracted.metadata, DocumentMetadata) else None
     coords = await asyncio.to_thread(extract_coordinates, content, language=language)
-    if not coords:
+    if not coords and keep is None:
         return 0  # skip the per-file DELETE when there is nothing to write
 
     await location_repo.replace_file_locations(
@@ -395,17 +415,28 @@ async def _extract_text_coordinates(
             extraction_confidence=c.confidence,
         )
         for c in coords
+        if keep is None or keep(c.start_offset, c.end_offset)
     ]
     return await mention_repo.add_mentions_batch(mentions)
 
 
-async def queue_selector_extraction_enrichments(session: "AsyncSession", dataset_id: str) -> int:
-    """Queue SELECTOR_EXTRACTION enrichments for every text-bearing file in a dataset."""
+async def queue_selector_extraction_enrichments(
+    session: "AsyncSession",
+    dataset_id: str,
+    filetype_groups: Sequence[str] = DEFAULT_FILETYPE_GROUPS[EnrichmentType.SELECTOR_EXTRACTION],
+) -> int:
+    """Queue SELECTOR_EXTRACTION enrichments for the dataset's files in `filetype_groups` (tables only when listed)."""
     enrichment_repo = PostgresEnrichmentRepository(session=session)
-    count = await enrichment_repo.queue_enrichments_by_filter(
-        dataset_id=dataset_id,
-        enrichment_type=EnrichmentType.SELECTOR_EXTRACTION,
-    )
+    count = 0
+    for group in filetype_groups:
+        queue = (
+            enrichment_repo.queue_enrichments_by_filter
+            if group in TEXT_NATIVE_GROUPS
+            else enrichment_repo.queue_files_with_text
+        )
+        count += await queue(
+            dataset_id=dataset_id, enrichment_type=EnrichmentType.SELECTOR_EXTRACTION, filetype_group=group
+        )
     await session.commit()
     return count
 
@@ -414,13 +445,30 @@ async def extract_selectors_workflow(
     session: "AsyncSession",
     dataset_id: str,
     batch_size: int = 50,
+    filetype_groups: Sequence[str] = DEFAULT_FILETYPE_GROUPS[EnrichmentType.SELECTOR_EXTRACTION],
+    rescan: bool = False,
 ) -> int:
     """Extract selectors (email headers + free-text) for every text-bearing file. Returns files processed.
 
     Run `extract-text` first -- this reads persisted `ExtractedText` rows, it
-    doesn't parse source files itself.
+    doesn't parse source files itself. ``rescan`` revisits already-processed files,
+    adding only the body spans their earlier run missed.
     """
-    await queue_selector_extraction_enrichments(session=session, dataset_id=dataset_id)
+    await queue_selector_extraction_enrichments(session=session, dataset_id=dataset_id, filetype_groups=filetype_groups)
+    if rescan:
+        from sqlalchemy import select
+
+        from cipher.datastores.postgres.tables.file import FileTable
+
+        file_ids = list(
+            (await session.execute(select(FileTable.id).where(FileTable.dataset_id == dataset_id))).scalars()
+        )
+        requeue = PostgresEnrichmentRepository(session=session).requeue
+        requeued = 0
+        for start in range(0, len(file_ids), 10_000):
+            requeued += await requeue(file_ids[start : start + 10_000], EnrichmentType.SELECTOR_EXTRACTION)
+        await session.commit()
+        logger.info(f"Requeued {requeued} files for a selector rescan")
 
     enrichment_repo = PostgresEnrichmentRepository(session=session)
     extracted_text_repo = PostgresExtractedTextRepository(session=session)
@@ -476,7 +524,7 @@ async def extract_selectors_workflow(
             pbar.set_postfix(failed=failed_count, mentions=mention_count)
             pbar.update(len(completed) + len(failed))
 
-    from cipher.orchestration.reclassify_domains import link_domain_selectors
+    from cipher.orchestration.domain_links import link_domain_selectors
 
     linked = await link_domain_selectors(session, dataset_id)
     logger.success(

@@ -14,7 +14,7 @@ class EntityNameKeyTable(Base):
 
     Purely derived state, safe to drop and rebuild: kept in lockstep by an inline
     refresh on every entity write, `ON DELETE CASCADE` from `entity`, and the
-    `backfill-entity-name-keys` sweep. Selector entities are not keyed (they
+    `cipher rekey --name-keys` sweep. Selector entities are not keyed (they
     resolve by exact value, not name).
     """
 

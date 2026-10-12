@@ -1,13 +1,25 @@
 import hashlib
 from datetime import UTC, date, datetime
-from enum import StrEnum
 from typing import Annotated, Literal
 
 from pydantic import Field, model_validator
 
-from cipher.schemas._base.base import BaseModel
+from cipher.schemas._base.base import BaseModel, StrEnum
 from cipher.schemas._base.common import PageParams
 from cipher.schemas.graph.mention import MentionProvenance
+
+SUMMARY_CHUNK_INDEX = -1
+"""A summary chunk's `chunk_index` (offsets 0..0): one per (dataset, content hash), never part of the text."""
+
+
+class FileSummary(BaseModel):
+    """A file's AI summary, read from its summary chunk (shared by content-identical files)."""
+
+    chunk_id: str
+    sha256: str
+    text: str
+    generated_by: str | None = Field(default=None)
+    date_created: datetime
 
 
 def chunk_id_for(*, dataset_id: str, sha256: str, chunk_index: int, start_offset: int) -> str:
@@ -64,6 +76,11 @@ class TextChunk(BaseModel):
     start_offset: int = Field(description="Start character offset within the parent's extracted text")
     end_offset: int = Field(description="End character offset within the parent's extracted text")
     text: str
+    is_summary: bool = Field(
+        default=False,
+        description="A generated description of the whole file (AI summary; later image captions), not a slice of its text",
+    )
+    generated_by: str | None = Field(default=None, description="Model that wrote a `summary` chunk")
     embedding: Annotated[
         list[float],
         Field(
@@ -89,8 +106,8 @@ class TextChunk(BaseModel):
     ]
     date_created: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
-    # Denormalized from `mention` rows by `sync-chunk-entities` (runs after
-    # extract-selectors / extract-entities). Empty until that step runs.
+    # Unused: the Elasticsearch denormalization that filled these (`sync-chunk-entities`)
+    # was retired; entity filters resolve live from `mention.chunk_id` instead.
     entity_ids: list[str] = Field(default_factory=list, description="Resolved entities mentioned in this chunk's span")
     entity_types: list[str] = Field(default_factory=list, description="Distinct entity types mentioned here")
     selector_types: list[str] = Field(default_factory=list, description="Distinct selector types mentioned here")
@@ -205,9 +222,15 @@ class ChunkFilters(CorrespondenceFilters):
         default=None, description="Restrict to one filetype group; omit to search both"
     )
     filetype: str | None = Field(default=None, description="Restrict to one specific filetype, e.g. 'pdf'")
-    # Entity-aware filters (composable with a text/kNN query; require `sync-chunk-entities`).
+    # Entity-aware filters (composable with a text/kNN query; resolved from `mention.chunk_id`).
     entity_ids: list[str] | None = Field(
         default=None, description="Only chunks that mention every one of these resolved entities"
+    )
+    entity_groups: list[list[str]] | None = Field(
+        default=None,
+        description="Each group is one person/thing under several entities (spellings, auto-created stubs, "
+        "addresses): the file must mention at least one entity of every group -- file-level, so email header "
+        "mentions count",
     )
     mention_values: list[str] | None = Field(
         default=None,
@@ -226,6 +249,37 @@ class ChunkFilters(CorrespondenceFilters):
     selector_subtypes: list[str] | None = Field(
         default=None, description="Only chunks mentioning one of these subtypes"
     )
+
+
+class GraphExpand(BaseModel):
+    """Multi-hop graph-RAG expansion spec.
+
+    Walk the entity graph out from the seeds, then keep only chunks from files that
+    mention some entity in that expansion -- in the text, or as an email's sender /
+    recipient (header participation).
+    """
+
+    seed_entity_ids: list[str] = Field(
+        default_factory=list,
+        description="One identity to expand from: an entity plus any extra ids (e.g. addresses) "
+        "confirmed to be the same person",
+    )
+    seed_names: list[str] = Field(
+        default_factory=list,
+        description="Names of that same identity matched as written, resolved or not (a name group still "
+        "under review); their files join the expansion but aren't walked",
+    )
+    max_depth: int = Field(1, ge=1, le=3, description="Relationship hops out from the seed")
+    min_weight: float = Field(0.0, description="Ignore edges below this weight")
+    relationship_types: list[str] | None = Field(
+        default=None, description="Restrict the walk to these relationship types; None = all"
+    )
+
+    @model_validator(mode="after")
+    def _has_seed(self) -> "GraphExpand":
+        if not self.seed_entity_ids and not self.seed_names:
+            raise ValueError("graph_expand needs seed_entity_ids or seed_names")
+        return self
 
 
 class BaseChunkSearchParameters(PageParams):
@@ -249,6 +303,12 @@ class ChunkTextSearchRequest(BaseChunkSearchParameters):
     """
 
     query: str = Field(..., description="Text to search for")
+    exact_match: bool = Field(
+        default=False, description="Only chunks containing `query` as an exact phrase (keyword ranking only)"
+    )
+    graph_expand: GraphExpand | None = Field(
+        default=None, description="Also restrict to a person/thing and what it links to (e.g. their addresses)"
+    )
     sort_by: ChunkSortField = Field(ChunkSortField.SCORE)
     min_similarity: float | None = Field(
         None,
@@ -271,6 +331,9 @@ class ChunkSemanticSearchRequest(BaseChunkSearchParameters):
         "requested candidate count regardless of relevance, so this is what gives semantic/"
         "hybrid pagination a real stopping point once nothing left clears the bar",
     )
+    graph_expand: GraphExpand | None = Field(
+        default=None, description="Also restrict to a person/thing and what it links to (e.g. their addresses)"
+    )
     sort_by: ChunkSortField = Field(ChunkSortField.SCORE)
 
 
@@ -287,26 +350,6 @@ class RetrievalMode(StrEnum):
     HYBRID = "hybrid"
 
 
-class GraphExpand(BaseModel):
-    """Multi-hop graph-RAG expansion spec.
-
-    Walk the entity graph out from the seeds, then keep only chunks from files that
-    mention some entity in that expansion -- in the text, or as an email's sender /
-    recipient (header participation).
-    """
-
-    seed_entity_ids: list[str] = Field(
-        min_length=1,
-        description="One identity to expand from: an entity plus any extra ids (e.g. addresses) "
-        "confirmed to be the same person",
-    )
-    max_depth: int = Field(1, ge=1, le=3, description="Relationship hops out from the seed")
-    min_weight: float = Field(0.0, description="Ignore edges below this weight")
-    relationship_types: list[str] | None = Field(
-        default=None, description="Restrict the walk to these relationship types; None = all"
-    )
-
-
 class RetrievalQuery(BaseChunkSearchParameters):
     """One query for the unified `ChunkRetrievalRepository.search()`.
 
@@ -320,6 +363,9 @@ class RetrievalQuery(BaseChunkSearchParameters):
 
     mode: RetrievalMode = RetrievalMode.HYBRID
     text: str | None = Field(default=None, description="Keyword / hybrid query string")
+    exact_match: bool = Field(
+        default=False, description="Only chunks containing `text` as an exact phrase (keyword ranking only)"
+    )
     embedding: list[float] | None = Field(default=None, description="Pre-computed query vector for semantic / hybrid")
     query_language: str | None = Field(
         default=None, description="Language of `text`; picks the FTS config for the `core` keyword ranker"
@@ -329,3 +375,4 @@ class RetrievalQuery(BaseChunkSearchParameters):
         default=None, ge=0.0, le=1.0, description="Semantic / hybrid relevance cutoff for pagination"
     )
     sort_by: ChunkSortField = Field(ChunkSortField.SCORE)
+    include_shape: bool = Field(default=False, description="Also return the candidate pool's `ResultShape`")

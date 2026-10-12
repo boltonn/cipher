@@ -8,7 +8,7 @@ import { useSetFaceRepresentative } from "@/features/faces/hooks/use-set-represe
 import { FacePublic } from "@/features/faces/types";
 import { PersonExampleUploadButton } from "@/features/persons/components/person-example-upload-button";
 import { cn } from "@/lib/utils";
-import { ChevronLeft, ChevronRight, Loader2, Plus, Star, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, ImagePlus, Loader2, Star, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 const MAX_EXAMPLES = 10;
@@ -90,7 +90,7 @@ export function PersonExamplesGallery({ personId, faces, isPending }: PersonExam
           busyIcon={<Loader2 size={18} className="animate-spin" />}
           className="rounded-lg border-2 border-dashed border-border hover:border-annotation/50 flex items-center justify-center text-muted-foreground hover:text-annotation transition-colors shrink-0 disabled:opacity-30 disabled:pointer-events-none"
         >
-          <Plus size={20} />
+          <ImagePlus size={20} />
         </PersonExampleUploadButton>
       </div>
 
@@ -194,7 +194,7 @@ export function PersonExamplesGallery({ personId, faces, isPending }: PersonExam
             atCap={atCap}
             className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-muted-foreground hover:text-annotation transition-colors border-2 border-dashed border-border hover:border-annotation/40 rounded-xl disabled:opacity-30"
           >
-            <Plus size={28} />
+            <ImagePlus size={28} />
             <span className="text-xs text-center px-2">Add photo</span>
           </PersonExampleUploadButton>
         )}

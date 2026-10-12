@@ -6,11 +6,10 @@ Type-specific detail lives in a 1:1 detail row (`organization`, `location`,
 """
 
 from datetime import date, datetime
-from enum import StrEnum
 
-from pydantic import Field, SerializationInfo, computed_field, field_serializer
+from pydantic import Field, SerializationInfo, computed_field, field_serializer, field_validator
 
-from cipher.schemas._base.base import BaseModel, camelize_keys
+from cipher.schemas._base.base import BaseModel, EnumStr, StrEnum, camelize_keys
 from cipher.schemas._base.common import PageParams, PaginatedResponse, SortOrder
 from cipher.schemas.content.message import TEXT_EMBEDDING_DIMENSION
 from cipher.schemas.graph.mention import Mention
@@ -25,6 +24,7 @@ class EntitySortField(StrEnum):
     DATE_CREATED = "date_created"
     DATE_UPDATED = "date_updated"
     MENTION_COUNT = "mention_count"
+    EVIDENCE = "evidence"
     RELEVANCE = "relevance"
 
 
@@ -54,6 +54,17 @@ class EntityCreate(EntityBase):
         description="Embedding of display_name + aliases, for fuzzy resolution",
     )
 
+    @field_validator("display_name")
+    @classmethod
+    def _collapse_whitespace(cls, value: str) -> str:
+        """A name taken from a span that wraps a line ("Dinner Theater", newline, "Restaurant") is one line."""
+        return " ".join(value.split())
+
+    @field_validator("aliases")
+    @classmethod
+    def _collapse_alias_whitespace(cls, value: list[str]) -> list[str]:
+        return [" ".join(alias.split()) for alias in value if alias.strip()]
+
 
 class EntityUpdate(BaseModel):
     """Entity update schema."""
@@ -72,7 +83,7 @@ class EntityBatchRequest(BaseModel):
 
 
 class EntityRetypeRequest(EntityBatchRequest):
-    """Auto-created entities to change to another type (person <-> organization)."""
+    """Auto-created entities to change to another type (person / organization / location)."""
 
     entity_type: EntityType
 
@@ -133,7 +144,7 @@ class EntitySearchParameters(PageParams):
     """Parameters for listing/searching entities."""
 
     query: str | None = Field(default=None, description="Fuzzy match against display_name/aliases")
-    dataset_id: str | None = Field(default=None)
+    dataset_ids: list[str] | None = Field(default=None, description="Entities in any of these datasets")
     entity_type: EntityType | None = Field(default=None)
     selector_type: SelectorType | None = Field(default=None, description="Only for entity_type=selector")
     selector_subtype: SelectorSubtype | None = Field(
@@ -143,6 +154,10 @@ class EntitySearchParameters(PageParams):
     is_verified: bool | None = Field(default=None)
     provisional: bool | None = Field(
         default=None, description="Auto-created by the resolver and not yet verified or merged (selectors excluded)"
+    )
+    exclude_source_tags: list[str] | None = Field(
+        default=None,
+        description="Only entities with a mention in a file carrying none of these source tags (e.g. `promotions`)",
     )
     country: str | None = Field(default=None, description="Detail-row country (organization or location)")
     category: str | None = Field(default=None, description="Organization detail category")
@@ -161,14 +176,30 @@ class EntitySearchResult(EntitySummary):
     score: float = Field(ge=0, le=1, description="Blended match confidence")
 
 
+class MergeSuggestion(BaseModel):
+    """An entity an auto-created entity may be a duplicate of -- confirm the match row to merge it in."""
+
+    match_id: str = Field(description="The pending merge `entity_match` row")
+    entity_id: str = Field(description="The entity it would merge into")
+    entity_name: str
+    entity_type: EntityType
+    entity_is_provisional: bool
+    similarity_score: float
+    reasons: list[str] = Field(default_factory=list, description="What agrees, strongest first ('same name', ...)")
+
+
 class EntityListItem(Entity):
     """An entity row in the dataset table, with the evidence behind it and its open review work."""
 
     mention_count: int = Field(default=0, description="Mentions resolved to this entity in the dataset")
     file_count: int = Field(default=0, description="Distinct files those mentions are in")
+    is_correspondent: bool = Field(default=False, description="Named in an email's from / to / cc header")
     relationship_count: int = Field(default=0, description="Edges touching this entity")
     pending_match_count: int = Field(
         default=0, description="Pending entity_match rows naming this entity (Resolve queue + merge candidates)"
+    )
+    merge_suggestions: list[MergeSuggestion] = Field(
+        default_factory=list, description="Entities it may duplicate, best first (auto-created entities only)"
     )
 
 
@@ -181,7 +212,7 @@ class PaginatedEntitiesResponse(PaginatedResponse):
 class BreakdownItem(BaseModel):
     """One (label, count) pair for a dataset breakdown chart."""
 
-    key: str
+    key: EnumStr
     count: int
 
 
@@ -263,7 +294,7 @@ class EntityProfile(BaseModel):
     selector_mentions: list[SelectorMention] = Field(
         default_factory=list, description="Per-selector count of mentions matching its normalized value"
     )
-    mention_counts: dict[str, int] = Field(
+    mention_counts: dict[EnumStr, int] = Field(
         default_factory=dict, description="Count of mentions keyed by MentionProvenance (text / email_header / ...)"
     )
     file_count: int = Field(default=0, description="Distinct files this entity is mentioned in")

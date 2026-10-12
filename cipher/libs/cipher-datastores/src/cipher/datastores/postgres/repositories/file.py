@@ -1,6 +1,10 @@
-from sqlalchemy import asc, desc, distinct, func, literal, select, tuple_, update
+import os
+from datetime import datetime
+
+from sqlalchemy import asc, case, desc, distinct, func, literal, or_, select, tuple_, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from cipher.datastores.postgres.repositories.tag import PostgresTagRepository
 from cipher.datastores.postgres.tables.chunk import ChunkTable
@@ -15,9 +19,24 @@ from cipher.schemas.ingestion.file import (
     FileBrowserType,
     FileCreate,
     FileInstanceSortField,
+    FiletypeCoverage,
+    FolderSummary,
     SortOrder,
 )
 from cipher.schemas.interaction.tag import TagSource, TagTargetType
+
+
+def _file_row(file: FileCreate) -> dict:
+    """A `FileCreate` as an insert row (JSONB columns dumped JSON-safe)."""
+    row = file.model_dump(exclude={"compression"})
+    row["compression"] = file.compression.model_dump(mode="json") if file.compression else None
+    return row
+
+
+def _is_file_at(dataset_id: str, path):  # noqa: ANN001, ANN202 -- SQL expressions
+    """A file sits at exactly `path` (so a "folder" there is really an archive holding members)."""
+    archive = aliased(FileTable)
+    return select(archive.id).where(archive.dataset_id == dataset_id, archive.path == path).exists()
 
 
 class PostgresFileRepository:
@@ -42,12 +61,12 @@ class PostgresFileRepository:
         Returns:
             The upserted File object.
         """
-        data = file_data.model_dump()
+        data = _file_row(file_data)
 
         stmt = (
             pg_insert(FileTable)
             .values(**data)
-            .on_conflict_do_nothing(index_elements=["dataset_id", "uri"])
+            .on_conflict_do_nothing(index_elements=["dataset_id", "path"])
             .returning(FileTable.id)
         )
 
@@ -65,7 +84,7 @@ class PostgresFileRepository:
         result = await self.session.execute(
             select(FileTable).where(
                 FileTable.dataset_id == data["dataset_id"],
-                FileTable.uri == data["uri"],
+                FileTable.path == data["path"],
             )
         )
         file_orm = result.scalar_one()
@@ -74,7 +93,7 @@ class PostgresFileRepository:
     async def bulk_upsert_files(self, files: list[FileCreate]) -> list[File]:
         """Upsert many files in one round trip.
 
-        Same conflict target as `upsert_file` (`dataset_id`, `uri`), but a
+        Same conflict target as `upsert_file` (`dataset_id`, `path`), but a
         single INSERT + commit + SELECT for the whole batch instead of one
         of each per file -- that per-file round trip is the dominant cost
         when loading a large directory, not the file-typing/hashing itself.
@@ -82,17 +101,17 @@ class PostgresFileRepository:
         if not files:
             return []
 
-        rows = [f.model_dump() for f in files]
-        stmt = pg_insert(FileTable).values(rows).on_conflict_do_nothing(index_elements=["dataset_id", "uri"])
+        rows = [_file_row(f) for f in files]
+        stmt = pg_insert(FileTable).values(rows).on_conflict_do_nothing(index_elements=["dataset_id", "path"])
         await self.session.execute(stmt)
         await self.session.commit()
 
-        keys = [(f.dataset_id, f.uri) for f in files]
+        keys = [(row["dataset_id"], row["path"]) for row in rows]
         result = await self.session.execute(
-            select(FileTable).where(tuple_(FileTable.dataset_id, FileTable.uri).in_(keys))
+            select(FileTable).where(tuple_(FileTable.dataset_id, FileTable.path).in_(keys))
         )
-        by_key = {(orm.dataset_id, orm.uri): orm for orm in result.scalars().all()}
-        return [File.model_validate(by_key[(f.dataset_id, f.uri)]) for f in files]
+        by_key = {(orm.dataset_id, orm.path): orm for orm in result.scalars().all()}
+        return [File.model_validate(by_key[key]) for key in keys]
 
     async def get_file_by_id(self, file_id: str) -> File | None:
         """Retrieve a file by its ID."""
@@ -101,6 +120,13 @@ class PostgresFileRepository:
         if file_orm is None:
             return None
         return File.model_validate(file_orm)
+
+    async def list_children(self, *, parent_id: str, limit: int = 500) -> list[File]:
+        """Files found inside a file -- email attachments, archive members -- in path order."""
+        result = await self.session.execute(
+            select(FileTable).where(FileTable.parent_id == parent_id).order_by(FileTable.path).limit(limit)
+        )
+        return [File.model_validate(orm) for orm in result.scalars().all()]
 
     async def sha256s_in_datasets(self, *, sha256s: list[str], dataset_ids: list[str]) -> set[str]:
         """Which of this content has a file in any of these datasets (deduplicated images can span several)."""
@@ -293,7 +319,11 @@ class PostgresFileRepository:
                 select(value.c.value, func.count(distinct(FileTable.id)).label("file_count"))
                 .select_from(FileTable)
                 .join(value, literal(True))
-                .where(select(ChunkTable.id).where(ChunkTable.file_id == FileTable.id).exists())
+                .where(
+                    select(ChunkTable.id)
+                    .where(ChunkTable.file_id == FileTable.id, ChunkTable.is_summary.is_(False))
+                    .exists()
+                )
                 .group_by(value.c.value)
                 .order_by(desc("file_count"))
             )
@@ -302,6 +332,110 @@ class PostgresFileRepository:
             rows = await self.session.execute(stmt)
             facets[column] = [SourceValueCount(value=v, file_count=n) for v, n in rows.tuples().all()]
         return SourceFacets(**facets)
+
+    async def common_folder(self, *, dataset_ids: list[str] | None) -> str:
+        """The deepest folder every file sits under -- where the collection was loaded from, not part of it."""
+        stmt = select(func.min(FileTable.path), func.max(FileTable.path))
+        if dataset_ids is not None:
+            stmt = stmt.where(FileTable.dataset_id.in_(dataset_ids))
+        first, last = (await self.session.execute(stmt)).one()
+        if not first or not last:
+            return "/"
+        # The smallest and largest paths share exactly the prefix that every path shares.
+        shared = os.path.commonprefix([first, last])
+        return shared[: shared.rfind("/") + 1] or "/"
+
+    async def searchable_coverage(self, *, dataset_ids: list[str] | None) -> list[FiletypeCoverage]:
+        """Files per filetype group, and how many of them text search can reach (extracted and chunked)."""
+        has_text = (
+            select(ChunkTable.id).where(ChunkTable.file_id == FileTable.id, ChunkTable.is_summary.is_(False)).exists()
+        )
+        stmt = select(FileTable.filetype_group, func.count(), func.count().filter(has_text)).group_by(
+            FileTable.filetype_group
+        )
+        if dataset_ids is not None:
+            stmt = stmt.where(FileTable.dataset_id.in_(dataset_ids))
+        rows = (await self.session.execute(stmt)).tuples().all()
+        return sorted(
+            (
+                FiletypeCoverage(filetype_group=group or "unknown", file_count=files, searchable_count=searchable)
+                for group, files, searchable in rows
+            ),
+            key=lambda coverage: -coverage.file_count,
+        )
+
+    async def folder_summary(
+        self, *, dataset_ids: list[str] | None, path: str, limit: int = 30
+    ) -> tuple[list[FolderSummary], int, dict[str, int]]:
+        """Summarize the folder `path`.
+
+        Returns its direct subfolders (largest first, counting everything below each), how many
+        subfolders there are in all, and the files sitting directly in `path` by filetype group.
+        Dates are the files' own timestamps, not when an email was sent.
+        """
+        prefix = "/" if path == "/" else path.rstrip("/") + "/"
+        relative = func.substring(FileTable.path, len(prefix) + 1)
+        child = case((func.strpos(relative, "/") > 0, func.split_part(relative, "/", 1)), else_=literal(""))
+        stmt = (
+            select(
+                child,
+                FileTable.filetype_group,
+                func.count(),
+                func.min(FileTable.date_created),
+                func.max(FileTable.date_created),
+            )
+            .where(FileTable.path.startswith(prefix, autoescape=True))
+            .group_by(child, FileTable.filetype_group)
+        )
+        if dataset_ids is not None:
+            stmt = stmt.where(FileTable.dataset_id.in_(dataset_ids))
+        folders: dict[str, FolderSummary] = {}
+        loose: dict[str, int] = {}
+        for name, group, count, first, last in (await self.session.execute(stmt)).tuples():
+            group = group or "unknown"
+            if not name:
+                loose[group] = loose.get(group, 0) + count
+                continue
+            folder = folders.setdefault(name, FolderSummary(path=prefix + name, file_count=0))
+            folder.file_count += count
+            folder.filetype_group_counts[group] = count
+            folder.date_first = min((d for d in (folder.date_first, first) if d), default=None)
+            folder.date_last = max((d for d in (folder.date_last, last) if d), default=None)
+        ranked = sorted(folders.values(), key=lambda folder: -folder.file_count)
+        return ranked[:limit], len(folders), loose
+
+    async def find_files(
+        self,
+        *,
+        dataset_ids: list[str] | None,
+        name: str | None = None,
+        path_prefix: str | None = None,
+        filetype_groups: list[str] | None = None,
+        filetypes: list[str] | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+        limit: int = 20,
+    ) -> tuple[list[File], int]:
+        """Files by metadata -- `name` anywhere in the filename or folder path -- newest first, with the total."""
+        stmt = select(FileTable)
+        if dataset_ids is not None:
+            stmt = stmt.where(FileTable.dataset_id.in_(dataset_ids))
+        if name:
+            pattern = "%" + name.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+            stmt = stmt.where(or_(FileTable.filename.ilike(pattern), FileTable.path.ilike(pattern)))
+        if path_prefix:
+            stmt = stmt.where(FileTable.path.startswith(path_prefix, autoescape=True))
+        if filetype_groups:
+            stmt = stmt.where(FileTable.filetype_group.in_(filetype_groups))
+        if filetypes:
+            stmt = stmt.where(func.lower(FileTable.filetype).in_([filetype.lower() for filetype in filetypes]))
+        if date_from:
+            stmt = stmt.where(FileTable.date_created >= date_from)
+        if date_to:
+            stmt = stmt.where(FileTable.date_created < date_to)
+        total = (await self.session.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
+        rows = await self.session.execute(stmt.order_by(FileTable.date_created.desc().nulls_last()).limit(limit))
+        return [File.model_validate(row) for row in rows.scalars()], total
 
     async def count_folders(
         self,
@@ -325,6 +459,7 @@ class PostgresFileRepository:
             .where(FileTable.dataset_id == dataset_id)
             .where(FileTable.path.startswith(prefix))
             .where(func.strpos(relative, "/") > 0)  # Only paths with subfolders
+            .where(~_is_file_at(dataset_id, prefix + folder_name))  # an archive's members show under the archive
         )
 
         result = await self.session.execute(stmt)
@@ -355,6 +490,7 @@ class PostgresFileRepository:
             .where(FileTable.dataset_id == dataset_id)
             .where(FileTable.path.startswith(prefix))
             .where(func.strpos(relative, "/") > 0)  # Only paths with subfolders
+            .where(~_is_file_at(dataset_id, prefix + folder_name))  # an archive's members show under the archive
             .distinct()
             .order_by(folder_name)
             .offset(offset)
@@ -414,6 +550,18 @@ class PostgresFileRepository:
         result = await self.session.execute(stmt)
         return [File.model_validate(orm) for orm in result.scalars().all()]
 
+    async def _fill_member_counts(self, entries: list[FileBrowserItem]) -> None:
+        """Set `member_count` on entries with children -- archive members, email attachments (one grouped query)."""
+        ids = [entry.id for entry in entries if entry.id]
+        if not ids:
+            return
+        stmt = (
+            select(FileTable.parent_id, func.count()).where(FileTable.parent_id.in_(ids)).group_by(FileTable.parent_id)
+        )
+        counts = dict((await self.session.execute(stmt)).tuples().all())
+        for entry in entries:
+            entry.member_count = counts.get(entry.id, 0)
+
     async def browse_directory(
         self,
         dataset_id: str,
@@ -454,10 +602,14 @@ class PostgresFileRepository:
                     size=f.size,
                     date_created=f.date_created,
                     date_last_updated=f.date_last_updated,
+                    parent_id=f.parent_id,
+                    compression=f.compression,
+                    is_encrypted=f.is_encrypted,
                 )
                 for f in files
             )
 
+            await self._fill_member_counts(entries)
             total = await self.count_files_by_dataset(
                 dataset_id,
                 path=None,
@@ -545,9 +697,14 @@ class PostgresFileRepository:
                     size=f.size,
                     date_created=f.date_created,
                     date_last_updated=f.date_last_updated,
+                    parent_id=f.parent_id,
+                    compression=f.compression,
+                    is_encrypted=f.is_encrypted,
                 )
                 for f in files
             )
+
+        await self._fill_member_counts(entries)
 
         # Calculate total (folders + files in this directory)
         file_count = await self.count_files_by_dataset(

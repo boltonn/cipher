@@ -1,3 +1,5 @@
+import type { EntityType } from "@/features/entities/types";
+
 /** Mirrors `cipher.schemas.graph.event` (camelCase over the wire). */
 
 export const EVENT_TYPES = [
@@ -31,7 +33,13 @@ export type RsvpStatus =
   | "tentative"
   | "delegated";
 
-export type EventSortField = "date_start" | "date_created" | "date_updated";
+export type EventSortField =
+  | "dateStart"
+  | "dateCreated"
+  | "dateUpdated"
+  | "title"
+  | "eventType"
+  | "status";
 export type SortOrder = "asc" | "desc";
 
 export type ParticipantRole =
@@ -117,7 +125,33 @@ export interface EventWithLinks extends CipherEvent {
   places: EventPlace[];
 }
 
+/** Mirrors `EventParticipantOption`: a linked entity, or unresolved text (`entityId` null). */
+export interface EventParticipantOption {
+  entityId: string | null;
+  /** Bridged person, for a face thumbnail. */
+  personId: string | null;
+  name: string;
+  entityType: EntityType | null;
+  isProvisional: boolean;
+  eventCount: number;
+}
+
+/** Mirrors `EventPlaceOption`: a linked location, or unresolved place text (`locationId` null). */
+export interface EventPlaceOption {
+  locationId: string | null;
+  name: string;
+  eventCount: number;
+}
+
+/** A Who/Where pick: linked id, or free text matched as a substring. */
+export interface EventLinkPick {
+  id: string | null;
+  name: string;
+}
+
 export interface EventFilters {
+  participants?: EventLinkPick[];
+  places?: EventLinkPick[];
   eventType?: EventType;
   category?: string;
   status?: EventStatus;
@@ -129,14 +163,20 @@ export interface EventFilters {
 export const EMPTY_EVENT_FILTERS: EventFilters = {};
 
 export interface EventSearchParams extends EventFilters {
-  datasetId?: string;
+  datasetIds?: string[];
   query?: string;
-  participantEntityId?: string;
-  locationId?: string;
+  participantEntityIds?: string[];
+  locationIds?: string[];
   sortBy?: EventSortField;
   sortOrder?: SortOrder;
   page?: number;
   limit?: number;
+}
+
+/** Events starting in one calendar month (`month` is YYYY-MM). */
+export interface EventMonthCount {
+  month: string;
+  count: number;
 }
 
 export interface PaginatedEvents {

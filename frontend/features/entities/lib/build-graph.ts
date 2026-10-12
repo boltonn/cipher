@@ -2,6 +2,7 @@ import Graph from "graphology";
 import forceAtlas2 from "graphology-layout-forceatlas2";
 import { GRAPH_NODE_TYPE_META } from "@/features/entities/components/entity-type-meta";
 import { LOW_SIGNAL_RELATIONSHIPS, type GraphResponse } from "@/features/entities/types";
+import { humanize } from "@/lib/utils";
 
 const NODE_MIN_SIZE = 5;
 const NODE_MAX_SIZE = 16;
@@ -47,7 +48,7 @@ export function buildGraph(data: GraphResponse, focusEntityId: string): BuiltGra
     }
     if (!graph.hasNode(edge.srcEntityId) || !graph.hasNode(edge.dstEntityId)) return;
     graph.addEdge(edge.srcEntityId, edge.dstEntityId, {
-      label: edge.relationshipType.replace(/_/g, " "),
+      label: humanize(edge.relationshipType),
       relationshipType: edge.relationshipType,
       size: 1.4,
     });

@@ -7,6 +7,33 @@ export interface TagTarget {
   targetId: string;
 }
 
+/** Whether an image tag has enough analyst labels to train its classifier head (admin). */
+export interface TagTrainingReadiness {
+  tag: string;
+  /** Images an analyst labelled with the tag. */
+  positives: number;
+  /** Images an analyst said are not the tag. */
+  negatives: number;
+  /** Positives a head needs before training includes the tag. */
+  minPositives: number;
+  isReady: boolean;
+}
+
+/** How one tag is used on one kind of target (`TagStats`). */
+export interface TagStats {
+  tag: string;
+  targetType: TagTargetType;
+  /** Targets an analyst labelled with the tag. */
+  labelled: number;
+  /** Targets an analyst said are not the tag. */
+  rejected: number;
+  /** Targets a model tagged or scored. */
+  predicted: number;
+  /** Of the analyst labels, how many are yours. */
+  byYou: number;
+  dateLastUsed: string;
+}
+
 export interface Tag extends TagTarget {
   id: string;
   tag: string;

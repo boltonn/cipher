@@ -8,12 +8,13 @@ dependencies = [
     "cipher-datastores[postgres,elasticsearch]",
     "cipher-orchestration",
     "cipher-schemas",
-    "cipher-utils[fastapi]",
+    "cipher-utils[aws,fastapi]",
     "clir",
     "face",
     "filetyper",
     "pyparse[email]",
     "pyselectors",
+    "pytabular",
     "setfitcv",
     "httpx>=0.27",
     "pydantic-ai>=2.35.3",
@@ -33,6 +34,7 @@ face = { workspace = true }
 filetyper = { workspace = true }
 pyparse = { workspace = true }
 pyselectors = { workspace = true }
+pytabular = { workspace = true }
 setfitcv = { workspace = true }
 
 [tool.hatch.build.targets.wheel]

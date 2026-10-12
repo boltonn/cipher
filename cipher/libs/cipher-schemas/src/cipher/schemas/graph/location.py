@@ -8,6 +8,7 @@ mention until it is geocoded.
 """
 
 from datetime import datetime
+from typing import Any
 
 from geojson_pydantic.geometries import Geometry
 from pydantic import Field
@@ -47,14 +48,17 @@ class LocationBase(BaseModel):
         default_factory=list,
         description="Mirror of the location entity's tags (set them on the entity -- they carry provenance there)",
     )
-    attributes: dict[str, str] = Field(default_factory=dict, description="Raw source key/values")
+    attributes: dict[str, Any] = Field(default_factory=dict, description="Source key/values (provenance, counts)")
 
     source: LocationSource = Field(
         default=LocationSource.NAME_MENTION, description="Where the coordinates/address came from"
     )
     source_id: str | None = Field(default=None, description="The provider's own identifier for this place")
     date_recorded: datetime | None = Field(
-        default=None, description="When this point was observed (photo capture time, GPS ping time)"
+        default=None, description="When this point was observed (photo capture time, GPS ping time, call start)"
+    )
+    duration_seconds: float | None = Field(
+        default=None, ge=0, description="How long the observation lasted from `date_recorded` (a call, a stay)"
     )
 
 
@@ -84,9 +88,11 @@ class LocationUpdate(BaseModel):
     city: str | None = Field(default=None)
     admin_area: str | None = Field(default=None)
     country: str | None = Field(default=None)
-    attributes: dict[str, str] | None = Field(default=None)
+    attributes: dict[str, Any] | None = Field(default=None)
     source: LocationSource | None = Field(default=None)
     source_id: str | None = Field(default=None)
+    date_recorded: datetime | None = Field(default=None)
+    duration_seconds: float | None = Field(default=None, ge=0)
 
 
 class Location(LocationBase):

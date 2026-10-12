@@ -19,6 +19,13 @@ exists to estimate against.
 |---|---|---|---|
 | **Stage** | `create-dataset`, `load-files` | `file` rows (`filetype`, `filetype_group`, `sha256`, `size`, uri) | `dataset.date_staged` |
 | **Enrich** | `extract-text`, `embed-text`, `embed-images`, `detect-faces`, `extract-selectors`, `extract-entities`, `extract-events`, … | `enrichment` queue rows + domain rows; one `enrichment_run` per invocation | per-enrichment `progress` |
+| **Resolve** | `resolve-entities` (one call: same names, match names, match new entities, places, links) | `mention.entity_id`, auto-created `entity` rows, pending `entity_match` suggestions; one `enrichment_run` (`entity_resolution`) with per-step `progress` | the Entities review tabs (Verify · Resolve) |
+
+Resolution is not an enrichment: it is a dataset-wide sweep over every file's mentions at
+once, so it has no per-file queue or estimate. It reports its own steps instead
+(`enrichment_run.progress`), shown as **Entity resolution** with a bar per step under the
+enrichments on the dataset page. Re-run it after extraction or after a batch of review
+decisions.
 
 Staging is deliberately separate: it is cheap, deterministic, and produces the
 inventory every estimate is computed against. A dataset is **staged** once it
@@ -30,10 +37,14 @@ has files; `date_staged` records when that first happened.
 single source of truth (also served at `GET /enrichments/config`). Hard
 prerequisites only — an enrichment that reads rows a prior one produces:
 
+- `text_extraction`, `image_embedding`, `exif_location`, `face_detection`, `contact_extraction`, `table_extraction` ← `archive_extraction` (dataset-level: it creates the files inside archives and decodes compressed ones, so everything that reads files runs after it; `extract-text` runs it first)
 - `text_embedding`, `selector_extraction`, `entity_extraction`, `signature_extraction` ← `text_extraction`
 - `ocr` ← `text_extraction` (PDFs only: OCR merges into the xberg row; images need nothing)
 - `relationship_extraction` ← `entity_extraction`, `selector_extraction`
 - `face_matching`, `face_clustering` ← `face_detection`
+- `text_extraction`, `text_embedding`, `selector_extraction`, `entity_extraction` take a `filetype_groups` parameter; defaults in `DEFAULT_FILETYPE_GROUPS` (`table` is off by default everywhere). `document`/`email` files are queued by group; other groups (`image`, `table`) only when the file has extracted text (`TEXT_NATIVE_GROUPS`, `queue_files_with_text`) -- images have text only after OCR, which is gated by the CLIP `has_text` score
+- `text_summarization` (opt-in, never in a default pipeline: one LLM call per file) -- `cipher summarize` or the viewer's Summarize button (`POST /files/{id}/summary`); stored as a summary chunk (`chunk.is_summary`, `chunk_index` -1, one per dataset + content hash, `generated_by` = model), so it's searchable once embedded (the button embeds inline; `embed-text` embeds batch-written ones) and reused across content-identical files; tables are summarized from their sample + column mapping
+- `table_extraction` has no prerequisite enrichment, but only emits files whose layout's table mapping is verified (`docs/tabular-mapping.md`)
 
 `enrichment_prerequisites(t)` returns the transitive, dependency-ordered set.
 Both the dataset-request wizard and the estimates card use it: the wizard

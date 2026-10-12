@@ -6,7 +6,7 @@ from fastapi import APIRouter, Query
 
 from cipher.api.deps.access import DatasetAccessDep, require_content_access
 from cipher.api.deps.postgres import FileDatastoreDep, TagDatastoreDep
-from cipher.schemas.interaction.tag import TagLabelAuthorsRequest, TagPublic, TagTargetType
+from cipher.schemas.interaction.tag import TagLabelAuthorsRequest, TagPublic, TagStats, TagTargetType
 
 router = APIRouter(prefix="/tags", tags=["tags"])
 
@@ -39,6 +39,17 @@ async def list_tag_names(
 ) -> list[str]:
     """Suggestions for tag pickers and filters."""
     return await datastore.names(target_type=target_type, query=query, limit=limit)
+
+
+@router.get(
+    "/stats",
+    summary="How each tag is used: analyst labels, model coverage, and yours",
+    response_model=list[TagStats],
+    response_model_by_alias=True,
+)
+async def tag_stats(access: DatasetAccessDep, datastore: TagDatastoreDep) -> list[TagStats]:
+    """Counts only, across every dataset (tag names are already shared vocabulary)."""
+    return await datastore.stats(user_id=access.user.id)
 
 
 @router.post(

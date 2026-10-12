@@ -1,11 +1,10 @@
 from datetime import datetime
-from enum import StrEnum
 from typing import Annotated, Any
 
 import numpy as np
 from pydantic import BeforeValidator, Field, StringConstraints, field_serializer
 
-from cipher.schemas._base.base import BaseModel
+from cipher.schemas._base.base import BaseModel, StrEnum
 from cipher.schemas._base.common import ModelTagType, PageParams, PaginatedResponse
 
 IMAGE_EMBEDDING_DIMENSION = 512

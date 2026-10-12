@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
 import { useEffect, useRef } from "react";
 import type { SearchChunk } from "../types";
+import { textOffsets } from "@/lib/text-offsets";
 
 interface ChunkHighlightedTextProps {
   fileId: string;
@@ -58,8 +59,11 @@ export function ChunkHighlightedText({ fileId, chunk, terms, highlightChunk = tr
       : "bg-transparent"
   );
 
-  const offsetsMatch = chunk ? data.text.slice(chunk.startOffset, chunk.endOffset) === chunk.text : false;
-  const matchIndex = !chunk ? -1 : offsetsMatch ? chunk.startOffset : data.text.indexOf(chunk.text);
+  // chunk offsets count code points; the text indexes UTF-16 (an emoji is two units)
+  const offsets = textOffsets(data.text);
+  const chunkStart = chunk ? offsets.toUtf16(chunk.startOffset) : -1;
+  const offsetsMatch = chunk ? data.text.slice(chunkStart, offsets.toUtf16(chunk.endOffset)) === chunk.text : false;
+  const matchIndex = !chunk ? -1 : offsetsMatch ? chunkStart : data.text.indexOf(chunk.text);
 
   // Always render the full text -- if the chunk's region can't be located
   // (stale chunk from a pre-verbatim index), fall back to term-only

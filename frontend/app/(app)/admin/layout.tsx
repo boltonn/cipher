@@ -2,6 +2,7 @@
 
 import { PageHeader } from "@/components/page-header";
 import { PageLoading } from "@/components/page-loading";
+import { StatusPage } from "@/components/status-page";
 import { useMe } from "@/features/users/hooks/use-me";
 import { NAV } from "@/lib/nav";
 import { ShieldCheck } from "lucide-react";
@@ -18,14 +19,7 @@ export default function AdminLayout({
 
   if (isPending) return <PageLoading icon={ShieldCheck} label="Loading…" />;
   if (!me?.isAdmin) {
-    return (
-      <div className="mx-auto max-w-md px-6 pt-24 text-center">
-        <ShieldCheck className="mx-auto mb-3 h-8 w-8 text-admin" />
-        <p className="text-sm text-muted-foreground">
-          Only an admin can open this page.
-        </p>
-      </div>
-    );
+    return <StatusPage kind="forbidden" body="Only an admin can open this page." />;
   }
 
   return (

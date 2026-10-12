@@ -3,20 +3,22 @@ from typing import Literal
 
 from pydantic import Field
 
-from cipher.schemas._base.base import BaseModel
+from cipher.schemas._base.base import BaseModel, StrEnum
 
 # `action`: a proposed change the analyst reviews and confirms on the linked page.
-CitationKind = Literal["document", "email", "person", "dataset", "entity", "action"]
+CitationKind = Literal["document", "email", "file", "image", "event", "person", "dataset", "entity", "action"]
 
 
 class ChatCitation(BaseModel):
     """A source the chat agent grounded its answer in.
 
-    One shape for every kind of source a tool can cite. Two families:
+    One shape for every kind of source a tool can cite:
 
     - `document` / `email` -- a retrieved text passage. Carries `file_id` plus
       `start_offset`/`end_offset` so the frontend opens the file viewer scrolled
       to that span. `page_number`/`heading_path` are document-only.
+    - `file` / `image` / `event` -- a file found by metadata, an image, an extracted event;
+      `href` to the file page, or the source `file_id` for an event.
     - `person` / `dataset` / `entity` -- a database record. Carries `href`, an
       app-relative route (`/persons/{id}`, `/datasets/{id}`) the frontend
       navigates to. `entity` has no detail page yet, so its `href` is set only
@@ -48,3 +50,26 @@ class ChatCitation(BaseModel):
     # Record citations (kind in {person, dataset, entity}).
     target_id: str | None = Field(default=None, description="Id of the linked record")
     href: str | None = Field(default=None, description="App-relative route the frontend navigates to, when linkable")
+
+
+class ChatAutonomy(StrEnum):
+    """How often the assistant stops to let the analyst steer."""
+
+    GUIDED = "guided"
+    """Checks in before reading through a large result set or proposing many changes."""
+    AUTO = "auto"
+    """Asks only when the answer would be wrong without the analyst's choice."""
+
+
+class JudgedSource(BaseModel):
+    """A source from an earlier answer the analyst judged."""
+
+    display_name: str
+    file_id: str | None = None
+
+
+class RelevanceJudgments(BaseModel):
+    """Which earlier sources the analyst judged relevant to the question or not, sent with the next message."""
+
+    relevant: list[JudgedSource] = Field(default_factory=list, max_length=100)
+    not_relevant: list[JudgedSource] = Field(default_factory=list, max_length=100)

@@ -5,12 +5,12 @@ and an organization. The events prompt (`extract-events --llm` / `extract-llm`) 
 organizations the recipient is confirmed to belong to (a welcome, activation, renewal or dues
 receipt -- never an offer to join), with the organization's address when the email gives it.
 
-Each becomes mentions with offsets into the email plus mention relations, exactly like a
-signature: the recipient's To-header name mention `member_of` the organization, and the
-organization `located_in` the address. `resolve-entities` resolves the names and the edges show
-as reviewable suggestions on the organization page. Needs `extract-selectors` first (it writes
-the header name mentions); without a named recipient the organization and address are still
-recorded, just with no edge.
+Each becomes mentions with offsets into the email plus mention relations, like a signature: the
+recipient's To address `member_of` the organization, and the organization `located_in` the
+address. The membership belongs to the account the email was sent to, so the person end is that
+address -- the suggestion on the organization page offers whoever owns it. Needs
+`extract-selectors` first (it writes the header address mentions); an email to several To
+addresses is ambiguous, so its organization and address are recorded with no edge.
 """
 
 from typing import TYPE_CHECKING
@@ -22,7 +22,7 @@ from cipher.datastores.postgres.tables.mention import MentionTable
 from cipher.datastores.postgres.utils import normalize_name
 from cipher.schemas.graph.mention import MentionCreate, MentionedType
 from cipher.schemas.graph.mention_relationship import MentionRelationshipCreate
-from cipher.schemas.graph.ontology import EntityType, RelationshipType
+from cipher.schemas.graph.ontology import EntityType, RelationshipType, SelectorType
 
 if TYPE_CHECKING:
     from pyprompt.schemas import LlmMembership
@@ -81,19 +81,22 @@ async def persist_memberships(
     """Write one email's memberships as mentions + `member_of` / `located_in` mention relations. Returns count."""
     if not memberships:
         return 0
-    recipient = (
-        await session.execute(
-            select(MentionTable.id)
-            .where(
-                MentionTable.file_id == file_id,
-                MentionTable.field_path.like("header.to[%"),
-                MentionTable.entity_attribute == "name",
-                MentionTable.selector_type.is_(None),
+    to_addresses = (
+        (
+            await session.execute(
+                select(MentionTable.id)
+                .where(
+                    MentionTable.file_id == file_id,
+                    MentionTable.field_path.like("header.to[%"),
+                    MentionTable.selector_type == SelectorType.EMAIL,
+                )
+                .limit(2)
             )
-            .order_by(MentionTable.field_path)
-            .limit(1)
         )
-    ).scalar_one_or_none()
+        .scalars()
+        .all()
+    )
+    recipient = to_addresses[0] if len(to_addresses) == 1 else None
     mentions = PostgresMentionRepository(session=session)
     relations = PostgresMentionRelationshipRepository(session=session)
     content = extracted.content

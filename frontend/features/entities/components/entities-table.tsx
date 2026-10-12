@@ -119,11 +119,11 @@ export function EntitiesTable({
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/40 hover:bg-muted/40">
-              <SortHead label="Name" sortKey="display_name" {...sortProps} />
+              <SortHead label="Name" sortKey="displayName" {...sortProps} />
               <TableHead>Type</TableHead>
               <SortHead
                 label="Mentions"
-                sortKey="mention_count"
+                sortKey="mentionCount"
                 className="w-44"
                 {...sortProps}
               />
@@ -131,7 +131,7 @@ export function EntitiesTable({
                 Relationships
               </TableHead>
               <TableHead>Open work</TableHead>
-              <SortHead label="Updated" sortKey="date_updated" {...sortProps} />
+              <SortHead label="Updated" sortKey="dateUpdated" {...sortProps} />
               <TableHead className="w-10" />
             </TableRow>
           </TableHeader>

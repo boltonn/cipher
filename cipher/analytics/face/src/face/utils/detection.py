@@ -21,9 +21,7 @@ def clip_coords(boxes: np.ndarray, height: int, width: int) -> None:
     boxes[:, 3].clamp_(0, height)  # y2
 
 
-def crop_np_img(
-    img: np.ndarray, bbox: list, normalized: bool = True, scale_factor: float = 1.0
-) -> np.ndarray:
+def crop_np_img(img: np.ndarray, bbox: list, normalized: bool = True, scale_factor: float = 1.0) -> np.ndarray:
     """Crop image based on bounding box.
 
     Args:
@@ -45,9 +43,7 @@ def crop_np_img(
     return img[int(ymin) : int(ymax), int(xmin) : int(xmax), :]
 
 
-def normalize(
-    points: np.ndarray, height: int, width: int, apply_boundary: bool = False
-) -> list[float]:
+def normalize(points: np.ndarray, height: int, width: int, apply_boundary: bool = False) -> list[float]:
     """Normalize coordinates that are Nx2.
 
     Args:

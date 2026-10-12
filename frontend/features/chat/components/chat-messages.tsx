@@ -37,10 +37,12 @@ import {
 } from "@/components/ai-elements/tool";
 import type { UIMessage, UIMessagePart, UIDataTypes, UITools } from "ai";
 import { SparklesIcon } from "lucide-react";
+import { AskUserCard, type AskUserInput } from "./ask-user-card";
 import { describeToolCall } from "../lib/tool-labels";
 import { summarizeToolPayload } from "../lib/summarize-tool-payload";
-import type { ChatCitation } from "../types";
+import { citationKey, type ChatCitation, type Relevance } from "../types";
 import { AssistantAvatar } from "./assistant-avatar";
+import { SearchSummary, type SearchRun } from "./search-summary";
 import { ChatMessageActions } from "./chat-message-actions";
 import { Citations } from "./citations";
 import { ThinkingIndicator } from "./thinking-indicator";
@@ -80,6 +82,11 @@ interface ChatMessagesProps {
   showThinking?: boolean;
   /** Send one of the starter prompts shown on the empty thread. */
   onExamplePrompt?: (text: string) => void;
+  /** Answer the agent's `ask_user` question; the run resumes with it. */
+  onAnswerQuestion: (toolCallId: string, answer: string) => void;
+  /** The analyst's judgments on sources, by `citationKey`. */
+  judgments: Record<string, Relevance>;
+  onJudge: (citation: ChatCitation, relevance: Relevance | null) => void;
 }
 
 const EXAMPLE_PROMPTS = [
@@ -95,7 +102,7 @@ function isToolPart(
 }
 
 /** Tools whose citations are lookup candidates, not evidence -- shown only when nothing else cited. */
-const LOOKUP_TOOLS = new Set(["find_entity"]);
+const LOOKUP_TOOLS = new Set(["find_entity", "describe_data"]);
 
 function toolName(part: ToolPart): string {
   return part.type === "dynamic-tool" ? part.toolName : part.type.replace(/^tool-/, "");
@@ -116,8 +123,7 @@ function collectCitations(message: UIMessage): ChatCitation[] {
     const list = asCitationList(part.output);
     if (!list) continue;
     for (const citation of list) {
-      const key =
-        citation.chunkId ?? citation.targetId ?? `${citation.kind}:${citation.displayName}`;
+      const key = citationKey(citation);
       if (seen.has(key)) continue;
       seen.add(key);
       out.push(citation);
@@ -126,12 +132,39 @@ function collectCitations(message: UIMessage): ChatCitation[] {
   return out;
 }
 
+/** The message's searches (skipping repeat-guard notes) and how many distinct files it read. */
+function collectSearches(message: UIMessage): { searches: SearchRun[]; filesRead: number } {
+  const searches: SearchRun[] = [];
+  const read = new Set<string>();
+  for (const part of message.parts) {
+    if (!isToolPart(part) || part.state !== "output-available") continue;
+    const output = part.output as Record<string, unknown> | null;
+    if (!output || typeof output !== "object") continue;
+    const name = toolName(part);
+    if (name === "search_passages" && output.openAll && output.searched) {
+      const searched = output.searched as { query: string | null; mode: string; promotionsAndSpamHidden?: boolean };
+      searches.push({
+        query: searched.query,
+        mode: searched.mode,
+        total: Number(output.total ?? 0),
+        promotionsAndSpamHidden: !!searched.promotionsAndSpamHidden,
+        openAll: output.openAll as SearchRun["openAll"],
+      });
+    }
+    if (name === "read_file" && typeof output.fileId === "string") read.add(output.fileId);
+  }
+  return { searches, filesRead: read.size };
+}
+
 export function ChatMessages({
   messages,
   onRegenerate,
   onOpenCitation,
   showThinking = false,
   onExamplePrompt,
+  onAnswerQuestion,
+  judgments,
+  onJudge,
 }: ChatMessagesProps) {
   if (messages.length === 0 && !showThinking) {
     return (
@@ -178,6 +211,7 @@ export function ChatMessages({
                 .join("\n\n")
             : "";
           const citations = isAssistant ? collectCitations(message) : [];
+          const searchSummary = isAssistant ? collectSearches(message) : null;
 
           return (
             <div key={message.id} className="flex w-full items-start gap-3">
@@ -224,6 +258,18 @@ export function ChatMessages({
                         ? part.toolName
                         : part.type.replace(/^tool-/, "");
 
+                    if (toolLabel === "ask_user") {
+                      const output = part.state === "output-available" ? (part.output as { answer?: string }) : null;
+                      return (
+                        <AskUserCard
+                          key={key}
+                          input={part.input as AskUserInput | undefined}
+                          answer={output?.answer}
+                          onAnswer={(answer) => onAnswerQuestion(part.toolCallId, answer)}
+                        />
+                      );
+                    }
+
                     if (part.state === "approval-requested") {
                       return (
                         <Confirmation
@@ -242,7 +288,8 @@ export function ChatMessages({
 
                     const toolTitle = describeToolCall(
                       toolLabel,
-                      "input" in part ? part.input : undefined
+                      "input" in part ? part.input : undefined,
+                      part.state === "output-available" ? part.output : undefined
                     );
 
                     return (
@@ -285,6 +332,9 @@ export function ChatMessages({
                   return null;
                 })}
 
+                {isAssistant && assistantText && searchSummary && (
+                  <SearchSummary searches={searchSummary.searches} filesRead={searchSummary.filesRead} />
+                )}
                 {isAssistant && assistantText && (
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-2 pt-1">
                     {isLast && (
@@ -294,7 +344,7 @@ export function ChatMessages({
                       />
                     )}
                     {citations.length > 0 && (
-                      <Citations citations={citations} onOpen={onOpenCitation} />
+                      <Citations citations={citations} onOpen={onOpenCitation} judgments={judgments} onJudge={onJudge} />
                     )}
                   </div>
                 )}

@@ -27,7 +27,7 @@ from cipher.datastores.postgres.repositories import (
     PostgresFaceRepository,
     PostgresGraphRepository,
 )
-from cipher.schemas.identity.face import DEFAULT_FACE_MATCH_SIMILARITY
+from cipher.schemas.identity.face import DEFAULT_FACE_SIMILARITY
 from cipher.schemas.identity.face_match import FaceMatchCreate, FaceMatchMethod
 
 if TYPE_CHECKING:
@@ -62,7 +62,7 @@ async def match_faces_workflow(
     session: "AsyncSession",
     *,
     dataset_id: str | None = None,
-    min_similarity: float = DEFAULT_FACE_MATCH_SIMILARITY,
+    min_similarity: float = DEFAULT_FACE_SIMILARITY,
     verified_only: bool = False,
     per_face_limit: int = 500,
     rebuild_cooccurrence: bool = True,

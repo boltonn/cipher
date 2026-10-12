@@ -15,8 +15,11 @@ import { Loader2 } from "lucide-react";
 import { ReactNode } from "react";
 
 interface ConfirmDialogProps {
-  /** Element that opens the dialog, e.g. a Button -- rendered via asChild. */
-  trigger: ReactNode;
+  /** Element that opens the dialog, e.g. a Button -- rendered via asChild. Omit when controlled. */
+  trigger?: ReactNode;
+  /** Controlled open state, for opening from somewhere a trigger can't live (a menu item). */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   title: string;
   description: ReactNode;
   confirmLabel?: string;
@@ -37,10 +40,12 @@ export function ConfirmDialog({
   onConfirm,
   isPending = false,
   destructive = true,
+  open,
+  onOpenChange,
 }: ConfirmDialogProps) {
   return (
-    <AlertDialog>
-      <AlertDialogTrigger asChild>{trigger}</AlertDialogTrigger>
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      {trigger && <AlertDialogTrigger asChild>{trigger}</AlertDialogTrigger>}
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>

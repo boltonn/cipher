@@ -85,3 +85,9 @@ class UserDatasetsUpdate(BaseModel):
     """The complete set of datasets a user can access -- replaces whatever they had."""
 
     dataset_ids: list[str] = Field(default_factory=list, description="Dataset IDs the user is a member of")
+
+
+class SelectedDatasetsUpdate(BaseModel):
+    """The datasets the current user is working in -- replaces the previous selection."""
+
+    dataset_ids: list[str] = Field(default_factory=list, description="Selected dataset IDs, in display order")

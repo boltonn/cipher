@@ -2,7 +2,8 @@
 
 How to take a directory of files to a fully enriched dataset: which services to
 start, which `cipher` commands to run, and in what order. Why each step exists and how
-estimates work is in `docs/enrichments.md`; vocabulary is in `docs/glossary.md`.
+estimates work is in `docs/enrichments.md`; every command (pipeline steps, maintenance like
+`rekey`, benchmarks) is in `docs/cli.md`; vocabulary is in `docs/glossary.md`.
 
 **Not runnable from the frontend yet.** `POST /enrichments/run` only allows
 `exif_location`. The dataset page shows progress (`/enrichments/progress/all`) and
@@ -63,7 +64,7 @@ results.
 ```mermaid
 flowchart LR
   subgraph Stage
-    A[create-dataset] --> B[load-files]
+    A[create-dataset] --> B[load-files] --> U["extract-archives<br/>(members + decoded .gz)"]
   end
   subgraph Text
     C["extract-text<br/>(records image-based pages)"] --> D[ocr] --> E[embed-text]
@@ -81,11 +82,12 @@ flowchart LR
     O[extract-signatures]
   end
   subgraph Resolve
-    P[resolve-entities] --> Q[dedupe-entities]
+    P["resolve-entities<br/>same names · match names · new entities · places · links"]
     P --> R[resolve-event-links]
     S[extract-relationships]
   end
-  B --> C & F & G & H & N
+  U --> C
+  C --> F & G & H & N
   F -- text gate --> D
   C --> K & L & M & O
   K & L --> S
@@ -93,26 +95,70 @@ flowchart LR
   M --> R
 ```
 
-The text and image tracks don't depend on each other, so they can run at
-the same time (on separate GPUs if you have them).
+**Unpack first.** Archive members and decoded compressed files don't exist as
+files until `extract-archives` has run, and an email's attachments don't exist
+until its email is parsed (2a), so every file analytic runs after 2a's email pass.
+`extract-text` unpacks for you: archives first, then emails and unpacking in turn
+until neither finds anything new (a zip can hold an email that attaches another
+zip), then documents. After 2a the text and image tracks don't depend on each
+other, so they can run at the same time (on separate GPUs if you have them).
+
+## 0. From the app (run plans)
+
+The steps below can also run without a terminal: users request a dataset or analytics as a
+GitHub issue; an admin queues the steps from the dataset page's enrichment pipeline (Run
+selected, or a row's `⋯` menu), and `cipher worker` processes on each host run them in order
+(`docs/pipeline-runner.md`):
+
+```bash
+cipher worker --pool cpu --slots 2      # each CPU host (LLM steps call the LLM service from here)
+cipher worker --pool gpu                # the GPU host: one step per GPU (embeddings, faces, NER, OCR)
+```
 
 ## 1. Stage
 
 ```bash
 cipher create-dataset --name rag --description "..."
-cipher load-files /data/rag --dataset-name rag          # file rows + filetype; sets date_staged
+cipher load-files /data/rag --dataset-name rag          # or s3://bucket/prefix/; --include/--exclude globs; sets date_staged
+cipher extract-archives --dataset-name rag              # optional on its own: extract-text runs it first
 cipher estimate --dataset-name rag --device cuda        # optional: ETA per analytic
 ```
+
+`extract-archives` turns zip and tar members (also `.tar.gz` / `.xz` / `.bz2` /
+`.zst`) into files with `parent_id` set to the archive, their bytes in the output store
+(`<OUTPUT_URI>/<dataset id>/`, `OUTPUT_URI` default `~/data/cipher/output`, or
+`--output-uri`; a directory or `s3://bucket/prefix`), and decodes files found compressed
+(`report.csv.gz` becomes the csv, in its own row). Nested archives open pass by pass to
+`--max-depth` (5); copies of an archive already unpacked are skipped; limits stop zip
+bombs and full disks per archive (`docs/archive-extraction.md`). A killed run resumes
+where it stopped: claims of a run that stopped heartbeating go back to the queue (a live
+run keeps its own, so two hosts can share a step).
+
+7z / rar / iso / cab need the official static 7-Zip: put `7zzs` from the
+[ip7z/7zip release](https://github.com/ip7z/7zip/releases) at
+`~/.local/share/cipher/bin/7zz` (or set `SEVENZIP_PATH`). Without it (or without the
+zstd / lz4 decoders for `.zst` / `.lz4`) those archives fail as `missing: ...`, the command
+ends with an `ERROR:` line saying what to install and exits 1, and the next run after
+installing picks them up. It always runs in a
+pure-Python sandbox (no network, only the archive readable, only scratch writable) built
+from Linux kernel features, with nothing to install; `uv run pyarchive sandbox` checks a
+machine. `--sandbox required` fails those archives where it can't fully apply, and
+`--sandbox off` runs 7-Zip unconfined where the sandbox gets in its way.
+
+Encrypted archives: put known passwords in `~/data/cipher/archive-passwords.txt`
+(`ARCHIVE_PASSWORDS_FILE`; one per line, `chmod 600`). Every unpack tries them in order, and
+after you add one, the next `extract-archives` goes back to archives with encrypted members
+and extracts only what's still missing.
 
 ## 2. Text track
 
 | # | Command | Notes |
 |---|---|---|
-| 2a | `cipher extract-text --dataset-name rag` | Parses emails (pyparse; attachments become child files), then documents (xberg). For every PDF it records its **image-based pages** (`metadata.image_pages`, read from xberg's per-page output) and leaves them for 2b. Keep `--chunk-size` the same as in 2c. |
+| 2a | `cipher extract-text --dataset-name rag` | Unpacks archives, then parses emails (pyparse; attachments become child files) and unpacks again until nothing new turns up, then documents (xberg). `--no-archives` skips unpacking. For every PDF it records its **image-based pages** (`metadata.image_pages`, read from xberg's per-page output) and leaves them for 2b. Keep `--chunk-size` the same as in 2c. |
 | 2b | `cipher ocr --dataset-name rag` (after 3a) | Reads the image-based pages and text-bearing images with pyvllm's `ocr` model, merging page by page into the extracted text. Images pass a **gate** first: zero-shot CLIP tags over the embeddings from 3a, kept as each file's `has_text` **tag score**; under `--clip-threshold` (0.5) an image is not OCR'd (`--all-images` turns the gate off). A page that makes the model loop is cut back to one copy of the repeated text and counted in the run summary. |
 | 2c | `cipher embed-text --dataset-name rag --model-dir $TEXT_EMBEDDING_MODEL_DIR --device cuda` | Writes the chunks that power keyword, semantic and entity search. `--max-pages N` limits very long documents. |
 
-## 3. Image track
+## 3. Image track (after 2a's email pass, so attachment and archive images exist)
 
 | # | Command | Notes |
 |---|---|---|
@@ -130,10 +176,10 @@ These can run in any order, but after 2b: OCR'd text is only seen by what runs a
 | Command | Produces |
 |---|---|
 | `cipher extract-selectors --dataset-name rag` | Email-header participants + pyselectors spans (phone, email, IBAN, …) |
-| `cipher extract-entities --dataset-name rag --extractor gliner --gliner-model-dir $GLINER_MODEL_DIR --device cuda` | person / org / location name mentions + relations. Engines: `llm` (default), `gliner`, `nerd`. |
+| `cipher extract-entities --dataset-name rag --extractor gliner --gliner-model-dir $GLINER_MODEL_DIR --device cuda` | person / org / location name mentions + relations. Engines: `nerd` (default), `gliner`, `llm`. |
 | `cipher extract-events --dataset-name rag` | `.ics` → events (deterministic) |
 | `cipher extract-contact-entities --dataset-name rag` | Parses vCard files into `contact` rows, then name + selector mentions and `member_of` for orgs |
-| `cipher extract-signatures --dataset-name rag [--rebuild]` | Who each sender works for -- see **`docs/signatures.md`**. First pass (rules): skip Gmail bulk mail (`--include-bulk` to read it); the last 15 lines the sender wrote become a candidate only when there is a signer cue (farewell phrase, sender's name/address, NER person) **and** something to learn (NER organization, phone, website, another email address) -- ~5% of a mailbox. Run `extract-entities` first for the NER cues. The local LLM decides whether it's a signature and copies out company → division → department, role, phones/emails/websites/addresses; code then checks it (verbatim, signer = sender, not a brand). Enrichment-gated; a sender's known signature is reused without another call. Then `resolve-entities` turns it into suggestions (and email-domain ones) on `/organizations`. Languages: `signature_cues.py` |
+| `cipher extract-signatures --dataset-name rag [--rebuild]` | Who each sender works for -- see **`docs/signatures.md`**. First pass (rules): skip Gmail bulk mail (`--include-bulk` to read it); the last 15 lines the sender wrote become a candidate only when there is a signer cue (farewell phrase, sender's name/address, NER person) **and** something to learn (NER organization, phone, website, another email address) -- ~5% of a mailbox. Run `extract-entities` first for the NER cues. The local LLM decides whether it's a signature and copies out company → division → department, role, phones/emails/websites/addresses; code then checks it (verbatim, signer = sender, not a brand). Enrichment-gated; a sender's known signature is reused without another call. Each address's city comes from the gazetteer (left out when ambiguous); phones are kept as written, with a country only when the number states one. Then `resolve-entities` resolves the names; review on the Entities page's **Email signatures** tab (label fixes in the text, accept / correct / reject / add relationships). Languages: `signature_cues.py` |
 
 **LLM events:** `cipher extract-events --dataset-name rag --llm-only --gliner-model-dir $GLINER_MODEL_DIR --device cuda` -- the same call also reads **memberships** (recipient `member_of` an organization, with its address; see `docs/events.md`). Run `extract-selectors` first so the recipient's header name exists.
 gates every email with GLiNER, sends the likely ones (plus a 5% sample of the
@@ -151,19 +197,20 @@ mailbox takes overnight), and runs over 15,000 files are refused unless you pass
 | # | Command | Notes |
 |---|---|---|
 | 5a | `cipher extract-relationships --dataset-name rag` | Directed `emailed` edges, sender → recipient address, weight = emails sent that way. Needs no resolution; feeds `top_connections`. |
-| 5b | `cipher resolve-entities --dataset-name rag --concurrency 8` | Matches mention groups to entities: auto-attach, send to review, or create a provisional entity. `--concurrency` makes it about 6× faster. |
+| 5b | `cipher resolve-entities --dataset-name rag` | **The whole resolution stage in one call**, one unit per name key (`Adaire`, `Adaire's`, `Adaire (no reply)`, any type): (1) *same names* -- auto-created duplicates fold, names attach to their auto-created entity; (2) *match names* -- the rest are scored: attach, suggest (Resolve), or create **one** entity per unit; (2b) *short names in context* -- `Nick` in an email that names Nick Bolton becomes him; (3) *match new entities* -- auto-created entities new since the last run → merge suggestions (Verify; `--full` rescores all); (4) places (5b′); (5) links and suggestions (header identifiers, relationships, email domains, event participants, family from patronymics). Progress per step shows on the dataset page. `--concurrency` (default 8) runs units in parallel. Design: `docs/entity-resolution.md` §0. |
 | 5b′ | `cipher resolve-locations --dataset-name rag` | Place mentions → shared country / state / city / region entities via the offline gazetteer (index + sources committed in `libs/cipher-places/data/`; skipped with a warning if the index is missing). Per mention, using nearby text (`Dover, DE 19904` → Delaware); ambiguous names (`Washington`, `Georgia`) stay unresolved. Runs automatically at the end of 5b (`--skip-locations` to opt out). Matches dictionary forms in any indexed language, then lemmas (ru/uk case forms, ar/fa prefixes, zh suffixes). Places are entities, not map points. Own places: `uv run libs/cipher-places/scripts/add_place.py NAME LAT LON --alias ...` (see `libs/cipher-places/README.md`). |
-| 5c | `cipher dedupe-entities --dataset-name rag` | Proposes merges between provisional and canonical entities (always goes to review) |
-| 5d | `cipher resolve-event-links --dataset-name rag` | Links event participants and places to entities / locations |
+| 5d | `cipher resolve-event-links --dataset-name rag` | Links event participants and places to entities / locations. Also runs inside 5b; on its own after `extract-events` alone. |
 
 ## 6. Review (the UI)
 
 Start `make start` and the frontend. The dataset page shows progress per analytic.
-Then review in: **Entities → Resolve** (pending matches + duplicate merges), **Faces /
-Persons** (pending face matches, unnamed clusters), **Events**. A file's **Text** tab
+Then review **Entities** -- **Verify** (auto-created entities, biggest first, each with its
+possible duplicates to merge or keep apart), then **Resolve** (names still without an
+entity) -- then **Faces / Persons** (pending face
+matches, unnamed clusters) and **Events**. A file's **Text** tab
 flags image-based pages and which OCR produced their text. After confirming faces,
-re-run `link-face-cooccurrence`. After confirming entities, re-running 5b/5c picks up
-what changed.
+re-run `link-face-cooccurrence`. After a batch of entity decisions, re-running 5b picks
+up what changed (folded names send their old spellings straight to the survivor).
 
 ## Full copy-paste (GPU box, gliner NER, no LLM)
 
@@ -171,7 +218,7 @@ what changed.
 D=rag
 cipher create-dataset --name $D
 cipher load-files /data/$D --dataset-name $D
-cipher extract-text  --dataset-name $D
+cipher extract-text  --dataset-name $D           # unpacks archives first (extract-archives)
 cipher embed-images  --dataset-name $D --model-dir $IMAGE_EMBEDDING_MODEL_DIR --device cuda
 cipher ocr           --dataset-name $D
 cipher embed-text    --dataset-name $D --model-dir $TEXT_EMBEDDING_MODEL_DIR --device cuda
@@ -185,9 +232,7 @@ cipher extract-events    --dataset-name $D
 cipher extract-contact-entities  --dataset-name $D
 cipher extract-signatures --dataset-name $D
 cipher extract-relationships --dataset-name $D
-cipher resolve-entities  --dataset-name $D --concurrency 8
-cipher dedupe-entities   --dataset-name $D
-cipher resolve-event-links --dataset-name $D
+cipher resolve-entities  --dataset-name $D   # the whole resolution stage
 cipher stats --dataset-name $D
 ```
 
@@ -201,11 +246,12 @@ cipher stats --dataset-name $D
 | Re-extract entities/selectors from scratch | `reset-entities` → step 4 → step 5 (manual entities are kept) |
 | Re-extract events | `reset-events` → `extract-events` → `resolve-event-links` (manual/verified events are kept) |
 | Undo face matches / clusters | `match-faces --reset`, `cluster-faces --reset [--reset-verified]` |
-| `cipher-names` upgraded | `backfill-entity-name-keys [--purge]` |
-| `pyselectors` packs updated | `refresh-selectors` |
-| Old dataset, mentions missing `chunk_id` | `backfill-mention-chunks` |
-| `RETRIEVAL__BACKEND=elasticsearch` only | `sync-chunk-entities` after step 4 (`--purge` after `reset-entities`) |
+| Changed normalization code (`normalize_name`, cipher-names, pyselectors) | `rekey [--names \| --name-keys \| --selectors] [--dry-run]` → `resolve-entities` after a names re-key; `--purge-name-keys` after a cipher-names `KEYS_VERSION` bump. See `docs/cli.md` |
+| Mentions missing `chunk_id` (extracted before the chunks existed) | nothing extra: `embed-text` re-anchors them when it finishes |
 | Check throughput / calibrate estimates | `cipher rates`, `cipher estimate --dataset-name X` |
+| Changed filetyper (registry, compression look-inside) | `rekey --filetypes [--dry-run]` → `extract-archives` (files now typed as archives or compressed) → `extract-text` (files now typed as documents) |
+| Added archive passwords | `extract-archives` (archives with encrypted members are retried) → `extract-text` |
+| An archive failed (corrupt, a limit) | `retry-failed archive_extraction --dataset-name X` → `extract-archives` (raise the limit option it names first) |
 
 ## What it would take to run this from the frontend
 

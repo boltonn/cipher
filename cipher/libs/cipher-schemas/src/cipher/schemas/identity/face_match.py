@@ -1,9 +1,8 @@
 from datetime import datetime
-from enum import StrEnum
 
 from pydantic import Field
 
-from cipher.schemas._base.base import BaseModel
+from cipher.schemas._base.base import BaseModel, StrEnum
 from cipher.schemas._base.common import PageParams, PaginatedResponse
 from cipher.schemas._base.review import MatchSortField, ReviewableMixin, ReviewDecision, ReviewStatus
 

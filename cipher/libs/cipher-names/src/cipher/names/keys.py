@@ -32,8 +32,8 @@ from cipher.names.translit import to_latin
 
 __all__ = ["KEYS_VERSION", "KEY_TYPES", "blocking_keys", "entity_keys"]
 
-# Bump when `blocking_keys` output changes so a `backfill-entity-name-keys --rekey`
-# run can be triggered after a `cipher-names` upgrade.
+# Bump when `blocking_keys` output changes, then rebuild the index:
+# `cipher rekey --name-keys --purge-name-keys`.
 KEYS_VERSION = 1
 
 KEY_TYPES = ("folded", "translit", "phonetic", "sorted_tokens", "initials", "surname", "given_surname")

@@ -1,3 +1,5 @@
+import { humanize } from "@/lib/utils";
+
 /** Human-readable labels for agent tool calls, shown in the chat's tool header. */
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -33,6 +35,8 @@ function describeFilters(input: Record<string, unknown>): string | undefined {
     const shown = describeIds(input[key]);
     return shown ? [`${word} ${shown}`] : [];
   });
+  const names = describeIds(input.names);
+  if (names) parts.push(`named ${names}`);
   const from = str(input.date_from);
   const to = str(input.date_to);
   if (from || to) parts.push(`${from ?? "…"} → ${to ?? "…"}`);
@@ -44,6 +48,11 @@ function describeHops(value: unknown): string | undefined {
 }
 
 const TOOL_LABELS: Record<string, string> = {
+  describe_data: "Describing the data",
+  browse_folders: "Browsing folders",
+  find_files: "Finding files",
+  find_events: "Finding events",
+  search_images: "Searching images",
   search_passages: "Search",
   count_emails: "Counting emails",
   find_person: "Looking up person",
@@ -58,11 +67,31 @@ const TOOL_LABELS: Record<string, string> = {
   read_file: "Reading file",
 };
 
-const TOOL_DETAILS: Record<string, (input: Record<string, unknown>) => string | undefined> = {
-  search_passages: (input) =>
-    [str(input.query), str(input.mode), describeFilters(input), describeHops(input.connected_hops)]
+/** What `search_passages` actually ranked by -- the tool reports it, since it may differ from the args. */
+function searched(output: unknown): Record<string, unknown> | undefined {
+  return isRecord(output) && isRecord(output.searched) ? output.searched : undefined;
+}
+
+function describeSearch(input: Record<string, unknown>, output: unknown): string | undefined {
+  const ran = searched(output);
+  const query = str(ran ? ran.query : input.query);
+  const newest = humanize(String(ran?.sortBy ?? input.sort_by ?? "")) === "date created";
+  return (
+    [
+      query && `"${query}"`,
+      query && str(ran?.mode ?? input.mode ?? "hybrid"),
+      newest && "newest first",
+      describeFilters(input),
+      describeHops(input.connected_hops),
+      str(input.filetype_group),
+    ]
       .filter(Boolean)
-      .join(" · ") || undefined,
+      .join(" · ") || undefined
+  );
+}
+
+const TOOL_DETAILS: Record<string, (input: Record<string, unknown>, output: unknown) => string | undefined> = {
+  search_passages: describeSearch,
   count_emails: (input) => [str(input.group_by), describeFilters(input)].filter(Boolean).join(" · ") || undefined,
   find_person: (input) => str(input.name),
   find_entity: (input) => str(input.name) ?? str(input.selector_value),
@@ -70,12 +99,21 @@ const TOOL_DETAILS: Record<string, (input: Record<string, unknown>) => string | 
   entity_mentions: (input) => str(input.entity_id),
   related_entities: (input) =>
     [str(input.entity_id), str(input.relationship_type)].filter(Boolean).join(" · ") || undefined,
-  read_file: (input) => str(input.file_id),
+  browse_folders: (input) => str(input.path),
+  find_files: (input) =>
+    [str(input.name), str(input.folder), str(input.filetype_group), describeIds(input.extensions), describeFilters(input)]
+      .filter(Boolean)
+      .join(" · ") || undefined,
+  find_events: (input) =>
+    [str(input.query), str(input.event_type), describeIds(input.names), describeFilters(input)]
+      .filter(Boolean)
+      .join(" · ") || undefined,
+  search_images: (input) => [str(input.query), describeFilters(input)].filter(Boolean).join(" · ") || undefined,
 };
 
 /** A `Label: detail` string for a tool call, falling back to the raw name. */
-export function describeToolCall(toolName: string, input: unknown): string {
+export function describeToolCall(toolName: string, input: unknown, output?: unknown): string {
   const label = TOOL_LABELS[toolName] ?? toolName.replace(/_/g, " ");
-  const detail = isRecord(input) ? TOOL_DETAILS[toolName]?.(input) : undefined;
+  const detail = isRecord(input) ? TOOL_DETAILS[toolName]?.(input, output) : undefined;
   return detail ? `${label}: ${detail}` : label;
 }

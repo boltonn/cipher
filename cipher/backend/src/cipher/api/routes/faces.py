@@ -25,6 +25,7 @@ from cipher.schemas.identity.face import (
     Face,
     FaceAssignment,
     FaceBoundingBox,
+    FaceBulkAssignment,
     FaceEmbedding,
     FaceIdKnnSearchRequest,
     FaceLandmark,
@@ -386,6 +387,25 @@ async def assign_face(
         raise HTTPException(status_code=404, detail=f"Face not found: {id}")
     await graph_datastore.recompute_face_cooccurrence_for_faces([id])
     return face
+
+
+@router.post("/assign", summary="Assign (or unassign) many faces to one person", response_model=int)
+async def assign_faces(
+    body: FaceBulkAssignment,
+    access: DatasetAccessDep,
+    datastore: FaceDatastoreDep,
+    file_datastore: FileDatastoreDep,
+    graph_datastore: GraphDatastoreDep,
+) -> int:
+    """Bulk form of `PATCH /faces/{id}/assign`; returns how many faces were updated."""
+    await _require_faces(face_ids=body.face_ids, access=access, datastore=datastore, file_datastore=file_datastore)
+    assignment = FaceAssignment(**body.model_dump(exclude={"face_ids"}))
+    updated = 0
+    for face_id in body.face_ids:
+        if await datastore.assign_person(face_id=face_id, assignment=assignment, reviewed_by=access.user.id):
+            updated += 1
+    await graph_datastore.recompute_face_cooccurrence_for_faces(body.face_ids)
+    return updated
 
 
 @router.patch(

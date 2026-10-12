@@ -1,15 +1,18 @@
 import { useEffect, useState } from "react";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import type { ChatAutonomy } from "../types";
 
 interface ChatStore {
   keys: Record<string, string>;
   model: string;
   /** Datasets the conversation is scoped to; empty = all the user can access. */
   datasetIds: string[];
+  autonomy: ChatAutonomy;
   setKey: (provider: string, key: string) => void;
   setModel: (model: string) => void;
   setDatasetIds: (datasetIds: string[]) => void;
+  setAutonomy: (autonomy: ChatAutonomy) => void;
 }
 
 // The server holds a key for this one out of the box (LLM__* env vars); other
@@ -22,10 +25,12 @@ export const useChatStore = create<ChatStore>()(
       keys: {},
       model: DEFAULT_MODEL,
       datasetIds: [],
+      autonomy: "guided",
       setKey: (provider, key) =>
         set((s) => ({ keys: { ...s.keys, [provider]: key } })),
       setModel: (model) => set({ model }),
       setDatasetIds: (datasetIds) => set({ datasetIds }),
+      setAutonomy: (autonomy) => set({ autonomy }),
     }),
     {
       name: "chat-config",

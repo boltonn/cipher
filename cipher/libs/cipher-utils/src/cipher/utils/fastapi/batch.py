@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import sys
 import time
 from collections.abc import AsyncGenerator, Callable, Iterable
@@ -79,9 +80,7 @@ def is_cython(obj):
         return type(x).__name__ == "cython_function_or_method"
 
     # Check if function or method, respectively
-    return check_cython(obj) or (
-        hasattr(obj, "__func__") and check_cython(obj.__func__)
-    )
+    return check_cython(obj) or (hasattr(obj, "__func__") and check_cython(obj.__func__))
 
 
 def get_signature(func):
@@ -140,8 +139,7 @@ def extract_signature(func, ignore_first=False):
     if ignore_first:
         if len(signature_parameters) == 0:
             raise ValueError(
-                "Methods must take a 'self' argument, but the "
-                f"method '{func.__name__}' does not have one."
+                f"Methods must take a 'self' argument, but the method '{func.__name__}' does not have one."
             )
         signature_parameters = signature_parameters[1:]
 
@@ -197,9 +195,7 @@ def recover_args(flattened_args):
         args: The non-keyword arguments passed into the function.
         kwargs: The keyword arguments passed into the function.
     """
-    assert len(flattened_args) % 2 == 0, (
-        "Flattened arguments need to be even-numbered. See `flatten_args`."
-    )
+    assert len(flattened_args) % 2 == 0, "Flattened arguments need to be even-numbered. See `flatten_args`."
     args = []
     kwargs = {}
     for name_index in range(0, len(flattened_args), 2):
@@ -233,9 +229,7 @@ def _batch_args_kwargs(
     # e.g. args=(1, 2), kwargs={"key": "val"} got turned into
     #      [None, 1, None, 2, "key", "val"]
     arg_lengths = {len(args) for args in list_of_flattened_args}
-    assert len(arg_lengths) == 1, (
-        "All batch requests should have the same number of parameters."
-    )
+    assert len(arg_lengths) == 1, "All batch requests should have the same number of parameters."
     arg_length = arg_lengths.pop()
 
     batched_flattened_args = []
@@ -243,9 +237,7 @@ def _batch_args_kwargs(
         if idx % 2 == 0:
             batched_flattened_args.append(list_of_flattened_args[0][idx])
         else:
-            batched_flattened_args.append(
-                [item[idx] for item in list_of_flattened_args]
-            )
+            batched_flattened_args.append([item[idx] for item in list_of_flattened_args])
 
     return recover_args(batched_flattened_args)
 
@@ -278,9 +270,7 @@ class _BatchQueue:
 
         self._handle_batch_task = None
         if handle_batch_func is not None:
-            self._handle_batch_task = get_or_create_event_loop().create_task(
-                self._process_batches(handle_batch_func)
-            )
+            self._handle_batch_task = get_or_create_event_loop().create_task(self._process_batches(handle_batch_func))
 
     def put(self, request: tuple[_SingleRequest, asyncio.Future]) -> None:
         self.queue.put_nowait(request)
@@ -306,33 +296,22 @@ class _BatchQueue:
         # Wait self.timeout_s seconds for new queue arrivals.
         batch_start_time = time.time()
         while True:
-            remaining_batch_time_s = max(
-                batch_wait_timeout_s - (time.time() - batch_start_time), 0
-            )
-            try:
-                # Wait for new arrivals.
-                await asyncio.wait_for(
-                    self.queue_put_event.wait(), remaining_batch_time_s
-                )
-            except TimeoutError:
-                pass
+            remaining_batch_time_s = max(batch_wait_timeout_s - (time.time() - batch_start_time), 0)
+            # Wait for new arrivals.
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(self.queue_put_event.wait(), remaining_batch_time_s)
 
             # Add all new arrivals to the batch.
             while len(batch) < max_batch_size and not self.queue.empty():
                 batch.append(self.queue.get_nowait())
             self.queue_put_event.clear()
 
-            if (
-                time.time() - batch_start_time >= batch_wait_timeout_s
-                or len(batch) >= max_batch_size
-            ):
+            if time.time() - batch_start_time >= batch_wait_timeout_s or len(batch) >= max_batch_size:
                 break
 
         return batch
 
-    def _validate_results(
-        self, results: Iterable[Any], input_batch_length: int
-    ) -> None:
+    def _validate_results(self, results: Iterable[Any], input_batch_length: int) -> None:
         if len(results) != input_batch_length:
             raise Exception(
                 "Batched function doesn't preserve batch size. "
@@ -412,16 +391,10 @@ class _BatchQueue:
                         future.set_exception(e)
 
     def __del__(self):
-        if (
-            self._handle_batch_task is None
-            or not get_or_create_event_loop().is_running()
-        ):
+        task = self._handle_batch_task
+        if task is None or task.done() or sys.is_finalizing() or task.get_loop().is_closed():
             return
-
-        # TODO(edoakes): although we try to gracefully shutdown here, it still
-        # causes some errors when the process exits due to the asyncio loop
-        # already being destroyed.
-        self._handle_batch_task.cancel()
+        task.cancel()
 
 
 class _LazyBatchQueueWrapper:
@@ -484,26 +457,18 @@ def _validate_max_batch_size(max_batch_size):
         if isinstance(max_batch_size, float) and max_batch_size.is_integer():
             max_batch_size = int(max_batch_size)
         else:
-            raise TypeError(
-                f"max_batch_size must be integer >= 1, got {max_batch_size}"
-            )
+            raise TypeError(f"max_batch_size must be integer >= 1, got {max_batch_size}")
 
     if max_batch_size < 1:
-        raise ValueError(
-            f"max_batch_size must be an integer >= 1, got {max_batch_size}"
-        )
+        raise ValueError(f"max_batch_size must be an integer >= 1, got {max_batch_size}")
 
 
 def _validate_batch_wait_timeout_s(batch_wait_timeout_s):
     if not isinstance(batch_wait_timeout_s, (float, int)):
-        raise TypeError(
-            f"batch_wait_timeout_s must be a float >= 0, got {batch_wait_timeout_s}"
-        )
+        raise TypeError(f"batch_wait_timeout_s must be a float >= 0, got {batch_wait_timeout_s}")
 
     if batch_wait_timeout_s < 0:
-        raise ValueError(
-            f"batch_wait_timeout_s must be a float >= 0, got {batch_wait_timeout_s}"
-        )
+        raise ValueError(f"batch_wait_timeout_s must be a float >= 0, got {batch_wait_timeout_s}")
 
 
 T = TypeVar("T")
@@ -514,7 +479,7 @@ G = TypeVar("G", bound=Callable[..., Any])
 
 # Normal decorator use case (called with no arguments).
 @overload
-def batch(func: F) -> G:
+def batch[F, G: Callable[..., Any]](func: F) -> G:
     pass
 
 
@@ -586,9 +551,7 @@ def batch(
     # See the comment at the end of this function for a detailed explanation.
     if _func is not None:
         if not callable(_func):
-            raise TypeError(
-                "@serve.batch can only be used to decorate functions or methods."
-            )
+            raise TypeError("@serve.batch can only be used to decorate functions or methods.")
 
         if not iscoroutinefunction(_func):
             raise TypeError("Functions decorated with @serve.batch must be 'async def'")
@@ -644,9 +607,7 @@ def batch(
                 batch_queue.max_batch_size = new_max_batch_size
 
             if hasattr(batch_queue_object, "_ray_serve_batch_wait_timeout_s"):
-                new_batch_wait_timeout_s = (
-                    batch_queue_object._ray_serve_batch_wait_timeout_s
-                )
+                new_batch_wait_timeout_s = batch_queue_object._ray_serve_batch_wait_timeout_s
                 _validate_batch_wait_timeout_s(new_batch_wait_timeout_s)
                 batch_queue.batch_wait_timeout_s = new_batch_wait_timeout_s
 
@@ -667,21 +628,14 @@ def batch(
             # This will raise if the underlying call raised an exception.
             return await enqueue_request(args, kwargs)
 
-        if isasyncgenfunction(_func):
-            wrapper = generator_batch_wrapper
-        else:
-            wrapper = batch_wrapper
+        wrapper = generator_batch_wrapper if isasyncgenfunction(_func) else batch_wrapper
 
         # We store the lazy_batch_queue_wrapper's getters and setters as
         # batch_wrapper attributes, so they can be accessed in user code.
         wrapper._get_max_batch_size = lazy_batch_queue_wrapper.get_max_batch_size
-        wrapper._get_batch_wait_timeout_s = (
-            lazy_batch_queue_wrapper.get_batch_wait_timeout_s
-        )
+        wrapper._get_batch_wait_timeout_s = lazy_batch_queue_wrapper.get_batch_wait_timeout_s
         wrapper.set_max_batch_size = lazy_batch_queue_wrapper.set_max_batch_size
-        wrapper.set_batch_wait_timeout_s = (
-            lazy_batch_queue_wrapper.set_batch_wait_timeout_s
-        )
+        wrapper.set_batch_wait_timeout_s = lazy_batch_queue_wrapper.set_batch_wait_timeout_s
 
         return wrapper
 

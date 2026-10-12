@@ -9,6 +9,7 @@ from cipher.datastores.postgres.config import PostgresConfig
 from cipher.schemas.interaction.llm import LLMSettings
 from cipher.utils.fastapi.settings import BaseServiceSettings
 from cipher.utils.retrieval import RetrievalBackend, RetrievalConfig, TextRanker
+from cipher.utils.search import SearchConfig
 
 __all__ = ["Settings", "DevelopmentMode", "RetrievalBackend", "RetrievalConfig", "TextRanker"]
 
@@ -40,11 +41,14 @@ class Settings(BaseServiceSettings):
 
     github: GithubConfig | None = Field(None, description="GitHub integration for dataset requests")
 
-    llm: LLMSettings = Field(default_factory=LLMSettings, description="Chat agent model configuration (LLM__* env vars)")
+    llm: LLMSettings = Field(
+        default_factory=LLMSettings, description="Chat agent model configuration (LLM__* env vars)"
+    )
 
     elasticsearch: ElasticsearchConfig | None = Field(None, description="Elasticsearch configuration object")
     postgres: PostgresConfig | None = Field(None, description="Postgres configuration object")
     retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig, description="Chunk-search backend selection")
+    search: SearchConfig = Field(default_factory=SearchConfig, description="Global search (SEARCH__* env vars)")
     mode: DevelopmentMode = Field(DevelopmentMode.DEV, description="Development mode")
     access_cache_seconds: float = Field(
         30, description="How long a user and their dataset memberships are cached per process (0 disables)"

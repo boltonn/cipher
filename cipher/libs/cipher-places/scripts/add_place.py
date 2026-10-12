@@ -1,4 +1,4 @@
-"""Add (or replace) a custom place, rebuild the gazetteer offline, and show how it resolves.
+r"""Add (or replace) a custom place, rebuild the gazetteer offline, and show how it resolves.
 
     uv run libs/cipher-places/scripts/add_place.py "North Facility" 49.84 24.03 \\
         --alias "Північний об'єкт" --alias "Северный объект" --country UA
@@ -48,7 +48,11 @@ def main() -> None:
         country_code = args.country.upper() if args.country else None
         places.append(
             CustomPlace(
-                name=name, latitude=args.latitude, longitude=args.longitude, aliases=args.alias, country_code=country_code
+                name=name,
+                latitude=args.latitude,
+                longitude=args.longitude,
+                aliases=args.alias,
+                country_code=country_code,
             )
         )
     _write(custom_path, places)

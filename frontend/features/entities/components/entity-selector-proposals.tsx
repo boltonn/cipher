@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { useLinkSelector, useSelectorEvidence } from "@/features/entities/hooks/use-entities";
 import type { SelectorEvidence } from "@/features/entities/types";
-import { AtSign, Check, Sparkles, X } from "lucide-react";
+import { AtSign, Check, Sparkles, TriangleAlert, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
@@ -18,20 +18,26 @@ export function EntitySelectorProposals({ entityId, entityName }: { entityId: st
   const pathname = usePathname();
   const search = useSearchParams();
   const proposed = (search.get("propose") ?? "").split(",").filter(Boolean);
-  const { data: evidence, isPending } = useSelectorEvidence(entityId, proposed);
+  const { data: evidence } = useSelectorEvidence(entityId, proposed);
 
   // Resolved or dismissed rows leave the URL, so the proposal can't be re-applied by a reload.
-  const drop = (selectorId: string) => {
-    const rest = proposed.filter((id) => id !== selectorId);
-    const params = new URLSearchParams(search);
-    if (rest.length) params.set("propose", rest.join(","));
+  // Reads the live URL: a rollback can land after other rows were resolved.
+  const setProposed = (update: (ids: string[]) => string[]) => {
+    const params = new URLSearchParams(window.location.search);
+    const ids = update((params.get("propose") ?? "").split(",").filter(Boolean));
+    if (ids.length) params.set("propose", ids.join(","));
     else params.delete("propose");
     const query = params.toString();
     router.replace(`${pathname}${query ? `?${query}` : ""}`, { scroll: false });
   };
-  const link = useLinkSelector(entityId, drop);
+  const drop = (selectorId: string) => setProposed((ids) => ids.filter((id) => id !== selectorId));
+  const link = useLinkSelector(entityId, {
+    onApply: drop,
+    onRevert: (selectorId) => setProposed((ids) => (ids.includes(selectorId) ? ids : [...ids, selectorId])),
+  });
 
-  if (proposed.length === 0 || isPending || !evidence?.length) return null;
+  const rows = evidence?.filter((row) => proposed.includes(row.entityId)) ?? [];
+  if (rows.length === 0) return null;
 
   return (
     <div className="rounded-lg border border-annotation/30 bg-annotation/[0.04] p-3">
@@ -44,13 +50,12 @@ export function EntitySelectorProposals({ entityId, entityName }: { entityId: st
         mentions and accept each one.
       </p>
       <ul className="mt-2 space-y-1.5">
-        {evidence.map((row) => (
+        {rows.map((row) => (
           <ProposalRow
             key={row.entityId}
             row={row}
             entityId={entityId}
-            pending={link.isPending && link.variables?.selectorId === row.entityId}
-            onLink={(moveFrom) => link.mutate({ selectorId: row.entityId, moveFrom })}
+            onLink={(moveFrom) => link.mutate({ selector: row, moveFrom })}
             onDismiss={() => drop(row.entityId)}
           />
         ))}
@@ -62,13 +67,11 @@ export function EntitySelectorProposals({ entityId, entityName }: { entityId: st
 function ProposalRow({
   row,
   entityId,
-  pending,
   onLink,
   onDismiss,
 }: {
   row: SelectorEvidence;
   entityId: string;
-  pending: boolean;
   onLink: (moveFrom: string[]) => void;
   onDismiss: () => void;
 }) {
@@ -89,6 +92,12 @@ function ProposalRow({
           {row.emailCount.toLocaleString()} email{row.emailCount === 1 ? "" : "s"}
           {row.names.length > 0 && <> · as {row.names.map((n) => `“${n}”`).join(", ")}</>}
         </p>
+        {row.isRoleAddress && (
+          <p className="mt-0.5 flex items-center gap-1 text-[11px] text-destructive">
+            <TriangleAlert size={11} className="shrink-0" />
+            Shared mailbox — it sends under other people’s names, so those names don’t show who owns it.
+          </p>
+        )}
         <p className="mt-0.5 text-[11px]">
           {alreadyLinked ? (
             <span className="text-muted-foreground">Already a selector of this entity.</span>
@@ -112,12 +121,12 @@ function ProposalRow({
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
         {!alreadyLinked && others.length > 0 && (
-          <Button size="sm" variant="outline" className="h-7 text-[11px]" disabled={pending} onClick={() => onLink(others.map((o) => o.entityId))}>
+          <Button size="sm" variant="outline" className="h-7 text-[11px]" onClick={() => onLink(others.map((o) => o.entityId))}>
             <Check size={12} /> Move here
           </Button>
         )}
         {!alreadyLinked && (
-          <Button size="sm" className="h-7 text-[11px]" disabled={pending} onClick={() => onLink([])}>
+          <Button size="sm" className="h-7 text-[11px]" onClick={() => onLink([])}>
             <Check size={12} /> {others.length ? "Also add here" : "Accept"}
           </Button>
         )}

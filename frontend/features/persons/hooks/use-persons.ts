@@ -86,16 +86,17 @@ export function useUpdatePerson(personId: string, onSuccess?: () => void) {
 }
 
 /**
- * Fold another person into `targetId` and delete that other record. The
+ * Fold `sourceId` into `targetId` and delete the source record. The
  * backend moves faces, pending matches, event participations, comments,
  * mentions and relationship edges onto the survivor, so invalidate broadly.
  */
-export function useMergePerson(targetId: string, onSuccess?: () => void) {
+export function useMergePerson(onSuccess?: () => void) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (sourceId: string) => personsService.merge(targetId, sourceId),
-    onSuccess: (_result, sourceId) => {
+    mutationFn: ({ targetId, sourceId }: { targetId: string; sourceId: string }) =>
+      personsService.merge(targetId, sourceId),
+    onSuccess: (_result, { sourceId }) => {
       // The merged-in person (and its shared-id entity) is deleted -- drop its
       // cache outright so a still-mounted observer doesn't refetch a 404, and
       // exclude its keys from the broad invalidation below.

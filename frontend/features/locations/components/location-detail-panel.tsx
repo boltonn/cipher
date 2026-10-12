@@ -22,6 +22,15 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
+/** Exact duration: `45s`, `3m 0s`, `1h 3m`. */
+function formatDuration(seconds: number): string {
+  const s = Math.round(seconds);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${s % 60}s`;
+  return `${Math.floor(m / 60)}h ${m % 60}m`;
+}
+
 export type SelectedLocation = LocationProperties & { lng: number; lat: number };
 
 export function LocationDetailPanel({
@@ -44,6 +53,7 @@ export function LocationDetailPanel({
   const bearing = num(feature.bearing);
   const velocity = num(feature.velocity);
   const altitude = num(feature.altitude);
+  const duration = num(feature.durationSeconds);
   const browserFile: FileBrowserItem | null = file ? { ...file, type: "file" } : null;
 
   return (
@@ -78,6 +88,7 @@ export function LocationDetailPanel({
             <Row label="Source" value={labelFor("source", feature.source)} />
             <Row label="Category" value={feature.category ? labelFor("category", feature.category) : null} />
             <Row label="When" value={when} />
+            <Row label="Duration" value={duration !== null ? formatDuration(duration) : null} />
             <Row label="Coordinates" value={`${feature.lat.toFixed(5)}, ${feature.lng.toFixed(5)}`} />
             <Row label="Bearing" value={bearing !== null ? `${bearing}°` : null} />
             <Row label="Speed" value={velocity !== null ? `${velocity.toFixed(2)} m/s` : null} />

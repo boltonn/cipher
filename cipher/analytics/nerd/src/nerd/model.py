@@ -4,9 +4,15 @@ Decoding is offset-based: the model is run over sub-word tokens, predictions
 are argmax'd per token, sub-tokens are pooled to whole words (HF's ``"first"``
 aggregation -- a word's tag/score come from its first sub-token, but its span
 covers all of the word's characters), and BIO runs are merged back to
-character spans at word granularity via the tokenizer's offset mapping. This
-keeps it correct for documents longer than the encoder's 512-token window,
-which are processed as overlapping strides.
+character spans at word granularity via the tokenizer's offset mapping.
+
+Documents longer than the encoder's 512-token window are tokenized once and
+read through overlapping windows cut at natural breaks -- paragraph, line,
+sentence, word; never mid-word (`nerd.windows`). They're decoded *once*: each
+token takes its prediction from the window where it has the most context on
+both sides (BERT's "max context" rule), and BIO merging runs over the stitched
+document. A window edge is never a span boundary, so a name straddling it
+can't come back as a fragment (``n Flick`` from a window starting mid-``Megan``).
 
 Word-level pooling matters because BIO-run merging treats any ``B-`` tag
 preceded by a character gap as the start of a new entity (needed to keep
@@ -28,6 +34,7 @@ from loguru import logger
 from cipher.schemas._base.common import ModelDevice
 from nerd.labels import normalize_label
 from nerd.schemas import EntitySpan
+from nerd.windows import break_strengths, plan_windows
 
 _MAX_TOKENS = 512
 _STRIDE = 64
@@ -38,6 +45,12 @@ CudaDtype = Literal["float16", "bfloat16", "float32"]
 # segments (query strings, %-encoded words) and emits junk location/org spans.
 # Blanking them out char-for-char keeps every other span's offset valid.
 _URL_RE = re.compile(r"(?:https?://|www\.)\S+", re.IGNORECASE)
+
+# Per-label score floors over `threshold`. Measured on the rag email corpus (2026-10-12): organization
+# and place-name spans scoring 0.5-0.6 are about half fragments and non-entities ("Towards", "of",
+# "San", "P.O"), and 84% of their values recur above 0.6 elsewhere. Person spans there are mostly
+# real names (quoted reply headers), so they keep the plain threshold.
+LABEL_FLOORS: dict[str, float] = {"organization.name": 0.6, "location.name": 0.6}
 
 
 def _mask_urls(text: str) -> str:
@@ -111,8 +124,9 @@ class NerdModel:
         scores: list[float],
         word_ids: list[int | None],
     ) -> tuple[list[tuple[int, int]], list[str], list[float]]:
-        """Pool sub-word tokens to whole words: a word's tag/score come from its
-        first sub-token (HF's ``"first"`` strategy); its span covers every
+        """Pool sub-word tokens to whole words.
+
+        A word's tag/score come from its first sub-token (HF's ``"first"`` strategy); its span covers every
         sub-token's characters, so a mid-word tag flip can no longer truncate it.
         """
         real = [(o, t, s, w) for o, t, s, w in zip(offsets, tags, scores, word_ids, strict=True) if o[0] != o[1]]
@@ -167,6 +181,11 @@ class NerdModel:
                 s += 1
             while e > s and not text[e - 1].isalnum():  # trim trailing
                 e -= 1
+            last_line = text[s:e].rsplit("\n", 1)
+            if len(last_line) == 2 and len(last_line[1].strip()) == 1:  # "m" / "o" / "e" phone cues under an address
+                e = s + len(last_line[0])
+                while e > s and not text[e - 1].isalnum():
+                    e -= 1
             if e > s:
                 spans.append((s, e, cur_label, sum(cur_scores) / len(cur_scores)))
 
@@ -179,7 +198,9 @@ class NerdModel:
                 cur_label, cur_scores = None, []
                 continue
             has_gap = cur_label is not None and a > cur_end
-            continues = cur_label == label and not (prefix == "B" and has_gap)
+            # a name never runs across a line break ("Melissa" / "Lauren Hard"); an address does
+            line_break = has_gap and "address" not in label and "\n" in text[cur_end:a]
+            continues = cur_label == label and not (prefix == "B" and has_gap) and not line_break
             if continues:
                 cur_end = b
                 cur_scores.append(sc)
@@ -189,9 +210,11 @@ class NerdModel:
         flush()
         return spans
 
-    def infer(self, text: str, threshold: float = 0.5) -> list[EntitySpan]:
-        """Predict entity spans over `text`, keeping spans scoring at/above `threshold`."""
-        return self.infer_batch([text], threshold=threshold)[0]
+    def infer(
+        self, text: str, threshold: float = 0.5, label_floors: dict[str, float] | None = None
+    ) -> list[EntitySpan]:
+        """Predict entity spans over `text` (see `infer_batch` for the score floors)."""
+        return self.infer_batch([text], threshold=threshold, label_floors=label_floors)[0]
 
     def _pack(self, lengths: list[int]) -> list[list[int]]:
         """Group window indices, shortest first, into passes of at most `max_batch_tokens` padded tokens."""
@@ -203,53 +226,83 @@ class NerdModel:
                 batches.append([w])
         return batches
 
-    def infer_batch(self, texts: list[str], threshold: float = 0.5) -> list[list[EntitySpan]]:
+    def infer_batch(
+        self, texts: list[str], threshold: float = 0.5, label_floors: dict[str, float] | None = None
+    ) -> list[list[EntitySpan]]:
         """Predict entity spans for many texts, one result list per text.
 
-        Every text's 512-token windows are pooled across texts, length-sorted and
-        packed into shared forward passes, so short texts don't each pay for a
-        near-empty pass. Per-window decoding is identical to a single-text call.
+        A span is kept when it scores at/above `threshold` and its label's floor
+        (`label_floors`, default `LABEL_FLOORS`; pass `{}` for `threshold` alone).
+
+        Each text is tokenized once and read through windows cut at natural breaks
+        (`nerd.windows`); windows from every text are length-sorted and packed into
+        shared forward passes, then each text's predictions are stitched per token
+        (max context) and decoded once.
         """
         torch = self._torch
         live = [i for i, text in enumerate(texts) if text and text.strip()]
-        merged: list[dict[tuple[int, int, str], float]] = [{} for _ in texts]
+        # per text: token index -> (context, tag, score), the best-context window winning
+        best: list[dict[int, tuple[int, str, float]]] = [{} for _ in texts]
+        encodings: dict[int, tuple[list[int], list[tuple[int, int]], list[int | None]]] = {}
+        windows: list[tuple[int, int, int]] = []
         if live:
             enc = self._tokenizer(
                 [_mask_urls(texts[i]) for i in live],  # same length -- offsets still index the original
+                add_special_tokens=False,
                 return_offsets_mapping=True,
-                truncation=True,
-                max_length=_MAX_TOKENS,
-                stride=_STRIDE,
-                return_overflowing_tokens=True,
+                verbose=False,
             )
-            input_ids: list[list[int]] = enc["input_ids"]
-            window_text = [live[s] for s in enc["overflow_to_sample_mapping"]]
-            for batch in self._pack([len(ids) for ids in input_ids]):
-                width = len(input_ids[batch[-1]])
-                ids = torch.full((len(batch), width), self._tokenizer.pad_token_id, dtype=torch.long)
-                mask = torch.zeros((len(batch), width), dtype=torch.long)
-                for row, w in enumerate(batch):
-                    ids[row, : len(input_ids[w])] = torch.tensor(input_ids[w])
-                    mask[row, : len(input_ids[w])] = 1
-                with torch.inference_mode():
-                    logits = self._model(input_ids=ids.to(self._device), attention_mask=mask.to(self._device)).logits
-                    conf, pred = logits.float().softmax(-1).max(-1)
-                conf_rows, pred_rows = conf.cpu().tolist(), pred.cpu().tolist()
+            budget = _MAX_TOKENS - self._tokenizer.num_special_tokens_to_add()
+            for row, i in enumerate(live):
+                ids, offsets, word_ids = (
+                    enc["input_ids"][row],
+                    [tuple(o) for o in enc["offset_mapping"][row]],
+                    enc.word_ids(row),
+                )
+                encodings[i] = (ids, offsets, word_ids)
+                strengths = break_strengths(texts[i], offsets, word_ids)
+                windows += [(i, start, end) for start, end in plan_windows(strengths, budget, _STRIDE)]
 
-                for row, w in enumerate(batch):
-                    n = len(input_ids[w])
-                    text = texts[window_text[w]]
-                    tags = [self._id2label[i] for i in pred_rows[row][:n]]
-                    offs, tags, scs = self._pool_words(
-                        [tuple(o) for o in enc["offset_mapping"][w]], tags, conf_rows[row][:n], enc.word_ids(w)
-                    )
-                    spans = merged[window_text[w]]
-                    for start, end, label, score in self._merge(text, offs, tags, scs):
-                        if score > spans.get((start, end, label), 0.0):
-                            spans[(start, end, label)] = score
+        lead = self._tokenizer.build_inputs_with_special_tokens([-1]).index(-1)
+        input_ids = [self._tokenizer.build_inputs_with_special_tokens(encodings[i][0][s:e]) for i, s, e in windows]
+        for batch in self._pack([len(ids) for ids in input_ids]):
+            width = len(input_ids[batch[-1]])
+            ids = torch.full((len(batch), width), self._tokenizer.pad_token_id, dtype=torch.long)
+            mask = torch.zeros((len(batch), width), dtype=torch.long)
+            for row, w in enumerate(batch):
+                ids[row, : len(input_ids[w])] = torch.tensor(input_ids[w])
+                mask[row, : len(input_ids[w])] = 1
+            with torch.inference_mode():
+                logits = self._model(input_ids=ids.to(self._device), attention_mask=mask.to(self._device)).logits
+                conf, pred = logits.float().softmax(-1).max(-1)
+            conf_rows, pred_rows = conf.cpu().tolist(), pred.cpu().tolist()
 
-        return [
-            [
+            for row, w in enumerate(batch):
+                i, start, end = windows[w]
+                for k in range(end - start):
+                    context = min(k, end - start - 1 - k)
+                    if context > best[i].get(start + k, (-1,))[0]:
+                        best[i][start + k] = (
+                            context,
+                            self._id2label[pred_rows[row][lead + k]],
+                            conf_rows[row][lead + k],
+                        )
+
+        floors = LABEL_FLOORS if label_floors is None else label_floors
+        results: list[list[EntitySpan]] = []
+        for i, text in enumerate(texts):
+            if not best[i]:
+                results.append([])
+                continue
+            _, offsets, word_ids = encodings[i]
+            order = sorted(best[i])
+            offs, tags, scs = self._pool_words(
+                [offsets[t] for t in order],
+                [best[i][t][1] for t in order],
+                [best[i][t][2] for t in order],
+                [word_ids[t] for t in order],
+            )
+            spans = [
                 EntitySpan(
                     surface_text=text[start:end],
                     label=normalize_label(label),
@@ -257,11 +310,10 @@ class NerdModel:
                     end_offset=end,
                     score=float(score),
                 )
-                for (start, end, label), score in sorted(spans.items())
-                if score >= threshold
+                for start, end, label, score in self._merge(text, offs, tags, scs)
             ]
-            for text, spans in zip(texts, merged, strict=True)
-        ]
+            results.append([span for span in spans if span.score >= max(threshold, floors.get(span.label, 0.0))])
+        return results
 
     def unload(self) -> None:
         """Release the model."""

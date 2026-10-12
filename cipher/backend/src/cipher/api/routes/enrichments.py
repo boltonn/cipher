@@ -9,6 +9,7 @@ from cipher.schemas._base.base import BaseModel
 from cipher.schemas.graph.event import EVENT_FILE_TAG
 from cipher.schemas.ingestion.enrichment import (
     ENRICHMENT_DEPENDENCIES,
+    RESOLUTION_RUN,
     DatasetEnrichmentFailures,
     DatasetEnrichmentProgress,
     EnrichmentFailureReason,
@@ -16,6 +17,7 @@ from cipher.schemas.ingestion.enrichment import (
     EnrichmentType,
     FailedEnrichment,
     ProcessingStatus,
+    SweepRun,
 )
 from cipher.schemas.ingestion.estimation import ESTIMATE_ORDER
 
@@ -39,8 +41,9 @@ class EnrichmentRunRequest(BaseModel):
 
 
 class EnrichmentConfig(BaseModel):
-    """Static pipeline metadata for clients: display order, hard prerequisites,
-    and which analytics the API can trigger directly.
+    """Static pipeline metadata for clients.
+
+    Display order, hard prerequisites, and which analytics the API can trigger directly.
     """
 
     pipeline_order: list[EnrichmentType]
@@ -118,7 +121,13 @@ def _to_progress(
 
 # Dataset-wide passes with no per-file rows: their progress is their latest recorded run.
 _RUN_TRACKED = (EnrichmentType.FACE_MATCHING, EnrichmentType.FACE_CLUSTERING)
-_RUN_STATUS = {"completed": ProcessingStatus.COMPLETED, "failed": ProcessingStatus.FAILED}
+# A stopped run left its work queued: it reads as waiting, not failed.
+_RUN_STATUS = {
+    "completed": ProcessingStatus.COMPLETED,
+    "failed": ProcessingStatus.FAILED,
+    "stopped": ProcessingStatus.PENDING,
+    "cancelled": ProcessingStatus.PENDING,
+}
 
 
 async def _event_stages(datastore, dataset_id: str) -> list[EnrichmentStageProgress]:
@@ -179,13 +188,39 @@ async def _event_stages(datastore, dataset_id: str) -> list[EnrichmentStageProgr
     return stages
 
 
+def _archive_stages(progress: DatasetEnrichmentProgress, run_progress: dict | None) -> list[EnrichmentStageProgress]:
+    """A running unpack: the archives, then the members of the one being unpacked now."""
+    current = ((run_progress or {}).get("archives") or {}).get("current")
+    if not current:
+        return []
+    done = current.get("members_done", 0)
+    return [
+        EnrichmentStageProgress(
+            name="archives",
+            label="Archives",
+            total=progress.total,
+            completed=progress.completed,
+            skipped=progress.counts.get(ProcessingStatus.SKIPPED, 0),
+            failed=progress.counts.get(ProcessingStatus.FAILED, 0),
+            skip_reasons=progress.skip_reasons,
+        ),
+        EnrichmentStageProgress(
+            name="members",
+            label=f"Members of {current.get('filename', 'the current archive')}",
+            total=current.get("members_total") or done,  # a streamed tar's count is unknown until its end
+            completed=done,
+        ),
+    ]
+
+
 def _from_run(dataset_id: str, enrichment_type: EnrichmentType, run) -> DatasetEnrichmentProgress:
-    """Progress of a dataset-wide pass from its latest run: done (with the units it covered), failed, or running."""
+    """Progress of a dataset-wide pass from its latest run: done (with the units it covered), failed, stopped, or running."""
     status = _RUN_STATUS.get(run.status, ProcessingStatus.PROCESSING)
     units = run.unit_count if status == ProcessingStatus.COMPLETED else 1
     progress = _to_progress(dataset_id, enrichment_type, {status: units} if units else {})
     progress.progress = 1.0 if status == ProcessingStatus.COMPLETED else 0.0
     progress.date_last_run = run.date_started
+    progress.is_running = status == ProcessingStatus.PROCESSING
     return progress
 
 
@@ -194,18 +229,22 @@ async def _dataset_progress(
 ) -> list[DatasetEnrichmentProgress]:
     stats = await datastore.get_enrichment_stats(dataset_id=dataset_id)
     reasons = await datastore.get_skip_reasons(dataset_id=dataset_id)
-    runs = await run_datastore.latest_for_dataset(
-        dataset_id=dataset_id, enrichment_types=[t for t in types if t in _RUN_TRACKED]
-    )
+    runs = await run_datastore.latest_for_dataset(dataset_id=dataset_id, enrichment_types=types)
     items = []
     for enrichment_type in types:
         if stats.get(enrichment_type):
             progress = _to_progress(dataset_id, enrichment_type, stats[enrichment_type])
             progress.skip_reasons = reasons.get(enrichment_type, {})
+            run = runs.get(enrichment_type)
+            progress.is_running = (run is not None and run.status == "running") or bool(
+                stats[enrichment_type].get(ProcessingStatus.PROCESSING)
+            )
             if enrichment_type == EnrichmentType.EVENT_EXTRACTION:
                 progress.stages = await _event_stages(datastore, dataset_id)
+            if enrichment_type == EnrichmentType.ARCHIVE_EXTRACTION and progress.is_running and run is not None:
+                progress.stages = _archive_stages(progress, run.progress)
             items.append(progress)
-        elif run := runs.get(enrichment_type):
+        elif enrichment_type in _RUN_TRACKED and (run := runs.get(enrichment_type)):
             items.append(_from_run(dataset_id, enrichment_type, run))
     return items
 
@@ -238,6 +277,24 @@ async def get_dataset_enrichment_progress(
     stats = await datastore.get_enrichment_stats(dataset_id=dataset_id)
     return await _dataset_progress(
         datastore, run_datastore, dataset_id, [*PIPELINE_ORDER, *(t for t in stats if t not in PIPELINE_ORDER)]
+    )
+
+
+@router.get("/resolution", response_model=SweepRun | None, response_model_by_alias=True)
+async def get_resolution_run(
+    run_datastore: EnrichmentRunDatastoreDep, dataset_id: DatasetIdQueryDep
+) -> SweepRun | None:
+    """The latest entity-resolution run on a dataset (`cipher resolve-entities`) with each step's progress."""
+    run = await run_datastore.latest_run(dataset_id=dataset_id, enrichment_type=RESOLUTION_RUN)
+    if run is None:
+        return None
+    return SweepRun(
+        status=run.status,
+        date_started=run.date_started,
+        date_completed=run.date_completed,
+        duration_seconds=run.duration_seconds,
+        error_message=run.error_message,
+        steps=(run.progress or {}).get("steps", []),
     )
 
 

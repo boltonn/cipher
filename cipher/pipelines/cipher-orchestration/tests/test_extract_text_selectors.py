@@ -63,3 +63,47 @@ def test_span_to_mention_unresolved_when_no_entity():
     """Span to mention unresolved when no entity."""
     m = _span_to_mention(_span(), dataset_id="d", file_id="f", extracted_id="x", content="z" * 100)
     assert m.entity_id is None
+
+
+class _FakeEntities:
+    async def get_or_create_selector(self, **kw):
+        return type("E", (), {"id": f"sel:{kw['normalized_value']}"})(), True
+
+
+class _FakeMentions:
+    async def add_mentions_batch(self, mentions):
+        self.written = mentions
+        return len(mentions)
+
+
+async def _run_text_pass(content: str, skip_offsets=None):
+    from cipher.orchestration.extract_selectors import _extract_text_selectors
+
+    extracted = type("X", (), {"id": "x", "content": content, "metadata": None})()
+    mentions = _FakeMentions()
+    await _extract_text_selectors(
+        dataset_id="d",
+        file_id="f",
+        extracted=extracted,
+        entity_repo=_FakeEntities(),
+        mention_repo=mentions,
+        selector_cache={},
+        skip_offsets=skip_offsets,
+    )
+    return getattr(mentions, "written", [])
+
+
+async def test_every_repeat_of_an_address_is_kept():
+    """A reply chain quoting one address 12 times marks all 12, not the first few."""
+    content = "".join(f"On Fri, Jul {day}, 2025 Megan Flick <megan.e.flick@gmail.com> wrote:\n" for day in range(12))
+    written = await _run_text_pass(content)
+    assert len([m for m in written if m.normalized_value == "megan.e.flick@gmail.com"]) == 12
+
+
+async def test_rescan_only_adds_missing_spans():
+    """Spans an earlier run wrote are skipped, so a rescan never duplicates."""
+    content = "a@example.com and b@example.com"
+    first = await _run_text_pass(content)
+    done = {(m.selector_type, m.start_offset) for m in first if m.normalized_value == "a@example.com"}
+    second = await _run_text_pass(content, skip_offsets=done)
+    assert {m.normalized_value for m in second} == {m.normalized_value for m in first} - {"a@example.com"}

@@ -14,7 +14,16 @@ does no I/O and imports no repository.
 from dataclasses import dataclass, field
 from math import log2
 
-from cipher.names import Culture, compare_names, fold, phonetic_key, to_latin
+from cipher.names import (
+    AddressAgreement,
+    Culture,
+    address_name_agreement,
+    compare_names,
+    compare_org_names,
+    fold,
+    phonetic_key,
+    to_latin,
+)
 from cipher.names.compare import Level
 from cipher.schemas.graph.entity_match import EntityMatchMethod
 from cipher.schemas.graph.entity_resolution import (
@@ -58,6 +67,7 @@ class MentionScoringInput:
     attributes: dict[str, str] = field(default_factory=dict)  # date_of_birth | nationality | employer
     neighbor_entity_ids: frozenset[str] = frozenset()
     name_df: int = 1  # entities sharing this normalized name in scope (term-frequency)
+    surname_words: frozenset[str] = frozenset()  # words the dataset uses as surnames (`Bolton` alone)
 
 
 @dataclass(frozen=True, slots=True)
@@ -172,12 +182,17 @@ def _f_name_trigram(m: MentionScoringInput, c: CandidateScoringInput) -> tuple[F
 
 
 def _f_name_structure(m: MentionScoringInput, c: CandidateScoringInput) -> tuple[FeatureLevel, str]:
+    # given/surname structure means nothing for a company: `Amazon Web Services, Inc` would
+    # read as surname + given `Inc` and "match" every other `..., Inc`
+    if c.entity_type == EntityType.ORGANIZATION:
+        cmp = max((compare_org_names(m.name, name) for name in _names(c)), key=lambda r: r.level)
+        return _LEVEL_FROM_COMPARE[cmp.level], cmp.explanation
     best = Level.CONFLICT
     detail = ""
     given_conflict = False
     culture = _culture(m.culture)
     for name in _names(c):
-        cmp = compare_names(m.name, name, culture=culture)
+        cmp = compare_names(m.name, name, culture=culture, surname_words=m.surname_words)
         if cmp.level > best:
             best, detail = cmp.level, cmp.explanation
         # Two fully-spelled, unrelated first names under the same surname = a
@@ -187,6 +202,19 @@ def _f_name_structure(m: MentionScoringInput, c: CandidateScoringInput) -> tuple
     if given_conflict and best <= Level.MODERATE:
         return FeatureLevel.CONFLICT, "same surname but a different first name -- likely a different person"
     return _LEVEL_FROM_COMPARE[best], detail
+
+
+def _f_address_name(m: MentionScoringInput, c: CandidateScoringInput) -> tuple[FeatureLevel, str]:
+    """An email address on one side that spells the other side's name (or someone else's)."""
+    pairs = [(a, _names(c)) for a in m.selector_values if "@" in a] + [
+        (a, [m.name]) for a in c.selector_values if "@" in a
+    ]
+    found = {address: address_name_agreement(address, names) for address, names in pairs}
+    if match := next((a for a, v in found.items() if v == AddressAgreement.MATCH), None):
+        return FeatureLevel.STRONG, f"{match} spells the name"
+    if conflict := next((a for a, v in found.items() if v == AddressAgreement.CONFLICT), None):
+        return FeatureLevel.WEAK, f"{conflict} spells someone else's name"
+    return FeatureLevel.NONE, ""
 
 
 def _f_attribute_agreement(m: MentionScoringInput, c: CandidateScoringInput) -> tuple[FeatureLevel, str]:
@@ -214,6 +242,7 @@ def _f_co_mention_prior(m: MentionScoringInput, c: CandidateScoringInput) -> tup
 _FEATURES = (
     ("type_agreement", _f_type_agreement),
     ("selector_overlap", _f_selector_overlap),
+    ("address_name", _f_address_name),
     ("name_exact", _f_name_exact),
     ("name_translit", _f_name_translit),
     ("name_phonetic", _f_name_phonetic),

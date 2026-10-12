@@ -13,6 +13,7 @@ import { XlsxViewerPreview } from "@/components/viewers/xlsx-viewer";
 import { useEmail } from "@/features/emails/api";
 import { EmailViewer } from "@/features/emails/components/email-viewer";
 import { useFileImage } from "@/features/images/api";
+import type { OverlayBox } from "@/features/faces/components/face-image-overlay";
 import { ImageViewerContent } from "@/features/images/components/image-viewer-content";
 import { formatBytes } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
@@ -91,6 +92,8 @@ interface FileViewerContentProps {
   searchQuery?: string;
   /** Where to jump on open -- e.g. a search result's chunk or a chat citation. */
   locationTarget?: FileLocationTarget;
+  /** Face boxes to draw on an analysed image. */
+  imageOverlayBoxes?: OverlayBox[];
 }
 
 export function FileViewerContent({
@@ -105,6 +108,7 @@ export function FileViewerContent({
   sidebarFitsInline,
   searchQuery,
   locationTarget,
+  imageOverlayBoxes,
 }: FileViewerContentProps) {
   // Only files the images pipeline has actually processed have an Image
   // record; most files won't, so this resolves to `undefined` and the plain
@@ -208,6 +212,7 @@ export function FileViewerContent({
     return (
       <EmailViewer
         email={email}
+        fileId={file.id}
         locationTarget={
           locationTarget?.startOffset !== undefined && locationTarget?.endOffset !== undefined
             ? { startOffset: locationTarget.startOffset, endOffset: locationTarget.endOffset }
@@ -218,7 +223,9 @@ export function FileViewerContent({
   }
 
   if (file.filetypeGroup === "image") {
-    if (image) return <ImageViewerContent image={image} className="h-full" />;
+    if (image) {
+      return <ImageViewerContent image={image} overlayBoxes={imageOverlayBoxes} className="h-full" />;
+    }
     // No Image pipeline row yet -- use the server-side preview (transcodes HEIC,
     // resizes) rather than raw bytes the browser can't render for HEIC.
     const previewSrc = file.id ? filesService.getPreviewUrl(file.id) : fileUrl;

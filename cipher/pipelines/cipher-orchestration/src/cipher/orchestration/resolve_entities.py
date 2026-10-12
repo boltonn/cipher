@@ -1,64 +1,70 @@
-"""Entity resolution sweep: unresolved name mentions -> entities.
+"""Entity resolution, match + decide: unresolved name mentions -> entities, one unit at a time.
 
-A dataset-wide pass (not a per-file enrichment -- blocking needs a global view).
-For each `(entity_type, normalized_value)` group of unresolved `name` mentions:
+A **unit** is one name key (`normalize_name`) -- every unresolved name mention with it, of any
+type, plus the person/organization entities whose display name has it. Steps
+(`resolve_entities_workflow`; the stage around it is `resolution.resolution_workflow`):
 
-1. **Block** -- `PostgresEntityRepository.get_resolution_candidates` unions
-   selector, exact-name, `entity_name_key` and trigram candidates.
-2. **Score** -- the Fellegi-Sunter scorer grades each candidate into features +
-   a `[0,1]` score (`cipher.orchestration.entity_resolution`).
-3. **Decide** -- `decide()` bands the ranked list:
-   * `auto` (only the exact-selector-on-structured-field rule) -> attach the whole
-     group to the entity now + a confirmed group-level `entity_match` audit row;
-   * `review` -> a pending group-level `entity_match` per candidate for the queue;
-   * nothing clears `review_low` -> a provisional entity for a trustworthy typed
-     group (a structured mention, or >= `min_mentions`), else leave for Review.
-4. `link_header_selectors` + promote extractor relations to candidates, then email-domain
-   employment suggestions (`domain_affiliations`).
+1. **Same names** (`_settle_same_names`) -- auto-created entities of the keeper's type fold into
+   it; the unit's names attach to an auto-created keeper when their type agrees; same name /
+   other type becomes a merge suggestion. A verified entity is never assumed from its name.
+2. **Match names** (`_resolve_group`) -- block candidates (`get_resolution_candidates`: selector,
+   exact name, `entity_name_key`, trigram), score them (Fellegi-Sunter, `entity_resolution`),
+   then `decide()`: attach on the one safe rule (exact header identifier + name), a pending
+   group-level `entity_match` per review-band candidate, or -- nothing matched -- one
+   auto-created entity for a trustworthy typed unit.
+3. **Match new entities** (`_score_entity_unit`) -- auto-created entities new since the last run
+   against other entities: merge suggestions for the review band, on the smaller side.
 
-Re-runnable: only reads `entity_id IS NULL` mentions and `on_conflict_do_nothing`
-on the group key, so a second run is a no-op. `reset-entities` clears it all.
+Re-runnable: reads only `entity_id IS NULL` mentions and upserts suggestions without touching
+analyst decisions. `reset-entities` clears it all. Design: `docs/entity-resolution.md` §0.
 """
 
 import asyncio
 from collections import Counter
+from collections.abc import Awaitable, Callable
+from datetime import datetime
 from typing import NamedTuple
 
 from loguru import logger
-from sqlalchemy import func, select, text
+from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from tqdm import tqdm
 
 from cipher.datastores.postgres.repositories import (
     PostgresEntityMatchRepository,
     PostgresEntityRepository,
-    PostgresGraphRepository,
-    PostgresMentionRelationshipRepository,
     PostgresMentionRepository,
 )
+from cipher.datastores.postgres.repositories._merge import fold_entity
 from cipher.datastores.postgres.tables.entity import EntityTable, is_canonical_entity
+from cipher.datastores.postgres.tables.entity_match import EntityMatchTable
 from cipher.datastores.postgres.tables.entity_name_key import EntityNameKeyTable
 from cipher.datastores.postgres.tables.entity_relationship import EntityRelationshipTable
 from cipher.datastores.postgres.tables.mention import MentionTable
 from cipher.datastores.postgres.tables.mention_relationship import MentionRelationshipTable
+from cipher.datastores.postgres.tables.person import PersonTable
 from cipher.datastores.postgres.tables.selector import SelectorTable
-from cipher.names import entity_keys
-from cipher.orchestration.domain_affiliations import propose_domain_affiliations
+from cipher.datastores.postgres.utils import normalize_name
+from cipher.names import entity_keys, fold, parse_name, share_nickname_root, to_latin
 from cipher.orchestration.entity_resolution import (
     CandidateScoringInput,
     MentionScoringInput,
     ScoredCandidate,
     build_explanation,
     decide,
+    dominant_method,
     score_candidate,
 )
 from cipher.schemas.graph.entity import EntityCreate
-from cipher.schemas.graph.entity_match import EntityMatchCreate
+from cipher.schemas.graph.entity_match import EntityMatchCreate, EntityMatchMethod, EntityMatchStatus
 from cipher.schemas.graph.entity_resolution import (
     DEFAULT_RESOLUTION_CONFIG,
     EntityResolutionConfig,
+    FeatureLevel,
     ResolutionBand,
+    ResolutionExplanation,
+    ResolutionFeature,
 )
+from cipher.schemas.graph.mention import MentionedType
 from cipher.schemas.graph.ontology import EntitySource, EntityType, RelationshipType
 
 _NAME_TYPES = [EntityType.PERSON, EntityType.ORGANIZATION]
@@ -89,6 +95,7 @@ def _mention_scoring_input(
     selector_values: frozenset[str],
     neighbour_ids: frozenset[str] = frozenset(),
     attributes: dict[str, str] | None = None,
+    surname_words: frozenset[str] = frozenset(),
 ) -> MentionScoringInput:
     """Build the scorer input for one unresolved name group (pure)."""
     name = _pick_display_name(group["surface_texts"])
@@ -101,6 +108,7 @@ def _mention_scoring_input(
         neighbor_entity_ids=neighbour_ids,
         attributes=attributes or {},
         name_df=max(1, name_df),
+        surname_words=surname_words,
     )
 
 
@@ -136,6 +144,7 @@ async def _colocated_selector_values(session: AsyncSession, dataset_id: str) -> 
             nm.join(
                 sm,
                 (sm.c.file_id == nm.c.file_id)
+                & (sm.c.mentioned_id == nm.c.mentioned_id)
                 & (sm.c.field_path == nm.c.field_path)
                 & (sm.c.dataset_id == nm.c.dataset_id),
             )
@@ -248,12 +257,31 @@ async def _candidate_details(session: AsyncSession, entity_ids: list[str]) -> di
         if dst in ids:
             neighbours.setdefault(dst, set()).add(src)
 
+    # DOB / nationality: the person record, then what records already attached to the entity assert.
+    record_attrs = await _record_attributes(session, lambda nm: nm.c.entity_id.in_(entity_ids))
+    dob_rows = (
+        await session.execute(
+            select(EntityTable.id, PersonTable.date_of_birth)
+            .join(PersonTable, PersonTable.id == EntityTable.person_id)
+            .where(EntityTable.id.in_(entity_ids), PersonTable.date_of_birth.is_not(None))
+        )
+    ).all()
+    dob = {eid: value.date().isoformat() for eid, value in dob_rows}
+
+    def attributes(eid: str) -> dict[str, str]:
+        out = _settled(record_attrs.get(eid))
+        if eid in dob:
+            out["date_of_birth"] = dob[eid]
+        if eid in employer:
+            out["employer"] = employer[eid]
+        return out
+
     return {
         eid: _CandDetail(
             aliases=aliases.get(eid, ()),
             selector_values=frozenset(selectors.get(eid, set())),
             neighbour_ids=frozenset(neighbours.get(eid, set())),
-            attributes={"employer": employer[eid]} if eid in employer else {},
+            attributes=attributes(eid),
         )
         for eid in entity_ids
     }
@@ -287,6 +315,57 @@ async def _group_neighbours(session: AsyncSession, mention_ids: list[str]) -> fr
         )
     ).all()
     return frozenset(eid for (eid,) in rows)
+
+
+_RECORD_ATTRIBUTES = ("date_of_birth", "nationality")
+
+
+async def _record_attributes(session: AsyncSession, name_mention_filter) -> dict[str, dict[str, Counter]]:  # noqa: ANN001
+    """DOB / nationality asserted in the same structured record as some name mentions (a table row, a contact).
+
+    `name_mention_filter` selects the name mentions; their record is `(file_id, mentioned_id, field_path)`.
+    Returns `key -> attribute -> Counter(value)`, where key is the name mention's `entity_id` or `id`.
+    """
+    names = MentionTable.__table__.alias("nm")
+    attrs = MentionTable.__table__.alias("am")
+    rows = await session.execute(
+        select(func.coalesce(names.c.entity_id, names.c.id), attrs.c.entity_attribute, attrs.c.normalized_value)
+        .select_from(
+            names.join(
+                attrs,
+                (attrs.c.file_id == names.c.file_id)
+                & (attrs.c.mentioned_id == names.c.mentioned_id)
+                & (attrs.c.field_path == names.c.field_path),
+            )
+        )
+        .where(
+            name_mention_filter(names),
+            names.c.mentioned_type == MentionedType.STRUCTURED_FIELD,
+            attrs.c.entity_attribute.in_(_RECORD_ATTRIBUTES),
+            attrs.c.normalized_value.is_not(None),
+        )
+    )
+    out: dict[str, dict[str, Counter]] = {}
+    for key, attribute, value in rows.all():
+        out.setdefault(key, {}).setdefault(attribute, Counter())[value] += 1
+    return out
+
+
+def _settled(values: dict[str, Counter] | None) -> dict[str, str]:
+    """One value per attribute, only when the evidence agrees (two DOBs on one name group decide nothing)."""
+    return {attr: next(iter(counter)) for attr, counter in (values or {}).items() if len(counter) == 1}
+
+
+async def _group_attributes(session: AsyncSession, mention_ids: list[str]) -> dict[str, str]:
+    """The DOB / nationality this name group's own records assert, if consistent."""
+    if not mention_ids:
+        return {}
+    found = await _record_attributes(session, lambda nm: nm.c.id.in_(mention_ids))
+    merged: dict[str, Counter] = {}
+    for per_mention in found.values():
+        for attr, counter in per_mention.items():
+            merged.setdefault(attr, Counter()).update(counter)
+    return _settled(merged)
 
 
 async def _group_employer(session: AsyncSession, mention_ids: list[str]) -> str | None:
@@ -344,6 +423,7 @@ async def _resolve_group(
     name_df: int,
     selector_values: frozenset[str],
     has_key_signal: bool,
+    surname_words: frozenset[str] = frozenset(),
     entity_repo: PostgresEntityRepository,
     mention_repo: PostgresMentionRepository,
     ematch_repo: PostgresEntityMatchRepository,
@@ -356,17 +436,23 @@ async def _resolve_group(
     # `entity_name_key` hit, no header-colocated selector, no same-name entity.
     # (Most one-off newsletter senders in a large mailbox.)
     if not (has_key_signal or selector_values or name_df):
-        mi = _mention_scoring_input(group, name_df=name_df, selector_values=selector_values)
+        mi = _mention_scoring_input(
+            group, name_df=name_df, selector_values=selector_values, surname_words=surname_words
+        )
         candidates = []
     else:
         neighbours = await _group_neighbours(session, group["mention_ids"])
         employer = await _group_employer(session, group["mention_ids"])
+        attributes = await _group_attributes(session, group["mention_ids"])
+        if employer:
+            attributes["employer"] = employer
         mi = _mention_scoring_input(
             group,
             name_df=name_df,
             selector_values=selector_values,
             neighbour_ids=neighbours,
-            attributes={"employer": employer} if employer else None,
+            attributes=attributes or None,
+            surname_words=surname_words,
         )
         candidates = await entity_repo.get_resolution_candidates(
             name=mi.name,
@@ -499,7 +585,7 @@ WHERE em.dataset_id = :ds AND em.mention_id IS NULL AND em.normalized_value IS N
 """
 
 
-async def _reconcile_resolved_name_groups(session: AsyncSession, dataset_id: str) -> int:
+async def reconcile_resolved_name_groups(session: AsyncSession, dataset_id: str) -> int:
     """Close group-level `entity_match` rows whose name group is now fully resolved.
 
     A name that auto-resolved in an earlier pass no longer appears in
@@ -544,25 +630,359 @@ async def _apply_confirmed_name_groups(session: AsyncSession, dataset_id: str) -
     return result.rowcount or 0
 
 
-async def _resolve_group_isolated(engine, group: dict, **kw) -> Counter:
-    """Run `_resolve_group` on its own `AsyncSession` (for the concurrent path).
+# `(step, done, total)` as a step advances -- the run's live progress
+StepReporter = Callable[[str, int, int], Awaitable[None]]
 
-    A failed group is logged and skipped -- it just stays unresolved and a re-run
-    retries it -- rather than aborting the whole sweep.
+
+async def _no_report(step: str, done: int, total: int) -> None:
+    return None
+
+
+class _EntityRow(NamedTuple):
+    id: str
+    entity_type: EntityType
+    display_name: str
+    key: str
+    is_canonical: bool
+    mentions: int
+    date_created: datetime
+
+
+async def _entity_units(session: AsyncSession, dataset_id: str) -> dict[str, list[_EntityRow]]:
+    """`name key -> person/organization entities whose display name has it` (with mention counts)."""
+    counts = (
+        select(MentionTable.entity_id, func.count().label("n"))
+        .where(MentionTable.dataset_id == dataset_id, MentionTable.entity_id.is_not(None))
+        .group_by(MentionTable.entity_id)
+        .subquery()
+    )
+    rows = await session.execute(
+        select(
+            EntityTable.id,
+            EntityTable.entity_type,
+            EntityTable.display_name,
+            EntityTable.display_name_normalized,
+            is_canonical_entity().label("canonical"),
+            func.coalesce(counts.c.n, 0).label("n"),
+            EntityTable.date_created,
+        )
+        .outerjoin(counts, counts.c.entity_id == EntityTable.id)
+        .where(EntityTable.dataset_id == dataset_id, EntityTable.entity_type.in_(_NAME_TYPES))
+    )
+    units: dict[str, list[_EntityRow]] = {}
+    for r in rows:
+        units.setdefault(r.display_name_normalized, []).append(
+            _EntityRow(
+                r.id, r.entity_type, r.display_name, r.display_name_normalized, bool(r.canonical), r.n, r.date_created
+            )
+        )
+    return units
+
+
+def _surname_words(names: list[str]) -> frozenset[str]:
+    """Words this dataset's full person names use as surnames far more than as given names.
+
+    A lone `Bolton` is then compared as a surname (`compare_names(surname_words=)`): seen as a
+    surname at least 3 times and at least 3x as often as a given name.
     """
+    as_surname: Counter = Counter()
+    as_given: Counter = Counter()
+    for name in names:
+        parsed = parse_name(name)
+        if parsed.given and parsed.primary_surname:
+            as_surname[fold(to_latin(parsed.primary_surname))] += 1
+            as_given[fold(to_latin(parsed.given_primary))] += 1
+    return frozenset(w for w, n in as_surname.items() if n >= 3 and n >= 3 * as_given[w])
+
+
+def _keeper(rows: list[_EntityRow]) -> _EntityRow:
+    """The entity a unit settles on: a verified one first, then the one with most mentions."""
+    return max(rows, key=lambda r: (r.is_canonical, r.mentions))
+
+
+def _same_name_explanation(detail: str) -> dict:
+    return ResolutionExplanation(
+        score=0.99,
+        band=ResolutionBand.REVIEW,
+        features=[
+            ResolutionFeature(name="name_exact", level=FeatureLevel.EXACT, weight=0.0, contribution=0.0, detail=detail)
+        ],
+    ).model_dump(mode="json")
+
+
+async def _settle_same_names(
+    session: AsyncSession,
+    *,
+    dataset_id: str,
+    entity_units: dict[str, list[_EntityRow]],
+    groups_by_key: dict[str, dict],
+    report: StepReporter,
+) -> Counter:
+    """Decide what one name already settles, before any scoring.
+
+    An auto-created entity is defined by its name -- nobody has said otherwise -- so in a unit
+    (one name key) auto-created entities of the keeper's type fold into it, and the unit's
+    unresolved names attach to an auto-created keeper when their type agrees. A verified
+    entity is defined by its identity, so its same-name mentions are scored, never assumed.
+    Same name but another type (`Adaire` the person vs the organization) is asked on the card.
+    """
+    out: Counter = Counter()
+    mention_repo = PostgresMentionRepository(session=session)
+    ematch_repo = PostgresEntityMatchRepository(session=session)
+    total = len(entity_units)
+    for done, (key, rows) in enumerate(entity_units.items(), start=1):
+        keeper = _keeper(rows)
+        # one head per type: the keeper for its own type, else that type's biggest entity
+        heads: dict[EntityType, _EntityRow] = {}
+        for entity_type in dict.fromkeys(r.entity_type for r in rows):
+            same = [r for r in rows if r.entity_type == entity_type]
+            head = keeper if entity_type == keeper.entity_type else _keeper(same)
+            heads[entity_type] = head
+            for row in same:
+                if row is not head and not row.is_canonical:
+                    await fold_entity(session, source_id=row.id, target_id=head.id)
+                    out["entities_folded"] += 1
+        apart = [head for head in heads.values() if head is not keeper]
+        for row in apart:
+            await ematch_repo.create_merge_match(
+                EntityMatchCreate(
+                    dataset_id=dataset_id,
+                    entity_id=keeper.id,
+                    provisional_entity_id=row.id,
+                    similarity_score=0.99,
+                    match_method=EntityMatchMethod.NAME_EXACT,
+                    explanation=_same_name_explanation(
+                        f"same name, {row.entity_type.value} vs {keeper.entity_type.value}"
+                    ),
+                )
+            )
+            out["same_name_proposed"] += 1
+        group = groups_by_key.get(key)
+        # names attach to the auto-created entity of their own type; untyped ones only when one type is in play
+        target = heads.get(group["entity_type"]) if group and group["entity_type"] else (keeper if not apart else None)
+        if group and target is not None and not target.is_canonical:
+            out["mentions_attached"] += await mention_repo.attach_many(group["mention_ids"], target.id)
+            out["names_attached"] += 1
+            del groups_by_key[key]
+        entity_units[key] = [keeper, *apart]
+        if done % 200 == 0 or done == total:
+            await session.commit()
+            await report("same_names", done, total)
+    return out
+
+
+_SHORT_NAME_SQL = """
+WITH short AS (
+    SELECT m.id, m.file_id, m.surface_text, m.normalized_value, m.entity_id
+    FROM mention m
+    LEFT JOIN entity e ON e.id = m.entity_id
+    WHERE m.dataset_id = :ds AND m.entity_attribute = 'name' AND m.file_id IS NOT NULL
+      AND (m.entity_type IS NULL OR m.entity_type = 'PERSON')
+      AND position(' ' IN m.normalized_value) = 0 AND length(m.normalized_value) > 1
+      AND (m.entity_id IS NULL OR (
+            e.entity_type = 'PERSON' AND e.person_id IS NULL AND e.location_id IS NULL
+            AND e.source <> 'MANUAL' AND position(' ' IN e.display_name_normalized) = 0))
+),
+fuller AS (
+    SELECT DISTINCT m.file_id, m.surface_text, m.entity_id
+    FROM mention m JOIN entity e ON e.id = m.entity_id
+    WHERE m.dataset_id = :ds AND m.entity_attribute = 'name' AND e.entity_type = 'PERSON'
+      AND position(' ' IN m.normalized_value) > 0
+      AND m.file_id IN (SELECT file_id FROM short)
+)
+SELECT 'short' AS kind, id, file_id, surface_text, entity_id FROM short
+UNION ALL
+SELECT 'fuller', NULL, file_id, surface_text, entity_id FROM fuller
+"""
+
+
+def _short_name_refers_to(short: str, fuller: str) -> bool:
+    """Can `Nick` / `Mr. Bolton` / `Bolton` be this fuller name? First name, nickname or surname."""
+    s, f = parse_name(short), parse_name(fuller)
+    word = fold(to_latin((s.given or s.surnames or ("",))[0]))
+    titled = bool(set(s.prefixes) & {"mr", "mrs", "ms", "miss", "dr", "prof"})
+    surname = fold(to_latin(f.primary_surname)) if f.primary_surname else ""
+    given = fold(to_latin(f.given_primary)) if f.given_primary else ""
+    if not word:
+        return False
+    if word == surname:
+        return True
+    return not titled and bool(given) and (word == given or share_nickname_root(word, b=given))
+
+
+async def _resolve_short_names(session: AsyncSession, dataset_id: str) -> Counter:
+    """Within-document coreference: `Nick` in an email that also names `Nick Bolton` is that Nick Bolton.
+
+    A one-word person mention (or `Mr. Bolton`) -- unresolved, or sitting on a one-word
+    auto-created person -- takes the entity of the one fuller, resolved person name in the
+    same file it can stand for. Two candidates (`Nick Bolton`, `Nick Jones`) decide nothing.
+    Auto-created entities emptied this way are dropped.
+    """
+    out: Counter = Counter()
+    rows = (await session.execute(text(_SHORT_NAME_SQL), {"ds": dataset_id})).all()
+    fuller: dict[str, list[tuple[str, str]]] = {}
+    for row in rows:
+        if row.kind == "fuller":
+            fuller.setdefault(row.file_id, []).append((row.surface_text, row.entity_id))
+    moves: dict[str, list[str]] = {}
+    for row in rows:
+        if row.kind != "short" or row.file_id not in fuller:
+            continue
+        targets = {eid for surface, eid in fuller[row.file_id] if _short_name_refers_to(row.surface_text, surface)}
+        if len(targets) == 1 and (target := targets.pop()) != row.entity_id:
+            moves.setdefault(target, []).append(row.id)
+    for target, mention_ids in moves.items():
+        for start in range(0, len(mention_ids), 5000):
+            await session.execute(
+                update(MentionTable)
+                .where(MentionTable.id.in_(mention_ids[start : start + 5000]))
+                .values(entity_id=target)
+            )
+        out["mentions_attached"] += len(mention_ids)
+    out["entities_emptied"] = await PostgresEntityRepository(session=session).delete_empty_provisional(dataset_id)
+    await session.commit()
+    return out
+
+
+async def _entity_weights(session: AsyncSession, entity_ids: list[str]) -> dict[str, tuple[bool, int]]:
+    """`entity_id -> (verified, mention count)`: which side of a merge survives."""
+    mentions = select(func.count()).select_from(MentionTable).where(MentionTable.entity_id == EntityTable.id)
+    rows = await session.execute(
+        select(EntityTable.id, is_canonical_entity(), mentions.scalar_subquery()).where(EntityTable.id.in_(entity_ids))
+    )
+    return {eid: (bool(canonical), n) for eid, canonical, n in rows}
+
+
+async def _score_entity_unit(
+    session: AsyncSession,
+    row: _EntityRow,
+    *,
+    config: EntityResolutionConfig,
+    name_df: int,
+    dataset_id: str,
+    surname_words: frozenset[str] = frozenset(),
+) -> Counter:
+    """Score an auto-created entity against other entities; file merge suggestions for the review band.
+
+    The smaller, auto-created side is the one proposed to merge into the other.
+    """
+    out: Counter = Counter()
+    entity_repo = PostgresEntityRepository(session=session)
+    ematch_repo = PostgresEntityMatchRepository(session=session)
+    candidates = [
+        c
+        for c in await entity_repo.get_resolution_candidates(
+            name=row.display_name,
+            dataset_id=dataset_id,
+            entity_type=row.entity_type,
+            cross_dataset=config.cross_dataset,
+            limit=config.candidate_limit,
+        )
+        if c.entity.id != row.id and normalize_name(c.entity.display_name) != row.key
+    ]
+    proposed: set[str] = set()
+    if candidates:
+        own = (await _candidate_details(session, [row.id])).get(row.id)
+        mention_ids = list(
+            (
+                await session.execute(
+                    select(MentionTable.id).where(MentionTable.entity_id == row.id).limit(_NEIGHBOUR_SAMPLE)
+                )
+            ).scalars()
+        )
+        mi = MentionScoringInput(
+            name=row.display_name,
+            normalized_name=row.key,
+            entity_type=row.entity_type,
+            provenance="text",
+            selector_values=own.selector_values if own else frozenset(),
+            neighbor_entity_ids=(await _group_neighbours(session, mention_ids))
+            | (own.neighbour_ids if own else frozenset()),
+            attributes=own.attributes if own else {},
+            name_df=max(1, name_df),
+            surname_words=surname_words,
+        )
+        detail = await _candidate_details(session, [c.entity.id for c in candidates])
+        scored = []
+        for c in candidates:
+            d = detail.get(c.entity.id)
+            scored.append(
+                score_candidate(
+                    mi,
+                    CandidateScoringInput(
+                        entity_id=c.entity.id,
+                        entity_type=c.entity.entity_type,
+                        display_name=c.entity.display_name,
+                        aliases=d.aliases if d else (),
+                        selector_values=d.selector_values if d else frozenset(),
+                        neighbor_entity_ids=d.neighbour_ids if d else frozenset(),
+                        attributes=d.attributes if d else {},
+                        trigram_score=c.trigram_score,
+                        blocked_by=tuple(c.blocked_by),
+                    ),
+                    config,
+                )
+            )
+        decide(scored, config)
+        live = sorted(
+            (s for s in scored if not s.vetoed and s.score >= config.review_low), key=lambda s: s.score, reverse=True
+        )[:_REVIEW_ROWS_PER_GROUP]
+        weights = await _entity_weights(session, [s.entity_id for s in live])
+        runner_up = live[1].score if len(live) > 1 else None
+        for sc in live:
+            canonical, mentions = weights.get(sc.entity_id, (False, 0))
+            row_survives = not canonical and mentions < row.mentions
+            await ematch_repo.create_merge_match(
+                EntityMatchCreate(
+                    dataset_id=dataset_id,
+                    entity_id=row.id if row_survives else sc.entity_id,
+                    provisional_entity_id=sc.entity_id if row_survives else row.id,
+                    similarity_score=sc.score,
+                    match_method=dominant_method(sc),
+                    explanation=build_explanation(
+                        sc, candidates_considered=len(live), runner_up_score=runner_up, config=config
+                    ),
+                )
+            )
+            if not row_survives:
+                proposed.add(sc.entity_id)
+            out["merges_proposed"] += 1
+    await ematch_repo.prune_merge_pending(dataset_id=dataset_id, provisional_entity_id=row.id, keep_entity_ids=proposed)
+    return out
+
+
+async def _isolated(engine, label: str, fn, *args, **kw) -> Counter:  # noqa: ANN001
+    """Run one unit's work on its own session; a failure is logged and skipped (a re-run retries it)."""
     try:
         async with AsyncSession(engine, expire_on_commit=False) as s:
-            return await _resolve_group(
-                s,
-                group,
-                entity_repo=PostgresEntityRepository(session=s),
-                mention_repo=PostgresMentionRepository(session=s),
-                ematch_repo=PostgresEntityMatchRepository(session=s),
-                **kw,
-            )
-    except Exception as exc:  # noqa: BLE001 -- one bad group shouldn't fail the sweep
-        logger.warning(f"resolve group {group['normalized_value']!r} failed: {exc}")
+            return await fn(s, *args, **kw)
+    except Exception as exc:  # noqa: BLE001 -- one bad unit shouldn't fail the sweep
+        logger.warning(f"resolve {label!r} failed: {exc}")
         return Counter()
+
+
+async def _run_units(
+    session: AsyncSession, items: list, work, *, concurrency: int, step: str, report: StepReporter, label
+) -> Counter:  # noqa: ANN001
+    """`work(session, item)` for every item, `concurrency` at a time, reporting `step` progress."""
+    totals: Counter = Counter()
+    total, done = len(items), 0
+    sem = asyncio.Semaphore(max(1, concurrency))
+
+    async def _one(item) -> Counter:  # noqa: ANN001
+        nonlocal done
+        async with sem:
+            result = await _isolated(session.bind, label(item), work, item)
+        done += 1
+        if done % 50 == 0 or done == total:
+            await report(step, done, total)
+        return result
+
+    for result in await asyncio.gather(*(_one(item) for item in items)):
+        totals += result
+    if not items:
+        await report(step, 0, 0)
+    return totals
 
 
 async def resolve_entities_workflow(
@@ -572,13 +992,21 @@ async def resolve_entities_workflow(
     config: EntityResolutionConfig | None = None,
     min_mentions: int | None = None,
     create: bool | None = None,
-    link_selectors: bool = True,
-    concurrency: int = 1,
+    concurrency: int = 8,
+    entities_since: datetime | None = None,
+    report: StepReporter = _no_report,
 ) -> dict[str, int]:
-    """Resolve a dataset's unresolved name mentions. Returns per-outcome counts.
+    """Match and decide every resolution unit -- one name key -- of a dataset. Returns per-outcome counts.
 
-    `concurrency > 1` scores groups in parallel, each on its own session/
-    connection -- an ~Nx speedup on a large mailbox (the loop is I/O-bound).
+    1. **Same names** (`_settle_same_names`): fold same-type auto-created duplicates, attach a
+       unit's names to its auto-created entity, ask about same name / other type.
+    2. **Names**: score each remaining unit's unresolved names against entities -- attach on the
+       safe rule, suggest the review band, create one auto-created entity when nothing matched.
+    3. **Entities**: score auto-created entities created after `entities_since` (all when None)
+       against other entities -- merge suggestions for the review band.
+
+    Units run `concurrency` at a time, each on its own session. Linking and the other derived
+    steps are the caller's (`resolution.resolution_workflow`).
     """
     config = config or DEFAULT_RESOLUTION_CONFIG
     if min_mentions is not None or create is not None:
@@ -588,69 +1016,112 @@ async def resolve_entities_workflow(
                 "create_provisional": create if create is not None else config.create_provisional,
             }
         )
-
     mention_repo = PostgresMentionRepository(session=session)
-    entity_repo = PostgresEntityRepository(session=session)
-    ematch_repo = PostgresEntityMatchRepository(session=session)
 
+    # proposals from the retired `group-duplicates` pass; units now cover them
+    await session.execute(
+        delete(EntityMatchTable).where(
+            EntityMatchTable.dataset_id == dataset_id,
+            EntityMatchTable.status == EntityMatchStatus.PENDING,
+            EntityMatchTable.explanation.has_key("group"),
+        )
+    )
     decisions_applied = await _apply_confirmed_name_groups(session, dataset_id)
-    groups = [
-        g
+    groups_by_key = {
+        g["normalized_value"]: g
         for g in await mention_repo.unresolved_name_groups(dataset_id=dataset_id, entity_types=_NAME_TYPES)
         if _is_meaningful_name(g["normalized_value"])
-    ]
+    }
+    entity_units = await _entity_units(session, dataset_id)
+    settled = await _settle_same_names(
+        session, dataset_id=dataset_id, entity_units=entity_units, groups_by_key=groups_by_key, report=report
+    )
+
+    groups = list(groups_by_key.values())
+    surname_words = _surname_words(
+        [
+            *(_pick_display_name(g["surface_texts"]) for g in groups if g["entity_type"] != EntityType.ORGANIZATION),
+            *(r.display_name for rows in entity_units.values() for r in rows if r.entity_type == EntityType.PERSON),
+        ]
+    )
     name_df = await _entity_name_frequency(session, dataset_id, cross_dataset=config.cross_dataset)
     colocated = await _colocated_selector_values(session, dataset_id)
     key_signal = await _groups_with_key_signal(session, groups)
 
-    def _kw(group: dict) -> dict:
+    async def _score_names(s: AsyncSession, group: dict) -> Counter:
         nv = group["normalized_value"]
-        return {
-            "config": config,
-            "name_df": name_df.get(nv, 0),
-            "selector_values": frozenset(colocated.get(nv, set())),
-            "has_key_signal": nv in key_signal,
-            "dataset_id": dataset_id,
-        }
+        return await _resolve_group(
+            s,
+            group,
+            config=config,
+            name_df=name_df.get(nv, 0),
+            selector_values=frozenset(colocated.get(nv, set())),
+            has_key_signal=nv in key_signal,
+            surname_words=surname_words,
+            entity_repo=PostgresEntityRepository(session=s),
+            mention_repo=PostgresMentionRepository(session=s),
+            ematch_repo=PostgresEntityMatchRepository(session=s),
+            dataset_id=dataset_id,
+        )
 
-    totals: Counter = Counter()
-    if concurrency > 1:
-        engine = session.bind
-        sem = asyncio.Semaphore(concurrency)
+    names = await _run_units(
+        session,
+        groups,
+        _score_names,
+        concurrency=concurrency,
+        step="names",
+        report=report,
+        label=lambda g: g["normalized_value"],
+    )
 
-        async def _one(group: dict) -> Counter:
-            async with sem:
-                return await _resolve_group_isolated(engine, group, **_kw(group))
+    short = await _resolve_short_names(session, dataset_id)
+    await report("short_names", 1, 1)
+    entity_units = await _entity_units(session, dataset_id)  # short names may have emptied some
 
-        for result in await asyncio.gather(*(_one(g) for g in tqdm(groups, desc="Resolving names", unit=" name"))):
-            totals += result
-    else:
-        for group in tqdm(groups, desc="Resolving names", unit=" name"):
-            totals += await _resolve_group(
-                session,
-                group,
-                entity_repo=entity_repo,
-                mention_repo=mention_repo,
-                ematch_repo=ematch_repo,
-                **_kw(group),
-            )
+    keepers = {key: _keeper(rows) for key, rows in entity_units.items()}
+    new_entities = [
+        keeper
+        for key, keeper in keepers.items()
+        if key not in groups_by_key
+        and not keeper.is_canonical
+        and (entities_since is None or keeper.date_created > entities_since)
+    ]
 
-    edges = await PostgresGraphRepository(session=session).link_header_selectors(dataset_id) if link_selectors else 0
-    candidates = await PostgresMentionRelationshipRepository(session=session).promote_to_candidates(dataset_id)
-    domain_candidates = await propose_domain_affiliations(session, dataset_id)
-    closed = await _reconcile_resolved_name_groups(session, dataset_id)
+    async def _score_entity(s: AsyncSession, row: _EntityRow) -> Counter:
+        return await _score_entity_unit(
+            s,
+            row,
+            config=config,
+            name_df=name_df.get(row.key, 0),
+            dataset_id=dataset_id,
+            surname_words=surname_words,
+        )
+
+    entities = await _run_units(
+        session,
+        new_entities,
+        _score_entity,
+        concurrency=concurrency,
+        step="entities",
+        report=report,
+        label=lambda r: r.display_name,
+    )
 
     counts = {
         "decisions_applied": decisions_applied,
-        "names_auto_resolved": totals["names_auto_resolved"],
-        "names_in_review": totals["names_in_review"],
-        "entities_created": totals["entities_created"],
-        "mentions_attached": totals["mentions_attached"],
-        "names_left_for_review": totals["names_left_for_review"],
-        "review_rows_closed": closed,
-        "has_selector_edges": edges,
-        "relationship_candidates": candidates,
-        "email_domain_candidates": domain_candidates,
+        "units": len(set(groups_by_key) | set(entity_units)),
+        "entities_folded": settled["entities_folded"],
+        "names_attached_by_name": settled["names_attached"],
+        "same_name_suggestions": settled["same_name_proposed"],
+        "names_auto_resolved": names["names_auto_resolved"],
+        "names_in_review": names["names_in_review"],
+        "entities_created": names["entities_created"],
+        "mentions_attached": settled["mentions_attached"] + names["mentions_attached"],
+        "names_left_for_review": names["names_left_for_review"],
+        "entities_scored": len(new_entities),
+        "merge_suggestions": entities["merges_proposed"],
+        "short_names_attached": short["mentions_attached"],
+        "entities_emptied": short["entities_emptied"],
     }
     logger.success(f"Resolved entities for dataset {dataset_id}: {counts}")
     return counts

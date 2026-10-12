@@ -13,12 +13,11 @@ Flow: `estimate_workload` (inventory -> eligible unit count) then `resolve_rate`
 
 from collections.abc import Iterable
 from datetime import datetime
-from enum import StrEnum
 from typing import Any
 
 from pydantic import Field
 
-from cipher.schemas._base.base import BaseModel
+from cipher.schemas._base.base import BaseModel, StrEnum
 from cipher.schemas.ingestion.enrichment import EnrichmentType, enrichment_prerequisites
 
 
@@ -30,6 +29,7 @@ class WorkUnit(StrEnum):
     TEXT_FILE = "text_file"
     LLM_FILE = "llm_file"
     CONTACT_FILE = "contact_file"
+    TABLE_ROW = "table_row"
     MESSAGE = "message"
     FILE = "file"
 
@@ -85,6 +85,7 @@ MIN_SAMPLES_FOR_MEASURED = 1
 
 # Surfaced in the request wizard, roughly in pipeline order.
 ESTIMATE_ORDER: tuple[EnrichmentType, ...] = (
+    EnrichmentType.ARCHIVE_EXTRACTION,
     EnrichmentType.TEXT_EXTRACTION,
     EnrichmentType.OCR,
     EnrichmentType.TEXT_EMBEDDING,
@@ -99,9 +100,13 @@ ESTIMATE_ORDER: tuple[EnrichmentType, ...] = (
     EnrichmentType.RELATIONSHIP_EXTRACTION,
     EnrichmentType.EVENT_EXTRACTION,
     EnrichmentType.SIGNATURE_EXTRACTION,
+    EnrichmentType.TABLE_EXTRACTION,
+    EnrichmentType.TEXT_SUMMARIZATION,
 )
 
 _ELIGIBLE_GROUPS: dict[EnrichmentType, tuple[str, ...]] = {
+    # Upper bound: the group also holds non-containers (onnx, npy, ...) the analytic leaves alone.
+    EnrichmentType.ARCHIVE_EXTRACTION: ("archive",),
     EnrichmentType.IMAGE_EMBEDDING: ("image",),
     EnrichmentType.EXIF_LOCATION: ("image",),
     EnrichmentType.FACE_DETECTION: ("image",),
@@ -115,9 +120,11 @@ _ELIGIBLE_GROUPS: dict[EnrichmentType, tuple[str, ...]] = {
     EnrichmentType.EVENT_EXTRACTION: TEXT_GROUPS,
     EnrichmentType.CONTACT_EXTRACTION: ("contact",),
     EnrichmentType.SIGNATURE_EXTRACTION: ("email",),
+    EnrichmentType.TEXT_SUMMARIZATION: ("document", "email", "table"),
 }
 
 _UNIT: dict[EnrichmentType, WorkUnit] = {
+    EnrichmentType.ARCHIVE_EXTRACTION: WorkUnit.FILE,
     EnrichmentType.IMAGE_EMBEDDING: WorkUnit.IMAGE,
     EnrichmentType.EXIF_LOCATION: WorkUnit.IMAGE,
     EnrichmentType.FACE_DETECTION: WorkUnit.IMAGE,
@@ -132,6 +139,8 @@ _UNIT: dict[EnrichmentType, WorkUnit] = {
     EnrichmentType.EVENT_EXTRACTION: WorkUnit.LLM_FILE,
     EnrichmentType.CONTACT_EXTRACTION: WorkUnit.CONTACT_FILE,
     EnrichmentType.SIGNATURE_EXTRACTION: WorkUnit.LLM_FILE,
+    EnrichmentType.TABLE_EXTRACTION: WorkUnit.TABLE_ROW,
+    EnrichmentType.TEXT_SUMMARIZATION: WorkUnit.LLM_FILE,
     EnrichmentType.MESSAGE_TRANSLATION: WorkUnit.MESSAGE,
 }
 
@@ -211,12 +220,16 @@ def estimate_workload(
     groups = _ELIGIBLE_GROUPS.get(enrichment_type)
     if groups is None:
         if enrichment_type in (EnrichmentType.FACE_MATCHING, EnrichmentType.FACE_CLUSTERING):
-            note = "runs after face detection; scales with detected faces"
+            note = "scales with detected faces"
+        elif enrichment_type is EnrichmentType.TABLE_EXTRACTION:
+            note = "scales with mapped table rows"
         else:
             note = "scales with message count, not the file inventory"
         return EnrichmentWorkload(enrichment_type=enrichment_type, unit=unit, estimable=False, note=note)
 
     params = params or {}
+    if chosen := params.get("filetypeGroups") or params.get("filetype_groups"):
+        groups = tuple(chosen)
     unit_count = 0
     byte_count = 0
     for group in groups:

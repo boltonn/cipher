@@ -45,9 +45,7 @@ async def get_message_repository(
         ) from exc
 
 
-MessageDatastoreDep = Annotated[
-    ElasticsearchMessageRepository, Depends(get_message_repository)
-]
+MessageDatastoreDep = Annotated[ElasticsearchMessageRepository, Depends(get_message_repository)]
 
 
 async def get_text_chunk_repository(request: Request):

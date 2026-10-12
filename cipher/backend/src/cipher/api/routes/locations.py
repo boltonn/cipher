@@ -64,6 +64,7 @@ async def query_locations(
                 "category": loc.category,
                 "source": loc.source,
                 "dateRecorded": loc.date_recorded.isoformat() if loc.date_recorded else None,
+                "durationSeconds": loc.duration_seconds,
                 "bearing": loc.bearing,
                 "velocity": loc.velocity,
                 "altitude": loc.altitude,

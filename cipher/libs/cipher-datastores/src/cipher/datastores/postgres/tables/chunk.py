@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, text as sa_text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text, false as sa_false, text as sa_text
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -36,9 +36,7 @@ class ChunkTable(Base):
     dataset_id: Mapped[str] = mapped_column(
         String, ForeignKey("dataset.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    file_id: Mapped[str] = mapped_column(
-        String, ForeignKey("file.id", ondelete="CASCADE"), nullable=False, index=True
-    )
+    file_id: Mapped[str] = mapped_column(String, ForeignKey("file.id", ondelete="CASCADE"), nullable=False, index=True)
     sha256: Mapped[str] = mapped_column(String, nullable=False, index=True)
     filetype_group: Mapped[str] = mapped_column(String, nullable=False)
 
@@ -53,14 +51,18 @@ class ChunkTable(Base):
     end_offset: Mapped[int] = mapped_column(Integer, nullable=False)
 
     text: Mapped[str] = mapped_column(Text, nullable=False)
+    # A generated description of the whole file (AI summary; later image captions) rather than a slice of
+    # its text: chunk_index -1, offsets 0, searchable like any chunk but never part of the file's text.
+    is_summary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=sa_false())
+    generated_by: Mapped[str | None] = mapped_column(String, nullable=True)
     # Best-effort; from a detector if one runs. NOT required for search -- the
     # default pg_search ICU tokenizer is script-agnostic. Feeds result filtering,
     # the optional per-language stemmer, and display.
     language: Mapped[str | None] = mapped_column(String, nullable=True)
 
     embedding: Mapped[list[float] | None] = mapped_column(Vector(CHUNK_EMBEDDING_DIMENSION), nullable=True)
-    # Per-language `tsvector`, writer-populated. Only used by the `core` keyword
-    # ranker; NULL under pg_search / pgroonga / pg_bigm.
+    # `to_tsvector('simple', text)`, writer-populated (and backfilled at startup) whenever
+    # the effective keyword ranker isn't pg_search; NULL under pg_search.
     text_tsv: Mapped[str | None] = mapped_column(TSVECTOR, nullable=True)
 
     # When the content was written (email `date_sent` / document `date_content_created`),
@@ -84,4 +86,5 @@ class ChunkTable(Base):
             postgresql_ops={"embedding": "vector_cosine_ops"},
         ),
         Index("ix_chunk_text_tsv", "text_tsv", postgresql_using="gin"),
+        Index("ix_chunk_summary_sha256", "sha256", postgresql_where=sa_text("is_summary")),
     )

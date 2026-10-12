@@ -11,9 +11,11 @@ from collections.abc import AsyncIterator
 
 from clir.api.deps import TextEmbeddingModelDep
 from fastapi import APIRouter, Header, HTTPException
+from pydantic_ai import DeferredToolRequests
 from pydantic_ai.exceptions import ModelHTTPError
 from pydantic_ai.ui.vercel_ai import VercelAIAdapter, VercelAIEventStream
 from pydantic_ai.ui.vercel_ai.response_types import BaseChunk, ErrorChunk
+from setfitcv.api.deps import ImageEmbeddingModelDep
 from starlette.requests import Request
 from starlette.responses import Response
 
@@ -29,15 +31,19 @@ from cipher.api.deps.access import DatasetAccessDep
 from cipher.api.deps.elasticsearch import TextChunkDatastoreDep
 from cipher.api.deps.postgres import (
     DatasetDatastoreDep,
+    DatasetProfileDatastoreDep,
     EntityDatastoreDep,
     EntityMatchDatastoreDep,
+    EventDatastoreDep,
     ExtractedTextDatastoreDep,
     FileDatastoreDep,
     GraphDatastoreDep,
+    ImageDatastoreDep,
     MentionDatastoreDep,
     PersonDatastoreDep,
 )
 from cipher.api.settings import Settings
+from cipher.schemas.interaction.chat import ChatAutonomy, RelevanceJudgments
 from cipher.schemas.interaction.llm import AgentConfig, LLMProvider, ModelOption
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -117,8 +123,12 @@ async def chat(
     access: DatasetAccessDep,
     chunks: TextChunkDatastoreDep,
     embedding_model: TextEmbeddingModelDep,
+    image_model: ImageEmbeddingModelDep,
     persons: PersonDatastoreDep,
     datasets: DatasetDatastoreDep,
+    dataset_profiles: DatasetProfileDatastoreDep,
+    images: ImageDatastoreDep,
+    events: EventDatastoreDep,
     entities: EntityDatastoreDep,
     entity_matches: EntityMatchDatastoreDep,
     mentions: MentionDatastoreDep,
@@ -133,6 +143,8 @@ async def chat(
     messages). The server uses its own configured key (`LLM__*`) by default;
     `x_api_key`, when sent, overrides it for this request only.
 
+    `autonomy` ("guided", the default, or "auto") sets how often the agent stops to ask, and
+    `relevance` carries which earlier sources the analyst judged relevant or not.
     `datasetIds` scopes the conversation; each must be one you can access (403 otherwise),
     and none means all of yours. The agent only ever sees content from that scope.
     """
@@ -155,17 +167,24 @@ async def chat(
         access=chat_access,
         chunks=chunks,
         embedding_model=embedding_model,
+        image_model=image_model,
         persons=persons,
         datasets=datasets,
+        dataset_profiles=dataset_profiles,
+        images=images,
+        events=events,
         entities=entities,
         entity_matches=entity_matches,
         mentions=mentions,
         graph=graph,
         extracted_text=extracted_text,
         files=files,
+        autonomy=ChatAutonomy(body.get("autonomy") or ChatAutonomy.GUIDED),
+        relevance=RelevanceJudgments.model_validate(body["relevance"]) if body.get("relevance") else None,
     )
 
     run_input = VercelAIAdapter.build_run_input(raw_body)
     adapter = _TracebackVercelAIAdapter(agent=agent, run_input=run_input)
-    event_stream = adapter.run_stream(model=model, deps=deps)
+    # `ask_user` defers to the browser; the next request carries the answer and resumes the run.
+    event_stream = adapter.run_stream(model=model, deps=deps, output_type=[str, DeferredToolRequests])
     return adapter.streaming_response(event_stream)
