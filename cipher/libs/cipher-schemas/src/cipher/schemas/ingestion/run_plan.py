@@ -14,6 +14,7 @@ from typing import Any
 from pydantic import Field, model_validator
 
 from cipher.schemas._base.base import BaseModel, EnumStr, StrEnum
+from cipher.schemas.content.extraction import OcrEngine
 from cipher.schemas.ingestion.dataset_request import (
     ANALYTIC_COMMANDS,
     ANALYTIC_PARAM_MODELS,
@@ -111,7 +112,7 @@ _GPU_STEPS: frozenset[str] = frozenset(
         EnrichmentType.TEXT_EMBEDDING.value,
         EnrichmentType.IMAGE_EMBEDDING.value,
         EnrichmentType.FACE_DETECTION.value,
-        EnrichmentType.OCR.value,  # starts and stops pyvllm's `ocr` model on the GPU it is given
+        EnrichmentType.OCR.value,  # jina: starts and stops pyvllm's `ocr` model on the GPU it is given
     }
 )
 
@@ -154,6 +155,8 @@ def step_requirements(step_type: str, parameters: dict[str, Any]) -> StepRequire
         case EnrichmentType.EVENT_EXTRACTION.value:
             uses_llm = params.llm
             is_gpu = params.llm and params.gate
+        case EnrichmentType.OCR.value:
+            is_gpu = params.engine == OcrEngine.JINA
         case EnrichmentType.TABLE_EXTRACTION.value:
             detectors = {name.strip() for name in params.detectors.split(",")}
             uses_llm = "llm" in detectors

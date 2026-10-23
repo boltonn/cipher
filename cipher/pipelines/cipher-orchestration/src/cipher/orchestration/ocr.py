@@ -1,4 +1,6 @@
-"""OCR workflow: image-based PDF pages and images -> `ExtractedText`, via pyvllm's `ocr` model.
+"""OCR workflow: image-based PDF pages and images -> `ExtractedText`, via a pyocr engine.
+
+jina-ocr-v1 (pyvllm's `ocr` model, GPU) by default, or Indra OCR in-process on CPU (`--engine indra`).
 
 Runs after `extract-text`. PDFs keep their xberg extraction for pages with a real
 text layer; only pages pdfium finds (near) empty go to the model, and the result
@@ -20,9 +22,9 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from loguru import logger
-from pyvllm.ocr.capabilities import IMAGE_FILETYPES, PDF_FILETYPES, SUPPORTED_FILETYPES
-from pyvllm.ocr.pages import DEFAULT_MIN_CHARS, scanned_pages
-from pyvllm.ocr.schemas import OcrRequest, OcrResponse
+from pyocr.capabilities import IMAGE_FILETYPES, PDF_FILETYPES, SUPPORTED_FILETYPES
+from pyocr.pages import DEFAULT_MIN_CHARS, scanned_pages
+from pyocr.schemas import OcrRequest, OcrResponse
 from tqdm import tqdm
 
 from cipher.datastores.postgres.repositories import (
@@ -45,7 +47,8 @@ from cipher.schemas.ingestion.enrichment import EnrichableType, EnrichmentType
 from cipher.utils.uri import local_copy
 
 if TYPE_CHECKING:
-    from pyvllm.ocr.client import OcrClient
+    from pyocr.indra import IndraOcr
+    from pyocr.jina import JinaOcr
     from setfitcv.model import CLIP
     from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -233,14 +236,14 @@ def build_ocr_extracted_text(
         file_id=file_resource["id"],
         content=content,
         content_format=ExtractionContentFormat.MARKDOWN,
-        extractor=TextExtractor.PYVLLM,
+        extractor=TextExtractor.PYOCR,
         metadata=metadata,
         prechunked=spans or None,
     )
 
 
 async def _ocr_file(
-    client: "OcrClient", file_resource: dict, min_chars: int, force: bool, figures: bool, min_image_side: int
+    client: "JinaOcr | IndraOcr", file_resource: dict, min_chars: int, force: bool, figures: bool, min_image_side: int
 ) -> tuple[OcrResponse, dict[int, str]] | None:
     """Network + CPU only (no DB): pick pages, call the service, fetch native text for mixed PDFs."""
     with local_copy(file_resource["uri"]) as path:
@@ -310,8 +313,10 @@ async def _write(session: "AsyncSession", extracted: ExtractedTextCreate, existi
     return False
 
 
-async def dedupe_pending_ocr(session: "AsyncSession", dataset_id: str) -> tuple[int, int]:
-    """Copy OCR text from a content-identical file (any dataset) instead of re-running the model.
+async def dedupe_pending_ocr(session: "AsyncSession", dataset_id: str, ocr_model: str) -> tuple[int, int]:
+    """Copy OCR text from a content-identical file (any dataset) instead of re-running `ocr_model`.
+
+    Only text that same model wrote is reused, so a run with the other engine really reads the pages.
 
     Returns `(files deduped, files whose older mentions may now be stale)`.
     """
@@ -333,8 +338,12 @@ async def dedupe_pending_ocr(session: "AsyncSession", dataset_id: str) -> tuple[
             file_id=item.resource["id"],
             sha256=item.resource["sha256"],
         )
-        # only reuse a model-OCR result -- an xberg-inline (EasyOCR) one is what this pass replaces
-        if duplicate is None or duplicate.extractor != TextExtractor.PYVLLM:
+        # only reuse this model's OCR result -- an xberg-inline (EasyOCR) one is what this pass replaces
+        if (
+            duplicate is None
+            or duplicate.extractor != TextExtractor.PYOCR
+            or getattr(duplicate.metadata, "ocr_model", None) != ocr_model
+        ):
             continue
         existing = await extracted_text_repo.get_by_file_id(item.resource["id"])
         stale += await _write(session, _copy_for(duplicate, item.resource, existing), existing)
@@ -348,7 +357,7 @@ async def dedupe_pending_ocr(session: "AsyncSession", dataset_id: str) -> tuple[
 
 async def ocr_workflow(
     session: "AsyncSession",
-    client: "OcrClient",
+    client: "JinaOcr | IndraOcr",
     dataset_id: str,
     filetypes: list[str] | None = None,
     clip_filter: ClipTagFilter | None = None,
@@ -365,10 +374,11 @@ async def ocr_workflow(
     """
     if not await client.health():
         raise RuntimeError(
-            "the ocr model is not reachable -- `pyvllm up ocr` (analytics/pyvllm), or let `cipher ocr` start it"
+            f"{client.model} is not available -- jina: `pyvllm up ocr` (analytics/pyvllm) or let `cipher ocr` start it; "
+            "indra: `make download-indra` (analytics/pyocr) or set INDRA_OCR_MODEL_DIR"
         )
     await queue_ocr_enrichments(session=session, dataset_id=dataset_id, filetypes=filetypes, clip_filter=clip_filter)
-    deduped, stale = await dedupe_pending_ocr(session=session, dataset_id=dataset_id)
+    deduped, stale = await dedupe_pending_ocr(session=session, dataset_id=dataset_id, ocr_model=client.model)
 
     enrichment_repo = PostgresEnrichmentRepository(session=session)
     extracted_text_repo = PostgresExtractedTextRepository(session=session)

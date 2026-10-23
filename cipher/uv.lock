@@ -41,6 +41,7 @@ members = [
     "nerd",
     "pyarchive",
     "pygliner",
+    "pyocr",
     "pyparse",
     "pyprompt",
     "pyselectors",
@@ -575,6 +576,7 @@ all-cuda = [
     { name = "pyarchive", extra = ["lz4", "pdf", "zstd"] },
     { name = "pygliner" },
     { name = "pygliner", extra = ["cuda"], marker = "(extra == 'extra-4-clir-cpu' and extra == 'extra-4-clir-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-8-pygliner-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-4-face-cpu' and extra == 'extra-4-face-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-4-nerd-cpu' and extra == 'extra-4-nerd-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-8-setfitcv-cpu' and extra == 'extra-8-setfitcv-cuda') or (extra != 'extra-4-clir-cpu' and extra == 'extra-4-face-cpu' and extra == 'extra-4-face-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cuda' and extra == 'extra-8-pygliner-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cuda' and extra == 'extra-4-nerd-cpu' and extra == 'extra-4-nerd-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cuda' and extra == 'extra-8-setfitcv-cpu' and extra == 'extra-8-setfitcv-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cpu' and extra == 'extra-4-nerd-cpu' and extra == 'extra-4-nerd-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cpu' and extra != 'extra-4-nerd-cuda' and extra == 'extra-8-pygliner-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cpu' and extra != 'extra-4-nerd-cpu' and extra == 'extra-8-pygliner-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cpu' and extra != 'extra-4-nerd-cuda' and extra == 'extra-8-setfitcv-cpu' and extra == 'extra-8-setfitcv-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cpu' and extra != 'extra-4-nerd-cpu' and extra == 'extra-8-setfitcv-cpu' and extra == 'extra-8-setfitcv-cuda')" },
+    { name = "pyocr" },
     { name = "pyparse", extra = ["all"] },
     { name = "pyprompt" },
     { name = "pyselectors" },
@@ -591,6 +593,7 @@ analytics-cpu = [
     { name = "nerd" },
     { name = "pyarchive", extra = ["lz4", "pdf", "zstd"] },
     { name = "pygliner" },
+    { name = "pyocr" },
     { name = "pyparse", extra = ["all"] },
     { name = "pyprompt" },
     { name = "pyselectors" },
@@ -610,6 +613,7 @@ analytics-cuda = [
     { name = "pyarchive", extra = ["lz4", "pdf", "zstd"] },
     { name = "pygliner" },
     { name = "pygliner", extra = ["cuda"], marker = "(extra == 'extra-4-clir-cpu' and extra == 'extra-4-clir-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-8-pygliner-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-4-face-cpu' and extra == 'extra-4-face-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-4-nerd-cpu' and extra == 'extra-4-nerd-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-8-setfitcv-cpu' and extra == 'extra-8-setfitcv-cuda') or (extra != 'extra-4-clir-cpu' and extra == 'extra-4-face-cpu' and extra == 'extra-4-face-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cuda' and extra == 'extra-8-pygliner-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cuda' and extra == 'extra-4-nerd-cpu' and extra == 'extra-4-nerd-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cuda' and extra == 'extra-8-setfitcv-cpu' and extra == 'extra-8-setfitcv-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cpu' and extra == 'extra-4-nerd-cpu' and extra == 'extra-4-nerd-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cpu' and extra != 'extra-4-nerd-cuda' and extra == 'extra-8-pygliner-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cpu' and extra != 'extra-4-nerd-cpu' and extra == 'extra-8-pygliner-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cpu' and extra != 'extra-4-nerd-cuda' and extra == 'extra-8-setfitcv-cpu' and extra == 'extra-8-setfitcv-cuda') or (extra != 'extra-4-clir-cpu' and extra != 'extra-4-face-cpu' and extra != 'extra-4-nerd-cpu' and extra == 'extra-8-setfitcv-cpu' and extra == 'extra-8-setfitcv-cuda')" },
+    { name = "pyocr" },
     { name = "pyparse", extra = ["all"] },
     { name = "pyprompt" },
     { name = "pyselectors" },
@@ -676,6 +680,8 @@ requires-dist = [
     { name = "pyarchive", extras = ["zstd", "lz4", "pdf"], marker = "extra == 'analytics-cuda'", editable = "analytics/pyarchive" },
     { name = "pygliner", marker = "extra == 'analytics-cpu'", editable = "analytics/pygliner" },
     { name = "pygliner", extras = ["cuda"], marker = "extra == 'analytics-cuda'", editable = "analytics/pygliner" },
+    { name = "pyocr", marker = "extra == 'analytics-cpu'", editable = "analytics/pyocr" },
+    { name = "pyocr", marker = "extra == 'analytics-cuda'", editable = "analytics/pyocr" },
     { name = "pyparse", extras = ["all"], marker = "extra == 'analytics-cpu'", editable = "analytics/pyparse" },
     { name = "pyparse", extras = ["all"], marker = "extra == 'analytics-cuda'", editable = "analytics/pyparse" },
     { name = "pyprompt", marker = "extra == 'analytics-cpu'", editable = "analytics/pyprompt" },
@@ -836,8 +842,8 @@ cli = [
     { name = "face", extra = ["cuda"], marker = "(extra == 'extra-4-clir-cpu' and extra == 'extra-4-clir-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-4-face-cuda') or (extra != 'extra-4-clir-cpu' and extra == 'extra-4-face-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-4-nerd-cpu' and extra == 'extra-4-nerd-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-8-pygliner-cpu' and extra == 'extra-8-pygliner-cuda') or (extra != 'extra-4-clir-cuda' and extra == 'extra-8-setfitcv-cpu' and extra == 'extra-8-setfitcv-cuda') or (extra != 'extra-4-clir-cpu' and extra == 'extra-4-nerd-cpu' and extra == 'extra-4-nerd-cuda') or (extra != 'extra-4-clir-cpu' and extra == 'extra-8-pygliner-cpu' and extra == 'extra-8-pygliner-cuda') or (extra != 'extra-4-clir-cpu' and extra == 'extra-8-setfitcv-cpu' and extra == 'extra-8-setfitcv-cuda')" },
     { name = "filetyper", extra = ["lz4", "pdf", "zstd"] },
     { name = "pyarchive", extra = ["lz4", "pdf", "zstd"] },
+    { name = "pyocr", extra = ["indra"] },
     { name = "pyparse", extra = ["contacts", "email"] },
-    { name = "pyvllm" },
     { name = "pyxberg" },
     { name = "setfitcv" },
 ]
@@ -871,7 +877,7 @@ nerd = [
     { name = "nerd" },
 ]
 ocr = [
-    { name = "pyvllm" },
+    { name = "pyocr", extra = ["indra"] },
     { name = "pyxberg" },
     { name = "setfitcv" },
 ]
@@ -905,13 +911,13 @@ requires-dist = [
     { name = "nerd", marker = "extra == 'nerd'", editable = "analytics/nerd" },
     { name = "pyarchive", extras = ["zstd", "lz4", "pdf"], marker = "extra == 'archive-extraction'", editable = "analytics/pyarchive" },
     { name = "pygliner", marker = "extra == 'gliner'", editable = "analytics/pygliner" },
+    { name = "pyocr", extras = ["indra"], marker = "extra == 'ocr'", editable = "analytics/pyocr" },
     { name = "pyparse", marker = "extra == 'event-extraction'", editable = "analytics/pyparse" },
     { name = "pyparse", extras = ["contacts"], marker = "extra == 'contact-extraction'", editable = "analytics/pyparse" },
     { name = "pyparse", extras = ["email"], marker = "extra == 'text-extraction'", editable = "analytics/pyparse" },
     { name = "pyprompt", editable = "analytics/pyprompt" },
     { name = "pyselectors", editable = "analytics/pyselectors" },
     { name = "pytabular", marker = "extra == 'table-mapping'", editable = "analytics/pytabular" },
-    { name = "pyvllm", marker = "extra == 'ocr'", editable = "analytics/pyvllm" },
     { name = "pyxberg", marker = "extra == 'ocr'", editable = "analytics/pyxberg" },
     { name = "pyxberg", marker = "extra == 'text-extraction'", editable = "analytics/pyxberg" },
     { name = "setfitcv", marker = "extra == 'exif-location'", editable = "analytics/setfitcv" },
@@ -2009,6 +2015,22 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/b1/84/93bcd1300216ea50811cee96873b84a1bebf8d0489ffaf7f2a3756bab866/imageio-2.37.3.tar.gz", hash = "sha256:bbb37efbfc4c400fcd534b367b91fcd66d5da639aaa138034431a1c5e0a41451", size = 389673, upload-time = "2026-03-09T11:31:12.573Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/49/fa/391e437a34e55095173dca5f24070d89cbc233ff85bf1c29c93248c6588d/imageio-2.37.3-py3-none-any.whl", hash = "sha256:46f5bb8522cd421c0f5ae104d8268f569d856b29eb1a13b92829d1970f32c9f0", size = 317646, upload-time = "2026-03-09T11:31:10.771Z" },
+]
+
+[[package]]
+name = "indra-ocr"
+version = "1.1.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "huggingface-hub" },
+    { name = "numpy" },
+    { name = "onnxruntime" },
+    { name = "opencv-python-headless" },
+    { name = "pypdfium2" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/04/f6/0d0cc6c9e386612fc3dba27cee7a7b8b3f65ea4b91746b9f3db191b79dad/indra_ocr-1.1.2.tar.gz", hash = "sha256:405a40b8a62eb28d36cf96f236f2639286fbc791407733c16f93451dbe733914", size = 112346, upload-time = "2026-10-20T01:41:19.679Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3f/9a/ad0b5a2d72acc47bf321fc9c73c559b4c7743228c59f55949d2c050e4328/indra_ocr-1.1.2-py3-none-any.whl", hash = "sha256:22c82720968dd91b11ae137865fa01edaed29d7c1c11dd5d9c4a084bc3654da2", size = 96141, upload-time = "2026-10-20T01:41:17.934Z" },
 ]
 
 [[package]]
@@ -4047,6 +4069,38 @@ wheels = [
 ]
 
 [[package]]
+name = "pyocr"
+version = "0.0.1"
+source = { editable = "analytics/pyocr" }
+dependencies = [
+    { name = "cipher-schemas" },
+    { name = "httpx" },
+    { name = "pillow" },
+    { name = "pillow-heif" },
+    { name = "pydantic" },
+    { name = "pypdfium2" },
+    { name = "pyvllm" },
+]
+
+[package.optional-dependencies]
+indra = [
+    { name = "indra-ocr" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "cipher-schemas", editable = "libs/cipher-schemas" },
+    { name = "httpx" },
+    { name = "indra-ocr", marker = "extra == 'indra'", specifier = ">=1.1.2" },
+    { name = "pillow" },
+    { name = "pillow-heif" },
+    { name = "pydantic", specifier = ">=2" },
+    { name = "pypdfium2" },
+    { name = "pyvllm", editable = "analytics/pyvllm" },
+]
+provides-extras = ["indra"]
+
+[[package]]
 name = "pyparse"
 version = "0.0.1"
 source = { editable = "analytics/pyparse" }
@@ -4482,27 +4536,17 @@ name = "pyvllm"
 version = "0.0.1"
 source = { editable = "analytics/pyvllm" }
 dependencies = [
-    { name = "cipher-schemas" },
     { name = "httpx" },
     { name = "loguru" },
-    { name = "pillow" },
-    { name = "pillow-heif" },
-    { name = "pydantic" },
     { name = "pydantic-settings" },
-    { name = "pypdfium2" },
     { name = "typer" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "cipher-schemas", editable = "libs/cipher-schemas" },
     { name = "httpx" },
     { name = "loguru" },
-    { name = "pillow" },
-    { name = "pillow-heif" },
-    { name = "pydantic", specifier = ">=2" },
     { name = "pydantic-settings" },
-    { name = "pypdfium2" },
     { name = "typer" },
 ]
 

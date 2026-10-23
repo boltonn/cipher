@@ -44,7 +44,8 @@ analytics/     # ML analytics services (each independently deployable)
   pykreuzberg/ # Rust-based text extraction & OCR
   pyparse/     # Email/document parsing (.eml, .msg, VCF, DOCX, PDF, etc.)
   setfitcv/    # Image embedding via CLIP
-  pyvllm/      # Local models on one vLLM install (LLM: Qwen3.8-27B; OCR: jina-ocr-v1) + the OCR client
+  pyocr/       # Page OCR: jina-ocr-v1 (GPU, via pyvllm's server) or Indra OCR (CPU, in-process)
+  pyvllm/      # Local models on one vLLM install (LLM: Qwen3.8-27B; OCR: jina-ocr-v1)
 backend/       # FastAPI REST API (entry: cipher-serve)
 packages/
   cipher-orchestration # Combining analytics applied to data ingestion into a datastore with CLI utilities

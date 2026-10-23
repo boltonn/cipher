@@ -95,6 +95,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 from cipher.schemas._base.common import ModelDevice
 from cipher.schemas.content.email import EmailCategory, MessageState
+from cipher.schemas.content.extraction import OcrEngine
 from cipher.schemas.graph.entity_resolution import EntityResolutionConfig
 from cipher.schemas.identity.face import DEFAULT_FACE_SIMILARITY
 from cipher.schemas.ingestion.enrichment import DEFAULT_FILETYPE_GROUPS, EnrichmentType
@@ -639,7 +640,7 @@ def extract_text_cmd(
         OcrBackend,
         typer.Option(
             help="Inline OCR for image-based PDF pages. Default none: they are recorded and `cipher ocr` reads them. "
-            "easyocr is the fallback for a machine that can't run the ocr model (pyvllm)"
+            "easyocr is the fallback for a machine that can't run `cipher ocr`"
         ),
     ] = OcrBackend.NONE,
     ocr_language: Annotated[
@@ -742,19 +743,29 @@ def ocr_cmd(
         list[str] | None,
         typer.Option(help="Filetype(s) to OCR, repeatable (e.g. pdf, heif). Default: every PDF + supported image"),
     ] = None,
+    engine: Annotated[
+        OcrEngine,
+        typer.Option(
+            help="jina: jina-ocr-v1 on the GPU (vLLM), best quality. "
+            "indra: Indra OCR in this process on CPU, no server -- fast on clean print. See docs/running-analytics.md"
+        ),
+    ] = OcrEngine.JINA,
     service_url: Annotated[
         list[str] | None,
         typer.Option(
-            help="OCR model URL, repeatable -- one per GPU. "
+            help="jina only: OCR model URL, repeatable -- one per GPU. "
             "Default: pyvllm's `ocr` model on :8010, started for this run if it isn't already up"
         ),
+    ] = None,
+    workers: Annotated[
+        int | None, typer.Option(help="indra only: CPU worker processes (default: every usable core)")
     ] = None,
     concurrency: Annotated[
         int, typer.Option(help="Files in flight across all services; each decodes its files' pages together")
     ] = 32,
     min_chars: Annotated[int, typer.Option(help="PDF pages with fewer text-layer word chars are OCR'd")] = 20,
     force: Annotated[bool, typer.Option(help="OCR every PDF page, not just image-based ones")] = False,
-    figures: Annotated[bool, typer.Option(help="Also locate + caption figures (grounding prompt)")] = False,
+    figures: Annotated[bool, typer.Option(help="jina only: also locate + caption figures (grounding prompt)")] = False,
     clip_model_dir: Annotated[
         Path | None,
         typer.Option(
@@ -769,17 +780,15 @@ def ocr_cmd(
 ):
     """OCR image-based PDF pages and images into extracted text (run after extract-text).
 
-    The OCR model (pyvllm's `ocr`, jina-ocr-v1) runs locally: one already serving is
-    reused, otherwise it is started for this run and stopped afterwards. Images pass a text gate first --
+    With `--engine jina` (default) the OCR model (pyvllm's `ocr`, jina-ocr-v1) runs locally on a GPU: one
+    already serving is reused, otherwise it is started for this run and stopped afterwards. `--engine indra`
+    reads pages with Indra OCR inside this process on CPU, no server. Images pass a text gate first --
     zero-shot CLIP tags scored against the embeddings `embed-images` already stored,
     kept as each file's `has_text` tag score -- so only likely text-bearing images
     (screenshots, scans, receipts, signs...) are sent to the model.
     """
     ensure_stage_env("ocr")
     from contextlib import AsyncExitStack
-
-    from pyvllm.ocr.client import OcrClient
-    from pyvllm.server import serving
 
     from cipher.orchestration.ocr import (
         DEFAULT_CLIP_NEGATIVE_TAGS,
@@ -807,18 +816,34 @@ def ocr_cmd(
 
     async def _run():
         async with AsyncExitStack() as stack:
-            gpu = int(os.environ[GPU_ENV]) if GPU_ENV in os.environ else None  # set by `cipher worker`
-            urls = service_url or [(await stack.enter_async_context(serving("ocr", gpu=gpu))).base_url]
-            client = OcrClient(base_urls=urls)
+            if engine == OcrEngine.INDRA:
+                from pyocr.indra import IndraOcr
+
+                if figures:
+                    logger.warning("--figures needs --engine jina; Indra OCR reads text only")
+                client = IndraOcr(workers=workers)
+            else:
+                from pyocr.jina import JinaOcr
+                from pyvllm.server import serving
+
+                gpu = int(os.environ[GPU_ENV]) if GPU_ENV in os.environ else None  # set by `cipher worker`
+                urls = service_url or [(await stack.enter_async_context(serving("ocr", gpu=gpu))).base_url]
+                client = JinaOcr(base_urls=urls)
             stack.push_async_callback(client.aclose)
             async with get_session_context() as session:
                 resolved_id = await _resolve_dataset_id(session, dataset_id, dataset_name)
                 async with record_run(
                     enrichment_type=EnrichmentType.OCR,
                     dataset_id=resolved_id,
-                    device="cuda",
+                    device="cpu" if engine == OcrEngine.INDRA else "cuda",
                     unit=WorkUnit.FILE,
-                    params={"filetypes": filetype, "clip": clip_filter is not None, "force": force, "figures": figures},
+                    params={
+                        "engine": engine.value,
+                        "filetypes": filetype,
+                        "clip": clip_filter is not None,
+                        "force": force,
+                        "figures": figures,
+                    },
                 ) as run:
                     run.units = await ocr_workflow(
                         session=session,

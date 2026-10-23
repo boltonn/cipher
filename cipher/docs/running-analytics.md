@@ -34,7 +34,7 @@ removes another's packages.
 |---|---|---|
 | `staging` | `load-files` | filetyper (magika) |
 | `text-extraction` | `extract-text` | pyxberg (kreuzberg; EasyOCR only as the fallback OCR), pyparse[email] |
-| `ocr` | `ocr` | pyvllm (OCR client + model launcher), pyxberg, setfitcv (CLIP filter) |
+| `ocr` | `ocr` | pyvllm[indra] (jina-ocr-v1 client + model launcher; Indra OCR in-process), pyxberg, setfitcv (CLIP filter) |
 | `text-embedding` | `embed-text` | clir |
 | `image-embedding` / `exif-location` | `embed-images` / `extract-locations` | setfitcv |
 | `face-detection` | `detect-faces` | face[cuda] (InsightFace) |
@@ -52,7 +52,8 @@ the extras in `pipelines/cipher-orchestration/pyproject.toml`.
 |---|---|---|
 | everything | Postgres (ParadeDB image: pgvector + pg_search + PostGIS) | `.env` `POSTGRES__*`; `cipher create-tables` on a fresh DB |
 | `embed-text`/`reset-text` only if `RETRIEVAL__BACKEND=elasticsearch` | Elasticsearch | `.env` `ELASTICSEARCH__*`. The default postgres backend never opens ES. |
-| `ocr` | pyvllm's `ocr` model (jina-ocr-v1 on vLLM), local, GPU 0 | Nothing to start: `cipher ocr` launches it (`make install` + `make download` in `analytics/pyvllm` once) and stops it afterwards. To keep it up: `pyvllm up ocr`; more GPUs: one server each + repeat `--service-url` |
+| `ocr` (default `--engine jina`) | pyvllm's `ocr` model (jina-ocr-v1 on vLLM), local, GPU 0 | Nothing to start: `cipher ocr` launches it (`make install` + `make download` in `analytics/pyvllm` once) and stops it afterwards. To keep it up: `pyvllm up ocr`; more GPUs: one server each + repeat `--service-url` |
+| `ocr --engine indra` | Indra OCR weights (~76 MB, CPU) | No server: runs inside `cipher ocr`. `make download-indra` in `analytics/pyvllm` once (or `$INDRA_OCR_MODEL_DIR` for an offline copy). See [Choosing an OCR engine](#choosing-an-ocr-engine) |
 | chat, `extract-llm`, `extract-entities --extractor llm`, `extract-events --llm` | LLM endpoint | Local: pyvllm's `llm` model (Qwen3.8-27B on GPU 1, :8008) -- `pyvllm up llm` in `analytics/pyvllm`, kept running. `.env` `LLM__PROVIDER=local`, `LLM__MODEL=Qwen/Qwen3.8-27B`, `LLM__API_KEY` = `VLLM_API_KEY`. Hosted providers work the same way via `LLM__*`. |
 | models | local checkpoints | `$TEXT_EMBEDDING_MODEL_DIR`, `$IMAGE_EMBEDDING_MODEL_DIR`, `$FACE_MODEL_DIR`, `$EASYOCR_MODEL_DIR`, `$GLINER_MODEL_DIR`, `$NERD_MODEL_DIR` |
 
@@ -158,6 +159,34 @@ and extracts only what's still missing.
 | 2b | `cipher ocr --dataset-name rag` (after 3a) | Reads the image-based pages and text-bearing images with pyvllm's `ocr` model, merging page by page into the extracted text. Images pass a **gate** first: zero-shot CLIP tags over the embeddings from 3a, kept as each file's `has_text` **tag score**; under `--clip-threshold` (0.5) an image is not OCR'd (`--all-images` turns the gate off). A page that makes the model loop is cut back to one copy of the repeated text and counted in the run summary. |
 | 2c | `cipher embed-text --dataset-name rag --model-dir $TEXT_EMBEDDING_MODEL_DIR --device cuda` | Writes the chunks that power keyword, semantic and entity search. `--max-pages N` limits very long documents. |
 
+### Choosing an OCR engine
+
+`cipher ocr --engine jina|indra` (request form: **OCR → Engine**). Both read the same pages -- image-based
+PDF pages and images past the CLIP gate -- and write the same merged extracted text, tables included;
+`DocumentMetadata.ocr_model` records which one did (`jinaai/jina-ocr-v1` or `datalab-to/indra-ocr`).
+
+| | `jina` (default) | `indra` |
+|---|---|---|
+| Model | jina-ocr-v1: a vision-language model that writes each page as markdown | Indra OCR (Datalab): line detection + a small recogniser (CTC: one pass per line, no token-by-token generation) + reading order, on ONNX |
+| Runs | GPU, behind pyvllm's local vLLM server (:8010), started and stopped by the step | CPU, in the `cipher ocr` process (`--workers` processes); no server, no GPU |
+| Run plan pool | `gpu` | `cpu` |
+| Speed here | GPU-bound; vLLM batches every page in flight | ~5.5 pages/s with `--workers 8` on this 20-thread box (forced OCR, 60 pages); more workers than physical cores didn't help |
+| Best at | Degraded or noisy scans, photos of documents, handwriting, complex or borderless tables, mixed layouts | Clean printed scans and screenshots, many languages: Latin, Cyrillic, Greek, CJK, Arabic / Persian / Urdu / Hebrew, Devanagari and other Indic scripts, Thai, Georgian, Armenian, Ethiopic |
+| Weak at | Throughput when no GPU is free; it can loop on a page (cut back and counted as "cut short") | Handwriting (25% on its own benchmark), degraded scans, merged-cell or unruled tables, charts (read as cell grids); scripts outside its list (Syriac, Tibetan, Mongolian) |
+| Figures | `--figures` locates and captions them | Not supported (`--figures` is ignored with a warning) |
+| Licence | CC BY-NC 4.0: non-commercial without a Jina AI agreement | Code Apache-2.0; weights modified OpenRAIL-M: free for research, personal use and organisations under $20M funding/revenue, not for competing with Datalab's API |
+
+When to use which:
+
+* **No free GPU, a CPU worker host, or a large pile of clean scans** → `indra`. It also starts in seconds
+  (no model server to bring up), so it suits small top-up runs.
+* **Poor scans, phone photos of paper, handwriting, forms and tables you will rely on** → `jina`.
+* **Unsure** → run `indra` on a sample dataset and read a few OCR'd files on the file page; if the text is
+  garbled or tables are scrambled, use `jina` for that data.
+
+Files already OCR'd are not read again by a later run with the other engine (their OCR step is done);
+content-identical copies only reuse text the same engine wrote.
+
 ## 3. Image track (after 2a's email pass, so attachment and archive images exist)
 
 | # | Command | Notes |
@@ -241,7 +270,7 @@ cipher stats --dataset-name $D
 | Situation | Run |
 |---|---|
 | OCR added after the fact, or re-done | `ocr` → `embed-text` (OCR re-queues the files it rewrote); mentions extracted before it need `reset-entities` + step 4 |
-| No GPU / pyvllm not installed | `extract-text --ocr-backend easyocr` OCRs image-based pages inline (English by default, `--ocr-language`; much weaker on poor scans) and skip `ocr` |
+| No GPU | `ocr --engine indra` (CPU, in-process; see [Choosing an OCR engine](#choosing-an-ocr-engine)). Last resort: `extract-text --ocr-backend easyocr` OCRs image-based pages inline (English by default, `--ocr-language`; much weaker on poor scans) and skip `ocr` |
 | Changed chunk size or embedding model | `reset-text` → `extract-text` → (`ocr`) → `embed-text` (then re-run mentions: offsets moved) |
 | Re-extract entities/selectors from scratch | `reset-entities` → step 4 → step 5 (manual entities are kept) |
 | Re-extract events | `reset-events` → `extract-events` → `resolve-event-links` (manual/verified events are kept) |

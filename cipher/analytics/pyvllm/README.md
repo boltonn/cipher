@@ -1,13 +1,12 @@
 # pyvllm
 
 Every local model on one vLLM install. Each model is its own `vllm serve` process with an
-OpenAI-compatible API; this analytic installs vLLM once, starts and stops the models, and
-holds the OCR client.
+OpenAI-compatible API on localhost; this analytic installs vLLM once and starts and stops the models.
 
 | Model | Handle | Port | GPU | Used by |
 |---|---|---|---|---|
 | Qwen3.8-27B, 4-bit (`RedHatAI/Qwen3.8-27B-INT4`, Apache-2.0) | `llm` | 8008 | 1 | chat, pyprompt, `extract-llm` |
-| jina-ocr-v1 (CC BY-NC 4.0: non-commercial without a Jina AI agreement) | `ocr` | 8010 | 0 | `cipher ocr` (started and stopped by the job) |
+| jina-ocr-v1 (CC BY-NC 4.0: non-commercial without a Jina AI agreement) | `ocr` | 8010 | 0 | `cipher ocr --engine jina` via `analytics/pyocr` (started and stopped by the job) |
 
 Specs live in `src/pyvllm/models.py`. jina-ocr-v1 brings its own architecture code inside
 the model snapshot; the `vllm.general_plugins` entry point (`pyvllm.plugins`) registers it,
@@ -27,8 +26,5 @@ Set `VLLM_API_KEY` to require a key (vLLM reads it; the OCR client sends it).
 
 ## OCR
 
-`pyvllm.ocr` is the client side of page OCR: `pages` decides which PDF pages are
-image-based (text layer under 20 word characters) and renders them (pdfium / Pillow +
-pillow-heif, longest side 1600 px); `client.OcrClient` sends every page of every in-flight
-file to the `ocr` server at once; `parse` turns the markdown into page text, tables and
-figure regions, and cuts decoding loops (`OcrPage.is_truncated`).
+The OCR side (page rendering, the jina-ocr-v1 client, Indra OCR on CPU, output parsing) is its
+own analytic, `analytics/pyocr`. This analytic only serves the `ocr` model it talks to.

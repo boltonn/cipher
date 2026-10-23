@@ -50,18 +50,23 @@ DEVICE_SELECTABLE: frozenset[EnrichmentType] = frozenset(
 GPU_ONLY: frozenset[EnrichmentType] = frozenset({EnrichmentType.OCR})
 
 
-def run_device(enrichment_type: EnrichmentType, accelerator: RunDevice = RunDevice.CUDA) -> RunDevice:
+def run_device(
+    enrichment_type: EnrichmentType, accelerator: RunDevice = RunDevice.CUDA, params: dict | None = None
+) -> RunDevice:
     """The device class an analytic actually runs on, matching what `record_run` stores.
 
     Args:
         enrichment_type: The analytic.
         accelerator: Device used by analytics that accept `--device`.
+        params: The step's request parameters; OCR with `engine: indra` runs on CPU.
 
     Returns:
         `accelerator` for device-selectable analytics, CUDA for GPU-only ones, else NA.
     """
     if enrichment_type in DEVICE_SELECTABLE:
         return accelerator
+    if enrichment_type == EnrichmentType.OCR and (params or {}).get("engine") == "indra":
+        return RunDevice.CPU
     if enrichment_type in GPU_ONLY:
         return RunDevice.CUDA
     return RunDevice.NA

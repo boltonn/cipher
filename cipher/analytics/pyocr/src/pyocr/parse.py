@@ -14,7 +14,7 @@ from html.parser import HTMLParser
 
 from cipher.schemas._base.detection import BoundingBox
 from cipher.schemas.content.document import ExtractedTableInfo
-from pyvllm.ocr.schemas import OcrPage, OcrRegion
+from pyocr.schemas import OcrPage, OcrRegion
 
 DEFAULT_PROMPT = (
     "Transcribe the provided document image into a clean Markdown format, preserving the natural reading order."

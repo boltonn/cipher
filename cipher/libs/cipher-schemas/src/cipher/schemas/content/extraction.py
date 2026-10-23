@@ -21,7 +21,18 @@ class TextExtractor(StrEnum):
 
     KREUZBERG = "kreuzberg"
     PYPARSE = "pyparse"
-    PYVLLM = "pyvllm"
+    PYOCR = "pyocr"
+
+
+class OcrEngine(StrEnum):
+    """Which OCR model `cipher ocr` reads pages with (see docs/running-analytics.md, "Choosing an OCR engine").
+
+    `jina` is jina-ocr-v1 on the GPU (pyvllm's `ocr` vLLM server); `indra` is Datalab's Indra OCR,
+    run in-process on CPU with no server.
+    """
+
+    JINA = "jina"
+    INDRA = "indra"
 
 
 class PrechunkedSpan(BaseModel):

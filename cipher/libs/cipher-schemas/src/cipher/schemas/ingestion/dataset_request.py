@@ -15,6 +15,7 @@ from pydantic import ConfigDict, Field, model_validator
 from pydantic.alias_generators import to_camel
 
 from cipher.schemas._base.base import BaseModel
+from cipher.schemas.content.extraction import OcrEngine
 from cipher.schemas.identity.face import DEFAULT_FACE_SIMILARITY
 from cipher.schemas.ingestion.enrichment import DEFAULT_FILETYPE_GROUPS, EnrichmentType
 from cipher.schemas.ingestion.file import ArchiveSandbox
@@ -81,11 +82,15 @@ class TextExtractionParams(_AnalyticParams):
 class OcrParams(_AnalyticParams):
     """`cipher ocr`."""
 
+    engine: OcrEngine = Field(
+        OcrEngine.JINA,
+        description="jina: jina-ocr-v1 on a GPU, best quality; indra: Indra OCR on CPU, fast on clean print",
+    )
     all_images: bool = Field(False, description="Skip the CLIP text gate and OCR every image")
     clip_threshold: float = Field(0.5, ge=0.0, le=1.0, description="Text-gate score an image needs to be OCR'd")
     min_chars: int = Field(20, ge=0, description="PDF pages with fewer text-layer chars are OCR'd")
     force: bool = Field(False, description="OCR every PDF page, not just image-based ones")
-    figures: bool = Field(False, description="Also locate and caption figures")
+    figures: bool = Field(False, description="jina only: also locate and caption figures")
 
 
 class TextEmbeddingParams(_AnalyticParams):

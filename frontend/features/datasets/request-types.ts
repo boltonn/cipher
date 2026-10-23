@@ -260,9 +260,18 @@ export const ANALYTICS: readonly AnalyticDef[] = [
     type: "ocr",
     label: "OCR",
     description:
-      "Read scanned PDF pages and text-bearing images with the local OCR model. Images pass a CLIP text gate first.",
+      "Read scanned PDF pages and text-bearing images with a local OCR engine. Images pass a CLIP text gate first.",
     dependsOn: ["textExtraction"],
     params: [
+      {
+        key: "engine",
+        label: "Engine",
+        kind: "select",
+        options: ["jina", "indra"],
+        optionLabels: { jina: "jina-ocr-v1 (GPU)", indra: "Indra OCR (CPU)" },
+        info: "jina-ocr-v1 runs on a GPU and is the stronger reader: poor scans, phone photos of paper, handwriting, complex tables. Indra OCR runs on CPU with no GPU or model server, fast on clean printed pages in many languages, weaker on handwriting, degraded scans and merged-cell tables. Unsure: try Indra on a sample and read a few files.",
+        defaultValue: "jina",
+      },
       {
         key: "clipThreshold",
         label: "Text gate threshold",
@@ -300,7 +309,7 @@ export const ANALYTICS: readonly AnalyticDef[] = [
         key: "figures",
         label: "Caption figures",
         kind: "boolean",
-        info: "Also locate charts, photos and diagrams on each page and write a short caption for them.",
+        info: "Also locate charts, photos and diagrams on each page and write a short caption for them. jina-ocr-v1 only; Indra OCR ignores it.",
         defaultValue: false,
       },
     ],
@@ -677,6 +686,7 @@ export const paramSchemas: Record<EnrichmentType, z.ZodType> = {
     inlineImages: z.boolean(),
   }),
   ocr: z.object({
+    engine: z.enum(["jina", "indra"]),
     clipThreshold: z.number().min(0).max(1),
     minChars: z.number().int().min(0),
     allImages: z.boolean(),

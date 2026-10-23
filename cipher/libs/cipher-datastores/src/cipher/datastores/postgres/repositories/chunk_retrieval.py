@@ -7,7 +7,7 @@ docs/retrieval-workflow.md.
 
 Keyword ranking is `RETRIEVAL__TEXT_RANKER`:
   - `pg_search`  -> ParadeDB BM25 (`|||`) with an ICU tokenizer  [default]
-  - `core`       -> `text_tsv @@ to_tsquery(...)`, `ts_rank_cd`
+  - `core`       -> `text_tsv @@ to_tsquery(...)`, `ts_rank_cd`, accent-insensitive (`unaccent`)
 `pgroonga` / `pg_bigm` are recognised but fall through to `core` here until their
 index paths are added. A ranker whose extension isn't installed downgrades a rung
 (`effective_text_ranker`), so search works on plain Postgres.
@@ -149,7 +149,7 @@ class PostgresChunkRetrievalRepository(ChunkRetrievalRepository):
 
     def _tsv_sql(self, *, text_param: str) -> str:
         """SQL for `text_tsv`: only the core ranker (and the rungs that fall through to it) reads it."""
-        return "NULL" if self.text_ranker == "pg_search" else f"to_tsvector('simple', :{text_param})"
+        return "NULL" if self.text_ranker == "pg_search" else f"to_tsvector('simple', unaccent(:{text_param}))"
 
     async def _index_exists(self, name: str) -> bool:
         row = await self.session.execute(sa_text("SELECT 1 FROM pg_class WHERE relname = :n"), {"n": name})
@@ -176,7 +176,7 @@ class PostgresChunkRetrievalRepository(ChunkRetrievalRepository):
 
         if self.text_ranker != "pg_search":
             filled = await self.session.execute(
-                sa_text("UPDATE chunk SET text_tsv = to_tsvector('simple', text) WHERE text_tsv IS NULL")
+                sa_text("UPDATE chunk SET text_tsv = to_tsvector('simple', unaccent(text)) WHERE text_tsv IS NULL")
             )
             await self.session.commit()
             if filled.rowcount:
@@ -559,7 +559,9 @@ class PostgresChunkRetrievalRepository(ChunkRetrievalRepository):
 
     @staticmethod
     def _tsquery(*, exact: bool) -> str:
-        return f"{'phraseto' if exact else 'plainto'}_tsquery(coalesce(:kw_lang,'simple')::regconfig, :kw_tsq)"
+        return (
+            f"{'phraseto' if exact else 'plainto'}_tsquery(coalesce(:kw_lang,'simple')::regconfig, unaccent(:kw_tsq))"
+        )
 
     async def _resolve_expand(self, q: RetrievalQuery) -> None:
         """Walk the graph from the seeds, then resolve to the files that involve the expansion.

@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from pyvllm.ocr.schemas import OcrPage, OcrRegion, OcrResponse
+from pyocr.schemas import OcrPage, OcrRegion, OcrResponse
 
 from cipher.orchestration.ocr import build_ocr_extracted_text
 from cipher.schemas._base.detection import BoundingBox
@@ -48,7 +48,7 @@ def test_ocr_pages_merge_over_native_text_with_page_spans():
     merged = build_ocr_extracted_text(FILE, response, _existing(), native_pages={3: "native page three"})
 
     assert merged.content == "# Scanned one\n\nnative page three"
-    assert merged.extractor == TextExtractor.PYVLLM
+    assert merged.extractor == TextExtractor.PYOCR
     assert [(s.first_page, merged.content[s.start_offset : s.end_offset]) for s in merged.prechunked] == [
         (1, "# Scanned one"),
         (3, "native page three"),

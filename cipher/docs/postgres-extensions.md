@@ -149,7 +149,7 @@ insufficient for a specific corpus.
 | Var | Values | Default | Meaning |
 |---|---|---|---|
 | `RETRIEVAL__BACKEND` | `postgres`, `elasticsearch` | `postgres` | which store answers chunk search |
-| `RETRIEVAL__TEXT_RANKER` | `core`, `bigm`, `pgroonga`, `pg_search` | `bigm` | keyword ranker (postgres backend only) |
+| `RETRIEVAL__TEXT_RANKER` | `core`, `bigm`, `pgroonga`, `pg_search` | `pg_search` | keyword ranker (postgres backend only) |
 | `RETRIEVAL__GRAPH_EXPAND_ENTITY_CAP` | int | `10000` | graph-RAG fan-out ceiling |
 
 Setting a ranker whose extension isn't installed is safe — it silently

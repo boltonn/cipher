@@ -50,10 +50,10 @@ const PIPELINE = [
   {
     num: "02",
     title: "Extract",
-    services: ["pyxberg", "pyparse", "pyvllm"],
+    services: ["pyxberg", "pyparse", "pyocr"],
     ml: true,
     description:
-      "The extractor is chosen per filetype group -- pyxberg (Kreuzberg) for documents, pyparse for email, contacts, and calendar files (email attachments become child files). Image-based PDF pages and text-bearing images are then read by the OCR model (jina-ocr-v1) that pyvllm serves.",
+      "The extractor is chosen per filetype group -- pyxberg (Kreuzberg) for documents, pyparse for email, contacts, and calendar files (email attachments become child files). Image-based PDF pages and text-bearing images are then read by pyocr: jina-ocr-v1 on a GPU, or Indra OCR on CPU.",
   },
   {
     num: "03",
@@ -162,6 +162,13 @@ const ANALYTICS: {
   /** `cipher` CLI commands that run it -- see docs/running-analytics.md. */
   commands: string[];
   links: ServiceLinks;
+  /** Interchangeable engines and when to pick each (rendered as "When to use which"). */
+  engines?: {
+    name: string;
+    runs: string;
+    useFor: string;
+    weakerOn: string;
+  }[];
 }[] = [
   {
     name: "filetyper",
@@ -191,12 +198,39 @@ const ANALYTICS: {
     links: { code: "#" },
   },
   {
+    name: "pyocr",
+    role: "AI/ML",
+    description:
+      "Reads image-based PDF pages and text-bearing images into the file's extracted text, page by page, tables included. Two engines behind one step: pick one per run with --engine (or Engine on the request form). Files already OCR'd aren't re-read by a later run with the other engine.",
+    tech: "jina-ocr-v1 (via pyvllm) · Indra OCR (ONNX, in-process)",
+    commands: ["ocr --engine jina", "ocr --engine indra"],
+    links: { model: "#", code: "#" },
+    engines: [
+      {
+        name: "jina-ocr-v1",
+        runs: "GPU · local vLLM server, started and stopped by the step · CC BY-NC weights",
+        useFor:
+          "Poor or noisy scans, phone photos of paper, handwriting, forms, complex or borderless tables. Can caption figures.",
+        weakerOn:
+          "Speed when no GPU is free; now and then loops on a page (cut back and counted as cut short).",
+      },
+      {
+        name: "Indra OCR",
+        runs: "CPU · inside the step, no server, no GPU · OpenRAIL-M weights (free under $20M revenue)",
+        useFor:
+          "Clean printed scans and screenshots in bulk, CPU-only hosts, quick top-up runs. Latin, Cyrillic, Greek, CJK, Arabic / Persian / Hebrew, Indic scripts, Thai and more.",
+        weakerOn:
+          "Handwriting, degraded scans, merged-cell or unruled tables, charts (read as cell grids). No figure captions.",
+      },
+    ],
+  },
+  {
     name: "pyvllm",
     role: "AI/ML",
     description:
-      "Every local model on one vLLM install: the LLM behind chat and pyprompt, and the OCR model that reads image-based PDF pages and text-bearing images (started by the ocr step). OCR weights are non-commercial (CC BY-NC).",
+      "Every local model on one vLLM install, each its own server on localhost: the LLM behind chat and pyprompt, and jina-ocr-v1 for pyocr's jina engine (started by the ocr step).",
     tech: "vLLM · Qwen3.8-27B · jina-ocr-v1",
-    commands: ["ocr"],
+    commands: ["ocr --engine jina"],
     links: { model: "#", code: "#" },
   },
   {
@@ -884,7 +918,7 @@ const OPTIONAL_ANALYTICS: {
     stage: "Extract",
     nodes: [
       { title: "pyxberg · pyparse", subtitle: "text", variant: "ml" },
-      { title: "pyvllm", subtitle: "OCR", variant: "ml" },
+      { title: "pyocr", subtitle: "OCR", variant: "ml" },
     ],
   },
   {
@@ -1114,7 +1148,10 @@ export default function DocsPage() {
         </p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {ANALYTICS.map((svc) => (
-            <Card key={svc.name} className="ring-white/10">
+            <Card
+              key={svc.name}
+              className={cn("ring-white/10", svc.engines && "sm:col-span-2")}
+            >
               <CardHeader>
                 <div className="flex items-start justify-between gap-2">
                   <CardTitle className="font-mono text-foreground">
@@ -1138,6 +1175,42 @@ export default function DocsPage() {
                 <div className="rounded-md border border-border bg-white/[0.03] px-2.5 py-2 font-mono text-[11px] text-muted-foreground">
                   {svc.tech}
                 </div>
+                {svc.engines && (
+                  <div className="flex flex-col gap-2">
+                    <p className="text-xs font-medium text-foreground">
+                      When to use which
+                    </p>
+                    <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                      {svc.engines.map((engine) => (
+                        <div
+                          key={engine.name}
+                          className="flex flex-col gap-1.5 rounded-md border border-border px-3 py-2.5 text-xs"
+                        >
+                          <span className="font-mono text-foreground">
+                            {engine.name}
+                          </span>
+                          <span className="text-[11px] text-muted-foreground">
+                            {engine.runs}
+                          </span>
+                          <p className="text-muted-foreground">
+                            <span className="text-foreground">Use for: </span>
+                            {engine.useFor}
+                          </p>
+                          <p className="text-muted-foreground">
+                            <span className="text-foreground">Weaker on: </span>
+                            {engine.weakerOn}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Unsure? Run Indra OCR on a sample dataset and read a few
+                      OCR&apos;d files; if text is garbled or tables are
+                      scrambled, use jina-ocr-v1 for that data. Details:
+                      docs/running-analytics.md, “Choosing an OCR engine”.
+                    </p>
+                  </div>
+                )}
                 <div className="flex flex-wrap gap-1.5">
                   {svc.commands.map((command) => (
                     <span

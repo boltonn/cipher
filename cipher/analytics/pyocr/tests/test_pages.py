@@ -2,7 +2,7 @@ from io import BytesIO
 
 import pypdfium2 as pdfium
 from PIL import Image
-from pyvllm.ocr.pages import page_count, render_pages, scanned_pages
+from pyocr.pages import page_count, render_pages, scanned_pages
 
 
 def _image_page_pdf() -> bytes:

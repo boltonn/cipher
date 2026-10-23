@@ -24,7 +24,7 @@ dependencies = [
 staging = ["filetyper[zstd,lz4,pdf]"]
 archive-extraction = ["pyarchive[zstd,lz4,pdf]"]
 text-extraction = ["pyxberg", "pyparse[email]"]
-ocr = ["pyvllm", "pyxberg", "setfitcv"]
+ocr = ["pyocr[indra]", "pyxberg", "setfitcv"]
 text-embedding = ["clir"]
 image-embedding = ["setfitcv"]
 image-heads = ["setfitcv[train]"]
@@ -58,6 +58,7 @@ pyparse = { workspace = true }
 pyselectors = { workspace = true }
 pytabular = { workspace = true }
 pyprompt = { workspace = true }
+pyocr = { workspace = true }
 pyvllm = { workspace = true }
 pygliner = { workspace = true }
 nerd = { workspace = true }

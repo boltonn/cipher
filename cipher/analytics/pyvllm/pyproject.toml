@@ -1,7 +1,7 @@
 [project]
 name = "pyvllm"
-description = "Local model serving on vLLM (one install for every model: the LLM and jina-ocr-v1) plus the OCR client."
-keywords = ["vllm", "llm", "ocr", "multilingual", "cipher"]
+description = "Local model serving on vLLM: one install for every model (the LLM and jina-ocr-v1), started and stopped as `vllm serve` processes."
+keywords = ["vllm", "llm", "cipher"]
 version = "0.0.1"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -10,19 +10,11 @@ classifiers = [
   "Programming Language :: Python",
 ]
 dependencies = [
-  "cipher-schemas",
   "httpx",
   "loguru",
-  "pillow",
-  "pillow-heif",
-  "pydantic>=2",
   "pydantic-settings",
-  "pypdfium2",
   "typer",
 ]
-
-[tool.uv.sources]
-cipher-schemas = { workspace = true }
 
 [build-system]
 requires = [ "hatchling" ]

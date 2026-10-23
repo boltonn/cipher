@@ -34,7 +34,7 @@ What turns a directory of files into an enriched dataset, roughly in runbook ord
 | Command | What it does | Notable options |
 |---|---|---|
 | `extract-text` | Unpacks archives, then text and structure from each eligible file (emails and unpacking loop until nothing new turns up, then documents); records image-based pages for `ocr`. | `--filetype-group`, `--no-archives`, `--no-inline-images` (don't save images email bodies show), `--ocr-backend easyocr` (no GPU), `--chunker`, `--chunk-size` |
-| `ocr` | Read image-based PDF pages and text-bearing images with pyvllm's `ocr` model (it starts and stops the model). Images pass a CLIP "has text" gate first. | `--all-images`, `--clip-threshold`, `--force`, `--concurrency` |
+| `ocr` | Read image-based PDF pages and text-bearing images: `--engine jina` (default) uses pyvllm's `ocr` model on a GPU (it starts and stops the model); `--engine indra` uses Indra OCR in-process on CPU. Images pass a CLIP "has text" gate first. | `--engine`, `--workers` (indra), `--all-images`, `--clip-threshold`, `--force`, `--concurrency` |
 | `embed-text` | Chunk and embed extracted text into the search store. Finishes by anchoring mentions to their chunks (`mention.chunk_id`). | `--chunk-size`, `--chunk-overlap`, `--max-pages`, `--skip-email-state`, `--device` |
 | `summarize` | Short AI summary per file. Opt-in: one LLM call per file. | `--filetype-group`, `--limit`, `--language` |
 

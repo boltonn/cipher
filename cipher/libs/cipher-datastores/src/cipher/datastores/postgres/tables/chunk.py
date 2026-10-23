@@ -61,7 +61,7 @@ class ChunkTable(Base):
     language: Mapped[str | None] = mapped_column(String, nullable=True)
 
     embedding: Mapped[list[float] | None] = mapped_column(Vector(CHUNK_EMBEDDING_DIMENSION), nullable=True)
-    # `to_tsvector('simple', text)`, writer-populated (and backfilled at startup) whenever
+    # `to_tsvector('simple', unaccent(text))`, writer-populated (and backfilled at startup) whenever
     # the effective keyword ranker isn't pg_search; NULL under pg_search.
     text_tsv: Mapped[str | None] = mapped_column(TSVECTOR, nullable=True)
 

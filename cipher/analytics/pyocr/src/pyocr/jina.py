@@ -1,4 +1,8 @@
-"""OCR client: render pages locally, transcribe each on the `ocr` model's OpenAI-compatible API.
+"""jina-ocr-v1 engine: render pages here, transcribe each on pyvllm's local `ocr` server (vLLM, GPU).
+
+jina-ocr-v1 is a generative vision-language model; vLLM's continuous batching and its FastMTP
+speculative heads make it ~30-90x faster than transformers `generate()`, which reads one page
+per call -- hence a local server rather than loading the model in this process.
 
 Throughput comes from keeping many pages in flight -- vLLM batches every concurrent
 request into shared GPU steps -- so pages of every file being OCR'd are sent together,
@@ -12,12 +16,12 @@ from pathlib import Path
 
 import httpx
 from PIL import Image
-
 from pyvllm.models import MODELS
-from pyvllm.ocr.pages import DEFAULT_MAX_SIDE, page_count, render_pages, scanned_pages
-from pyvllm.ocr.parse import DEFAULT_PROMPT, FIGURE_PROMPT, parse_page
-from pyvllm.ocr.schemas import OcrPage, OcrRequest, OcrResponse
 from pyvllm.settings import settings
+
+from pyocr.pages import DEFAULT_MAX_SIDE, pages_to_read, render_pages
+from pyocr.parse import DEFAULT_PROMPT, FIGURE_PROMPT, parse_page
+from pyocr.schemas import OcrPage, OcrRequest, OcrResponse
 
 MAX_PAGES_IN_FLIGHT = 96
 MAX_TOKENS_PER_PAGE = 4096
@@ -37,7 +41,7 @@ def _data_url(image: Image.Image) -> str:
     return f"data:image/png;base64,{base64.b64encode(buffer.getvalue()).decode()}"
 
 
-class OcrClient:
+class JinaOcr:
     """Sends each page to the `ocr` server with the fewest pages in flight (one server per GPU scales ~linearly)."""
 
     def __init__(self, base_urls: list[str] | None = None, timeout: float = 900.0, max_side: int = DEFAULT_MAX_SIDE):
@@ -84,11 +88,7 @@ class OcrClient:
 
     async def ocr(self, path: Path, request: OcrRequest) -> OcrResponse:
         """Transcribe the requested pages of a PDF or image."""
-        total = await asyncio.to_thread(page_count, path)
-        pages = request.pages
-        if request.scanned_only:
-            scanned = await asyncio.to_thread(scanned_pages, path)
-            pages = [page for page in scanned if pages is None or page in pages]
+        total, pages = await asyncio.to_thread(pages_to_read, path, request.pages, request.scanned_only)
         if pages == []:
             return OcrResponse(model=self.model, page_count=total)
 

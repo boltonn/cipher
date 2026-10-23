@@ -13,8 +13,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-analytics-cpu = [ "clir", "face", "filetyper[zstd,lz4,pdf]", "pyarchive[zstd,lz4,pdf]", "nerd", "pygliner", "pyprompt", "pyvllm", "pyparse[all]", "pyselectors", "pytabular", "pyxberg", "setfitcv" ]
-analytics-cuda = [ "clir[cuda,tables]", "face[cuda]", "filetyper[zstd,lz4,pdf]", "pyarchive[zstd,lz4,pdf]", "nerd[cuda]", "pygliner[cuda]", "pyprompt", "pyvllm", "pyparse[all]", "pyselectors", "pytabular", "pyxberg", "setfitcv[cuda]" ]
+analytics-cpu = [ "clir", "face", "filetyper[zstd,lz4,pdf]", "pyarchive[zstd,lz4,pdf]", "nerd", "pygliner", "pyprompt", "pyocr", "pyvllm", "pyparse[all]", "pyselectors", "pytabular", "pyxberg", "setfitcv" ]
+analytics-cuda = [ "clir[cuda,tables]", "face[cuda]", "filetyper[zstd,lz4,pdf]", "pyarchive[zstd,lz4,pdf]", "nerd[cuda]", "pygliner[cuda]", "pyprompt", "pyocr", "pyvllm", "pyparse[all]", "pyselectors", "pytabular", "pyxberg", "setfitcv[cuda]" ]
 elasticsearch = [ "cipher-datastores[elasticsearch]" ]
 postgres = [ "cipher-datastores[postgres]" ]
 backend = [ "cipher-backend" ]
@@ -41,6 +41,7 @@ setfitcv = { workspace = true }
 pyparse = { workspace = true }
 pyxberg = { workspace = true }
 pyarchive = { workspace = true }
+pyocr = { workspace = true }
 pyvllm = { workspace = true }
 pyselectors = { workspace = true }
 pytabular = { workspace = true }
@@ -64,6 +65,7 @@ members = [
     "analytics/nerd",
     "analytics/pygliner",
     "analytics/pyvllm",
+    "analytics/pyocr",
     "analytics/pyprompt",
     "analytics/pyselectors",
     "analytics/pytabular",

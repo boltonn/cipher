@@ -84,6 +84,14 @@ def scanned_pages(source: Source, min_chars: int = DEFAULT_MIN_CHARS) -> list[in
     return pages
 
 
+def pages_to_read(source: Source, pages: list[int] | None, scanned_only: bool) -> tuple[int, list[int] | None]:
+    """`(total pages, 1-indexed pages to OCR)`; None means every page."""
+    total = page_count(source)
+    if scanned_only:
+        pages = [page for page in scanned_pages(source) if pages is None or page in pages]
+    return total, pages
+
+
 def _fit(image: Image.Image, max_side: int) -> Image.Image:
     image = ImageOps.exif_transpose(image).convert("RGB")
     if max(image.size) > max_side:

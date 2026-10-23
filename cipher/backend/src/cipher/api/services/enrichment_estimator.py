@@ -52,7 +52,7 @@ async def build_dataset_estimates(
         workload = estimate_workload(enrichment_type=enrichment_type, inventory=inventory, params=params)
         rate = resolve_rate(
             enrichment_type=enrichment_type,
-            device=run_device(enrichment_type, accelerator=accelerator),
+            device=run_device(enrichment_type, accelerator=accelerator, params=params),
             measured=rates,
             params=params,
         )
